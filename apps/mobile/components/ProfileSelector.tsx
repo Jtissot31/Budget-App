@@ -1,0 +1,60 @@
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { spacing, typography } from '@/constants/theme';
+import type { ProfileType } from '@/lib/profile';
+import { useAppTheme } from '@/lib/themeContext';
+
+const profiles: { id: ProfileType; label: string }[] = [
+  { id: 'student', label: 'Étudiant' },
+  { id: 'entrepreneur', label: 'Pro' },
+  { id: 'homebuyer', label: 'Projet' },
+  { id: 'retired', label: 'Retraité' },
+];
+
+type Props = {
+  selected: ProfileType;
+  onChange: (profile: ProfileType) => void;
+};
+
+export function ProfileSelector({ selected, onChange }: Props) {
+  const { colors } = useAppTheme();
+  return (
+    <View style={styles.wrap}>
+      <Text style={[styles.heading, { color: colors.textMuted }]}>Profil</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+        {profiles.map((p) => {
+          const active = selected === p.id;
+          return (
+            <Pressable
+              key={p.id}
+              onPress={() => onChange(p.id)}
+              style={[
+                styles.chip,
+                { borderColor: active ? colors.primary : colors.border },
+                active && { backgroundColor: colors.cyanMuted },
+              ]}
+            >
+              <Text style={[styles.chipText, { color: active ? colors.primary : colors.textMuted }, active && styles.chipTextActive]}>
+                {p.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: { gap: spacing.sm },
+  heading: { fontSize: typography.caption, fontWeight: '700', letterSpacing: 0.5 },
+  row: { gap: spacing.sm, paddingVertical: 2 },
+  chip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 999,
+    borderWidth: 1,
+    backgroundColor: 'transparent',
+  },
+  chipText: { fontSize: typography.caption, fontWeight: '700' },
+  chipTextActive: { fontWeight: '800' },
+});

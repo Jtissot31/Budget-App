@@ -1,0 +1,9 @@
+node_modules/
+apps/mobile/.expo/
+bin/
+obj/
+.vs/
+*.user
+*.suo
+.idea/
+.DS_Store

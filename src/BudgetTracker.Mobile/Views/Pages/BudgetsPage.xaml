@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="BudgetTracker.Mobile.Views.Pages.BudgetsPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:models="clr-namespace:BudgetTracker.Mobile.Models"
+    xmlns:vm="clr-namespace:BudgetTracker.Mobile.ViewModels"
+    x:DataType="vm:BudgetsViewModel"
+    Title="Budgets"
+    BackgroundColor="{StaticResource Background}">
+
+    <RefreshView
+        Padding="20"
+        Command="{Binding LoadCommand}"
+        IsRefreshing="{Binding IsBusy}">
+        <CollectionView ItemsSource="{Binding Budgets}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="models:CategoryBudget">
+                    <Border
+                        Margin="0,0,0,14"
+                        Padding="18"
+                        BackgroundColor="{StaticResource Surface}"
+                        Stroke="{StaticResource Border}"
+                        StrokeThickness="1">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="16" />
+                        </Border.StrokeShape>
+                        <VerticalStackLayout Spacing="12">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <Label
+                                    FontSize="24"
+                                    Text="{Binding Category.Icon}"
+                                    VerticalOptions="Center" />
+                                <Label
+                                    Grid.Column="1"
+                                    Margin="12,0,0,0"
+                                    FontAttributes="Bold"
+                                    FontSize="17"
+                                    Text="{Binding Category.Name}"
+                                    TextColor="{StaticResource TextPrimary}"
+                                    VerticalOptions="Center" />
+                                <Label
+                                    Grid.Column="2"
+                                    FontAttributes="Bold"
+                                    Text="{Binding Remaining, StringFormat='{0:N0} €'}"
+                                    TextColor="{StaticResource Primary}"
+                                    VerticalOptions="Center" />
+                            </Grid>
+                            <ProgressBar
+                                Progress="{Binding Progress}"
+                                ProgressColor="{StaticResource Primary}"
+                                BackgroundColor="{StaticResource Border}" />
+                            <Grid ColumnDefinitions="*,*">
+                                <Label
+                                    FontSize="12"
+                                    Text="{Binding Spent, StringFormat='Dépensé : {0:N2} €'}"
+                                    TextColor="{StaticResource TextMuted}" />
+                                <Label
+                                    Grid.Column="1"
+                                    FontSize="12"
+                                    HorizontalTextAlignment="End"
+                                    Text="{Binding Limit, StringFormat='Limite : {0:N2} €'}"
+                                    TextColor="{StaticResource TextMuted}" />
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </RefreshView>
+</ContentPage>

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="BudgetTracker.Mobile.Views.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:BudgetTracker.Mobile.ViewModels"
+    x:DataType="vm:SettingsViewModel"
+    Title="Plus"
+    BackgroundColor="{StaticResource Background}">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="20">
+
+            <Border
+                Padding="20"
+                BackgroundColor="{StaticResource Surface}"
+                Stroke="{StaticResource Border}"
+                StrokeThickness="1">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="16" />
+                </Border.StrokeShape>
+                <VerticalStackLayout Spacing="6">
+                    <Label
+                        FontAttributes="Bold"
+                        FontSize="22"
+                        Text="Budget Tracker"
+                        TextColor="{StaticResource TextPrimary}" />
+                    <Label
+                        FontSize="13"
+                        Text="v1.0 — UI mobile MAUI"
+                        TextColor="{StaticResource TextMuted}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Label
+                FontAttributes="Bold"
+                Text="Connexion API (.NET 10)"
+                TextColor="{StaticResource TextPrimary}" />
+
+            <Label FontSize="12" Text="URL de base" TextColor="{StaticResource TextMuted}" />
+            <Entry
+                Keyboard="Url"
+                Placeholder="https://localhost:7080"
+                Text="{Binding ApiBaseUrl}" />
+
+            <Grid ColumnDefinitions="*,Auto">
+                <Label
+                    Text="Utiliser les données de démo"
+                    TextColor="{StaticResource TextPrimary}"
+                    VerticalOptions="Center" />
+                <Switch Grid.Column="1" IsToggled="{Binding UseMockData}" />
+            </Grid>
+
+            <Button
+                Command="{Binding SaveCommand}"
+                Style="{StaticResource PrimaryButton}"
+                Text="Enregistrer" />
+
+            <Label
+                FontSize="12"
+                LineBreakMode="WordWrap"
+                Text="Quand l'API sera prête, désactivez les données de démo. L'app appellera GET /api/dashboard, /api/transactions, etc."
+                TextColor="{StaticResource TextMuted}" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

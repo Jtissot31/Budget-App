@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="BudgetTracker.Mobile.Views.Pages.DashboardPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:controls="clr-namespace:BudgetTracker.Mobile.Views.Controls"
+    xmlns:models="clr-namespace:BudgetTracker.Mobile.Models"
+    xmlns:vm="clr-namespace:BudgetTracker.Mobile.ViewModels"
+    x:DataType="vm:DashboardViewModel"
+    Title="Accueil"
+    BackgroundColor="{StaticResource Background}">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="20">
+
+            <!-- Solde principal -->
+            <Border
+                Padding="24"
+                BackgroundColor="{StaticResource Primary}"
+                StrokeThickness="0">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="20" />
+                </Border.StrokeShape>
+                <VerticalStackLayout Spacing="8">
+                    <Label
+                        FontSize="14"
+                        Opacity="0.85"
+                        Text="Solde disponible"
+                        TextColor="White" />
+                    <Label
+                        FontAttributes="Bold"
+                        FontSize="36"
+                        Text="{Binding BalanceFormatted}"
+                        TextColor="White" />
+                    <Label
+                        FontSize="13"
+                        Opacity="0.8"
+                        Text="{Binding RemainingFormatted}"
+                        TextColor="White" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Stats mois -->
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                <controls:SummaryCard
+                    Grid.Column="0"
+                    Title="Dépenses"
+                    Value="{Binding ExpensesFormatted}"
+                    ValueColor="{StaticResource Danger}" />
+                <controls:SummaryCard
+                    Grid.Column="1"
+                    Title="Revenus"
+                    Value="{Binding IncomeFormatted}"
+                    ValueColor="{StaticResource Success}" />
+            </Grid>
+
+            <!-- Progression budget -->
+            <Border
+                Padding="20"
+                BackgroundColor="{StaticResource Surface}"
+                Stroke="{StaticResource Border}"
+                StrokeThickness="1">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="16" />
+                </Border.StrokeShape>
+                <VerticalStackLayout Spacing="12">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label
+                            FontAttributes="Bold"
+                            FontSize="16"
+                            Text="Budget mensuel"
+                            TextColor="{StaticResource TextPrimary}" />
+                        <Label
+                            Grid.Column="1"
+                            FontSize="14"
+                            Text="{Binding BudgetProgressPercent}"
+                            TextColor="{StaticResource Primary}" />
+                    </Grid>
+                    <ProgressBar
+                        Progress="{Binding BudgetProgress}"
+                        ProgressColor="{StaticResource Primary}"
+                        BackgroundColor="{StaticResource Border}" />
+                    <Label
+                        FontSize="12"
+                        Text="{Binding RemainingFormatted}"
+                        TextColor="{StaticResource TextMuted}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Budgets par catégorie -->
+            <Label
+                FontAttributes="Bold"
+                FontSize="18"
+                Text="Catégories surveillées"
+                TextColor="{StaticResource TextPrimary}" />
+
+            <CollectionView ItemsSource="{Binding TopBudgets}">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="models:CategoryBudget">
+                        <Border
+                            Margin="0,0,0,10"
+                            Padding="14"
+                            BackgroundColor="{StaticResource Surface}"
+                            Stroke="{StaticResource Border}"
+                            StrokeThickness="1">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="12" />
+                            </Border.StrokeShape>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                <Label
+                                    FontSize="22"
+                                    Text="{Binding Category.Icon}"
+                                    VerticalOptions="Center" />
+                                <VerticalStackLayout Grid.Column="1" Spacing="6">
+                                    <Label
+                                        FontAttributes="Bold"
+                                        Text="{Binding Category.Name}"
+                                        TextColor="{StaticResource TextPrimary}" />
+                                    <ProgressBar
+                                        Progress="{Binding Progress}"
+                                        ProgressColor="{StaticResource Primary}"
+                                        BackgroundColor="{StaticResource Border}" />
+                                </VerticalStackLayout>
+                                <Label
+                                    Grid.Column="2"
+                                    FontSize="12"
+                                    Text="{Binding Spent, StringFormat='{0:N0} €'}"
+                                    TextColor="{StaticResource TextMuted}"
+                                    VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <!-- Transactions récentes -->
+            <Grid ColumnDefinitions="*,Auto">
+                <Label
+                    FontAttributes="Bold"
+                    FontSize="18"
+                    Text="Récentes"
+                    TextColor="{StaticResource TextPrimary}" />
+                <Button
+                    Grid.Column="1"
+                    BackgroundColor="Transparent"
+                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DashboardViewModel}}, Path=LoadCommand}"
+                    FontSize="13"
+                    Text="Actualiser"
+                    TextColor="{StaticResource Primary}" />
+            </Grid>
+
+            <CollectionView ItemsSource="{Binding RecentTransactions}">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="models:Transaction">
+                        <Border
+                            Margin="0,0,0,8"
+                            Padding="14"
+                            BackgroundColor="{StaticResource Surface}"
+                            Stroke="{StaticResource Border}"
+                            StrokeThickness="1">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="12" />
+                            </Border.StrokeShape>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                <Label FontSize="20" Text="{Binding Category.Icon}" VerticalOptions="Center" />
+                                <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                    <Label
+                                        FontAttributes="Bold"
+                                        Text="{Binding Label}"
+                                        TextColor="{StaticResource TextPrimary}" />
+                                    <Label
+                                        FontSize="12"
+                                        Text="{Binding Date, StringFormat='{0:dd MMM yyyy}'}"
+                                        TextColor="{StaticResource TextMuted}" />
+                                </VerticalStackLayout>
+                                <Label
+                                    Grid.Column="2"
+                                    FontAttributes="Bold"
+                                    Text="{Binding Amount, StringFormat='{0:N2} €'}"
+                                    TextColor="{Binding Type, Converter={StaticResource TransactionAmountColorConverter}}"
+                                    VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

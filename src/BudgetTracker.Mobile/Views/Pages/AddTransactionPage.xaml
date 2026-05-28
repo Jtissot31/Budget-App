@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="BudgetTracker.Mobile.Views.Pages.AddTransactionPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:models="clr-namespace:BudgetTracker.Mobile.Models"
+    xmlns:vm="clr-namespace:BudgetTracker.Mobile.ViewModels"
+    x:DataType="vm:AddTransactionViewModel"
+    Title="Nouvelle transaction"
+    BackgroundColor="{StaticResource Background}">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="18">
+
+            <Label
+                FontAttributes="Bold"
+                FontSize="14"
+                Text="Type"
+                TextColor="{StaticResource TextMuted}" />
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                <Button
+                    Command="{Binding SetExpenseCommand}"
+                    Text="Dépense"
+                    Style="{StaticResource SegmentedButton}" />
+                <Button
+                    Grid.Column="1"
+                    Command="{Binding SetIncomeCommand}"
+                    Text="Revenu"
+                    Style="{StaticResource SegmentedButton}" />
+            </Grid>
+
+            <Label Text="Libellé" TextColor="{StaticResource TextMuted}" />
+            <Entry
+                Placeholder="Ex. Courses, loyer..."
+                Text="{Binding Label}" />
+
+            <Label Text="Montant (€)" TextColor="{StaticResource TextMuted}" />
+            <Entry
+                Keyboard="Numeric"
+                Placeholder="0,00"
+                Text="{Binding AmountText}" />
+
+            <Label Text="Catégorie" TextColor="{StaticResource TextMuted}" />
+            <Picker
+                ItemDisplayBinding="{Binding Name}"
+                ItemsSource="{Binding Categories}"
+                SelectedItem="{Binding SelectedCategory}" />
+
+            <Label Text="Date" TextColor="{StaticResource TextMuted}" />
+            <DatePicker Date="{Binding Date}" />
+
+            <Button
+                Margin="0,12,0,0"
+                Command="{Binding SaveCommand}"
+                IsEnabled="{Binding IsSaving, Converter={StaticResource InvertedBoolConverter}}"
+                Style="{StaticResource PrimaryButton}"
+                Text="Enregistrer" />
+
+            <ActivityIndicator
+                HorizontalOptions="Center"
+                IsRunning="{Binding IsSaving}"
+                IsVisible="{Binding IsSaving}"
+                Color="{StaticResource Primary}" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

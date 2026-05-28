@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="BudgetTracker.Mobile.Views.Pages.TransactionsPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:models="clr-namespace:BudgetTracker.Mobile.Models"
+    xmlns:vm="clr-namespace:BudgetTracker.Mobile.ViewModels"
+    x:DataType="vm:TransactionsViewModel"
+    Title="Transactions"
+    BackgroundColor="{StaticResource Background}">
+
+    <Grid Padding="20" RowDefinitions="Auto,*" RowSpacing="16">
+        <SearchBar
+            Placeholder="Rechercher une transaction..."
+            Text="{Binding SearchText}" />
+
+        <RefreshView
+            Grid.Row="1"
+            Command="{Binding LoadCommand}"
+            IsRefreshing="{Binding IsBusy}">
+            <CollectionView ItemsSource="{Binding Transactions}">
+                <CollectionView.EmptyView>
+                    <Label
+                        HorizontalOptions="Center"
+                        Text="Aucune transaction"
+                        TextColor="{StaticResource TextMuted}"
+                        VerticalOptions="Center" />
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="models:Transaction">
+                        <SwipeView>
+                            <SwipeView.RightItems>
+                                <SwipeItems Mode="Reveal">
+                                    <SwipeItem
+                                        BackgroundColor="{StaticResource Danger}"
+                                        Text="Supprimer" />
+                                </SwipeItems>
+                            </SwipeView.RightItems>
+                            <Border
+                                Margin="0,0,0,10"
+                                Padding="16"
+                                BackgroundColor="{StaticResource Surface}"
+                                Stroke="{StaticResource Border}"
+                                StrokeThickness="1">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="14" />
+                                </Border.StrokeShape>
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                                    <Border
+                                        HeightRequest="44"
+                                        WidthRequest="44"
+                                        BackgroundColor="{StaticResource Background}"
+                                        StrokeThickness="0"
+                                        VerticalOptions="Center">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="22" />
+                                        </Border.StrokeShape>
+                                        <Label
+                                            FontSize="20"
+                                            HorizontalOptions="Center"
+                                            Text="{Binding Category.Icon}"
+                                            VerticalOptions="Center" />
+                                    </Border>
+                                    <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                        <Label
+                                            FontAttributes="Bold"
+                                            FontSize="16"
+                                            Text="{Binding Label}"
+                                            TextColor="{StaticResource TextPrimary}" />
+                                        <Label
+                                            FontSize="12"
+                                            Text="{Binding Category.Name}"
+                                            TextColor="{StaticResource TextMuted}" />
+                                        <Label
+                                            FontSize="11"
+                                            Text="{Binding Date, StringFormat='{0:dddd dd MMMM}'}"
+                                            TextColor="{StaticResource TextMuted}" />
+                                    </VerticalStackLayout>
+                                    <VerticalStackLayout
+                                        Grid.Column="2"
+                                        HorizontalOptions="End"
+                                        Spacing="2"
+                                        VerticalOptions="Center">
+                                        <Label
+                                            FontAttributes="Bold"
+                                            FontSize="16"
+                                            HorizontalTextAlignment="End"
+                                            Text="{Binding Amount, StringFormat='{0:N2} €'}"
+                                            TextColor="{Binding Type, Converter={StaticResource TransactionAmountColorConverter}}" />
+                                    </VerticalStackLayout>
+                                </Grid>
+                            </Border>
+                        </SwipeView>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </RefreshView>
+    </Grid>
+</ContentPage>

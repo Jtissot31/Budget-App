@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView
+    x:Class="BudgetTracker.Mobile.Views.Controls.SummaryCard"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    x:Name="Root">
+
+    <Border
+        Padding="16"
+        BackgroundColor="{StaticResource Surface}"
+        Stroke="{StaticResource Border}"
+        StrokeThickness="1">
+        <Border.StrokeShape>
+            <RoundRectangle CornerRadius="16" />
+        </Border.StrokeShape>
+
+        <VerticalStackLayout Spacing="4">
+            <Label
+                FontSize="12"
+                Text="{Binding Source={x:Reference Root}, Path=Title}"
+                TextColor="{StaticResource TextMuted}" />
+            <Label
+                FontAttributes="Bold"
+                FontSize="20"
+                Text="{Binding Source={x:Reference Root}, Path=Value}"
+                TextColor="{Binding Source={x:Reference Root}, Path=ValueColor, FallbackValue={StaticResource TextPrimary}}" />
+            <Label
+                FontSize="11"
+                IsVisible="{Binding Source={x:Reference Root}, Path=Subtitle, Converter={StaticResource StringNotEmptyConverter}}"
+                Text="{Binding Source={x:Reference Root}, Path=Subtitle}"
+                TextColor="{StaticResource TextMuted}" />
+        </VerticalStackLayout>
+    </Border>
+</ContentView>

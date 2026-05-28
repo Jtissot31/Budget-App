@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell
+    x:Class="BudgetTracker.Mobile.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:pages="clr-namespace:BudgetTracker.Mobile.Views.Pages"
+    Shell.FlyoutBehavior="Disabled"
+    Shell.NavBarHasShadow="False"
+    Shell.TabBarBackgroundColor="{StaticResource Surface}"
+    Shell.TabBarTitleColor="{StaticResource TextMuted}"
+    Shell.TabBarUnselectedColor="{StaticResource TextMuted}"
+    Shell.TabBarForegroundColor="{StaticResource Primary}"
+    Title="Budget Tracker">
+
+    <TabBar>
+        <Tab Title="Accueil" Route="dashboard">
+            <ShellContent ContentTemplate="{DataTemplate pages:DashboardPage}" />
+        </Tab>
+        <Tab Title="Transactions" Route="transactions">
+            <ShellContent ContentTemplate="{DataTemplate pages:TransactionsPage}" />
+        </Tab>
+        <Tab Title="Budgets" Route="budgets">
+            <ShellContent ContentTemplate="{DataTemplate pages:BudgetsPage}" />
+        </Tab>
+        <Tab Title="Plus" Route="settings">
+            <ShellContent ContentTemplate="{DataTemplate pages:SettingsPage}" />
+        </Tab>
+    </TabBar>
+
+</Shell>
