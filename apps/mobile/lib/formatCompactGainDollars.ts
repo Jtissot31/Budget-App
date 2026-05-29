@@ -64,8 +64,8 @@ export function formatCompactCurrency(value: number, options?: FormatCompactCurr
 }
 
 /**
- * For UI that renders the amount and a separate muted ` $` span. Compact `K$` already includes the dollar marker, so
- * {@link appendSeparatedDollar} is `false` for those values.
+ * For UI that renders the amount and a separate muted `$` span on the same baseline row.
+ * The main string never includes `$`; compact values use a `K` suffix (e.g. `12,5K`).
  */
 export function formatFrCaMoneyMainAndSeparatedDollarSuffix(value: number): {
   main: string;
@@ -84,5 +84,6 @@ export function formatFrCaMoneyMainAndSeparatedDollarSuffix(value: number): {
       appendSeparatedDollar: true,
     };
   }
-  return { main: formatCompactMoneyMagnitude(abs), appendSeparatedDollar: false };
+  const compact = formatCompactMoneyMagnitude(abs);
+  return { main: compact.endsWith('$') ? compact.slice(0, -1) : compact, appendSeparatedDollar: true };
 }

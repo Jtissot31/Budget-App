@@ -290,7 +290,7 @@ function NetWorthAmountRow({ totalBalance }: { totalBalance: number }) {
   const { isLight } = useAppTheme();
   const textColor = isLight ? LIGHT_PORTFOLIO_TEXT : portfolioDark.text;
   const sign = totalBalance < 0 ? '−' : '';
-  const { main, appendSeparatedDollar } = formatFrCaMoneyMainAndSeparatedDollarSuffix(totalBalance);
+  const { main } = formatFrCaMoneyMainAndSeparatedDollarSuffix(totalBalance);
 
   return (
     <View style={styles.netWorthAmountRow}>
@@ -298,9 +298,7 @@ function NetWorthAmountRow({ totalBalance }: { totalBalance: number }) {
         {sign}
         {main}
       </Text>
-      {appendSeparatedDollar ? (
-        <Text style={[styles.netWorthAmountDollar, { color: textColor }]}>$</Text>
-      ) : null}
+      <Text style={[styles.netWorthAmountDollar, { color: textColor }]}>$</Text>
     </View>
   );
 }
