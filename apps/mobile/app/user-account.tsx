@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SurfaceCard } from '@/components/SurfaceCard';
+import { PageTransition } from '@/components/PageTransition';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { FLOATING_NAV_CONTENT_PADDING, radius, spacing, typography, type AppColors } from '@/constants/theme';
 import { clearLocalPersonalData } from '@/lib/db';
@@ -104,6 +105,8 @@ export default function UserAccountScreen() {
   };
 
   return (
+    <PageTransition>
+    <View style={styles.screen}>
     <ScrollView
       style={styles.screen}
       contentContainerStyle={[
@@ -203,6 +206,8 @@ export default function UserAccountScreen() {
         </Pressable>
       </SurfaceCard>
     </ScrollView>
+    </View>
+    </PageTransition>
   );
 }
 
@@ -223,7 +228,7 @@ function AccountInput(props: React.ComponentProps<typeof TextInput> & { label: s
 }
 
 const createStyles = (colors: AppColors) => StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+  screen: { flex: 1, backgroundColor: 'transparent' },
   content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   iconButton: {

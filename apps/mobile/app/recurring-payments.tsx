@@ -19,10 +19,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CategoryBudgetProgress } from '@/components/CategoryBudgetProgress';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { GlassContainer } from '@/components/GlassContainer';
+import { PageTransition } from '@/components/PageTransition';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
-import { DetailSurfaceGradient } from '@/components/DetailSurfaceGradient';
 import { GhostNumpad } from '@/components/GhostNumpad';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
@@ -314,7 +314,8 @@ export default function RecurringPaymentsScreen() {
   const canDeleteForm = form ? payments.some((payment) => payment.id === form.id) : false;
 
   return (
-    <View style={[styles.screen, { backgroundColor: themeColors.background }]}>
+    <PageTransition>
+    <View style={styles.screen}>
       <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
         <Pressable
           onPress={() => {
@@ -483,6 +484,7 @@ export default function RecurringPaymentsScreen() {
         }}
       />
     </View>
+    </PageTransition>
   );
 }
 
@@ -569,7 +571,6 @@ function PaymentFormModal({
       <View style={[styles.modalBackdrop, themed.modalBackdrop]}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalKeyboard}>
           <View style={[styles.sheet, themed.sheet]}>
-            <DetailSurfaceGradient isLight={isLight} />
             <ScrollView
               style={styles.sheetScroller}
               keyboardShouldPersistTaps="handled"
@@ -1348,7 +1349,7 @@ function isIconName(value: string): value is IconName {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+  screen: { flex: 1, backgroundColor: 'transparent' },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1373,8 +1374,8 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
     textAlign: 'center',
   },
-  scroller: { flex: 1 },
-  content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
+  scroller: { flex: 1, backgroundColor: 'transparent' },
+  content: { paddingHorizontal: spacing.lg, gap: spacing.xl },
   summaryCardInner: {
     flexShrink: 0,
     gap: spacing.sm,

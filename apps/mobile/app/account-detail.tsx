@@ -18,9 +18,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { GlassContainer } from '@/components/GlassContainer';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
+import { PageTransition } from '@/components/PageTransition';
 import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
-import { DetailSurfaceGradient } from '@/components/DetailSurfaceGradient';
 import { MerchantLogo } from '@/components/MerchantLogo';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import { SCREEN_TOP_GUTTER, ghostCardShadow } from '@/constants/ghostUi';
@@ -337,8 +337,8 @@ export default function AccountDetailScreen() {
   };
 
   return (
-    <View style={[styles.screen, { backgroundColor: isLight ? '#FFFFFF' : '#131313' }]}>
-      <DetailSurfaceGradient isLight={isLight} />
+    <PageTransition>
+    <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
       <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
         <Pressable
           accessibilityRole="button"
@@ -393,7 +393,6 @@ export default function AccountDetailScreen() {
               innerStyle={styles.identityCardInner}
               padding={spacing.md}
               borderRadius={radius.xl}
-              innerBackgroundColor={colors.surfaceSolid}
             >
               {getSimulatedAccountLogoUrl(account) ? (
                 <LogoIconFrame uri={getSimulatedAccountLogoUrl(account)!} size={52} />
@@ -419,7 +418,6 @@ export default function AccountDetailScreen() {
               innerStyle={styles.summaryCardInner}
               padding={spacing.md}
               borderRadius={radius.lg}
-              innerBackgroundColor={colors.surfaceSolid}
             >
               <View>
                 <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Solde actuel</Text>
@@ -757,6 +755,7 @@ export default function AccountDetailScreen() {
         }}
       />
     </View>
+    </PageTransition>
   );
 }
 
@@ -895,7 +894,7 @@ function isIconName(value: string): value is keyof typeof Ionicons.glyphMap {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+  screen: { flex: 1, backgroundColor: 'transparent' },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -932,7 +931,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    gap: spacing.md,
+    gap: spacing.lg,
   },
   identityCardInner: {
     flexDirection: 'row',

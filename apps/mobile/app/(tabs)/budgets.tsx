@@ -18,6 +18,7 @@ import { useRouter } from 'expo-router';
 import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheet } from '@/components/BottomSheet';
+import { PageTransition } from '@/components/PageTransition';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { GlassContainer } from '@/components/GlassContainer';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
@@ -50,6 +51,8 @@ import {
 import { dataEvents } from '@/lib/events';
 import { formatCompactMoneyMagnitude } from '@/lib/formatCompactGainDollars';
 import { categoryBudgetBarColor, getCategoryBudgetUsage } from '@/lib/categoryBudgetUsage';
+import { rowTitleTextProps, singleLineAmountProps } from '@/lib/textLayout';
+import { UNIFORM_ROW_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import {
   normalizeUserIconColor,
   resolveUserPickedIconGlyphColor,
@@ -257,10 +260,11 @@ export default function BudgetScreen() {
   );
 
   return (
-    <View style={[styles.screen, { backgroundColor: isLight ? '#FFFFFF' : '#000000' }]}>
+    <PageTransition>
+    <View style={styles.screen}>
       <ScrollView
         ref={scrollRef}
-        style={[styles.screen, { backgroundColor: isLight ? '#FFFFFF' : '#000000' }]}
+        style={styles.screen}
         contentContainerStyle={[
           styles.content,
           {
@@ -270,6 +274,7 @@ export default function BudgetScreen() {
         ]}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
+        nestedScrollEnabled
         onScroll={handleBudgetScroll}
         refreshControl={
           <RefreshControl
@@ -351,6 +356,7 @@ export default function BudgetScreen() {
         </View>
       ) : null}
     </View>
+    </PageTransition>
   );
 }
 
@@ -482,7 +488,7 @@ function BudgetAllocationCard({
   const donutFractions = getDonutVisualFractions(segs);
   const trackBg = isLight ? '#E5E7EB' : '#050505';
   const donutTrack = isLight ? '#ECEFF3' : '#060606';
-  const centerSurface = isLight ? '#FFFFFF' : '#000000';
+  const centerSurface = colors.background;
 
   if (segs.length === 0) {
     return (
@@ -564,7 +570,7 @@ function BudgetAllocationCard({
             ]}
           >
             <Text style={[allocStyles.donutLabel, { color: colors.textMuted }]}>Budget mensuel</Text>
-            <Text style={[allocStyles.donutAmount, { color: colors.text }]} numberOfLines={1}>
+            <Text style={[allocStyles.donutAmount, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail" adjustsFontSizeToFit minimumFontScale={0.75}>
               {formatAllocMoney(totalLimit)}
             </Text>
             <Text style={[allocStyles.donutSpent, { color: colors.textSecondary }]} numberOfLines={1}>
@@ -612,7 +618,7 @@ function BudgetAllocationCard({
                 <View style={allocStyles.rowMain}>
                   <Text
                     style={[allocStyles.rowName, { color: colors.text }]}
-                    numberOfLines={1}
+                    {...rowTitleTextProps}
                   >
                     {seg.name}
                   </Text>
@@ -625,13 +631,15 @@ function BudgetAllocationCard({
                 </View>
                 <View style={allocStyles.rowMain}>
                   {usage.isZeroLimitOverspend ? (
-                    <Text style={[allocStyles.rowAmt, { color: barColor, fontWeight: '700' }]}>Budget dépassé</Text>
+                    <Text style={[allocStyles.rowAmt, allocStyles.rowAmtLeading, { color: barColor, fontWeight: '700' }]} {...singleLineAmountProps}>
+                      Budget dépassé
+                    </Text>
                   ) : (
-                    <Text style={[allocStyles.rowAmt, { color: colors.textSecondary }]}>
+                    <Text style={[allocStyles.rowAmt, allocStyles.rowAmtLeading, { color: colors.textSecondary }]} {...singleLineAmountProps}>
                       {`${formatAllocMoney(seg.spent)} dépensé`}
                     </Text>
                   )}
-                  <Text style={[allocStyles.rowAmt, { color: colors.textSecondary }]}>
+                  <Text style={[allocStyles.rowAmt, { color: colors.textSecondary }]} {...singleLineAmountProps}>
                     {usage.isZeroLimitOverspend
                       ? '0 $ alloué'
                       : `${formatAllocMoney(seg.limit)} limite`}
@@ -726,7 +734,7 @@ function BudgetCategoryDetailSheet({
       {category ? (
         <>
           <View style={allocStyles.detailHeader}>
-            <Text style={[allocStyles.detailSheetTitle, { color: colors.text }]} numberOfLines={1}>
+            <Text style={[allocStyles.detailSheetTitle, { color: colors.text }]} {...rowTitleTextProps}>
               {category.categoryName}
             </Text>
             <Pressable
@@ -762,7 +770,6 @@ function BudgetCategoryDetailSheet({
             style={[allocStyles.detailSummaryCardShell, ghostCardShadow]}
             innerStyle={allocStyles.detailSummaryCardInner}
             padding={spacing.lg}
-            innerBackgroundColor={colors.surfaceSolid}
           >
             <View style={allocStyles.detailHeroTop}>
               <UserPickedIconBadge
@@ -1102,7 +1109,7 @@ function CategoryProjectionCard({ projection }: { projection: CategoryProjection
   const { colors } = useAppTheme();
 
   return (
-    <GlassContainer style={allocStyles.projectionCard} padding={spacing.lg} borderRadius={radius.xxl} innerBackgroundColor={colors.surfaceSolid}>
+    <GlassContainer style={allocStyles.projectionCard} padding={spacing.lg} borderRadius={radius.xxl}>
       <Text style={[allocStyles.projectionTitle, { color: colors.text }]}>Impact estimé</Text>
       <ProjectionRow label="Coût annuel" value={`${formatMoney(projection.annualCost)} $`} />
       <ProjectionRow label="Part du budget" value={formatPercent(projection.budgetShare)} />
@@ -1175,13 +1182,13 @@ const allocStyles = StyleSheet.create({
   donutLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 0.7, textAlign: 'center', textTransform: 'uppercase' },
   donutAmount: { fontSize: 28, fontWeight: '900', letterSpacing: -0.9, marginTop: 3, textAlign: 'center' },
   donutSpent: { fontSize: 11, fontWeight: '700', marginTop: 4, textAlign: 'center' },
-  listSection: { gap: spacing.md, marginTop: spacing.xl },
+  listSection: { gap: spacing.lg, marginTop: spacing.xl },
   listHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.xs,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.md,
     gap: spacing.md,
   },
@@ -1201,6 +1208,7 @@ const allocStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    minHeight: UNIFORM_ROW_MIN_HEIGHT,
   },
   iconBadge: {
     width: 38,
@@ -1213,10 +1221,11 @@ const allocStyles = StyleSheet.create({
   },
   rowBody: { flex: 1, minWidth: 0, gap: 7 },
   rowMain: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
-  rowName: { flex: 1, fontSize: 14, fontWeight: '800', letterSpacing: -0.18 },
+  rowName: { flex: 1, minWidth: 0, flexShrink: 1, fontSize: typography.caption, fontWeight: '800', letterSpacing: -0.18, lineHeight: typography.caption + 4 },
   rowRight: { alignItems: 'flex-end', justifyContent: 'center', flexShrink: 0 },
-  rowPct: { fontSize: 14, fontWeight: '800', letterSpacing: -0.22 },
-  rowAmt: { fontSize: 12, fontWeight: '600' },
+  rowPct: { flexShrink: 0, fontSize: 14, fontWeight: '800', letterSpacing: -0.22 },
+  rowAmt: { flexShrink: 0, fontSize: 12, fontWeight: '600' },
+  rowAmtLeading: { flex: 1, minWidth: 0, flexShrink: 1 },
   miniTrack: { height: PROGRESS_BAR_TRACK_HEIGHT, borderRadius: radius.pill, overflow: 'hidden' },
   miniFill: { height: PROGRESS_BAR_TRACK_HEIGHT, borderRadius: radius.pill },
   addCategoryCta: {
@@ -1578,9 +1587,9 @@ function getColorOptions(options: readonly string[], selectedColor: string) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+  screen: { flex: 1, backgroundColor: 'transparent' },
   content: { paddingHorizontal: spacing.lg, gap: PAGE_TITLE_CONTENT_GAP },
-  header: { gap: spacing.xs, marginBottom: spacing.xs },
+  header: { gap: spacing.xs, marginBottom: spacing.lg },
   title: { color: colors.text, fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
   floatingActions: {
     position: 'absolute',

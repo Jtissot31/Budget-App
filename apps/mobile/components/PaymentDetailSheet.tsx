@@ -27,6 +27,7 @@ import {
   getSimulatedAccounts,
 } from '@/lib/db';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
+import { singleLineAmountProps } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
 import type { Category, CategoryBudget, SimulatedAccount } from '@/types';
 
@@ -270,7 +271,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
         <View style={styles.header}>
           <PaymentAvatar detail={detail} size={48} />
           <View style={styles.headerText}>
-            <Text style={styles.name} numberOfLines={2}>
+            <Text style={styles.name} numberOfLines={3} ellipsizeMode="tail">
               {detail.name}
             </Text>
           </View>
@@ -313,7 +314,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
 
       {detail.subtitle ? <Text style={styles.subtitle}>{detail.subtitle}</Text> : null}
 
-        <Text style={[styles.amount, { color: amountTint }]} numberOfLines={1} adjustsFontSizeToFit>
+        <Text style={[styles.amount, { color: amountTint }]} {...singleLineAmountProps}>
           {amountPrefix}
         {detail.amount.toLocaleString('fr-CA', {
           minimumFractionDigits: 2,
@@ -337,7 +338,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
         ) : null}
 
         <View style={styles.detailGrid}>
-          <SurfaceCard style={styles.detailCardShell} innerStyle={styles.detailCardInner} padding={spacing.md} innerBackgroundColor={colors.surfaceSolid}>
+          <SurfaceCard style={styles.detailCardShell} innerStyle={styles.detailCardInner} padding={spacing.md}>
             <Ionicons name="calendar-outline" size={14} color={colors.textMuted} />
             <View style={styles.detailCopy}>
               <Text style={styles.detailLabel}>Date</Text>
@@ -346,7 +347,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
               </Text>
             </View>
           </SurfaceCard>
-          <SurfaceCard style={styles.detailCardShell} innerStyle={styles.detailCardInner} padding={spacing.md} innerBackgroundColor={colors.surfaceSolid}>
+          <SurfaceCard style={styles.detailCardShell} innerStyle={styles.detailCardInner} padding={spacing.md}>
             <Ionicons name="repeat-outline" size={14} color={colors.textMuted} />
             <View style={styles.detailCopy}>
               <Text style={styles.detailLabel}>Récurrence</Text>
@@ -357,7 +358,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
           </SurfaceCard>
         </View>
 
-        <SurfaceCard style={styles.fullCardShell} innerStyle={styles.fullCardInner} padding={spacing.md} innerBackgroundColor={colors.surfaceSolid}>
+        <SurfaceCard style={styles.fullCardShell} innerStyle={styles.fullCardInner} padding={spacing.md}>
           <Ionicons name="wallet-outline" size={14} color={colors.textMuted} />
           <View style={styles.detailCopy}>
             <Text style={styles.detailLabel}>Compte</Text>
@@ -368,7 +369,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
         </SurfaceCard>
 
         <View style={styles.detailGrid}>
-          <SurfaceCard style={styles.detailCardShell} innerStyle={styles.detailCardInner} padding={spacing.md} innerBackgroundColor={colors.surfaceSolid}>
+          <SurfaceCard style={styles.detailCardShell} innerStyle={styles.detailCardInner} padding={spacing.md}>
             <Ionicons name="pricetag-outline" size={14} color={colors.textMuted} />
             <View style={styles.detailCopy}>
               <Text style={styles.detailLabel}>Type</Text>
@@ -378,7 +379,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
             </View>
           </SurfaceCard>
           {detail.categoryName?.trim() ? (
-            <SurfaceCard style={styles.detailCardShell} innerStyle={styles.detailCardInner} padding={spacing.md} innerBackgroundColor={colors.surfaceSolid}>
+            <SurfaceCard style={styles.detailCardShell} innerStyle={styles.detailCardInner} padding={spacing.md}>
               <Ionicons name="folder-outline" size={14} color={colors.textMuted} />
               <View style={styles.detailCopy}>
                 <Text style={styles.detailLabel}>Catégorie</Text>
@@ -394,7 +395,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
 
         {detailCategoryBudget &&
         (detailCategoryBudget.limitAmount > 0 || detailCategoryBudget.spent > 0) ? (
-          <SurfaceCard style={styles.budgetCardShell} innerStyle={styles.budgetCardInner} padding={spacing.md} innerBackgroundColor={colors.surfaceSolid}>
+          <SurfaceCard style={styles.budgetCardShell} innerStyle={styles.budgetCardInner} padding={spacing.md}>
             <Text style={styles.budgetCardEyebrow}>Budget de catégorie</Text>
             <CategoryBudgetProgress budget={detailCategoryBudget} />
           </SurfaceCard>

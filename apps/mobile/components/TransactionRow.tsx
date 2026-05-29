@@ -3,7 +3,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { GlassContainer } from '@/components/GlassContainer';
 import { TransactionAvatar } from '@/components/TransactionAvatar';
 import type { Transaction } from '@/types';
-import { radius, spacing, typography } from '@/constants/theme';
+import { radius, spacing } from '@/constants/theme';
+import { rowLabel, rowTitleTextProps, rowValue, rowValueContainer, singleLineAmountProps } from '@/lib/textLayout';
+import { UNIFORM_ROW_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = { transaction: Transaction; onPress?: () => void };
@@ -18,14 +20,14 @@ export function TransactionRow({ transaction: tx, onPress }: Props) {
   return (
     <Pressable android_ripple={null} onPress={onPress}>
       <GlassContainer
-        borderRadius={radius.lg}
-        padding={spacing.sm + 3}
+        borderRadius={radius.md}
+        padding={spacing.md}
         innerStyle={styles.cardInner}
       >
           <TransactionAvatar transaction={tx} size={34} />
           <View style={styles.body}>
             <View style={styles.labelRow}>
-              <Text style={[styles.label, { color: colors.text }]} numberOfLines={2}>
+              <Text style={[styles.label, { color: colors.text }]} {...rowTitleTextProps}>
                 {tx.label}
               </Text>
               {hasReceipt ? (
@@ -36,7 +38,7 @@ export function TransactionRow({ transaction: tx, onPress }: Props) {
             </View>
           </View>
           <View style={styles.right}>
-            <Text style={[styles.amount, { color: amountColor }]} numberOfLines={1}>
+            <Text style={[styles.amount, { color: amountColor }]} {...singleLineAmountProps}>
               {isTransfer ? '' : isIncome ? '+' : '−'}
               {tx.amount.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $
             </Text>
@@ -51,11 +53,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingHorizontal: spacing.md,
+    minHeight: UNIFORM_ROW_MIN_HEIGHT,
   },
   body: { flex: 1, minWidth: 0 },
   labelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minWidth: 0 },
-  label: { flexShrink: 1, fontWeight: '800', fontSize: typography.body, lineHeight: typography.body + 3 },
+  label: {
+    ...rowLabel,
+    fontWeight: '800',
+  },
   receiptBadge: {
     width: 22,
     height: 22,
@@ -66,11 +71,10 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   right: {
-    alignItems: 'flex-end',
+    ...rowValueContainer,
     alignSelf: 'stretch',
-    flexShrink: 0,
     justifyContent: 'center',
-    minWidth: 92,
+    minWidth: 88,
   },
-  amount: { fontWeight: '700', fontSize: typography.body },
+  amount: { ...rowValue, fontWeight: '700' },
 });

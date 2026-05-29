@@ -6,9 +6,10 @@
     "orientation": "portrait",
     "scheme": "budgettracker",
     "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0A0A",
     "newArchEnabled": true,
     "splash": {
-      "backgroundColor": "#0F172A"
+      "backgroundColor": "#0A0A0A"
     },
     "ios": {
       "supportsTablet": true,

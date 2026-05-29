@@ -11,11 +11,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheet } from '@/components/BottomSheet';
+import { PageTransition } from '@/components/PageTransition';
 import { GlassContainer } from '@/components/GlassContainer';
+import { NetWorthAmountRow } from '@/components/NetWorthAmountRow';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import { GoalSparkChart, buildGoalSparklineSeries } from '@/components/GoalSparkChart';
 import { floatingGlassButtonPressed } from '@/constants/floatingGlassButton';
-import { SCREEN_TOP_GUTTER, ghostCardShadow } from '@/constants/ghostUi';
+import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   LINEAR_CHART_END_DOT_INNER_R,
   LINEAR_CHART_GLOW_MID_OPACITY,
@@ -25,12 +27,29 @@ import {
   LINEAR_CHART_STROKE_GLOW_OUTER,
   LINEAR_CHART_STROKE_MAIN,
 } from '@/constants/linearChart';
-import { FLOATING_NAV_CONTENT_PADDING, PAGE_TITLE_CONTENT_GAP, PROGRESS_BAR_TRACK_HEIGHT, radius, spacing, typography } from '@/constants/theme';
+import {
+  FLOATING_NAV_CONTENT_PADDING,
+  colors,
+  interBoldText,
+  interExtraBoldText,
+  PAGE_PADDING_HORIZONTAL,
+  portfolioDark,
+  portfolioLight,
+  PORTFOLIO_SECTION_GAP,
+  PROGRESS_BAR_TRACK_HEIGHT,
+  radius,
+  spacing,
+  typography,
+} from '@/constants/theme';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import { getCategoryBudgets, getDashboard, getRecurringPayments, getSavingsGoals } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
-import { COMPACT_GAIN_DOLLARS_THRESHOLD, formatCompactMoneyMagnitude } from '@/lib/formatCompactGainDollars';
+import {
+  COMPACT_GAIN_DOLLARS_THRESHOLD,
+  formatCompactMoneyMagnitude,
+} from '@/lib/formatCompactGainDollars';
 import { savingsGoalIncrementalProgress } from '@/lib/savingsGoalProgress';
+import { rowTitleTextProps, singleLineAmountProps } from '@/lib/textLayout';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 import type { CategoryBudget, DashboardSummary, RecurringPayment, SavingsGoal } from '@/types';
@@ -42,8 +61,16 @@ import {
   type GoalForm,
 } from '../savings-goals';
 
-const LIGHT_ACCENT = '#059669';
-const DARK_ACCENT = '#00FA9A';
+const LIGHT_ACCENT = portfolioLight.chartCurve;
+const DARK_ACCENT = portfolioDark.chartCurve;
+const LIGHT_PORTFOLIO_TEXT = portfolioLight.text;
+const DELTA_MINT = portfolioDark.chartCurve;
+const LIGHT_DELTA_MINT = portfolioLight.chartCurve;
+const DELTA_MINT_BG = portfolioLight.deltaBg;
+const DELTA_MINT_BORDER = portfolioLight.deltaBorder;
+const DARK_DELTA_MINT_BG = 'rgba(0, 230, 118, 0.15)';
+const DARK_DELTA_MINT_BORDER = 'rgba(0, 230, 118, 0.28)';
+const GOALS_PAGE_PADDING = PAGE_PADDING_HORIZONTAL;
 const DETAIL_SHEET_TOP_RADIUS = 22;
 const OVERVIEW_CHART_W = 320;
 const OVERVIEW_CHART_H = 112;
@@ -53,8 +80,8 @@ const OVERVIEW_PAD_X = 12;
 const OVERVIEW_PAD_Y = 12;
 const GOAL_ICON_WELL_SIZE = 40;
 const GOAL_ICON_SIZE = 22;
-const LIGHT_GOAL_LINE_COLORS = ['#059669', '#2563EB', '#D97706', '#7C3AED', '#DC2626', '#0891B2'];
-const DARK_GOAL_LINE_COLORS = ['#00FA9A', '#60A5FA', '#FBBF24', '#C084FC', '#F87171', '#22D3EE'];
+const LIGHT_GOAL_LINE_COLORS = ['#00A854', '#2563EB', '#D97706', '#7C3AED', '#CF222E', '#0891B2'];
+const DARK_GOAL_LINE_COLORS = ['#00E676', '#60A5FA', '#FBBF24', '#C084FC', '#F85149', '#22D3EE'];
 
 type GoalProjection = {
   progress: number;
@@ -144,6 +171,60 @@ function projectedCompletionLabel(goal: SavingsGoal): string | null {
   return null;
 }
 
+function GoalsHeaderRow({ onAdd, onManage }: { onAdd: () => void; onManage: () => void }) {
+  const { isLight } = useAppTheme();
+  const titleColor = isLight ? LIGHT_PORTFOLIO_TEXT : portfolioDark.text;
+  const iconBg = isLight ? portfolioLight.iconButton : portfolioDark.iconButton;
+  const iconBorder = isLight ? portfolioLight.border : portfolioDark.border;
+  const iconColor = isLight ? LIGHT_PORTFOLIO_TEXT : portfolioDark.text;
+
+  return (
+    <View style={styles.goalsHeaderRow}>
+      <Text style={[styles.pageTitle, styles.pageTitleInHeader, { color: titleColor }]}>Objectifs</Text>
+      <View style={styles.goalsHeaderActions}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Gérer les objectifs"
+          onPress={onManage}
+          style={[styles.goalsHeaderIconButton, { backgroundColor: iconBg, borderColor: iconBorder }]}
+        >
+          <Ionicons name="list-outline" size={20} color={iconColor} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Ajouter un objectif"
+          onPress={onAdd}
+          style={[styles.goalsHeaderIconButton, { backgroundColor: iconBg, borderColor: iconBorder }]}
+        >
+          <Ionicons name="add-outline" size={20} color={iconColor} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function GoalsProgressBadge({ progress, targetAmount }: { progress: number; targetAmount: number }) {
+  const { isLight } = useAppTheme();
+  const pct = Math.round(progress * 100);
+  const deltaTextColor = isLight ? LIGHT_DELTA_MINT : DELTA_MINT;
+
+  return (
+    <View
+      style={[
+        styles.progressBadge,
+        {
+          backgroundColor: isLight ? DELTA_MINT_BG : DARK_DELTA_MINT_BG,
+          borderColor: isLight ? DELTA_MINT_BORDER : DARK_DELTA_MINT_BORDER,
+        },
+      ]}
+    >
+      <Text style={[styles.progressBadgeText, { color: deltaTextColor }]}>
+        ↗ {pct} % atteint · objectif {formatMoney(targetAmount)}
+      </Text>
+    </View>
+  );
+}
+
 export default function GoalsHubScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -198,6 +279,10 @@ export default function GoalsHubScreen() {
   const headerProgress = totals.target > 0 ? totals.current / totals.target : 0;
   const accent = isLight ? LIGHT_ACCENT : DARK_ACCENT;
   const gridTone = isLight ? 'rgba(15,23,42,0.2)' : 'rgba(255,255,255,0.14)';
+  const heroEyebrowColor = isLight ? themeColors.textMuted : portfolioDark.textTertiary;
+  const sectionCardSurface = isLight ? portfolioLight.card : portfolioDark.card;
+  const textColor = isLight ? LIGHT_PORTFOLIO_TEXT : portfolioDark.text;
+  const mutedTextColor = isLight ? themeColors.textMuted : portfolioDark.textMuted;
 
   const openSavingsGoals = useCallback(
     (params?: { newGoal?: boolean; goalId?: string }) => {
@@ -270,10 +355,11 @@ export default function GoalsHubScreen() {
   const selectedGoalAccent = selectedGoal ? normalizeColor(selectedGoal.color) : accent;
 
   return (
-    <View style={[styles.screen, { backgroundColor: isLight ? '#FFFFFF' : '#000000' }]}>
+    <PageTransition>
+    <View style={styles.screen}>
       <ScrollView
         ref={scrollRef}
-        style={[styles.screen, { backgroundColor: isLight ? '#FFFFFF' : '#000000' }]}
+        style={styles.screen}
         contentContainerStyle={[
           styles.content,
           {
@@ -282,6 +368,7 @@ export default function GoalsHubScreen() {
           },
         ]}
         showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -294,29 +381,30 @@ export default function GoalsHubScreen() {
           />
         }
       >
-        <View style={styles.titleRow}>
-          <Text style={[styles.pageTitle, { color: themeColors.text }]}>Objectifs d'épargne</Text>
-          <Text style={[styles.pageDesc, { color: themeColors.textSecondary }]} numberOfLines={2}>
-            Suivez votre progression vers vos objectifs financiers.
-          </Text>
+        <View style={styles.goalsHeroBlock}>
+          <GoalsHeaderRow
+            onAdd={() => openSavingsGoals({ newGoal: true })}
+            onManage={() => openSavingsGoals()}
+          />
+          <Text style={[styles.heroEyebrow, { color: heroEyebrowColor }]}>ÉPARGNE CUMULÉE</Text>
+          <NetWorthAmountRow totalBalance={totals.current} />
+          {totals.target > 0 ? (
+            <GoalsProgressBadge progress={headerProgress} targetAmount={totals.target} />
+          ) : null}
         </View>
 
-        <GlassContainer style={themeShadow} padding={spacing.lg} borderRadius={radius.xxl}>
-          <Text style={[styles.heroEyebrow, { color: themeColors.textMuted }]}>Épargne cumulée</Text>
-          <Text style={[styles.heroAmount, { color: themeColors.text }]} adjustsFontSizeToFit numberOfLines={1}>
-            {formatMoney(totals.current)}
-            <Text style={[styles.heroSlash, { color: themeColors.textMuted }]}> / {formatMoney(totals.target)}</Text>
-          </Text>
-          <View style={[styles.heroTrack, { backgroundColor: isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.08)' }]}>
-            <View style={[styles.heroFill, { width: `${Math.round(headerProgress * 100)}%`, backgroundColor: accent }]} />
-          </View>
-        </GlassContainer>
-
         {goals.length === 0 ? (
-              <GlassContainer style={themeShadow} innerStyle={styles.emptyCardInner} padding={0} borderRadius={radius.xxl}>
-                <Ionicons name="flag-outline" size={32} color={themeColors.textMuted} />
-                <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Aucun objectif</Text>
-                <Text style={[styles.emptyHint, { color: themeColors.textMuted }]}>
+              <View style={styles.goalsEmptySection}>
+                <GlassContainer
+                  style={themeShadow}
+                  innerStyle={styles.emptyCardInner}
+                  padding={spacing.lg}
+                  borderRadius={radius.lg}
+                  innerBackgroundColor={sectionCardSurface}
+                >
+                <Ionicons name="flag-outline" size={32} color={mutedTextColor} />
+                <Text style={[styles.emptyTitle, { color: textColor }]}>Aucun objectif</Text>
+                <Text style={[styles.emptyHint, { color: mutedTextColor }]}>
                   Crée un objectif pour voir graphiques et projections ici.
                 </Text>
                 <Pressable
@@ -329,21 +417,42 @@ export default function GoalsHubScreen() {
                 >
                   <Text style={[styles.emptyCtaText, { color: ghost.void }]}>Ajouter un objectif</Text>
                 </Pressable>
-              </GlassContainer>
+                </GlassContainer>
+              </View>
             ) : (
               <View style={styles.goalCardList}>
                 <GoalsOverviewChart
                   goals={goals}
                   isLight={isLight}
                   gridColor={gridTone}
-                  labelColor={themeColors.textMuted}
-                  titleColor={themeColors.text}
+                  labelColor={mutedTextColor}
+                  titleColor={textColor}
+                  cardSurface={sectionCardSurface}
                 />
 
-                <View style={styles.goalListHeader}>
-                  <Text style={[styles.goalListTitle, { color: themeColors.textSecondary }]}>Mes objectifs</Text>
-                </View>
+                <View style={styles.goalsListSection}>
+                  <View style={styles.goalsListHeader}>
+                    <View style={styles.goalsListTitleGroup}>
+                      <Text style={[styles.goalsListEyebrow, { color: mutedTextColor }]}>Progression</Text>
+                      <Text style={[styles.goalsListTitle, { color: textColor }]}>Mes objectifs</Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.goalsCountBadge,
+                        {
+                          backgroundColor: isLight
+                            ? 'rgba(15, 23, 42, 0.07)'
+                            : 'rgba(255, 255, 255, 0.10)',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.goalsCountBadgeLabel, { color: mutedTextColor }]}>
+                        {goals.length}
+                      </Text>
+                    </View>
+                  </View>
 
+                <View style={styles.goalCards}>
                 {goals.map((goal) => {
                   const progress = savingsGoalIncrementalProgress(goal);
                   const pct = Math.round(progress * 100);
@@ -362,7 +471,12 @@ export default function GoalsHubScreen() {
                       onPress={() => handleOpenDetail(goal.id)}
                       style={themeShadow}
                     >
-                      <GlassContainer innerStyle={styles.goalCardInner} padding={0} borderRadius={radius.xl}>
+                      <GlassContainer
+                        innerStyle={styles.goalCardInner}
+                        padding={0}
+                        borderRadius={radius.lg}
+                        innerBackgroundColor={sectionCardSurface}
+                      >
                       <View style={styles.goalCardMain}>
                         <View style={styles.goalIdentity}>
                           <UserPickedIconBadge
@@ -372,11 +486,11 @@ export default function GoalsHubScreen() {
                             iconSize={GOAL_ICON_SIZE}
                           />
                           <View style={styles.goalCardHeadText}>
-                            <Text style={[styles.goalName, { color: themeColors.text }]} numberOfLines={2}>
+                            <Text style={[styles.goalName, { color: textColor }]} {...rowTitleTextProps}>
                               {goal.name}
                             </Text>
                             {metaParts.length > 0 ? (
-                              <Text style={[styles.goalMeta, { color: themeColors.textMuted }]} numberOfLines={1}>
+                              <Text style={[styles.goalMeta, { color: mutedTextColor }]} {...rowTitleTextProps}>
                                 {metaParts.join(' · ')}
                               </Text>
                             ) : null}
@@ -385,12 +499,11 @@ export default function GoalsHubScreen() {
 
                         <View style={styles.goalAmountBlock}>
                           <Text
-                            style={[styles.savedHero, { color: themeColors.text }]}
-                            adjustsFontSizeToFit
-                            numberOfLines={1}
+                            style={[styles.savedHero, { color: textColor }]}
+                            {...singleLineAmountProps}
                           >
                             {formatMoney(goal.currentAmount)}
-                            <Text style={[styles.savedTarget, { color: themeColors.textMuted }]}>
+                            <Text style={[styles.savedTarget, { color: mutedTextColor }]}>
                               {' '}/ {formatMoney(goal.targetAmount)}
                             </Text>
                           </Text>
@@ -407,6 +520,7 @@ export default function GoalsHubScreen() {
                     </Pressable>
                   );
                 })}
+                </View>
 
                 <Pressable
                   accessibilityRole="button"
@@ -415,15 +529,16 @@ export default function GoalsHubScreen() {
                   style={({ pressed }) => [
                     styles.premiumAddCta,
                     {
-                      backgroundColor: isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(18, 18, 18, 0.92)',
-                      borderColor: themeColors.borderStrong,
+                      backgroundColor: isLight ? portfolioLight.iconButton : portfolioDark.iconButton,
+                      borderColor: isLight ? portfolioLight.border : portfolioDark.border,
                     },
                     pressed && floatingGlassButtonPressed,
                   ]}
                 >
-                  <Ionicons name="add" size={18} color={themeColors.textSecondary} />
-                  <Text style={[styles.premiumAddCtaLabel, { color: themeColors.text }]}>Ajouter un objectif</Text>
+                  <Ionicons name="add" size={18} color={mutedTextColor} />
+                  <Text style={[styles.premiumAddCtaLabel, { color: textColor }]}>Ajouter un objectif</Text>
                 </Pressable>
+                </View>
               </View>
             )}
       </ScrollView>
@@ -436,7 +551,7 @@ export default function GoalsHubScreen() {
         {selectedGoal && selectedGoalDetails ? (
           <>
             <View style={styles.detailHeader}>
-              <Text style={[styles.detailGoalName, { color: themeColors.text }]} numberOfLines={1}>
+              <Text style={[styles.detailGoalName, { color: themeColors.text }]} {...rowTitleTextProps}>
                 {selectedGoal.name}
               </Text>
               <Pressable
@@ -472,8 +587,7 @@ export default function GoalsHubScreen() {
               <Text style={[styles.detailHeroEyebrow, { color: themeColors.textMuted }]}>Progression</Text>
               <Text
                 style={[styles.detailAmount, { color: themeColors.text }]}
-                adjustsFontSizeToFit
-                numberOfLines={1}
+                {...singleLineAmountProps}
               >
                 {formatMoney(selectedGoal.currentAmount)}
                 <Text style={[styles.detailAmountOf, { color: themeColors.textMuted }]}>
@@ -645,6 +759,7 @@ export default function GoalsHubScreen() {
         onSave={handleSaveEdit}
       />
     </View>
+    </PageTransition>
   );
 }
 
@@ -678,12 +793,14 @@ function GoalsOverviewChart({
   gridColor,
   labelColor,
   titleColor,
+  cardSurface,
 }: {
   goals: SavingsGoal[];
   isLight: boolean;
   gridColor: string;
   labelColor: string;
   titleColor: string;
+  cardSurface: string;
 }) {
   const lineColors = isLight ? LIGHT_GOAL_LINE_COLORS : DARK_GOAL_LINE_COLORS;
   const chart = useMemo(() => {
@@ -728,12 +845,18 @@ function GoalsOverviewChart({
   const hiddenLegendCount = Math.max(0, chart.lines.length - legendGoals.length);
 
   return (
-    <View style={styles.overviewChartBlock}>
-      <View style={styles.overviewHeader}>
-        <Text style={[styles.overviewEyebrow, { color: labelColor }]}>Vue d'ensemble</Text>
-        <Text style={[styles.overviewTitle, { color: titleColor }]}>Progression des objectifs</Text>
-      </View>
-      <Svg width="100%" height={OVERVIEW_TOTAL_H} viewBox={`0 0 ${OVERVIEW_CHART_W} ${OVERVIEW_TOTAL_H}`}>
+    <View style={styles.overviewChartWrapper}>
+      <GlassContainer
+        borderRadius={radius.lg}
+        padding={GOALS_PAGE_PADDING}
+        innerBackgroundColor={cardSurface}
+      >
+        <View style={styles.overviewChartBlock}>
+          <View style={styles.overviewHeader}>
+            <Text style={[styles.overviewEyebrow, { color: labelColor }]}>Vue d'ensemble</Text>
+            <Text style={[styles.overviewTitle, { color: titleColor }]}>Progression des objectifs</Text>
+          </View>
+          <Svg width="100%" height={OVERVIEW_TOTAL_H} viewBox={`0 0 ${OVERVIEW_CHART_W} ${OVERVIEW_TOTAL_H}`}>
         {[0.25, 0.5, 0.75].map((ratio) => {
           const y = OVERVIEW_PAD_Y + ratio * (OVERVIEW_CHART_H - OVERVIEW_PAD_Y * 2);
           return (
@@ -818,7 +941,7 @@ function GoalsOverviewChart({
         {legendGoals.map((line) => (
           <View key={`${line.goal.id}-legend`} style={styles.overviewLegendItem}>
             <View style={[styles.overviewLegendDot, { backgroundColor: line.color }]} />
-            <Text style={[styles.overviewLegendLabel, { color: labelColor }]} numberOfLines={1}>
+            <Text style={[styles.overviewLegendLabel, { color: labelColor }]} {...rowTitleTextProps}>
               {line.goal.name}
             </Text>
           </View>
@@ -827,6 +950,8 @@ function GoalsOverviewChart({
           <Text style={[styles.overviewLegendMore, { color: labelColor }]}>+{hiddenLegendCount}</Text>
         ) : null}
       </View>
+        </View>
+      </GlassContainer>
     </View>
   );
 }
@@ -976,27 +1101,72 @@ function formatPercent(value: number) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
+  screen: { flex: 1, backgroundColor: colors.background },
   content: {
     flexGrow: 1,
-    paddingHorizontal: spacing.lg,
-    gap: PAGE_TITLE_CONTENT_GAP,
+    paddingHorizontal: 0,
+    gap: PORTFOLIO_SECTION_GAP,
   },
-  titleRow: {
-    gap: spacing.xs,
+  goalsHeroBlock: {
+    gap: 0,
+    paddingHorizontal: GOALS_PAGE_PADDING,
+  },
+  goalsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  goalsHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  goalsHeaderIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pageTitle: {
-    fontSize: typography.screenTitle,
-    fontWeight: '800',
-    letterSpacing: -0.5,
+    ...interExtraBoldText,
+    fontSize: 32,
+    letterSpacing: -0.8,
   },
-  pageDesc: {
-    fontSize: typography.meta,
-    fontWeight: '500',
-    lineHeight: 20,
+  pageTitleInHeader: {
+    flex: 1,
+    marginTop: 0,
+    marginBottom: 0,
+    paddingHorizontal: 0,
+  },
+  heroEyebrow: {
+    ...interBoldText,
+    fontSize: 10,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  progressBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  progressBadgeText: {
+    ...interBoldText,
+    fontSize: 13,
+  },
+  goalsEmptySection: {
+    paddingHorizontal: GOALS_PAGE_PADDING,
   },
   pressed: { opacity: 0.76 },
   premiumAddCta: {
+    marginTop: PORTFOLIO_SECTION_GAP,
     alignSelf: 'stretch',
     flexDirection: 'row',
     alignItems: 'center',
@@ -1008,54 +1178,29 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   premiumAddCtaLabel: {
+    ...interBoldText,
     fontSize: typography.meta,
-    fontWeight: '700',
-    letterSpacing: 0.15,
   },
-  summaryBlock: {
-    gap: spacing.sm,
-  },
-  heroEyebrow: {
-    fontSize: typography.meta,
-    fontWeight: '600',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  heroAmount: {
-    fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: -0.6,
-  },
-  heroSlash: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  heroTrack: {
-    height: PROGRESS_BAR_TRACK_HEIGHT,
-    borderRadius: radius.pill,
-    overflow: 'hidden',
-  },
-  heroFill: {
-    height: '100%',
-    borderRadius: radius.pill,
+  overviewChartWrapper: {
+    marginHorizontal: GOALS_PAGE_PADDING,
   },
   overviewChartBlock: {
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
   overviewHeader: {
-    gap: 2,
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
   },
   overviewEyebrow: {
+    ...interBoldText,
     fontSize: typography.micro,
-    fontWeight: '900',
-    letterSpacing: 0.58,
+    letterSpacing: 1,
     textTransform: 'uppercase',
   },
   overviewTitle: {
-    fontSize: typography.body,
-    fontWeight: '800',
+    ...interExtraBoldText,
+    fontSize: 20,
+    letterSpacing: -0.3,
   },
   overviewLegend: {
     flexDirection: 'row',
@@ -1075,28 +1220,60 @@ const styles = StyleSheet.create({
   },
   overviewLegendLabel: {
     flexShrink: 1,
+    ...interBoldText,
     fontSize: typography.micro,
-    fontWeight: '700',
   },
   overviewLegendMore: {
+    ...interExtraBoldText,
     fontSize: typography.micro,
-    fontWeight: '800',
   },
-  goalCardList: { gap: spacing.md },
-  goalListHeader: {
-    paddingTop: spacing.xs,
+  goalCardList: { gap: PORTFOLIO_SECTION_GAP },
+  goalsListSection: {
+    gap: spacing.lg,
+    paddingHorizontal: GOALS_PAGE_PADDING,
   },
-  goalListTitle: {
-    fontSize: typography.caption,
-    fontWeight: '800',
-    letterSpacing: 0.6,
+  goalsListHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  goalsListTitleGroup: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.sm,
+  },
+  goalsListEyebrow: {
+    ...interBoldText,
+    fontSize: typography.micro,
+    letterSpacing: 1,
     textTransform: 'uppercase',
   },
+  goalsListTitle: {
+    ...interExtraBoldText,
+    fontSize: 20,
+    letterSpacing: -0.3,
+  },
+  goalsCountBadge: {
+    minWidth: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+  },
+  goalsCountBadgeLabel: {
+    ...interBoldText,
+    fontSize: typography.micro,
+  },
+  goalCards: {
+    gap: spacing.md,
+  },
   goalCardInner: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingHorizontal: GOALS_PAGE_PADDING,
+    paddingVertical: spacing.md,
     minHeight: 92,
-    gap: 10,
+    gap: spacing.sm,
   },
   goalCardMain: {
     flexDirection: 'row',
@@ -1122,11 +1299,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   goalCardHeadText: { flex: 1, minWidth: 0, gap: 5 },
-  goalName: { fontSize: typography.body, lineHeight: 20, fontWeight: '800' },
-  goalMeta: { fontSize: typography.micro, fontWeight: '700' },
+  goalName: {
+    flex: 1,
+    minWidth: 0,
+    ...interBoldText,
+    fontSize: typography.body,
+    lineHeight: typography.body + 4,
+  },
+  goalMeta: {
+    ...interBoldText,
+    fontSize: typography.micro,
+  },
   goalAmountBlock: {
     flexShrink: 0,
-    width: 116,
+    minWidth: 96,
+    maxWidth: 124,
     alignItems: 'flex-end',
     gap: 5,
   },
@@ -1135,17 +1322,20 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: radius.pill,
   },
-  goalPct: { fontSize: typography.micro, fontWeight: '900' },
+  goalPct: {
+    ...interExtraBoldText,
+    fontSize: typography.micro,
+  },
   savedHero: {
     maxWidth: '100%',
+    ...interExtraBoldText,
     fontSize: 16,
-    fontWeight: '800',
     letterSpacing: -0.25,
     textAlign: 'right',
   },
   savedTarget: {
+    ...interBoldText,
     fontSize: 12,
-    fontWeight: '700',
   },
   inlineBar: {
     height: PROGRESS_BAR_TRACK_HEIGHT,
@@ -1161,15 +1351,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
-  emptyTitle: { fontSize: typography.body, fontWeight: '800' },
-  emptyHint: { textAlign: 'center', fontSize: typography.caption, lineHeight: 20, fontWeight: '600' },
+  emptyTitle: {
+    ...interExtraBoldText,
+    fontSize: typography.body,
+  },
+  emptyHint: {
+    textAlign: 'center',
+    ...interBoldText,
+    fontSize: typography.caption,
+    lineHeight: 20,
+  },
   emptyCta: {
     marginTop: spacing.sm,
     paddingHorizontal: spacing.lg,
     paddingVertical: 14,
     borderRadius: radius.lg,
   },
-  emptyCtaText: { fontSize: typography.caption, fontWeight: '800' },
+  emptyCtaText: {
+    ...interExtraBoldText,
+    fontSize: typography.caption,
+  },
 
   // Detail sheet
   detailSheet: {

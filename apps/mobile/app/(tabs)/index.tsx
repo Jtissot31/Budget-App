@@ -21,7 +21,7 @@ import Svg, { Circle, Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DASHBOARD_ACCOUNTS } from '@/constants/dashboardMockAccounts';
 import { SCREEN_TOP_GUTTER, ghost } from '@/constants/ghostUi';
-import { FLOATING_NAV_CONTENT_PADDING, spacing, typography, type AppColors } from '@/constants/theme';
+import { FLOATING_NAV_CONTENT_PADDING, PAGE_PADDING_HORIZONTAL, colors, radius, spacing, typography, type AppColors } from '@/constants/theme';
 import { getDashboard, getMerchantOverrides, getRecurringPayments, getSetting, getSimulatedAccounts, setSetting } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
 import { getUserDisplayName } from '@/lib/userDisplay';
@@ -34,6 +34,7 @@ import {
 } from '@/lib/creditLimitUtilization';
 import { getAccountLogoUrl, getMerchantLogoUrls } from '@/lib/merchantLogo';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
+import { rowTitleTextProps, singleLineAmountProps } from '@/lib/textLayout';
 import { tapHaptic } from '@/lib/haptics';
 import { syncWithServer } from '@/lib/sync';
 import { useAppTheme } from '@/lib/themeContext';
@@ -43,6 +44,7 @@ import {
   userPickedIconWellStyle,
 } from '@/lib/userPickedIcon';
 import { GlassContainer } from '@/components/GlassContainer';
+import { PageTransition } from '@/components/PageTransition';
 import type {
   DashboardSummary,
   MerchantOverride,
@@ -115,7 +117,7 @@ const UPCOMING_PAYMENTS: UpcomingPayment[] = [
 const BALANCE_COMPARE_SETTING_KEY = 'dashboard_balance_compare_account_ids';
 
 /** Matches `styles.content` horizontal padding — used until `onLayout` provides the real strip width. */
-const DASHBOARD_CONTENT_HORIZONTAL_PADDING = 24;
+const DASHBOARD_CONTENT_HORIZONTAL_PADDING = PAGE_PADDING_HORIZONTAL;
 
 const PAYMENT_WARNING_TITLE_CHECKING = 'Fonds insuffisants';
 const PAYMENT_WARNING_TITLE_CREDIT_LIMIT = 'Limite de crédit';
@@ -613,13 +615,8 @@ function PaymentPreviewSection({
   return (
     <View style={styles.openSection}>
       <Text style={[styles.sectionEyebrow, { color: colors.textMuted }]}>Prochain paiement</Text>
-      <View
-        style={[
-          styles.paymentPreview,
-          cardShadow,
-          { backgroundColor: colors.surfaceSolid, borderColor: colors.border },
-        ]}
-      >
+      <GlassContainer style={[styles.paymentPreview, cardShadow]} padding={12} borderRadius={20}>
+        <View style={styles.paymentPreviewInner}>
         <View style={styles.paymentHeaderRow}>
           <UpcomingPaymentLogo
             name={name}
@@ -627,19 +624,14 @@ function PaymentPreviewSection({
             fallbackColor={iconFallbackColor}
           />
           <View style={styles.paymentCopy}>
-            <Text style={[styles.rowTitle, { color: colors.text }]} numberOfLines={1}>
+            <Text style={[styles.rowTitle, { color: colors.text }]} {...rowTitleTextProps}>
               {name}
             </Text>
-            <Text style={[styles.paymentDateLine, { color: colors.textMuted }]} numberOfLines={1}>
+            <Text style={[styles.paymentDateLine, { color: colors.textMuted }]} {...rowTitleTextProps}>
               {dateLabel}
             </Text>
           </View>
-          <Text
-            style={[styles.rowAmountStrong, { color: amountColor }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.78}
-          >
+          <Text style={[styles.rowAmountStrong, { color: amountColor }]} {...singleLineAmountProps}>
             {formatMoneyDetailed(amount)}
           </Text>
         </View>
@@ -667,15 +659,14 @@ function PaymentPreviewSection({
             <Ionicons name="checkmark-circle-outline" size={13} color={successColor} style={{ marginTop: 2 }} />
             <Text
               style={[styles.paymentAlertText, { color: textSecondaryColor }]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.78}
+              {...singleLineAmountProps}
             >
               {accountNameLine}
             </Text>
           </View>
         )}
-      </View>
+        </View>
+      </GlassContainer>
     </View>
   );
 }
@@ -703,7 +694,7 @@ function AlertAccountPill({
         containerStyle,
       ]}
     >
-      <Text style={[styles.alertAccountPillText, { color: colors.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">
+      <Text style={[styles.alertAccountPillText, { color: colors.textSecondary }]} {...singleLineAmountProps}>
         {trimmed}
       </Text>
     </View>
@@ -768,7 +759,7 @@ function FundsTimelineAlertCard({
     <GlassContainer style={[styles.forecastSurface, cardShadow]} padding={0} borderRadius={24}>
       <View style={styles.forecastClip}>
         <View style={styles.forecastInline}>
-        <View style={styles.timelineAlertHeader}>
+          <View style={styles.timelineAlertHeader}>
           <Text
             style={[styles.inlineEyebrow, styles.timelineAlertEyebrow, { color: colors.textMuted }]}
             numberOfLines={2}
@@ -779,39 +770,38 @@ function FundsTimelineAlertCard({
           {accountPillLabel ? (
             <AlertAccountPill label={accountPillLabel} colors={colors} containerStyle={styles.alertAccountPillInCardHeader} />
           ) : null}
-        </View>
-        <View style={[styles.shortfallCard, { backgroundColor: warningBadgeBg }]}>
+          </View>
+          <View style={[styles.shortfallCard, { backgroundColor: warningBadgeBg }]}>
           <View style={[styles.shortfallIconBadge, { backgroundColor: warningBadgeBg }]}>
             <Ionicons name="alert-circle" size={18} color={warningColor} style={{ marginTop: 2 }} />
           </View>
           <View style={styles.shortfallMessageColumn}>
             <Text
               style={[styles.shortfallText, { color: warningColor }]}
-              numberOfLines={3}
+              numberOfLines={4}
               ellipsizeMode="tail"
             >
               {bodyText}
             </Text>
           </View>
-        </View>
-        <View style={styles.timelineDates}>
+          </View>
+          <View style={styles.timelineDates}>
           <Text style={[styles.timelineDateText, { color: colors.textMuted }]}>{formatShortDate(monthStart)}</Text>
           <Text style={[styles.timelineDateText, { color: colors.textMuted }]}>{formatShortDate(timelineEnd)}</Text>
-        </View>
-        <View
-          style={[
-            styles.timeline,
-            hasTimelineUtilLabels ? styles.timelineExpanded : styles.timelineCompact,
-          ]}
-        >
+          </View>
+          <View
+            style={[
+              styles.timeline,
+              hasTimelineUtilLabels ? styles.timelineExpanded : styles.timelineCompact,
+            ]}
+          >
           {timelineTodayUtilLabel?.trim() ? (
             <Text
               style={[
                 styles.timelineTodayUtilLabel,
                 { left: todayPosition, color: colors.textSecondary },
               ]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
+              {...singleLineAmountProps}
             >
               {timelineTodayUtilLabel.trim()}
             </Text>
@@ -863,8 +853,7 @@ function FundsTimelineAlertCard({
                 styles.timelineAfterPayUtilLabel,
                 { left: nextPaymentPosition, color: warningColor },
               ]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
+              {...singleLineAmountProps}
             >
               {timelineAfterPaymentUtilLabel.trim()}
             </Text>
@@ -941,7 +930,6 @@ function BudgetUsageChart({
   isLight,
   mutedColor,
   textColor,
-  surfaceColor,
 }: {
   usedPercent: number;
   /** Raw remaining budget — can be negative when over budget. */
@@ -951,7 +939,6 @@ function BudgetUsageChart({
   isLight: boolean;
   mutedColor: string;
   textColor: string;
-  surfaceColor: string;
 }) {
   const isOverBudget = usedPercent >= 100;
   const isWarning    = usedPercent >= 80 && usedPercent < 100;
@@ -974,7 +961,7 @@ function BudgetUsageChart({
     : (isLight ? '#F97316' : '#FF8A00');
 
   return (
-    <View style={[styles.gaugeCard, { backgroundColor: surfaceColor }]}>
+    <GlassContainer borderRadius={20} padding={18}>
       <View style={styles.gaugeRow}>
 
         {/* ── Left: SVG gauge ─────────────────────────────────────────────── */}
@@ -1093,7 +1080,7 @@ function BudgetUsageChart({
         </View>
 
       </View>
-    </View>
+    </GlassContainer>
   );
 }
 
@@ -1324,7 +1311,7 @@ export default function HomeScreen() {
   );
 
   if (!data) {
-    return <View style={[styles.screen, { backgroundColor: colors.background }]} />;
+    return <View style={styles.screen} />;
   }
 
   const limit = data.monthlyBudgetLimit;
@@ -1499,9 +1486,11 @@ export default function HomeScreen() {
   const themeIcon = isLight ? 'sunny-outline' : 'moon-outline';
 
   return (
+    <PageTransition>
+    <View style={styles.screen}>
     <ScrollView
       ref={scrollRef}
-      style={[styles.screen, { backgroundColor: colors.background }]}
+      style={styles.screen}
       contentContainerStyle={[
         styles.content,
         {
@@ -1589,7 +1578,6 @@ export default function HomeScreen() {
           isLight={isLight}
           mutedColor={colors.textMuted}
           textColor={colors.text}
-          surfaceColor="transparent"
         />
 
         <GlassContainer padding={9}>
@@ -1623,7 +1611,7 @@ export default function HomeScreen() {
           directionalLockEnabled={Platform.OS === 'ios'}
           keyboardShouldPersistTaps="handled"
           showsHorizontalScrollIndicator={false}
-          removeClippedSubviews={false}
+          removeClippedSubviews
           style={[styles.balanceInsightPagerViewport, { width: '100%' }]}
           contentContainerStyle={styles.balanceInsightPagerPages}
           decelerationRate="fast"
@@ -1672,15 +1660,13 @@ export default function HomeScreen() {
                     <View style={styles.balanceCompareTitleBlock}>
                       <Text
                         style={[styles.inlineEyebrow, { color: colors.textMuted }]}
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
+                        {...rowTitleTextProps}
                       >
                         2 comptes favoris
                       </Text>
                       <Text
                         style={[styles.balanceCompareTitle, { color: colors.text }]}
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
+                        {...rowTitleTextProps}
                       >
                         Mes soldes
                       </Text>
@@ -1715,10 +1701,10 @@ export default function HomeScreen() {
                           <View style={styles.balanceCompareRowBody}>
                             <View style={styles.balanceCompareRowHeader}>
                               <View style={styles.balanceCompareAccountCopy}>
-                                <Text style={[styles.balanceCompareAccountName, { color: colors.text }]} numberOfLines={1}>
+                                <Text style={[styles.balanceCompareAccountName, { color: colors.text }]} {...rowTitleTextProps}>
                                   {account.name}
                                 </Text>
-                                <Text style={[styles.balanceCompareAccountMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                                <Text style={[styles.balanceCompareAccountMeta, { color: colors.textMuted }]} {...rowTitleTextProps}>
                                   {formatAccountMeta(account)}
                                 </Text>
                               </View>
@@ -1728,16 +1714,14 @@ export default function HomeScreen() {
                                     styles.balanceCompareAmount,
                                     { color: account.balance < 0 ? colors.danger : colors.text },
                                   ]}
-                                  numberOfLines={1}
-                                  adjustsFontSizeToFit
-                                  minimumFontScale={0.78}
+                                  {...singleLineAmountProps}
                                 >
                                   {formatCompactCurrency(account.balance)}
                                 </Text>
                                 {typeof creditUtilPct === 'number' ? (
                                   <Text
                                     style={[styles.balanceCompareCreditUtil, { color: utilizationLabelColor }]}
-                                    numberOfLines={1}
+                                    {...singleLineAmountProps}
                                   >
                                     {`${Math.round(creditUtilPct)} % utilisé`}
                                   </Text>
@@ -1835,8 +1819,8 @@ export default function HomeScreen() {
       </View>
       <View style={styles.openSection}>
         <Text style={[styles.sectionEyebrow, { color: colors.textMuted }]}>Prochain paiement</Text>
-        <GlassContainer padding={12}>
-          <View style={{ gap: 9 }}>
+        <GlassContainer padding={spacing.md}>
+          <View style={{ gap: spacing.sm }}>
             <View style={styles.paymentHeaderRow}>
               <UpcomingPaymentLogo
                 name={nextPayment.name}
@@ -1844,10 +1828,10 @@ export default function HomeScreen() {
                 fallbackColor={showInsufficientFundsWarning ? shortfallWarningColor : colors.textSecondary}
               />
               <View style={styles.paymentCopy}>
-                <Text style={[styles.rowTitle, { color: colors.text }]} numberOfLines={1}>
+                <Text style={[styles.rowTitle, { color: colors.text }]} {...rowTitleTextProps}>
                   {nextPayment.name}
                 </Text>
-                <Text style={[styles.paymentDateLine, { color: colors.textMuted }]} numberOfLines={1}>
+                <Text style={[styles.paymentDateLine, { color: colors.textMuted }]} {...rowTitleTextProps}>
                   {formatUpcomingDate(nextPayment.date)}
                 </Text>
               </View>
@@ -1856,9 +1840,7 @@ export default function HomeScreen() {
                   styles.rowAmountStrong,
                   { color: showInsufficientFundsWarning ? shortfallWarningColor : colors.text },
                 ]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.78}
+                {...singleLineAmountProps}
               >
                 {formatMoneyDetailed(nextPayment.amount)}
               </Text>
@@ -1887,9 +1869,7 @@ export default function HomeScreen() {
                 <Ionicons name="checkmark-circle-outline" size={13} color={colors.success} style={{ marginTop: 2 }} />
                 <Text
                   style={[styles.paymentAlertText, { color: colors.textSecondary }]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.78}
+                  {...singleLineAmountProps}
                 >
                   {nextPaymentAccountName} · {formatDaysUntilLabel(daysToNextPayment)}
                 </Text>
@@ -1922,10 +1902,10 @@ export default function HomeScreen() {
           >
             <View style={styles.selectorHeader}>
               <View style={styles.selectorTitleBlock}>
-                <Text style={[styles.selectorEyebrow, { color: colors.textMuted }]} numberOfLines={1}>
+                <Text style={[styles.selectorEyebrow, { color: colors.textMuted }]} {...rowTitleTextProps}>
                   Comparaison des soldes
                 </Text>
-                <Text style={[styles.selectorTitle, { color: colors.text }]} numberOfLines={1}>
+                <Text style={[styles.selectorTitle, { color: colors.text }]} {...rowTitleTextProps}>
                   Choisir 2 comptes
                 </Text>
               </View>
@@ -1977,12 +1957,11 @@ export default function HomeScreen() {
                     <View style={styles.selectorAccountCopy}>
                       <Text
                         style={[styles.selectorAccountName, { color: colors.text }]}
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
+                        {...rowTitleTextProps}
                       >
                         {account.name}
                       </Text>
-                      <Text style={[styles.selectorAccountMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                      <Text style={[styles.selectorAccountMeta, { color: colors.textMuted }]} {...rowTitleTextProps}>
                         {formatAccountMeta(account)}
                       </Text>
                     </View>
@@ -1991,7 +1970,7 @@ export default function HomeScreen() {
                         styles.selectorAccountAmount,
                         { color: account.balance < 0 ? colors.danger : colors.textSecondary },
                       ]}
-                      numberOfLines={1}
+                      {...singleLineAmountProps}
                     >
                       {account.balance < 0 ? '−' : ''}
                       {formatMoneyDetailed(Math.abs(account.balance))}
@@ -2042,17 +2021,19 @@ export default function HomeScreen() {
       </Modal>
 
     </ScrollView>
+    </View>
+    </PageTransition>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: ghost.void },
-  content: { paddingHorizontal: 24, gap: 26 },
-  block: { gap: 12 },
+  screen: { flex: 1, backgroundColor: colors.background },
+  content: { paddingHorizontal: PAGE_PADDING_HORIZONTAL, gap: spacing.xl },
+  block: { gap: spacing.md },
   budgetSummaryOpen: {
-    gap: 14,
-    paddingHorizontal: 2,
-    marginTop: 10,
+    gap: spacing.lg,
+    paddingHorizontal: spacing.xs,
+    marginTop: spacing.md,
   },
   /** Shadow + chrome only — no overflow hidden (clips iOS shadow). */
   forecastSurface: {
@@ -2142,6 +2123,8 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   balanceCompareAccountName: {
+    flex: 1,
+    minWidth: 0,
     fontSize: typography.caption,
     fontWeight: '800',
     lineHeight: typography.caption + 5,
@@ -2153,13 +2136,13 @@ const styles = StyleSheet.create({
   },
   balanceCompareAmountBlock: {
     flexShrink: 0,
-    maxWidth: '45%',
+    maxWidth: '40%',
     alignItems: 'flex-end',
     gap: 4,
   },
   balanceCompareAmount: {
     textAlign: 'right',
-    fontSize: typography.body,
+    fontSize: typography.caption,
     fontWeight: '900',
     letterSpacing: -0.25,
     fontVariant: ['tabular-nums'],
@@ -2181,7 +2164,7 @@ const styles = StyleSheet.create({
   },
   greetingBlock: {
     paddingTop: 0,
-    paddingBottom: 10,
+    paddingBottom: spacing.md,
   },
   headerRow: {
     flexDirection: 'row',
@@ -2373,10 +2356,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   balanceInsightPagerWrap: {
-    gap: 10,
+    gap: spacing.md,
     overflow: 'visible',
-    marginBottom: 6,
-    paddingBottom: 6,
+    marginBottom: spacing.lg,
   },
   balanceInsightPagerViewport: {
     alignSelf: 'center',
@@ -2639,7 +2621,7 @@ const styles = StyleSheet.create({
   legendDotPayment: { backgroundColor: 'rgba(255,196,160,0.85)' },
   legendDotPay: { backgroundColor: 'rgba(0,250,154,0.72)' },
   openSection: {
-    gap: 16,
+    gap: spacing.lg,
   },
   sectionEyebrow: {
     fontSize: typography.micro,
@@ -2665,11 +2647,9 @@ const styles = StyleSheet.create({
   captionMuted: { flex: 1, fontSize: typography.meta, fontWeight: '700', color: 'rgba(245,245,245,0.68)', lineHeight: typography.meta + 4 },
   paymentPreview: {
     gap: 9,
-    backgroundColor: 'transparent',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+  },
+  paymentPreviewInner: {
+    gap: 9,
   },
   paymentHeaderRow: {
     flexDirection: 'row',
@@ -2689,14 +2669,22 @@ const styles = StyleSheet.create({
     gap: 6,
     minWidth: 0,
   },
-  rowTitle: { flexShrink: 1, fontSize: typography.body, fontWeight: '700', color: ghost.text, lineHeight: typography.body + 5 },
-  paymentDateLine: { fontSize: typography.meta, fontWeight: '700', lineHeight: typography.meta + 4 },
+  rowTitle: {
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+    fontSize: typography.caption,
+    fontWeight: '700',
+    color: ghost.text,
+    lineHeight: typography.caption + 5,
+  },
+  paymentDateLine: { fontSize: typography.meta, fontWeight: '700', lineHeight: typography.meta + 4, flexShrink: 1 },
   rowSub: { fontSize: typography.meta, fontWeight: '700', color: 'rgba(245,245,245,0.64)', marginTop: 2 },
   rowAmountStrong: {
     flexShrink: 0,
-    maxWidth: '34%',
+    maxWidth: '40%',
     textAlign: 'right',
-    fontSize: typography.body,
+    fontSize: typography.caption,
     fontWeight: '700',
     color: ghost.text,
     fontVariant: ['tabular-nums'],
@@ -2842,6 +2830,8 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   selectorAccountName: {
+    flex: 1,
+    minWidth: 0,
     fontSize: typography.caption,
     fontWeight: '800',
     lineHeight: typography.caption + 5,
@@ -2854,10 +2844,11 @@ const styles = StyleSheet.create({
   },
   selectorAccountAmount: {
     flexShrink: 0,
-    maxWidth: '28%',
+    maxWidth: '40%',
     fontSize: typography.caption,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
+    textAlign: 'right',
   },
   selectorCheck: {
     width: 26,

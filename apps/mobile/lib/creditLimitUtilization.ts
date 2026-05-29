@@ -29,7 +29,7 @@ export function creditLimitUtilizationBarColor(
   theme: AppColors,
   isLight: boolean,
 ): string {
-  if (utilizationPercent >= 85) return isLight ? '#EF4444' : '#FF4D5D';
-  if (utilizationPercent >= 65) return isLight ? '#F97316' : '#FB923C';
+  if (utilizationPercent >= 85) return theme.danger;
+  if (utilizationPercent >= 65) return theme.warning;
   return theme.primary;
 }

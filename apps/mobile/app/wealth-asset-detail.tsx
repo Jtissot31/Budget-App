@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheet } from '@/components/BottomSheet';
+import { PageTransition } from '@/components/PageTransition';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { WealthAssetValueSparkline } from '@/components/WealthAssetValueSparkline';
@@ -114,6 +115,7 @@ export default function WealthAssetDetailScreen() {
   const sheetHorizontalGutter = Math.max(insets.left, insets.right, spacing.md);
 
   return (
+    <PageTransition>
     <View style={[stylesMemo.screenRoot, { backgroundColor: 'transparent' }]}>
       <BottomSheet
         visible={sheetVisible}
@@ -343,6 +345,7 @@ export default function WealthAssetDetailScreen() {
         onCancel={() => setConfirmVisible(false)}
       />
     </View>
+    </PageTransition>
   );
 }
 

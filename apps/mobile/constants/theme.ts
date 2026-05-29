@@ -1,57 +1,94 @@
 import { Platform } from 'react-native';
 
-/** Minimal UI tokens */
+/** Light app canvas — single smooth diagonal warm-grey gradient */
+export const appBackgroundGradientLight = {
+  colors: ['#FAFAFA', '#F2F2F2', '#ECECEC', '#E4E4E4'] as const,
+  locations: [0, 0.38, 0.72, 1] as const,
+  start: { x: 0, y: 0 },
+  end: { x: 0.28, y: 1 },
+} as const;
+
+/** Neutral charcoal app canvas — solid, no blue tint (not pitch black) */
+export const DARK_CANVAS = '#0A0A0A';
+
+/** Screen-level charcoal canvas — same as DARK_CANVAS */
+export const CANVAS_CHARCOAL = DARK_CANVAS;
+
+/** GitHub-dark design tokens — single source of truth */
 export const darkColors = {
-  background: '#000000',
-  surface: 'rgba(16, 16, 20, 0.94)',
-  surfaceSolid: '#101014',
-  /** Panneau affleurant le fond (#000) tout en restant discret — cartes IA, rangées mises en avant */
-  surfaceElevated: '#16161d',
-  border: 'rgba(255, 255, 255, 0.08)',
-  borderStrong: 'rgba(255, 255, 255, 0.16)',
-  cardBorder: 'rgba(80,85,90,0.45)',
-  text: '#ffffff',
-  /** Lisible sur fond sombre : puces, onglets inactifs */
-  textSecondary: '#e7e9ee',
-  textMuted: '#9aa3af',
-  primary: '#00F5A0',
-  primaryAlt: '#9B8CFF',
-  success: '#35E985',
-  successMuted: 'rgba(53, 233, 133, 0.12)',
-  danger: '#FF6B7A',
-  dangerMuted: 'rgba(255, 107, 122, 0.13)',
+  background: DARK_CANVAS,
+  /** Transparent screen root — gradient painted by AppBackgroundGradient */
+  screenCanvas: 'transparent',
+  surface: '#161B22',
+  surfaceSolid: '#161B22',
+  surfaceElevated: '#1C2128',
+  input: '#1C2128',
+  border: '#21262D',
+  borderStrong: '#30363D',
+  cardBorder: '#21262D',
+  text: '#FFFFFF',
+  textSecondary: '#8B949E',
+  textMuted: '#8B949E',
+  textDisabled: '#484F58',
+  primary: '#00E676',
+  primaryAlt: '#00E676',
+  success: '#00E676',
+  successMuted: 'rgba(0, 230, 118, 0.12)',
+  danger: '#F85149',
+  dangerMuted: 'rgba(248, 81, 73, 0.13)',
   warning: '#FFB15C',
+  warningMuted: 'rgba(255, 177, 92, 0.14)',
   purple: '#B48CFF',
   purpleMuted: 'rgba(180, 140, 255, 0.13)',
   cyanMuted: 'rgba(56, 189, 248, 0.13)',
   blueMuted: 'rgba(96, 165, 250, 0.13)',
-  navPill: 'rgba(14, 14, 18, 0.96)',
+  /** Solid pill on charcoal canvas — no white rgba (Android dither grain) */
+  navPill: DARK_CANVAS,
+  /** Solid card fill on charcoal canvas — no white rgba tint */
+  glassBackground: '#161B22',
+  glassBorder: '#21262D',
+  /** @deprecated Use glassBorder */
+  glassBorderTop: '#21262D',
+  /** @deprecated Use glassBorder */
+  glassBorderBottom: '#21262D',
+  glassBlurIntensity: 0,
 } as const;
 
 export const lightColors = {
-  background: '#F7F8FA',
-  surface: 'rgba(255, 255, 255, 0.94)',
+  background: '#FFFFFF',
+  screenCanvas: 'transparent',
+  surface: '#F6F8FA',
   surfaceSolid: '#FFFFFF',
-  /** Démarquée du fond page (#F7F8FA) pour les rangées IA / sous-cartes */
-  surfaceElevated: '#FFFFFF',
-  border: 'rgba(15, 23, 42, 0.08)',
-  borderStrong: 'rgba(15, 23, 42, 0.14)',
-  cardBorder: 'rgba(200,205,215,0.75)',
-  text: '#0F172A',
-  textSecondary: '#334155',
-  textMuted: '#64748B',
-  primary: '#00A870',
-  primaryAlt: '#6D5DF6',
-  success: '#0F9F5F',
-  successMuted: 'rgba(15, 159, 95, 0.12)',
-  danger: '#D94A57',
-  dangerMuted: 'rgba(217, 74, 87, 0.12)',
+  surfaceElevated: '#F6F8FA',
+  input: '#F6F8FA',
+  border: '#D0D7DE',
+  borderStrong: '#AFB8C1',
+  cardBorder: '#D0D7DE',
+  text: '#0D1117',
+  textSecondary: '#57606A',
+  textMuted: '#57606A',
+  textDisabled: '#8C959F',
+  primary: '#00A854',
+  primaryAlt: '#00A854',
+  success: '#00A854',
+  successMuted: 'rgba(0, 168, 84, 0.12)',
+  danger: '#CF222E',
+  dangerMuted: 'rgba(207, 34, 46, 0.12)',
   warning: '#C96F1A',
+  warningMuted: 'rgba(201, 111, 26, 0.12)',
   purple: '#6D5DF6',
   purpleMuted: 'rgba(109, 93, 246, 0.12)',
   cyanMuted: 'rgba(2, 132, 199, 0.12)',
   blueMuted: 'rgba(37, 99, 235, 0.12)',
-  navPill: 'rgba(255, 255, 255, 0.96)',
+  navPill: 'rgba(255, 255, 255, 0.82)',
+  /** Tinted glass fill over light gradient — no blur */
+  glassBackground: 'rgba(255, 255, 255, 0.45)',
+  glassBorder: 'rgba(255, 255, 255, 0.06)',
+  /** @deprecated Use glassBorder */
+  glassBorderTop: 'rgba(255, 255, 255, 0.06)',
+  /** @deprecated Use glassBorder */
+  glassBorderBottom: 'rgba(255, 255, 255, 0.06)',
+  glassBlurIntensity: 0,
 } as const;
 
 export type AppColors = typeof darkColors;
@@ -64,77 +101,163 @@ export const themeColors: Record<ThemePreference, AppColors> = {
 
 export const colors = darkColors;
 
+/** Spacing scale: 4, 8, 12, 16, 24, 32 only */
 export const spacing = {
   xs: 4,
   sm: 8,
-  md: 16,
-  lg: 20,
-  xl: 28,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  xxl: 32,
 } as const;
+
+/** Global horizontal page padding */
+export const PAGE_PADDING_HORIZONTAL = spacing.lg;
 
 export const radius = {
   sm: 8,
   md: 12,
   lg: 16,
-  xl: 20,
-  xxl: 24,
+  /** @deprecated Cards use radius.md (12px) */
+  xl: 12,
+  /** @deprecated Cards use radius.md (12px) */
+  xxl: 12,
   pill: 999,
 } as const;
 
-/** Standard progress bar track height — matches account credit/utilization bars. */
+/** Standard progress bar track height */
 export const PROGRESS_BAR_TRACK_HEIGHT = 8;
 
 export const fontFamilies = {
+  regular: 'Inter_400Regular',
+  medium: 'Inter_500Medium',
+  semibold: 'Inter_600SemiBold',
+  bold: 'Inter_700Bold',
+  extrabold: 'Inter_800ExtraBold',
+  /** @deprecated Use fontFamilies.regular */
   rounded: Platform.select({
-    ios: 'AvenirNext-DemiBold',
-    android: 'sans-serif-rounded',
-    default: 'System',
+    ios: 'Inter_400Regular',
+    android: 'Inter_400Regular',
+    default: 'Inter_400Regular',
   }),
+  /** @deprecated Use fontFamilies.bold */
   roundedHeavy: Platform.select({
-    ios: 'AvenirNext-Bold',
-    android: 'sans-serif-rounded',
-    default: 'System',
+    ios: 'Inter_700Bold',
+    android: 'Inter_700Bold',
+    default: 'Inter_700Bold',
   }),
 } as const;
 
-/**
- * Échelle unifiée : body pour le texte courant, caption/meta pour le secondaire,
- * screenTitle pour les titres d’écran, heroStat / displayAmount pour les gros chiffres.
- */
 export const typography = {
-  fontFamily: fontFamilies.rounded,
-  fontFamilyHeavy: fontFamilies.roundedHeavy,
+  fontFamily: fontFamilies.regular,
+  fontFamilyMedium: fontFamilies.medium,
+  fontFamilySemibold: fontFamilies.semibold,
+  fontFamilyBold: fontFamilies.bold,
+  fontFamilyHeavy: fontFamilies.extrabold,
   screenTitle: 22,
-  /** Alias de `screenTitle` (écrans qui utilisent encore `typography.title`). */
   title: 22,
   body: 16,
   caption: 14,
   meta: 13,
   micro: 12,
-  /**
-   * Accueil tableau de bord : plus lisible que caption, reste sous le prénom (`screenTitle`).
-   */
   dashboardGreeting: 18,
-  /** Montant central (anneau budget, etc.) */
   heroStat: 24,
-  /** Alias de `heroStat` (composant anneau). */
   heroAmount: 24,
-  /** Grand montant (numpad nouvelle transaction) */
   displayAmount: 38,
 } as const;
 
-/**
- * Décalage supplémentaire au-dessus de la zone sûre basse sur Android (pilule gestuelle /
- * barre 3 boutons) — garde la barre plus basse tout en respectant l'inset système.
- */
+/** Inter presets — fontWeight: 'normal' so named font files render correctly */
+export const interRegularText = {
+  fontFamily: fontFamilies.regular,
+  fontWeight: 'normal' as const,
+};
+
+export const interMediumText = {
+  fontFamily: fontFamilies.medium,
+  fontWeight: 'normal' as const,
+};
+
+export const interSemiboldText = {
+  fontFamily: fontFamilies.semibold,
+  fontWeight: 'normal' as const,
+};
+
+export const interBoldText = {
+  fontFamily: fontFamilies.bold,
+  fontWeight: 'normal' as const,
+};
+
+export const interExtraBoldText = {
+  fontFamily: fontFamilies.extrabold,
+  fontWeight: 'normal' as const,
+};
+
+/** Small uppercase labels */
+export const labelText = {
+  ...interMediumText,
+  textTransform: 'uppercase' as const,
+  letterSpacing: 0.6,
+};
+
+/** @deprecated Use interBoldText */
+export const manropeBoldText = interBoldText;
+
+/** @deprecated Use interExtraBoldText */
+export const manropeExtraBoldText = interExtraBoldText;
+
 export const FLOATING_TABBAR_ANDROID_BOTTOM_EXTRA = spacing.sm;
 
 const FLOATING_NAV_BASE_PADDING = 112;
 
-/** Espace réservé sous le contenu pour la barre flottante + zone sûre */
 export const FLOATING_NAV_CONTENT_PADDING =
   FLOATING_NAV_BASE_PADDING +
   (Platform.OS === 'android' ? FLOATING_TABBAR_ANDROID_BOTTOM_EXTRA : 0);
 
-/** Espace standard entre un titre/en-tête de page et son premier contenu. */
-export const PAGE_TITLE_CONTENT_GAP = spacing.lg;
+export const PAGE_TITLE_CONTENT_GAP = spacing.xl;
+
+export const PORTFOLIO_SECTION_GAP = spacing.lg;
+
+/** Chart accent colors aligned with design system */
+export const chartTokens = {
+  line: '#00E676',
+  lineLight: '#00A854',
+  fillTop: 'rgba(0, 230, 118, 0.4)',
+  fillTopLight: 'rgba(0, 168, 84, 0.35)',
+  fillBottom: 'rgba(0, 230, 118, 0)',
+  negative: '#F85149',
+  negativeLight: '#CF222E',
+  periodActiveBg: 'rgba(0, 230, 118, 0.2)',
+  periodActiveBgLight: 'rgba(0, 168, 84, 0.14)',
+} as const;
+
+/** Portefeuille light-theme palette */
+export const portfolioLight = {
+  background: '#FFFFFF',
+  text: '#0D1117',
+  chartFill: '#F6F8FA',
+  chartCurve: chartTokens.lineLight,
+  card: '#FFFFFF',
+  deltaBg: 'rgba(0, 168, 84, 0.15)',
+  deltaBorder: 'rgba(0, 168, 84, 0.28)',
+  scopeTrack: 'rgba(15, 23, 42, 0.06)',
+  scopeActive: 'rgba(0, 168, 84, 0.14)',
+  iconButton: '#F6F8FA',
+  border: '#D0D7DE',
+} as const;
+
+/** Portefeuille dark-theme palette */
+export const portfolioDark = {
+  background: DARK_CANVAS,
+  card: '#161B22',
+  text: '#FFFFFF',
+  textMuted: '#8B949E',
+  textTertiary: '#484F58',
+  chartCurve: chartTokens.line,
+  chartFillTop: chartTokens.fillTop,
+  chartFillBottom: chartTokens.fillBottom,
+  periodActiveBg: chartTokens.periodActiveBg,
+  scopeTrack: '#1C2128',
+  scopeActive: '#21262D',
+  iconButton: '#1C2128',
+  border: '#21262D',
+} as const;

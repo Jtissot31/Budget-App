@@ -8,6 +8,7 @@ import { GlassContainer } from '@/components/GlassContainer';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import { PaymentDetailSheet, type PaymentDetailPayload } from '@/components/PaymentDetailSheet';
 import { FLOATING_NAV_CONTENT_PADDING, radius, spacing, typography, type AppColors } from '@/constants/theme';
+import { flexText, rowTitleTextProps, rowValueContainer, singleLineAmountProps } from '@/lib/textLayout';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import { getCategoryBudgets, getRecentIncomeTransactions, getRecurringPayments } from '@/lib/db';
 import { tapHaptic } from '@/lib/haptics';
@@ -710,7 +711,13 @@ export const AgendaView = forwardRef<AgendaViewRef>(function AgendaView(_, ref) 
 
   return (
     <>
-      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING }]}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING }]}
+      >
         <View style={styles.monthHeader}>
           <Pressable onPress={prevMonth} hitSlop={14} style={styles.navHit}>
             <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
@@ -810,13 +817,13 @@ export const AgendaView = forwardRef<AgendaViewRef>(function AgendaView(_, ref) 
                 >
                   <BillAvatar bill={b} size={34} />
                   <View style={styles.listRowMain}>
-                    <Text style={styles.rowTitle}>{b.name}</Text>
+                    <Text style={styles.rowTitle} {...rowTitleTextProps}>{b.name}</Text>
                     <Text style={styles.rowMeta}>
                       {getAgendaMeta(b)}
                     </Text>
                     <AgendaBillBudgetHint bill={b} categoryBudget={resolveBillCategoryBudget(b)} />
                   </View>
-                  <Text style={billAmountStyles(b, styles)}>
+                  <Text style={billAmountStyles(b, styles)} {...singleLineAmountProps}>
                     {b.amount.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
                     $
                   </Text>
@@ -847,18 +854,18 @@ export const AgendaView = forwardRef<AgendaViewRef>(function AgendaView(_, ref) 
                   </Text>
                   {shouldShowBillAvatar(b) ? <BillAvatar bill={b} size={34} /> : null}
                   <View style={styles.rowBody}>
-                    <Text style={styles.rowTitle} numberOfLines={1} ellipsizeMode="tail">
+                    <Text style={styles.rowTitle} {...rowTitleTextProps}>
                       {b.name}
                     </Text>
                     <AgendaBillBudgetHint bill={b} categoryBudget={resolveBillCategoryBudget(b)} />
                   </View>
                   <View style={styles.amountStack}>
-                    <Text style={billAmountStyles(b, styles)}>
+                    <Text style={billAmountStyles(b, styles)} {...singleLineAmountProps}>
                       {b.amount.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
                       $
                     </Text>
                     {!b.recurring ? (
-                      <Text style={styles.amountMeta} numberOfLines={1} ellipsizeMode="tail">
+                      <Text style={styles.amountMeta} {...rowTitleTextProps}>
                         {b.account}
                       </Text>
                     ) : null}
@@ -922,9 +929,14 @@ function isIconName(value?: string): value is IconName {
 
 function createStyles(colors: AppColors, isLight: boolean) {
   return StyleSheet.create({
+  scrollView: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   scroll: {
     paddingBottom: spacing.md,
     paddingHorizontal: 0,
+    backgroundColor: colors.background,
   },
   monthHeader: {
     flexDirection: 'row',
@@ -1051,7 +1063,8 @@ function createStyles(colors: AppColors, isLight: boolean) {
   },
   eventMarkSpacer: { height: 6, marginTop: 4 },
   section: {
-    gap: spacing.sm,
+    gap: spacing.lg,
+    marginTop: spacing.lg,
   },
   sectionLabel: {
     color: colors.textMuted,
@@ -1060,7 +1073,7 @@ function createStyles(colors: AppColors, isLight: boolean) {
     textTransform: 'uppercase',
     letterSpacing: 0.65,
     marginLeft: spacing.xs,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
   },
   listRow: {
     flexDirection: 'row',
@@ -1098,12 +1111,12 @@ function createStyles(colors: AppColors, isLight: boolean) {
     fontWeight: '700',
   },
   rowBody: { flex: 1, minWidth: 0, gap: spacing.xs },
-  rowTitle: { color: colors.text, fontSize: typography.body, fontWeight: '700', lineHeight: typography.body + 4 },
+  rowTitle: { ...flexText, color: colors.text, fontSize: typography.caption, fontWeight: '700', lineHeight: typography.caption + 4 },
   rowMeta: { color: colors.textMuted, fontSize: typography.meta, lineHeight: typography.meta + 4, marginTop: 3 },
-  rowAmt: { color: colors.text, fontSize: typography.body, fontWeight: '600', flexShrink: 0 },
+  rowAmt: { ...rowValueContainer, color: colors.text, fontSize: typography.caption, fontWeight: '600', textAlign: 'right' },
   rowAmtPay: { color: colors.success },
   rowAmtRecurring: { color: colors.danger },
-  amountStack: { alignItems: 'flex-end', flexShrink: 1, maxWidth: 128, minWidth: 82 },
+  amountStack: { ...rowValueContainer, alignItems: 'flex-end', minWidth: 72 },
   amountMeta: {
     color: colors.textMuted,
     fontSize: typography.meta,

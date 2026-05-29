@@ -17,7 +17,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import { GoalSparkChartCarousel } from '@/components/GoalSparkChartCarousel';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
+import { PageTransition } from '@/components/PageTransition';
 import { ProgressBar } from '@/components/ProgressBar';
+import { GlassContainer } from '@/components/GlassContainer';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import {
   resolveUserPickedIconGlyphColor,
@@ -133,7 +135,7 @@ export default function SavingsGoalsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ new?: string | string[]; goalId?: string | string[] }>();
   const insets = useSafeAreaInsets();
-  const { colors: themeColors, ghost: themeGhost, isLight } = useAppTheme();
+  const { colors: themeColors, ghost: themeGhost, ghostCardShadow: themedGhostCardShadow, isLight } = useAppTheme();
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudget[]>([]);
@@ -245,7 +247,8 @@ export default function SavingsGoalsScreen() {
   };
 
   return (
-    <View style={[styles.screen, { backgroundColor: themeColors.background }]}>
+    <PageTransition>
+    <View style={styles.screen}>
       <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
         <Pressable
           onPress={() => {
@@ -275,14 +278,14 @@ export default function SavingsGoalsScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.summaryCard, themed.card]}>
+        <GlassContainer style={themedGhostCardShadow} borderRadius={radius.xxl} padding={spacing.lg} innerStyle={styles.summaryCardInner}>
           <Text style={[styles.eyebrow, themed.textMuted]}>Épargne planifiée</Text>
           <Text style={[styles.total, themed.text]}>
             {totals.current.toFixed(0)} $ / {totals.target.toFixed(0)} $
           </Text>
           <ProgressBar progress={totals.target <= 0 ? 0 : totals.current / totals.target} color={DEFAULT_COLOR} />
           <Text style={[styles.helper, themed.textMuted]}>Suis les montants accumulés pour chaque objectif.</Text>
-        </View>
+        </GlassContainer>
 
         <View style={styles.list}>
           {goals.map((goal) => {
@@ -294,8 +297,9 @@ export default function SavingsGoalsScreen() {
               <Pressable
                 key={goal.id}
                 onPress={() => openEdit(goal)}
-                style={({ pressed }) => [styles.card, themed.card, pressed && styles.pressedCard]}
+                style={({ pressed }) => [pressed && styles.pressedCard]}
               >
+                <GlassContainer style={themedGhostCardShadow} borderRadius={radius.xxl} padding={spacing.md} innerStyle={styles.cardInner}>
                 <UserPickedIconBadge
                   icon={(goal.icon in Ionicons.glyphMap ? goal.icon : 'flag-outline') as keyof typeof Ionicons.glyphMap}
                   color={goalAccent}
@@ -314,15 +318,16 @@ export default function SavingsGoalsScreen() {
                   </View>
                   {goal.dueDate ? <Text style={[styles.dueDate, themed.textMuted]}>Date cible: {goal.dueDate}</Text> : null}
                 </View>
+                </GlassContainer>
               </Pressable>
             );
           })}
 
           {goals.length === 0 ? (
-            <View style={[styles.emptyCard, themed.card]}>
+            <GlassContainer style={themedGhostCardShadow} borderRadius={radius.xxl} padding={spacing.lg} innerStyle={styles.emptyCardInner}>
               <Text style={[styles.emptyTitle, themed.text]}>Aucun objectif</Text>
               <Text style={[styles.helper, themed.textMuted]}>Ajoute un fonds d’urgence, un voyage ou un projet à financer.</Text>
-            </View>
+            </GlassContainer>
           ) : null}
         </View>
       </ScrollView>
@@ -341,6 +346,7 @@ export default function SavingsGoalsScreen() {
         onSave={save}
       />
     </View>
+    </PageTransition>
   );
 }
 
@@ -1141,15 +1147,10 @@ const styles = StyleSheet.create({
     letterSpacing: 2.7,
     textTransform: 'uppercase',
   },
-  scroller: { flex: 1 },
-  content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
-  summaryCard: {
-    backgroundColor: colors.surfaceSolid,
-    borderRadius: radius.xxl,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: spacing.lg,
+  scroller: { flex: 1, backgroundColor: colors.background },
+  content: { paddingHorizontal: spacing.lg, gap: spacing.xl },
+  summaryCardInner: {
     gap: spacing.sm,
-    ...ghostCardShadow,
   },
   eyebrow: {
     color: colors.textMuted,
@@ -1161,14 +1162,9 @@ const styles = StyleSheet.create({
   total: { color: colors.text, fontSize: 30, fontWeight: '800', letterSpacing: -0.8 },
   helper: { color: colors.textMuted, fontSize: typography.caption, lineHeight: 20 },
   list: { gap: spacing.md },
-  card: {
+  cardInner: {
     flexDirection: 'row',
     gap: spacing.md,
-    backgroundColor: colors.surfaceSolid,
-    borderRadius: radius.xxl,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: spacing.md,
-    ...ghostCardShadow,
   },
   pressedCard: { opacity: 0.82 },
   iconWell: {
@@ -1184,13 +1180,8 @@ const styles = StyleSheet.create({
   percent: { fontSize: typography.body, fontWeight: '800' },
   meta: { color: colors.textMuted, fontSize: typography.micro, fontWeight: '600' },
   dueDate: { color: colors.textMuted, fontSize: typography.micro, fontWeight: '600' },
-  emptyCard: {
-    backgroundColor: colors.surfaceSolid,
-    borderRadius: radius.xxl,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: spacing.lg,
+  emptyCardInner: {
     gap: spacing.sm,
-    ...ghostCardShadow,
   },
   emptyTitle: { color: colors.text, fontSize: typography.body, fontWeight: '800' },
   modalBackdrop: {

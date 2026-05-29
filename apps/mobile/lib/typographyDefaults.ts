@@ -2,8 +2,8 @@ import { Text, TextInput } from 'react-native';
 import { fontFamilies } from '@/constants/theme';
 
 const defaultTextStyle = {
-  fontFamily: fontFamilies.rounded,
-  fontWeight: '700' as const,
+  fontFamily: fontFamilies.regular,
+  fontWeight: '400' as const,
 };
 
 export function configureTypographyDefaults() {

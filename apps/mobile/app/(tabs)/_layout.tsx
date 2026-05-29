@@ -12,7 +12,6 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { FloatingTabBar } from '@/components/FloatingTabBar';
-import { useAppTheme } from '@/lib/themeContext';
 
 const MAIN_TAB_PATHS = ['/', '/transactions', '/accounts', '/goals', '/budgets'] as const;
 
@@ -23,7 +22,6 @@ const SWIPE_DRAG_FACTOR = 0.34;
 const SWIPE_EXIT_FACTOR = 0.32;
 
 export default function TabLayout() {
-  const { colors } = useAppTheme();
   const pathname = usePathname();
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -99,7 +97,7 @@ export default function TabLayout() {
 
   return (
     <GestureDetector gesture={swipeGesture}>
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={styles.container}>
         <Animated.View style={[styles.container, animatedStyle]}>
           <Tabs
             tabBar={(props) => <FloatingTabBar {...props} />}
@@ -110,7 +108,7 @@ export default function TabLayout() {
                 animation: 'timing',
                 config: { duration: 180 },
               },
-              sceneStyle: { backgroundColor: colors.background },
+              sceneStyle: { backgroundColor: 'transparent' },
               tabBarShowLabel: false,
               tabBarStyle: { display: 'none' },
             }}
@@ -129,5 +127,5 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: 'transparent' },
 });

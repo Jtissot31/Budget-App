@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheet } from '@/components/BottomSheet';
+import { PageTransition } from '@/components/PageTransition';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { TransactionAvatar } from '@/components/TransactionAvatar';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
@@ -238,6 +239,7 @@ export default function SavingsGoalTransactionsScreen() {
   const listShowing = loading && transactions.length === 0 ? [] : groupedTransactions;
 
   return (
+    <PageTransition>
     <View style={[stylesMemo.screenRoot, { backgroundColor: 'transparent' }]}>
       <BottomSheet
         visible
@@ -335,6 +337,7 @@ export default function SavingsGoalTransactionsScreen() {
             style={stylesMemo.listFlex}
             data={listShowing}
             keyExtractor={([date]) => date}
+            removeClippedSubviews
             contentContainerStyle={[
               stylesMemo.listPadding,
               { paddingBottom: Math.max(insets.bottom + spacing.md, spacing.xl) },
@@ -383,6 +386,7 @@ export default function SavingsGoalTransactionsScreen() {
 
       <TransactionDetailSheet transaction={selected} onClose={() => setSelected(null)} onDeleted={() => { void load(); }} />
     </View>
+    </PageTransition>
   );
 }
 
@@ -470,7 +474,7 @@ function createShellStyles(colors: AppColors) {
       paddingVertical: spacing.lg,
       fontSize: typography.caption,
     },
-    listFlex: { flex: 1 },
+    listFlex: { flex: 1, backgroundColor: 'transparent' },
     listPadding: { paddingBottom: spacing.md },
     group: {
       marginBottom: spacing.lg,

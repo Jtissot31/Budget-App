@@ -3,9 +3,10 @@ import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DetailSurfaceGradient } from '@/components/DetailSurfaceGradient';
 import { MerchantLogo } from '@/components/MerchantLogo';
+import { GlassContainer } from '@/components/GlassContainer';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
+import { PageTransition } from '@/components/PageTransition';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { colors, radius, spacing, typography } from '@/constants/theme';
 import { getMerchantOverrides, getTransactions, sortTransactionsNewestFirst } from '@/lib/db';
@@ -178,8 +179,8 @@ export default function MerchantDetailScreen() {
   }, [visibleTransactions]);
 
   return (
-    <View style={[styles.screen, { backgroundColor: isLight ? '#FFFFFF' : '#131313' }]}>
-      <DetailSurfaceGradient isLight={isLight} />
+    <PageTransition>
+    <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
       <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
         <Pressable
           accessibilityRole="button"
@@ -198,14 +199,24 @@ export default function MerchantDetailScreen() {
         <View style={styles.topBarSpacer} />
       </View>
 
-      <View style={[styles.identityCard, { backgroundColor: colors.surfaceSolid, borderColor: colors.border }]}>
+      <GlassContainer
+        style={styles.identityCardWrap}
+        innerStyle={styles.identityCard}
+        padding={spacing.md}
+        borderRadius={radius.xl}
+      >
         <MerchantLogo name={merchantName} logoUrl={logoUrl} size={52} />
         <Text style={[styles.merchantName, { color: colors.text }]} numberOfLines={2}>
           {merchantName}
         </Text>
-      </View>
+      </GlassContainer>
 
-      <View style={[styles.summaryCard, { backgroundColor: colors.surfaceSolid, borderColor: colors.border }]}>
+      <GlassContainer
+        style={styles.summaryCardWrap}
+        innerStyle={styles.summaryCard}
+        padding={spacing.md}
+        borderRadius={radius.lg}
+      >
         <View>
           <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Total</Text>
           <Text style={[styles.summaryAmount, { color: colors.text }]}>
@@ -220,11 +231,13 @@ export default function MerchantDetailScreen() {
             {dateRange}
           </Text>
         </View>
-      </View>
+      </GlassContainer>
 
       <FlatList
+        style={styles.listFlex}
         data={groupedTransactions}
         keyExtractor={([date]) => date}
+        removeClippedSubviews
         contentContainerStyle={[styles.list, { paddingBottom: Math.max(insets.bottom + spacing.lg, spacing.xl) }]}
         refreshControl={
           <RefreshControl
@@ -267,11 +280,13 @@ export default function MerchantDetailScreen() {
 
       <TransactionDetailSheet transaction={selected} onClose={() => setSelected(null)} onDeleted={() => { void load(); }} />
     </View>
+    </PageTransition>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+  screen: { flex: 1, backgroundColor: 'transparent' },
+  listFlex: { flex: 1, backgroundColor: 'transparent' },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -294,15 +309,14 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   topBarSpacer: { width: 38 },
+  identityCardWrap: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
   identityCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
   },
   merchantName: {
     flex: 1,
@@ -310,16 +324,15 @@ const styles = StyleSheet.create({
     fontSize: typography.dashboardGreeting,
     fontWeight: '800',
   },
+  summaryCardWrap: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+  },
   summaryCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
-    padding: spacing.md,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
   },
   summaryLabel: {
     color: colors.textMuted,
@@ -361,7 +374,7 @@ const styles = StyleSheet.create({
     textTransform: 'capitalize',
   },
   groupTransactions: {
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   transactionRow: {
     flexDirection: 'row',

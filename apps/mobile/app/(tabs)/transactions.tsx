@@ -20,6 +20,7 @@ import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
 import { MerchantLogo } from '@/components/MerchantLogo';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
+import { PageTransition } from '@/components/PageTransition';
 import { GlassContainer } from '@/components/GlassContainer';
 import { TransactionRow } from '@/components/TransactionRow';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
@@ -28,6 +29,13 @@ import { getMerchantOverrides, getTransactions, sortTransactionsNewestFirst, ups
 import { dataEvents } from '@/lib/events';
 import { getMerchantLogoUrl, POPULAR_MERCHANT_LOGO_OPTIONS } from '@/lib/merchantLogo';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
+import {
+  UNIFORM_ACTION_BUTTON_MIN_HEIGHT,
+  UNIFORM_CHIP_FONT_SIZE,
+  UNIFORM_ROW_MIN_HEIGHT,
+  UNIFORM_SECTION_HEADER_MIN_HEIGHT,
+  UNIFORM_SEGMENT_INNER_HEIGHT,
+} from '@/lib/uniformGroupStyles';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
 import type { MerchantOverride, Transaction } from '@/types';
@@ -246,7 +254,8 @@ export default function TransactionsScreen() {
   }, [items]);
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+    <PageTransition>
+    <View style={styles.screen}>
       <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
         <Text style={[styles.title, { color: colors.text }]}>Transactions</Text>
         <Pressable onPress={() => router.push('/scan')} hitSlop={12} style={styles.scanIcon}>
@@ -268,7 +277,7 @@ export default function TransactionsScreen() {
       </View>
 
       {activeView === 'history' ? (
-        <View style={styles.flex}>
+        <View style={styles.flex} collapsable={false}>
           <View style={[styles.searchRow, { backgroundColor: colors.surfaceSolid, borderColor: colors.border }]}>
             <Ionicons name="search-outline" size={18} color={colors.textMuted} />
       <TextInput
@@ -282,8 +291,10 @@ export default function TransactionsScreen() {
           </View>
       <FlatList
             ref={historyListRef}
+            style={styles.listViewport}
             data={grouped}
             keyExtractor={([date]) => date}
+            removeClippedSubviews
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING }]}
         refreshControl={
           <RefreshControl
@@ -296,7 +307,11 @@ export default function TransactionsScreen() {
             tintColor={colors.primary}
           />
         }
-            ListEmptyComponent={<Text style={[styles.empty, { color: colors.textMuted }]}>Aucune transaction</Text>}
+            ListEmptyComponent={
+              <View style={styles.emptyWrap}>
+                <Text style={[styles.empty, { color: colors.textMuted }]}>Aucune transaction</Text>
+              </View>
+            }
             renderItem={({ item: [date, txs] }) => (
               <View style={styles.group}>
                 <Text style={[styles.groupLabel, { color: colors.textMuted }]}>
@@ -324,7 +339,7 @@ export default function TransactionsScreen() {
       ) : null}
 
       {activeView === 'merchants' ? (
-        <View style={styles.flex}>
+        <View style={styles.flex} collapsable={false}>
           <View style={styles.merchantToolbar}>
             <Text style={[styles.merchantToolbarHint, { color: colors.textMuted }]} numberOfLines={2}>
               {isEditingMerchants ? 'Touchez un marchand pour le modifier ou le retirer.' : `${merchants.length} marchand${merchants.length > 1 ? 's' : ''}`}
@@ -363,12 +378,17 @@ export default function TransactionsScreen() {
           </View>
           <FlatList
             ref={merchantsListRef}
-            style={styles.flex}
+            style={styles.listViewport}
             data={merchants}
             keyExtractor={(m) => m.originalName}
+            removeClippedSubviews
             contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING }]}
             ItemSeparatorComponent={() => <View style={styles.merchantListSeparator} />}
-            ListEmptyComponent={<Text style={[styles.empty, { color: colors.textMuted }]}>Aucun marchand</Text>}
+            ListEmptyComponent={
+              <View style={styles.emptyWrap}>
+                <Text style={[styles.empty, { color: colors.textMuted }]}>Aucun marchand</Text>
+              </View>
+            }
             renderItem={({ item }) => {
               const editOutline = ['rgba(0,245,160,0.55)', 'rgba(0,245,160,0.18)', 'rgba(0,245,160,0.42)'] as const;
               return (
@@ -642,6 +662,7 @@ export default function TransactionsScreen() {
       </Modal>
       <TransactionDetailSheet transaction={selected} onClose={() => setSelected(null)} onDeleted={() => { void load(); }} />
     </View>
+    </PageTransition>
   );
 }
 
@@ -670,7 +691,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
     borderRadius: radius.lg,
@@ -678,9 +699,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceSolid,
   },
   search: { flex: 1, color: colors.text, fontSize: typography.body, padding: 0 },
-  list: { paddingHorizontal: spacing.lg, paddingBottom: FLOATING_NAV_CONTENT_PADDING },
+  list: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: FLOATING_NAV_CONTENT_PADDING,
+    backgroundColor: colors.background,
+  },
+  listViewport: { flex: 1, backgroundColor: colors.background },
+  emptyWrap: { backgroundColor: colors.background },
   agendaWrap: {
     flex: 1,
+    backgroundColor: colors.background,
     paddingHorizontal: spacing.lg,
     paddingBottom: FLOATING_NAV_CONTENT_PADDING,
   },
@@ -690,11 +718,12 @@ const styles = StyleSheet.create({
   groupLabel: {
     color: colors.textMuted,
     fontSize: typography.caption,
+    minHeight: UNIFORM_SECTION_HEADER_MIN_HEIGHT,
     marginBottom: spacing.sm,
     textTransform: 'capitalize',
   },
   groupTransactions: {
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   empty: { color: colors.textMuted, textAlign: 'center', marginTop: 48, fontSize: typography.caption },
   merchantToolbar: {
@@ -703,7 +732,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.lg,
   },
   merchantToolbarHint: {
     flex: 1,
@@ -720,18 +749,21 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.md,
     paddingVertical: 8,
+    minHeight: UNIFORM_SEGMENT_INNER_HEIGHT,
   },
   merchantEditModeText: {
-    fontSize: typography.micro,
+    fontSize: UNIFORM_CHIP_FONT_SIZE,
     fontWeight: '800',
   },
   merchantListSeparator: {
-    height: spacing.sm,
+    height: spacing.md,
+    backgroundColor: colors.background,
   },
   merchantRowInner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    minHeight: UNIFORM_ROW_MIN_HEIGHT,
   },
   merchantRowEditing: {},
   merchantRowPressed: {
@@ -968,6 +1000,7 @@ const styles = StyleSheet.create({
   },
   confirmActions: {
     flexDirection: 'row',
+    alignItems: 'stretch',
     gap: spacing.sm,
     width: '100%',
     marginTop: spacing.lg,
@@ -977,6 +1010,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: UNIFORM_ACTION_BUTTON_MIN_HEIGHT,
     paddingVertical: spacing.md,
   },
   confirmDestructiveButton: {
@@ -984,6 +1019,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: UNIFORM_ACTION_BUTTON_MIN_HEIGHT,
     paddingVertical: spacing.md,
   },
   confirmSecondaryText: {
@@ -994,5 +1031,5 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     fontWeight: '800',
   },
-  flex: { flex: 1 },
+  flex: { flex: 1, backgroundColor: colors.background },
 });

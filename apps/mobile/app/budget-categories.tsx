@@ -15,8 +15,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProgressBar } from '@/components/ProgressBar';
+import { GlassContainer } from '@/components/GlassContainer';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
+import { PageTransition } from '@/components/PageTransition';
 import { categoryBudgetBarColor, getCategoryBudgetUsage } from '@/lib/categoryBudgetUsage';
 import {
   normalizeUserIconColor,
@@ -168,7 +170,8 @@ export default function BudgetCategoriesScreen() {
   };
 
   return (
-    <View style={[styles.screen, { backgroundColor: themeColors.background }]}>
+    <PageTransition>
+    <View style={styles.screen}>
       <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
         <Pressable
           onPress={() => {
@@ -198,13 +201,13 @@ export default function BudgetCategoriesScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.summaryCard, { backgroundColor: themeColors.surfaceSolid }, themedGhostCardShadow]}>
+        <GlassContainer style={themedGhostCardShadow} borderRadius={radius.xxl} padding={spacing.lg} innerStyle={styles.summaryCardInner}>
           <Text style={[styles.eyebrow, { color: themeColors.textMuted }]}>Budget mensuel total</Text>
           <Text style={[styles.total, { color: themeColors.text }]}>{totalLimit.toFixed(0)} $</Text>
           <Text style={[styles.helper, { color: themeColors.textMuted }]}>
             Crée ou ajuste les postes qui composent ton budget mensuel.
           </Text>
-        </View>
+        </GlassContainer>
 
         <View style={styles.list}>
           {items.map((item) => {
@@ -223,13 +226,9 @@ export default function BudgetCategoriesScreen() {
               <Pressable
                 key={item.categoryId}
                 onPress={() => openEdit(item)}
-                style={({ pressed }) => [
-                  styles.card,
-                  { backgroundColor: themeColors.surfaceSolid },
-                  themedGhostCardShadow,
-                  pressed && styles.pressedCard,
-                ]}
+                style={({ pressed }) => [pressed && styles.pressedCard]}
               >
+                <GlassContainer style={themedGhostCardShadow} borderRadius={radius.xxl} padding={spacing.md} innerStyle={styles.cardInner}>
                 <UserPickedIconBadge
                   icon={getCategoryIconName(item)}
                   color={tint || null}
@@ -258,15 +257,16 @@ export default function BudgetCategoriesScreen() {
                     </Text>
                   </View>
                 </View>
+                </GlassContainer>
               </Pressable>
             );
           })}
 
           {items.length === 0 ? (
-            <View style={[styles.emptyCard, { backgroundColor: themeColors.surfaceSolid }, themedGhostCardShadow]}>
+            <GlassContainer style={themedGhostCardShadow} borderRadius={radius.xxl} padding={spacing.lg} innerStyle={styles.emptyCardInner}>
               <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Aucune catégorie</Text>
               <Text style={[styles.helper, { color: themeColors.textMuted }]}>Ajoute une première limite pour démarrer ton budget.</Text>
-            </View>
+            </GlassContainer>
           ) : null}
         </View>
       </ScrollView>
@@ -357,6 +357,7 @@ export default function BudgetCategoriesScreen() {
           </View>
       </Modal>
     </View>
+    </PageTransition>
   );
 }
 
@@ -623,7 +624,7 @@ function getColorOptions(options: readonly string[], selectedColor: string) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+  screen: { flex: 1, backgroundColor: 'transparent' },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -646,14 +647,10 @@ const styles = StyleSheet.create({
     letterSpacing: 2.7,
     textTransform: 'uppercase',
   },
-  scroller: { flex: 1 },
-  content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
-  summaryCard: {
-    backgroundColor: colors.surfaceSolid,
-    borderRadius: radius.xxl,
-    padding: spacing.lg,
+  scroller: { flex: 1, backgroundColor: 'transparent' },
+  content: { paddingHorizontal: spacing.lg, gap: spacing.xl },
+  summaryCardInner: {
     gap: spacing.sm,
-    ...ghostCardShadow,
   },
   eyebrow: {
     color: colors.textMuted,
@@ -665,13 +662,9 @@ const styles = StyleSheet.create({
   total: { color: colors.text, fontSize: 34, fontWeight: '800', letterSpacing: -0.8 },
   helper: { color: colors.textMuted, fontSize: typography.caption, lineHeight: 20 },
   list: { gap: spacing.md },
-  card: {
+  cardInner: {
     flexDirection: 'row',
     gap: spacing.md,
-    backgroundColor: colors.surfaceSolid,
-    borderRadius: radius.xxl,
-    padding: spacing.md,
-    ...ghostCardShadow,
   },
   pressedCard: { opacity: 0.82 },
   iconWell: {
@@ -687,12 +680,8 @@ const styles = StyleSheet.create({
   limit: { color: colors.primary, fontSize: typography.body, fontWeight: '800' },
   weeklyMeta: { color: colors.textMuted, fontSize: typography.micro, fontWeight: '700' },
   meta: { color: colors.textMuted, fontSize: typography.micro, fontWeight: '600' },
-  emptyCard: {
-    backgroundColor: colors.surfaceSolid,
-    borderRadius: radius.xxl,
-    padding: spacing.lg,
+  emptyCardInner: {
     gap: spacing.sm,
-    ...ghostCardShadow,
   },
   emptyTitle: { color: colors.text, fontSize: typography.body, fontWeight: '800' },
   modalBackdrop: {

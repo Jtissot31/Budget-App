@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProfileSelector } from '@/components/ProfileSelector';
+import { PageTransition } from '@/components/PageTransition';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { FLOATING_NAV_CONTENT_PADDING, PAGE_TITLE_CONTENT_GAP, radius, spacing, typography, type AppColors } from '@/constants/theme';
@@ -64,6 +65,8 @@ export default function SettingsScreen() {
   };
 
   return (
+    <PageTransition>
+    <View style={styles.screen}>
     <ScrollView
       ref={scrollRef}
       style={styles.screen}
@@ -74,7 +77,7 @@ export default function SettingsScreen() {
     >
       <Text style={styles.title}>Réglages</Text>
 
-      <SurfaceCard padding={spacing.md} style={styles.accountCard}>
+      <SurfaceCard padding={spacing.lg} style={styles.accountCard}>
         <View style={styles.accountHeader}>
           <View style={styles.accountIcon}>
             <Ionicons name="person-outline" size={18} color={colors.primary} />
@@ -93,7 +96,7 @@ export default function SettingsScreen() {
         />
       </SurfaceCard>
 
-      <SurfaceCard padding={spacing.md}>
+      <SurfaceCard padding={spacing.lg}>
         <View style={styles.row}>
           <View style={styles.rowCopy}>
             <Text style={styles.rowLabel}>Thème clair</Text>
@@ -139,11 +142,13 @@ export default function SettingsScreen() {
 
       <Text style={styles.footer}>v1.0</Text>
     </ScrollView>
+    </View>
+    </PageTransition>
   );
 }
 
 const createStyles = (colors: AppColors) => StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+  screen: { flex: 1, backgroundColor: 'transparent' },
   content: { paddingHorizontal: spacing.lg, paddingBottom: FLOATING_NAV_CONTENT_PADDING, gap: PAGE_TITLE_CONTENT_GAP },
   title: { color: colors.text, fontSize: typography.title, fontWeight: '800', letterSpacing: -0.5 },
   accountCard: { gap: spacing.md },

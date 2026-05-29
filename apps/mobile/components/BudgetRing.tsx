@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { colors, typography } from '@/constants/theme';
+import { interBoldText, interExtraBoldText, interMediumText, typography } from '@/constants/theme';
+import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
   remaining: number;
@@ -14,6 +15,7 @@ function formatMoney(value: number) {
 }
 
 export function BudgetRing({ remaining, spent, budget, size = 160 }: Props) {
+  const { colors } = useAppTheme();
   const strokeWidth = 12;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -28,7 +30,7 @@ export function BudgetRing({ remaining, spent, budget, size = 160 }: Props) {
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={colors.borderStrong}
+          stroke={colors.border}
           strokeWidth={strokeWidth}
           fill="none"
         />
@@ -47,9 +49,9 @@ export function BudgetRing({ remaining, spent, budget, size = 160 }: Props) {
         />
       </Svg>
       <View style={styles.center}>
-        <Text style={styles.label}>Disponible</Text>
-        <Text style={styles.amount}>{formatMoney(remaining)}</Text>
-        <Text style={styles.sub}>{freePercent}% libre</Text>
+        <Text style={[styles.label, { color: colors.textMuted }]}>Disponible</Text>
+        <Text style={[styles.amount, { color: colors.text }]}>{formatMoney(remaining)}</Text>
+        <Text style={[styles.sub, { color: colors.primary }]}>{freePercent}% libre</Text>
       </View>
     </View>
   );
@@ -65,20 +67,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   label: {
-    color: colors.textMuted,
+    ...interMediumText,
     fontSize: typography.micro,
-    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
     marginBottom: 4,
   },
   amount: {
-    color: colors.text,
+    ...interExtraBoldText,
     fontSize: typography.heroAmount,
-    fontWeight: '900',
   },
   sub: {
-    color: colors.primary,
+    ...interBoldText,
     fontSize: typography.caption,
-    fontWeight: '700',
     marginTop: 4,
   },
 });

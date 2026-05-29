@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SCREEN_TOP_GUTTER, ghostCardShadow } from '@/constants/ghostUi';
+import { PageTransition } from '@/components/PageTransition';
 import { colors, radius, spacing, typography } from '@/constants/theme';
 
 export default function ScanScreen() {
@@ -10,6 +11,7 @@ export default function ScanScreen() {
   const insets = useSafeAreaInsets();
 
   return (
+    <PageTransition>
     <View style={[styles.screen, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
       <View style={styles.frame}>
         <Ionicons name="scan" size={64} color={colors.primary} />
@@ -23,13 +25,14 @@ export default function ScanScreen() {
         <Text style={styles.btnText}>Fermer</Text>
       </Pressable>
     </View>
+    </PageTransition>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
     padding: spacing.lg,
     justifyContent: 'center',
   },

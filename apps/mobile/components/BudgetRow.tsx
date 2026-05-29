@@ -1,9 +1,12 @@
 import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { CategoryBudget } from '@/types';
+import { GlassContainer } from '@/components/GlassContainer';
 import { ProgressBar } from './ProgressBar';
 import { radius, spacing, typography } from '@/constants/theme';
 import { categoryBudgetBarColor, getCategoryBudgetUsage } from '@/lib/categoryBudgetUsage';
+import { rowLabel, rowTitleTextProps, rowValueContainer, singleLineAmountProps } from '@/lib/textLayout';
+import { UNIFORM_ROW_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = { budget: CategoryBudget };
@@ -24,13 +27,15 @@ export function BudgetRow({ budget }: Props) {
   const remaining = usage.isZeroLimitOverspend ? 0 : Math.max(0, usage.limit - usage.spent);
 
   return (
-    <View style={[styles.row, ghostCardShadow, { backgroundColor: colors.surfaceSolid }]}>
+    <GlassContainer style={ghostCardShadow} borderRadius={radius.xxl} padding={spacing.lg} innerStyle={styles.rowInner}>
       <View style={styles.top}>
         <Text style={styles.icon}>{budget.categoryIcon}</Text>
-        <Text style={[styles.name, { color: colors.text }]}>
+        <Text style={[styles.name, { color: colors.text }]} {...rowTitleTextProps}>
           {budget.categoryName}
         </Text>
-        <Text style={[styles.remaining, { color: colors.textMuted }]}>{remaining.toFixed(0)} $</Text>
+        <Text style={[styles.remaining, { color: colors.textMuted }]} {...singleLineAmountProps}>
+          {remaining.toFixed(0)} $
+        </Text>
       </View>
       <ProgressBar progress={usage.progress} color={barColor} />
       <View style={styles.footer}>
@@ -48,20 +53,19 @@ export function BudgetRow({ budget }: Props) {
           </Text>
         ) : null}
       </View>
-    </View>
+    </GlassContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    borderRadius: radius.xxl,
-    padding: spacing.lg,
+  rowInner: {
     gap: spacing.sm,
+    minHeight: UNIFORM_ROW_MIN_HEIGHT,
   },
   top: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   icon: { fontSize: 18 },
-  name: { flex: 1, minWidth: 0, fontWeight: '800', fontSize: typography.body, lineHeight: typography.body + 4 },
-  remaining: { fontSize: typography.caption, fontWeight: '700', flexShrink: 0 },
+  name: { ...rowLabel, fontWeight: '800' },
+  remaining: { ...rowValueContainer, fontSize: typography.caption, fontWeight: '700', textAlign: 'right' },
   footer: { gap: 2 },
   meta: { fontSize: typography.micro },
 });

@@ -1,6 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
-import { ghost } from '@/constants/ghostUi';
-import { radius, typography } from '@/constants/theme';
+import { interExtraBoldText, radius, typography } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
@@ -28,9 +27,9 @@ export function PrimarySaveButton({ label, onPress, disabled, loading, style }: 
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={ghost.void} />
+        <ActivityIndicator color={colors.background} />
       ) : (
-        <Text style={[styles.text, { color: ghost.void }]}>{label}</Text>
+        <Text style={[styles.text, { color: colors.background }]}>{label}</Text>
       )}
     </Pressable>
   );
@@ -39,13 +38,13 @@ export function PrimarySaveButton({ label, onPress, disabled, loading, style }: 
 const styles = StyleSheet.create({
   btn: {
     alignItems: 'center',
-    borderRadius: radius.lg,
+    borderRadius: radius.sm,
     paddingVertical: 16,
   },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.45 },
   text: {
+    ...interExtraBoldText,
     fontSize: typography.body,
-    fontWeight: '800',
   },
 });

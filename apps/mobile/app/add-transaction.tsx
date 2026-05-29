@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GhostNumpad } from '@/components/GhostNumpad';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { DatePickerField } from '@/components/MinimalDatePicker';
+import { PageTransition } from '@/components/PageTransition';
 import { hasMerchantLogoCandidate } from '@/components/TransactionAvatar';
 import {
   TRANSACTION_ICON_OPTIONS,
@@ -953,6 +954,7 @@ export default function AddTransactionScreen() {
   };
 
   return (
+    <PageTransition>
     <View style={styles.screen}>
       <Modal visible animationType="slide" transparent onRequestClose={() => router.back()}>
         <View style={[styles.modalBackdrop, themed.modalBackdrop]}>
@@ -1485,6 +1487,7 @@ export default function AddTransactionScreen() {
         </View>
       </Modal>
     </View>
+    </PageTransition>
   );
 }
 

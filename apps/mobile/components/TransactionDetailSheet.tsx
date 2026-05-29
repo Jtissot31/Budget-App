@@ -10,6 +10,7 @@ import { SurfaceCard } from '@/components/SurfaceCard';
 import { TransactionAvatar } from '@/components/TransactionAvatar';
 import type { IconName } from '@/constants/categoryOptions';
 import { radius, spacing, typography, type AppColors } from '@/constants/theme';
+import { rowTitleTextProps, singleLineAmountProps } from '@/lib/textLayout';
 import { deleteTransactionById } from '@/lib/db';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
@@ -122,7 +123,7 @@ export function TransactionDetailSheet({ transaction: tx, onClose, onDeleted }: 
       <View style={styles.header}>
         <TransactionAvatar transaction={tx} size={48} />
         <View style={styles.headerText}>
-          <Text style={styles.name} numberOfLines={1}>
+          <Text style={styles.name} {...rowTitleTextProps}>
             {tx.label}
           </Text>
         </View>
@@ -146,13 +147,13 @@ export function TransactionDetailSheet({ transaction: tx, onClose, onDeleted }: 
         </Pressable>
       </View>
 
-      <Text style={[styles.amount, isIncome && styles.amountIncome]} numberOfLines={1} adjustsFontSizeToFit>
+      <Text style={[styles.amount, isIncome && styles.amountIncome]} {...singleLineAmountProps}>
         {isIncome ? '+' : '−'}
         {tx.amount.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $
       </Text>
 
       <View style={styles.detailGrid}>
-        <SurfaceCard style={styles.detailCardShell} innerStyle={styles.detailCardInner} padding={spacing.md} innerBackgroundColor={colors.surfaceSolid}>
+        <SurfaceCard style={styles.detailCardShell} innerStyle={styles.detailCardInner} padding={spacing.md}>
           <Ionicons name="calendar-outline" size={14} color={colors.textMuted} />
           <View style={styles.detailCopy}>
             <Text style={styles.detailLabel}>Date</Text>
@@ -161,7 +162,7 @@ export function TransactionDetailSheet({ transaction: tx, onClose, onDeleted }: 
             </Text>
           </View>
         </SurfaceCard>
-        <SurfaceCard style={styles.detailCardShell} innerStyle={styles.detailCardInner} padding={spacing.md} innerBackgroundColor={colors.surfaceSolid}>
+        <SurfaceCard style={styles.detailCardShell} innerStyle={styles.detailCardInner} padding={spacing.md}>
           <Ionicons name="pricetag-outline" size={14} color={colors.textMuted} />
           <View style={styles.detailCopy}>
             <Text style={styles.detailLabel}>Catégorie</Text>
@@ -172,7 +173,7 @@ export function TransactionDetailSheet({ transaction: tx, onClose, onDeleted }: 
         </SurfaceCard>
       </View>
 
-      <SurfaceCard style={styles.syncCardShell} innerStyle={styles.syncCardInner} padding={spacing.md} innerBackgroundColor={colors.surfaceSolid}>
+      <SurfaceCard style={styles.syncCardShell} innerStyle={styles.syncCardInner} padding={spacing.md}>
         <View style={[styles.syncIconWrap, { backgroundColor: syncStatus.color + '1F' }]}>
           <Ionicons name={syncStatus.icon} size={15} color={syncStatus.color} />
         </View>
@@ -185,7 +186,7 @@ export function TransactionDetailSheet({ transaction: tx, onClose, onDeleted }: 
       </SurfaceCard>
 
       {itemizedNote.length > 0 ? (
-        <SurfaceCard style={styles.itemsCardShell} innerStyle={styles.itemsCardInner} padding={spacing.md} innerBackgroundColor={colors.surfaceSolid}>
+        <SurfaceCard style={styles.itemsCardShell} innerStyle={styles.itemsCardInner} padding={spacing.md}>
           <View style={styles.itemsHeader}>
             <Ionicons name="receipt-outline" size={15} color={colors.textMuted} />
             <Text style={styles.itemsTitle} numberOfLines={1}>
@@ -195,8 +196,8 @@ export function TransactionDetailSheet({ transaction: tx, onClose, onDeleted }: 
           {itemizedNote.map((item, index) => (
             <View key={`${item.name}-${index}`} style={styles.itemRow}>
               <View style={styles.itemCopy}>
-                <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
-                {item.categoryName ? <Text style={styles.itemCategory} numberOfLines={1}>{item.categoryName}</Text> : null}
+                <Text style={styles.itemName} {...rowTitleTextProps}>{item.name}</Text>
+                {item.categoryName ? <Text style={styles.itemCategory} numberOfLines={2}>{item.categoryName}</Text> : null}
               </View>
               <Text style={styles.itemPrice}>
                 {item.price.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $
@@ -207,7 +208,7 @@ export function TransactionDetailSheet({ transaction: tx, onClose, onDeleted }: 
       ) : null}
 
       {tx.receiptUri || tx.receiptStatus ? (
-        <SurfaceCard style={styles.receiptCardShell} innerStyle={styles.receiptCardInner} padding={spacing.md} innerBackgroundColor={colors.surfaceSolid}>
+        <SurfaceCard style={styles.receiptCardShell} innerStyle={styles.receiptCardInner} padding={spacing.md}>
           <View style={styles.receiptHeader}>
             <View style={styles.receiptTitleRow}>
               <Ionicons name="receipt-outline" size={15} color={colors.textMuted} />
@@ -285,7 +286,7 @@ function createStyles(colors: AppColors) {
     },
     header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
     headerText: { flex: 1, minWidth: 0, flexShrink: 1 },
-    name: { minWidth: 0, flexShrink: 1, color: colors.text, fontSize: typography.dashboardGreeting, fontWeight: '800' },
+    name: { minWidth: 0, flexShrink: 1, flex: 1, color: colors.text, fontSize: typography.caption, fontWeight: '800', lineHeight: typography.caption + 4 },
     editButton: {
       flexShrink: 0,
       alignItems: 'center',

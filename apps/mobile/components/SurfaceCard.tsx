@@ -8,6 +8,7 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   innerStyle?: StyleProp<ViewStyle>;
   padding?: number;
+  borderRadius?: number;
   innerBackgroundColor?: string;
 };
 
@@ -16,6 +17,7 @@ export function SurfaceCard({
   style,
   innerStyle,
   padding = spacing.lg,
+  borderRadius = radius.md,
   innerBackgroundColor,
 }: Props) {
   return (
@@ -23,7 +25,7 @@ export function SurfaceCard({
       style={style}
       innerStyle={innerStyle}
       padding={padding}
-      borderRadius={radius.xxl}
+      borderRadius={borderRadius}
       innerBackgroundColor={innerBackgroundColor}
     >
       {children}

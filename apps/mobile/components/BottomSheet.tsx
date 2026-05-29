@@ -10,7 +10,6 @@ import {
   ScrollView,
   useWindowDimensions,
 } from 'react-native';
-import { DetailSurfaceGradient } from '@/components/DetailSurfaceGradient';
 import { radius, spacing, typography, type AppColors } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -41,7 +40,7 @@ export function BottomSheet({
   scrollContentContainerStyle,
   scrollable = true,
 }: Props) {
-  const { colors, isLight } = useAppTheme();
+  const { colors } = useAppTheme();
   const { height: windowHeight } = useWindowDimensions();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -53,7 +52,6 @@ export function BottomSheet({
       <View style={styles.overlay}>
         <Pressable style={styles.backdrop} onPress={onClose} />
         <View style={[styles.sheet, !scrollable && { height: sheetFixedHeight }, sheetStyle]}>
-          <DetailSurfaceGradient isLight={isLight} />
           <View style={styles.handle} />
           {title ? (
             <View style={styles.titleRow}>
@@ -95,7 +93,7 @@ function createStyles(colors: AppColors) {
   },
   sheet: {
     maxHeight: '88%',
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: radius.xxl,
     borderTopRightRadius: radius.xxl,
     borderTopWidth: 1,

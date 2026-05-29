@@ -14,7 +14,8 @@ import {
   floatingGlassButtonPressed,
   floatingGlassFabSurface,
 } from '@/constants/floatingGlassButton';
-import { FLOATING_TABBAR_ANDROID_BOTTOM_EXTRA, radius, spacing, typography } from '@/constants/theme';
+import { FLOATING_TABBAR_ANDROID_BOTTOM_EXTRA, radius, spacing } from '@/constants/theme';
+import { UNIFORM_CHIP_FONT_SIZE } from '@/lib/uniformGroupStyles';
 import { useAppTheme } from '@/lib/themeContext';
 
 /** Icônes plus actuelles (lignes fines, lecture type apps finance / iOS) */
@@ -37,8 +38,6 @@ const ROUTE_LABELS: Record<string, string> = {
 };
 
 const HIDDEN_ROUTES = new Set(['settings']);
-const LIGHT_NAV_GLASS = 'rgba(255, 255, 255, 0.90)';
-const DARK_NAV_GLASS = 'rgba(14, 14, 18, 0.88)';
 
 /** Smooth blue AI-style FAB gradients (expo-linear-gradient, 3-stop) */
 const AI_CHAT_FAB_GRADIENT_DARK = ['#1E3A8A', '#2563EB', '#3B82F6'] as const;
@@ -56,11 +55,10 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
-  const { colors, ghostCardShadow, isLight } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
   const fabSurface = floatingGlassFabSurface(colors, isLight);
   const androidExtra = Platform.OS === 'android' ? FLOATING_TABBAR_ANDROID_BOTTOM_EXTRA : 0;
   const bottom = Math.max(insets.bottom, spacing.sm) + androidExtra;
-  const navGlassColor = isLight ? LIGHT_NAV_GLASS : DARK_NAV_GLASS;
   const activeRouteName = state.routes[state.index]?.name;
   const activeRouteParams = state.routes[state.index]?.params as { view?: string } | undefined;
   const transactionsView = activeRouteName === 'transactions' ? (activeRouteParams?.view ?? 'history') : undefined;
@@ -120,7 +118,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           style={({ pressed }) => [
             styles.aiChatOuter,
             { bottom: rightThumbFabBottom + FAB_STACK_OFFSET_ADD },
-            ghostCardShadow,
             pressed && floatingGlassButtonPressed,
           ]}
           onPress={openAiChat}
@@ -145,7 +142,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
             styles.aiScanOuter,
             fabSurface,
             { bottom: rightThumbFabBottom + FAB_STACK_OFFSET_SCAN },
-            ghostCardShadow,
             pressed && floatingGlassButtonPressed,
           ]}
           onPress={openAiScan}
@@ -184,7 +180,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
             styles.addOuter,
             styles.fabPosition,
             { bottom: rightThumbFabBottom + FAB_STACK_OFFSET_ADD },
-            ghostCardShadow,
             pressed && floatingGlassButtonPressed,
           ]}
           onPress={handleAddPress}
@@ -220,14 +215,14 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
 
       <View
         style={[
-          styles.pillShell,
-          isLight ? styles.lightPillShadow : styles.darkPillShadow,
+          styles.pill,
           {
-            backgroundColor: navGlassColor,
+            backgroundColor: isLight ? colors.navPill : '#0A0A0A',
+            borderColor: isLight ? colors.glassBorder : colors.border,
+            borderWidth: 1,
           },
         ]}
       >
-        <View style={[styles.pill, { backgroundColor: navGlassColor }]}>
           {state.routes.map((route, index) => {
             if (HIDDEN_ROUTES.has(route.name)) return null;
             const focused = state.index === index;
@@ -271,6 +266,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                       { color: focused ? colors.text : colors.textMuted },
                     ]}
                     numberOfLines={1}
+                    ellipsizeMode="tail"
                   >
                     {ROUTE_LABELS[route.name] ?? route.name}
                   </Text>
@@ -278,7 +274,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
               </Pressable>
             );
           })}
-        </View>
       </View>
     </View>
   );
@@ -292,6 +287,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     gap: 10,
+    backgroundColor: 'transparent',
   },
   fabPosition: {
     position: 'absolute',
@@ -411,31 +407,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 1,
   },
-  pillShell: {
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
     width: '100%',
     maxWidth: 390,
     marginHorizontal: spacing.lg,
-    borderRadius: radius.pill,
-  },
-  lightPillShadow: {
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.2,
-    shadowRadius: 24,
-    elevation: 16,
-  },
-  darkPillShadow: {
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.52,
-    shadowRadius: 28,
-    elevation: 18,
-  },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    width: '100%',
     paddingVertical: 11,
     paddingHorizontal: 4,
     borderRadius: radius.pill,
@@ -443,11 +421,14 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    alignItems: 'center',
+    alignSelf: 'stretch',
+    alignItems: 'stretch',
     justifyContent: 'center',
     paddingVertical: 1,
+    minWidth: 0,
   },
   tabContent: {
+    flex: 1,
     width: '100%',
     minHeight: 50,
     alignItems: 'center',
@@ -458,8 +439,10 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     width: '100%',
-    fontSize: typography.micro,
-    lineHeight: typography.micro + 2,
+    minWidth: 0,
+    flexShrink: 1,
+    fontSize: UNIFORM_CHIP_FONT_SIZE,
+    lineHeight: UNIFORM_CHIP_FONT_SIZE + 2,
     fontWeight: '600',
     textAlign: 'center',
   },
