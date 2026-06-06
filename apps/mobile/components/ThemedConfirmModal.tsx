@@ -1,7 +1,9 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { interBoldText, interMediumText, radius, spacing, typography } from '@/constants/theme';
+import { interBoldText, interMediumText, radius, spacing, typography, type AppColors } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
+
+export type ThemedConfirmVariant = 'success' | 'error' | 'warning' | 'info';
 
 type Props = {
   visible: boolean;
@@ -10,8 +12,35 @@ type Props = {
   confirmLabel?: string;
   cancelLabel?: string;
   icon?: keyof typeof Ionicons.glyphMap;
+  variant?: ThemedConfirmVariant;
   onConfirm: () => void;
   onCancel?: () => void;
+};
+
+const VARIANT_DEFAULTS: Record<
+  ThemedConfirmVariant,
+  { icon: keyof typeof Ionicons.glyphMap; iconBg: (colors: AppColors) => string; iconColor: (colors: AppColors) => string }
+> = {
+  success: {
+    icon: 'checkmark-circle-outline',
+    iconBg: (c) => c.successMuted,
+    iconColor: (c) => c.primary,
+  },
+  error: {
+    icon: 'alert-circle-outline',
+    iconBg: (c) => c.dangerMuted,
+    iconColor: (c) => c.danger,
+  },
+  warning: {
+    icon: 'warning-outline',
+    iconBg: (c) => c.warningMuted,
+    iconColor: (c) => c.warning,
+  },
+  info: {
+    icon: 'information-circle-outline',
+    iconBg: (c) => c.cyanMuted,
+    iconColor: (c) => c.textSecondary,
+  },
 };
 
 /** Confirmation dialog — dark card, primary CTA (replaces system Alert). */
@@ -21,11 +50,14 @@ export function ThemedConfirmModal({
   message,
   confirmLabel = 'OK',
   cancelLabel,
-  icon = 'notifications',
+  icon,
+  variant = 'success',
   onConfirm,
   onCancel,
 }: Props) {
   const { colors, isLight } = useAppTheme();
+  const variantDefaults = VARIANT_DEFAULTS[variant];
+  const resolvedIcon = icon ?? variantDefaults.icon;
 
   const handleClose = () => {
     onCancel?.();
@@ -44,8 +76,8 @@ export function ThemedConfirmModal({
             },
           ]}
         >
-          <View style={[styles.iconWrap, { backgroundColor: colors.successMuted }]}>
-            <Ionicons name={icon} size={22} color={colors.primary} />
+          <View style={[styles.iconWrap, { backgroundColor: variantDefaults.iconBg(colors) }]}>
+            <Ionicons name={resolvedIcon} size={22} color={variantDefaults.iconColor(colors)} />
           </View>
           <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
           <Text style={[styles.message, { color: colors.textMuted }]}>{message}</Text>

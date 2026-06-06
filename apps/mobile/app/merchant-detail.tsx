@@ -3,7 +3,9 @@ import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { GlassContainer } from '@/components/GlassContainer';
+import { MerchantEditModal, type MerchantEditTarget } from '@/components/MerchantEditModal';
 import { MerchantLogo } from '@/components/MerchantLogo';
 import { TransactionRow } from '@/components/TransactionRow';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
@@ -13,6 +15,7 @@ import { colors, radius, spacing, typography } from '@/constants/theme';
 import { getMerchantOverrides, getTransactions, sortTransactionsNewestFirst } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
+import { parseItemizedNote } from '@/lib/itemizedNote';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
@@ -45,29 +48,6 @@ function formatDateRange(transactions: Transaction[]) {
   return `${formatDate(first)} - ${formatDate(last)}`;
 }
 
-type ItemizedNote = {
-  name: string;
-};
-
-function parseItemizedNote(note?: string): ItemizedNote[] {
-  const line = note?.split('\n').find((part) => part.startsWith('articles:'));
-  if (!line) return [];
-
-  try {
-    const parsed = JSON.parse(line.slice('articles:'.length));
-    if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((item): ItemizedNote[] => {
-      if (!item || typeof item !== 'object') return [];
-      const name = typeof (item as Record<string, unknown>).name === 'string'
-        ? (item as Record<string, unknown>).name.trim()
-        : '';
-      return name ? [{ name }] : [];
-    });
-  } catch {
-    return [];
-  }
-}
-
 function getTransactionTitle(tx: Transaction, fallbackTitle: string) {
   const itemized = parseItemizedNote(tx.note);
   if (itemized.length === 0) return fallbackTitle;
@@ -81,12 +61,13 @@ export default function MerchantDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ merchant?: string }>();
   const insets = useSafeAreaInsets();
-  const { colors, isLight } = useAppTheme();
+  const { colors } = useAppTheme();
   const merchantKey = typeof params.merchant === 'string' ? params.merchant : '';
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [overrides, setOverrides] = useState<MerchantOverride[]>([]);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [editTarget, setEditTarget] = useState<MerchantEditTarget | null>(null);
 
   const load = useCallback(async () => {
     const [nextTransactions, nextOverrides] = await Promise.all([getTransactions(), getMerchantOverrides()]);
@@ -107,7 +88,6 @@ export default function MerchantDetailScreen() {
     [merchantKey, overrides],
   );
   const merchantName = override?.displayName?.trim() || merchantKey || 'Marchand';
-  const logoUrl = override?.logoUrl ?? null;
   const visibleTransactions = useMemo(() => {
     if (!merchantKey || override?.hidden) return [];
     return sortTransactionsNewestFirst(transactions.filter((tx) => tx.label === merchantKey));
@@ -117,6 +97,13 @@ export default function MerchantDetailScreen() {
     [visibleTransactions],
   );
   const dateRange = useMemo(() => formatDateRange(visibleTransactions), [visibleTransactions]);
+  const receiptCount = useMemo(() => {
+    return visibleTransactions.reduce((count, tx) => {
+      const hasArticles = parseItemizedNote(tx.note).length > 0;
+      const hasReceipt = Boolean(tx.receiptUri || tx.receiptStatus);
+      return count + (hasArticles || hasReceipt ? 1 : 0);
+    }, 0);
+  }, [visibleTransactions]);
   const groupedTransactions = useMemo(() => {
     const groups: Record<string, Transaction[]> = {};
     visibleTransactions.forEach((tx) => {
@@ -128,6 +115,16 @@ export default function MerchantDetailScreen() {
       .map(([day, txs]) => [day, sortTransactionsNewestFirst(txs)] as [string, Transaction[]])
       .sort(([a], [b]) => b.localeCompare(a));
   }, [visibleTransactions]);
+
+  const openEditor = () => {
+    if (!merchantKey) return;
+    tapHaptic();
+    setEditTarget({
+      originalName: merchantKey,
+      displayName: merchantName,
+      override,
+    });
+  };
 
   return (
     <PageTransition>
@@ -147,7 +144,20 @@ export default function MerchantDetailScreen() {
           <Ionicons name="chevron-back" size={22} color={colors.text} />
         </Pressable>
         <Text style={[styles.title, { color: colors.text }]}>Historique</Text>
-        <View style={styles.topBarSpacer} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Modifier le marchand"
+          hitSlop={12}
+          style={({ pressed }) => [
+            styles.editButton,
+            { backgroundColor: colors.surfaceSolid, borderColor: colors.borderStrong },
+            pressed && styles.pressed,
+          ]}
+          onPress={openEditor}
+        >
+          <Ionicons name="pencil-outline" size={14} color={colors.textSecondary} />
+          <Text style={[styles.editButtonText, { color: colors.textSecondary }]}>Modifier</Text>
+        </Pressable>
       </View>
 
       <GlassContainer
@@ -156,7 +166,13 @@ export default function MerchantDetailScreen() {
         padding={spacing.md}
         borderRadius={radius.xl}
       >
-        <MerchantLogo name={merchantName} logoUrl={logoUrl} size={52} />
+        <MerchantLogo
+          name={merchantName}
+          logoUrl={override?.logoUrl}
+          icon={override?.icon}
+          useAutoLogo={override?.useAutoLogo !== false}
+          size={52}
+        />
         <Text style={[styles.merchantName, { color: colors.text }]} numberOfLines={2}>
           {merchantName}
         </Text>
@@ -183,6 +199,32 @@ export default function MerchantDetailScreen() {
           </Text>
         </View>
       </GlassContainer>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Ouvrir la bibliothèque de reçus"
+        onPress={() => {
+          tapHaptic();
+          router.push({ pathname: '/merchant-receipts', params: { merchant: merchantKey } });
+        }}
+        style={({ pressed }) => [styles.receiptSectionWrap, pressed && styles.pressed]}
+      >
+        <GlassContainer
+          padding={spacing.md}
+          borderRadius={radius.lg}
+          innerStyle={styles.receiptSectionInner}
+        >
+          <View style={styles.receiptSectionCopy}>
+            <DashboardSectionLabel>Bibliothèque de reçus</DashboardSectionLabel>
+            <Text style={[styles.receiptSectionHint, { color: colors.textMuted }]}>
+              {receiptCount > 0
+                ? `${receiptCount} reçu${receiptCount > 1 ? 's' : ''} ou article${receiptCount > 1 ? 's' : ''}`
+                : 'Articles et reçus de ce marchand'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </GlassContainer>
+      </Pressable>
 
       <FlatList
         style={styles.listFlex}
@@ -228,6 +270,13 @@ export default function MerchantDetailScreen() {
       />
 
       <TransactionDetailSheet transaction={selected} onClose={() => setSelected(null)} onDeleted={() => { void load(); }} />
+      <MerchantEditModal
+        visible={Boolean(editTarget)}
+        merchant={editTarget}
+        showDelete={false}
+        onClose={() => setEditTarget(null)}
+        onSaved={load}
+      />
     </View>
     </PageTransition>
   );
@@ -251,13 +300,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    minHeight: 38,
+  },
+  editButtonText: {
+    fontSize: typography.meta,
+    fontWeight: '800',
+  },
   title: {
     color: colors.text,
     fontSize: typography.screenTitle,
     fontWeight: '700',
     letterSpacing: -0.4,
   },
-  topBarSpacer: { width: 38 },
   identityCardWrap: {
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
@@ -275,7 +337,7 @@ const styles = StyleSheet.create({
   },
   summaryCardWrap: {
     marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   summaryCard: {
     flexDirection: 'row',
@@ -309,6 +371,23 @@ const styles = StyleSheet.create({
     fontSize: typography.meta,
     marginTop: 2,
   },
+  receiptSectionWrap: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  receiptSectionInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  receiptSectionCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  receiptSectionHint: {
+    fontSize: typography.meta,
+  },
   list: {
     paddingHorizontal: spacing.lg,
   },
@@ -323,48 +402,6 @@ const styles = StyleSheet.create({
   },
   groupTransactions: {
     gap: spacing.md,
-  },
-  transactionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingVertical: spacing.sm + 4,
-    paddingHorizontal: spacing.md,
-  },
-  transactionBody: {
-    flex: 1,
-    minWidth: 0,
-  },
-  transactionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    minWidth: 0,
-  },
-  transactionTitle: {
-    flexShrink: 1,
-    color: colors.text,
-    fontSize: typography.body,
-    fontWeight: '800',
-    lineHeight: typography.body + 3,
-  },
-  receiptBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  transactionAmount: {
-    color: colors.text,
-    fontSize: typography.body,
-    fontWeight: '700',
-    flexShrink: 0,
-    textAlign: 'right',
   },
   empty: {
     color: colors.textMuted,

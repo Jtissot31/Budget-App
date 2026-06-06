@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProfileSelector } from '@/components/ProfileSelector';
+import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
 import { PageTransition } from '@/components/PageTransition';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
@@ -36,6 +36,17 @@ export default function SettingsScreen() {
   const [mockOnly, setMockOnly] = useState(true);
   const [profile, setProfileState] = useState<ProfileType>('student');
   const [syncing, setSyncing] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [confirmTitle, setConfirmTitle] = useState('');
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const [confirmVariant, setConfirmVariant] = useState<'success' | 'error' | 'warning'>('success');
+
+  const showConfirmation = (title: string, message: string, variant: 'success' | 'error' | 'warning' = 'success') => {
+    setConfirmTitle(title);
+    setConfirmMessage(message);
+    setConfirmVariant(variant);
+    setConfirmVisible(true);
+  };
 
   const load = useCallback(async () => {
     setApiUrl(await getApiBaseUrl());
@@ -54,14 +65,14 @@ export default function SettingsScreen() {
     await setApiBaseUrl(apiUrl);
     await setUseMockOnly(mockOnly);
     await setProfile(profile);
-    Alert.alert('Enregistré', 'Paramètres mis à jour.');
+    showConfirmation('Enregistré', 'Paramètres mis à jour.');
   };
 
   const sync = async () => {
     setSyncing(true);
     const result = await syncWithServer();
     setSyncing(false);
-    Alert.alert(result.ok ? 'Sync' : 'Hors ligne', result.message);
+    showConfirmation(result.ok ? 'Sync' : 'Hors ligne', result.message, result.ok ? 'success' : 'warning');
   };
 
   return (
@@ -142,6 +153,16 @@ export default function SettingsScreen() {
 
       <Text style={styles.footer}>v1.0</Text>
     </ScrollView>
+
+    <ThemedConfirmModal
+      visible={confirmVisible}
+      title={confirmTitle}
+      message={confirmMessage}
+      variant={confirmVariant}
+      confirmLabel="OK"
+      onConfirm={() => setConfirmVisible(false)}
+      onCancel={() => setConfirmVisible(false)}
+    />
     </View>
     </PageTransition>
   );

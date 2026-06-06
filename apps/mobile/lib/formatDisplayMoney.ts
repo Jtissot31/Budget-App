@@ -94,3 +94,12 @@ export function formatSignedDisplayMoney(
   const sign = value < 0 ? '−' : leadingPlus ? '+' : '';
   return `${sign}${formatDisplayMoneyAbsolute(Math.abs(value))}`;
 }
+
+/** Prefix recurring payment amounts: `+` for income, `−` for expense/payment. */
+export function formatRecurringPaymentAmount(
+  amount: number,
+  kind?: 'payment' | 'income' | null,
+): string {
+  const prefix = kind === 'income' ? '+' : kind === 'payment' ? '−' : '';
+  return `${prefix}${formatDisplayMoneyAbsolute(amount)}`;
+}

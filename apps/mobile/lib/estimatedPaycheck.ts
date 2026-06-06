@@ -89,6 +89,13 @@ function addRecurringPeriod(date: Date, frequency: RecurringPaymentFrequency) {
   return addMonthsClamped(date, 1);
 }
 
+function subtractRecurringPeriod(date: Date, frequency: RecurringPaymentFrequency) {
+  if (frequency === 'weekly') return addDays(date, -7);
+  if (frequency === 'biweekly') return addDays(date, -14);
+  if (frequency === 'yearly') return addMonthsClamped(date, -12);
+  return addMonthsClamped(date, -1);
+}
+
 function normalizeText(value?: string | null) {
   return (value ?? '')
     .normalize('NFD')
@@ -378,6 +385,134 @@ function pickEstimatedPaycheckBeforeDue(
   if (earliest.date.getTime() < todayStart.getTime()) return null;
 
   return earliest;
+}
+
+/**
+ * Génère toutes les dates de paie estimées dans la plage [rangeStart, rangeEnd].
+ * Combine les revenus récurrents de type paie et l'inférence par historique de transactions.
+ * Déduplique par dateKey (la source récurrente a priorité sur l'inférence).
+ */
+export function inferAllEstimatedPaychecksForRange(
+  transactions: Transaction[],
+  recurringPayments: RecurringPayment[],
+  rangeStart: Date,
+  rangeEnd: Date,
+  today: Date = startOfToday(),
+): EstimatedPaycheck[] {
+  const rs = new Date(rangeStart);
+  rs.setHours(0, 0, 0, 0);
+  const re = new Date(rangeEnd);
+  re.setHours(0, 0, 0, 0);
+  const todayMid = new Date(today);
+  todayMid.setHours(0, 0, 0, 0);
+
+  const seen = new Map<string, EstimatedPaycheck>();
+
+  function tryAdd(item: EstimatedPaycheck) {
+    const d = new Date(item.date);
+    d.setHours(0, 0, 0, 0);
+    if (d < rs || d > re) return;
+    if (!seen.has(item.dateKey)) seen.set(item.dateKey, item);
+  }
+
+  // Source 1: Recurring income payments (pay-like)
+  recurringPayments
+    .filter((p) => p.active && p.amount > 0 && isPayLikeRecurringIncome(p))
+    .forEach((payment) => {
+      const seed =
+        parseIsoDay(payment.nextDate) ??
+        nextMonthlyDateFromDueDay(payment.dueDay, todayMid);
+      if (!seed) return;
+
+      // Walk backward from seed to cover occurrences before seed within range
+      let cursor = new Date(seed);
+      cursor.setHours(0, 0, 0, 0);
+      let backGuard = 0;
+      while (cursor > rs && backGuard < 200) {
+        const prev = subtractRecurringPeriod(cursor, payment.frequency);
+        if (prev.getTime() >= cursor.getTime()) break;
+        cursor = prev;
+        backGuard += 1;
+      }
+
+      // Forward pass through range
+      let guard = 0;
+      while (cursor <= re && guard < 200) {
+        if (cursor >= rs) {
+          const k = dateKeyFromDate(cursor);
+          tryAdd({ dateKey: k, date: new Date(cursor), amount: payment.amount, source: 'recurring' });
+        }
+        const next = addRecurringPeriod(cursor, payment.frequency);
+        if (next.getTime() <= cursor.getTime()) break;
+        cursor = next;
+        guard += 1;
+      }
+    });
+
+  // Source 2: Transaction-inferred interval (weekly / biweekly only)
+  const payTransactions = transactions.filter(isLikelyPayTransaction);
+  if (payTransactions.length >= MIN_PAY_DAYS_FOR_ESTIMATE) {
+    const payDays = new Map<string, number>();
+    payTransactions.forEach((tx) => {
+      const k = getLocalDayKey(tx.date);
+      if (!k || !Number.isFinite(tx.amount) || tx.amount <= 0) return;
+      payDays.set(k, (payDays.get(k) ?? 0) + tx.amount);
+    });
+
+    const sortedPayDays = [...payDays.entries()].sort(([a], [b]) => a.localeCompare(b));
+    if (sortedPayDays.length >= MIN_PAY_DAYS_FOR_ESTIMATE) {
+      const datedPayDays = sortedPayDays
+        .map(([key, amount]) => ({ key, amount, date: parseIsoDay(key) }))
+        .filter((item): item is { key: string; amount: number; date: Date } => item.date !== null);
+
+      if (datedPayDays.length >= MIN_PAY_DAYS_FOR_ESTIMATE) {
+        const intervals = datedPayDays
+          .slice(1)
+          .map((item, idx) =>
+            Math.round((item.date.getTime() - datedPayDays[idx].date.getTime()) / 86400000),
+          )
+          .filter((d) => d > 0)
+          .map(nearestPayInterval)
+          .filter((i): i is 7 | 14 => i !== null);
+
+        if (intervals.length > 0) {
+          const weeklyCount = intervals.filter((i) => i === 7).length;
+          const biweeklyCount = intervals.filter((i) => i === 14).length;
+          const inferredInterval = weeklyCount >= biweeklyCount ? 7 : 14;
+
+          const lastPayDay = datedPayDays[datedPayDays.length - 1];
+          const recentAmounts = datedPayDays.slice(-4).map((i) => i.amount);
+          const avgAmount = recentAmounts.reduce((s, a) => s + a, 0) / recentAmounts.length;
+
+          if (Number.isFinite(avgAmount) && avgAmount > 0) {
+            // Walk backward from lastPayDay to find earliest occurrence >= rangeStart
+            let cursor = new Date(lastPayDay.date);
+            cursor.setHours(0, 0, 0, 0);
+            let backGuard = 0;
+            while (cursor > rs && backGuard < 200) {
+              cursor = addDays(cursor, -inferredInterval);
+              backGuard += 1;
+            }
+
+            // Forward pass; recurring source has priority on shared dates
+            let guard = 0;
+            while (cursor <= re && guard < 200) {
+              if (cursor >= rs) {
+                const k = dateKeyFromDate(cursor);
+                if (!seen.has(k)) {
+                  tryAdd({ dateKey: k, date: new Date(cursor), amount: avgAmount, source: 'transactions' });
+                }
+              }
+              cursor = addDays(cursor, inferredInterval);
+              guard += 1;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return [...seen.values()].sort((a, b) => a.dateKey.localeCompare(b.dateKey));
 }
 
 /**

@@ -1,0 +1,3 @@
+Always import icons from src/icons/index.js only.
+Never use lucide-react or any external icon library.
+If an icon is missing, tell me so I can add it manually.

@@ -104,6 +104,8 @@ export interface MerchantOverride {
   originalName: string;
   displayName?: string | null;
   logoUrl?: string | null;
+  icon?: string | null;
+  useAutoLogo?: boolean;
   hidden: boolean;
   updatedAt: string;
 }
@@ -122,7 +124,7 @@ export interface SavingsGoal {
   createdAt: string;
 }
 
-export type LoanType = 'friend_debt' | 'personal_loan' | 'line_of_credit';
+export type LoanType = 'friend_debt' | 'personal_loan' | 'line_of_credit' | 'mortgage';
 export type FriendDebtMode = 'open' | 'payment_plan';
 export type LoanDurationUnit = 'months' | 'years';
 export type LoanPaymentFrequency = 'weekly' | 'biweekly' | 'monthly';
@@ -145,6 +147,7 @@ export interface Loan {
   paymentAccountId: string;
   nextPaymentDate: string;
   recurringPaymentId?: string | null;
+  icon?: string | null;
   createdAt: string;
 }
 

@@ -1,27 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   FlatList,
-  Modal,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AgendaView, type AgendaViewRef } from '@/components/AgendaView';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
-import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
+import { MerchantEditModal, type MerchantEditTarget } from '@/components/MerchantEditModal';
 import { MerchantLogo } from '@/components/MerchantLogo';
 import { DashboardCard } from '@/components/DashboardCard';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
+import { type FormFeedback } from '@/lib/formFeedback';
 import {
   createNewRecurringPaymentForm,
   RecurringPaymentFormModal,
@@ -29,6 +26,7 @@ import {
   saveRecurringPaymentForm,
   toAccountOptions,
   type PaymentForm,
+  type RecurringPaymentAddVariant,
 } from '@/lib/recurringPaymentsForm';
 import { PageTransition } from '@/components/PageTransition';
 import { GlassContainer } from '@/components/GlassContainer';
@@ -37,6 +35,7 @@ import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   colors,
   FLOATING_NAV_CONTENT_PADDING,
+  ICON_WELL_SIZE,
   PAGE_PADDING_HORIZONTAL,
   PAGE_TITLE_CONTENT_GAP,
   PAGE_TITLE_STYLE,
@@ -48,9 +47,8 @@ import {
 } from '@/constants/theme';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { listDayTotal, rowLabel, rowTitleTextProps, singleLineAmountProps } from '@/lib/textLayout';
-import { getMerchantOverrides, getTransactions, sortTransactionsNewestFirst, upsertMerchantOverride, getCategories, getCategoryBudgets, getSimulatedAccounts } from '@/lib/db';
+import { getMerchantOverrides, getTransactions, sortTransactionsNewestFirst, getCategories, getCategoryBudgets, getSimulatedAccounts } from '@/lib/db';
 import { dataEvents, uiEvents } from '@/lib/events';
-import { getMerchantLogoUrl, POPULAR_MERCHANT_LOGO_OPTIONS } from '@/lib/merchantLogo';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import {
   UNIFORM_ACTION_BUTTON_MIN_HEIGHT,
@@ -70,11 +68,11 @@ type MerchantRow = {
   originalName: string;
   name: string;
   logoUrl?: string | null;
+  icon?: string | null;
+  useAutoLogo?: boolean;
   count: number;
   total: number;
 };
-
-const MERCHANT_LOGO_SIZE = 36;
 
 function getLocalDayKey(isoDate: string) {
   const date = new Date(isoDate);
@@ -138,20 +136,18 @@ export default function TransactionsScreen() {
   const [merchantOverrides, setMerchantOverrides] = useState<MerchantOverride[]>([]);
   const [search, setSearch] = useState('');
   const [historyTypeFilter, setHistoryTypeFilter] = useState<HistoryTypeFilter>('all');
+  const [historyFiltersExpanded, setHistoryFiltersExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [activeView, setActiveView] = useState<ViewTab>(params.view === 'agenda' ? 'agenda' : params.view === 'merchants' ? 'merchants' : 'history');
   const [selected, setSelected] = useState<Transaction | null>(null);
-  const [editingMerchant, setEditingMerchant] = useState<MerchantRow | null>(null);
+  const [editingMerchant, setEditingMerchant] = useState<MerchantEditTarget | null>(null);
   const [isEditingMerchants, setIsEditingMerchants] = useState(false);
-  const [merchantNameDraft, setMerchantNameDraft] = useState('');
-  const [selectedMerchantLogoUrl, setSelectedMerchantLogoUrl] = useState<string | null>(null);
-  const [showMerchantLogoPicker, setShowMerchantLogoPicker] = useState(false);
-  const [showMerchantDeleteConfirm, setShowMerchantDeleteConfirm] = useState(false);
   const [recurringForm, setRecurringForm] = useState<PaymentForm | null>(null);
   const [recurringAccounts, setRecurringAccounts] = useState(manualAccountOptions());
   const [recurringCategories, setRecurringCategories] = useState<Category[]>([]);
   const [recurringCategoryBudgets, setRecurringCategoryBudgets] = useState<CategoryBudget[]>([]);
   const [recurringSaving, setRecurringSaving] = useState(false);
+  const [recurringFeedback, setRecurringFeedback] = useState<FormFeedback | null>(null);
   const requestedView = getRequestedView(params.view);
 
   const setCurrentView = useCallback(
@@ -186,7 +182,7 @@ export default function TransactionsScreen() {
 
   useEffect(() => dataEvents.subscribe(load), [load]);
 
-  const openNewRecurringPayment = useCallback(async () => {
+  const openNewRecurringPayment = useCallback(async (variant: RecurringPaymentAddVariant = 'bill') => {
     tapHaptic();
     const [categories, categoryBudgets, simulatedAccounts] = await Promise.all([
       getCategories(),
@@ -198,7 +194,7 @@ export default function TransactionsScreen() {
     setRecurringAccounts(accountOptions);
     setRecurringCategories(categories);
     setRecurringCategoryBudgets(categoryBudgets);
-    setRecurringForm(createNewRecurringPaymentForm(accountOptions, categories));
+    setRecurringForm(createNewRecurringPaymentForm(accountOptions, categories, variant));
   }, []);
 
   useEffect(() => uiEvents.subscribeNewRecurringPayment(() => {
@@ -209,9 +205,13 @@ export default function TransactionsScreen() {
   const saveRecurringPayment = async () => {
     if (!recurringForm) return;
     setRecurringSaving(true);
-    const ok = await saveRecurringPaymentForm(recurringForm, recurringAccounts);
+    const result = await saveRecurringPaymentForm(recurringForm, recurringAccounts);
     setRecurringSaving(false);
-    if (!ok) return;
+    if (result !== true) {
+      setRecurringFeedback(result);
+      return;
+    }
+    setRecurringFeedback(null);
     setRecurringForm(null);
     dataEvents.emit();
     successHaptic();
@@ -275,6 +275,8 @@ export default function TransactionsScreen() {
           originalName: m.name,
           name: override?.displayName?.trim() || m.name,
           logoUrl: override?.logoUrl ?? null,
+          icon: override?.icon ?? null,
+          useAutoLogo: override?.useAutoLogo !== false,
           count: m.count,
           total: m.total,
         }];
@@ -282,60 +284,18 @@ export default function TransactionsScreen() {
       .sort((a, b) => b.total - a.total);
   }, [items, merchantOverrideMap]);
 
-  const editingOverride = editingMerchant ? merchantOverrideMap.get(editingMerchant.originalName) : undefined;
-  const autoMerchantLogo = useMemo(() => getMerchantLogoUrl(merchantNameDraft), [merchantNameDraft]);
-  const merchantPreviewLogo = selectedMerchantLogoUrl ?? autoMerchantLogo;
-
   const openMerchantEditor = (merchant: MerchantRow) => {
     const override = merchantOverrideMap.get(merchant.originalName);
     tapHaptic();
-    setEditingMerchant(merchant);
-    setMerchantNameDraft(override?.displayName?.trim() || merchant.name);
-    setSelectedMerchantLogoUrl(override?.logoUrl ?? null);
-    setShowMerchantLogoPicker(false);
-    setShowMerchantDeleteConfirm(false);
+    setEditingMerchant({
+      originalName: merchant.originalName,
+      displayName: merchant.name,
+      override,
+    });
   };
 
   const closeMerchantEditor = () => {
     setEditingMerchant(null);
-    setMerchantNameDraft('');
-    setSelectedMerchantLogoUrl(null);
-    setShowMerchantLogoPicker(false);
-    setShowMerchantDeleteConfirm(false);
-  };
-
-  const saveMerchantOverride = async () => {
-    if (!editingMerchant) return;
-    const displayName = merchantNameDraft.trim();
-    if (!displayName) {
-      Alert.alert('Nom requis', 'Entre un nom de marchand à afficher.');
-      return;
-    }
-
-    await upsertMerchantOverride({
-      originalName: editingMerchant.originalName,
-      displayName: displayName === editingMerchant.originalName ? null : displayName,
-      logoUrl: selectedMerchantLogoUrl,
-      hidden: false,
-      updatedAt: new Date().toISOString(),
-    });
-    successHaptic();
-    closeMerchantEditor();
-    await load();
-  };
-
-  const hideMerchant = async () => {
-    if (!editingMerchant) return;
-    await upsertMerchantOverride({
-      originalName: editingMerchant.originalName,
-      displayName: editingOverride?.displayName ?? null,
-      logoUrl: editingOverride?.logoUrl ?? null,
-      hidden: true,
-      updatedAt: new Date().toISOString(),
-    });
-    successHaptic();
-    closeMerchantEditor();
-    await load();
   };
 
   const historyFilteredItems = useMemo(() => {
@@ -375,10 +335,6 @@ export default function TransactionsScreen() {
           active={activeView}
           onChange={setCurrentView}
           showDivider={false}
-          trackBgColor="#161616"
-          activeBgColor="#2c2c2c"
-          activeLabelColor="#ffffff"
-          inactiveLabelColor="rgba(255,255,255,0.38)"
         />
       </View>
     </View>
@@ -409,22 +365,41 @@ export default function TransactionsScreen() {
                     onChangeText={setSearch}
                     onSubmitEditing={() => void load()}
                   />
-                </View>
-                <View style={styles.historyFilterWrap}>
-                  <SegmentedTabs
-                    tabs={HISTORY_FILTER_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
-                    active={historyTypeFilter}
-                    onChange={(id) => {
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Filtres"
+                    accessibilityState={{ expanded: historyFiltersExpanded }}
+                    hitSlop={8}
+                    onPress={() => {
                       tapHaptic();
-                      setHistoryTypeFilter(id);
+                      setHistoryFiltersExpanded((expanded) => !expanded);
                     }}
-                    showDivider={false}
-                    trackBgColor="transparent"
-                    activeBgColor="rgba(255,255,255,0.07)"
-                    activeLabelColor="rgba(255,255,255,0.85)"
-                    inactiveLabelColor="rgba(255,255,255,0.28)"
-                  />
+                    style={styles.filterIconBtn}
+                  >
+                    <Ionicons
+                      name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
+                      size={20}
+                      color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
+                    />
+                  </Pressable>
                 </View>
+                {historyFiltersExpanded ? (
+                  <View style={styles.historyFilterWrap}>
+                    <SegmentedTabs
+                      tabs={HISTORY_FILTER_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
+                      active={historyTypeFilter}
+                      onChange={(id) => {
+                        tapHaptic();
+                        setHistoryTypeFilter(id);
+                      }}
+                      showDivider={false}
+                      trackBgColor="transparent"
+                      activeBgColor="rgba(255,255,255,0.07)"
+                      activeLabelColor="rgba(255,255,255,0.85)"
+                      inactiveLabelColor="rgba(255,255,255,0.28)"
+                    />
+                  </View>
+                ) : null}
               </View>
             }
             contentContainerStyle={[
@@ -500,7 +475,10 @@ export default function TransactionsScreen() {
 
       {activeView === 'agenda' ? (
         <View style={[styles.agendaWrap, { backgroundColor: contentCanvas }]}>
-          <AgendaView ref={agendaRef} />
+          <AgendaView
+            ref={agendaRef}
+            onAddRecurring={(variant) => void openNewRecurringPayment(variant)}
+          />
         </View>
       ) : null}
 
@@ -590,10 +568,13 @@ export default function TransactionsScreen() {
                   innerStyle={[styles.merchantRowInner, isEditingMerchants && styles.merchantRowEditing]}
                   outlineColors={isEditingMerchants ? editOutline : undefined}
                 >
-                <View style={styles.merchantLogoCol}>
-                  <MerchantLogo name={item.name} logoUrl={item.logoUrl} />
-                </View>
-                <View style={styles.merchantLeft}>
+                <View style={styles.merchantCenterCol}>
+                  <MerchantLogo
+                    name={item.name}
+                    logoUrl={item.logoUrl}
+                    icon={item.icon}
+                    useAutoLogo={item.useAutoLogo}
+                  />
                   <Text style={[styles.merchantName, { color: colors.text }]} {...rowTitleTextProps}>
                     {item.name}
                   </Text>
@@ -617,224 +598,13 @@ export default function TransactionsScreen() {
         </View>
       ) : null}
 
-      <Modal
+      <MerchantEditModal
         visible={Boolean(editingMerchant)}
-        animationType="fade"
-        transparent
-        onRequestClose={showMerchantDeleteConfirm ? () => setShowMerchantDeleteConfirm(false) : closeMerchantEditor}
-      >
-        <View style={styles.modalBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeMerchantEditor} />
-          <View
-            style={[
-              styles.merchantModalSheet,
-              {
-                backgroundColor: colors.surfaceSolid,
-                paddingBottom: Math.max(insets.bottom, spacing.md),
-              },
-            ]}
-          >
-            <View style={styles.modalHandle} />
-            <View style={styles.modalTitleRow}>
-              <View style={styles.modalTitleCopy}>
-                <Text style={[styles.formTitle, { color: colors.text }]}>Modifier le marchand</Text>
-                <Text style={[styles.formHint, { color: colors.textMuted }]} numberOfLines={2}>
-                  Le changement s’applique seulement à la liste Marchands.
-                </Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Fermer"
-                style={({ pressed }) => [
-                  styles.closeBtn,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
-                  pressed && styles.pressed,
-                ]}
-                onPress={closeMerchantEditor}
-              >
-                <Ionicons name="close" size={20} color={colors.textSecondary} />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.modalContent}
-            >
-              <View style={styles.formHead}>
-                <View style={styles.logoPreviewWrap}>
-                  {merchantPreviewLogo ? (
-                    <LogoIconFrame uri={merchantPreviewLogo} size={52} />
-                  ) : (
-                    <IconFrame size={52}>
-                      <Ionicons name="storefront-outline" size={22} color={colors.textMuted} />
-                    </IconFrame>
-                  )}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Choisir un logo marchand"
-                    style={({ pressed }) => [
-                      styles.logoEditButton,
-                      { backgroundColor: colors.surfaceSolid, borderColor: colors.border },
-                      pressed && styles.pressed,
-                    ]}
-                    onPress={() => {
-                      tapHaptic();
-                      setShowMerchantLogoPicker((visible) => !visible);
-                    }}
-                  >
-                    <Ionicons name="pencil-outline" size={13} color={colors.textSecondary} />
-                  </Pressable>
-                </View>
-                <View style={styles.formHeadCopy}>
-                  <Text style={[styles.formHint, { color: colors.textMuted }]}>
-                    {selectedMerchantLogoUrl
-                      ? 'Logo populaire sélectionné. Le nom peut rester personnalisé.'
-                      : 'Automatique utilise le nom du marchand pour trouver le logo.'}
-                  </Text>
-                </View>
-              </View>
-
-              {showMerchantLogoPicker ? (
-                <View style={styles.logoPickerGroup}>
-                  <View style={styles.logoPickerTitleRow}>
-                    <Text style={[styles.label, { color: colors.textMuted }]}>Logo</Text>
-                    <Text style={[styles.logoPickerHint, { color: colors.textMuted }]}>Auto par défaut</Text>
-                  </View>
-                  <View style={styles.logoOptionRow}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Utiliser le logo automatique"
-                      onPress={() => {
-                        tapHaptic();
-                        setSelectedMerchantLogoUrl(null);
-                        setShowMerchantLogoPicker(false);
-                      }}
-                      style={[
-                        styles.logoOption,
-                        !selectedMerchantLogoUrl && styles.logoOptionActive,
-                        { borderColor: !selectedMerchantLogoUrl ? colors.primary : colors.border },
-                      ]}
-                    >
-                      {autoMerchantLogo ? (
-                        <LogoIconFrame uri={autoMerchantLogo} size={34} />
-                      ) : (
-                        <IconFrame size={34}>
-                          <Ionicons name="sparkles-outline" size={17} color={colors.textMuted} />
-                        </IconFrame>
-                      )}
-                    </Pressable>
-
-                    {POPULAR_MERCHANT_LOGO_OPTIONS.map((option) => {
-                      const selectedLogo = selectedMerchantLogoUrl === option.logoUrl;
-                      return (
-                        <Pressable
-                          key={option.id}
-                          accessibilityRole="button"
-                          accessibilityLabel="Choisir ce logo"
-                          onPress={() => {
-                            tapHaptic();
-                            setSelectedMerchantLogoUrl(option.logoUrl);
-                            setShowMerchantLogoPicker(false);
-                          }}
-                          style={[
-                            styles.logoOption,
-                            selectedLogo && styles.logoOptionActive,
-                            { borderColor: selectedLogo ? colors.primary : colors.border },
-                          ]}
-                        >
-                          {option.logoUrl ? (
-                            <LogoIconFrame uri={option.logoUrl} size={34} />
-                          ) : (
-                            <IconFrame size={34}>
-                              <Ionicons name="storefront-outline" size={17} color={colors.textMuted} />
-                            </IconFrame>
-                          )}
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              ) : null}
-
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>Nom du marchand</Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    { backgroundColor: colors.surface, borderColor: colors.borderStrong, color: colors.text },
-                  ]}
-                  value={merchantNameDraft}
-                  onChangeText={setMerchantNameDraft}
-                  placeholder="IGA, Metro, Tim Hortons..."
-                  placeholderTextColor={colors.textMuted}
-                />
-              </View>
-
-              <Pressable style={[styles.saveBtn, { backgroundColor: colors.text }]} onPress={() => void saveMerchantOverride()}>
-                <Text style={[styles.saveText, { color: colors.background }]}>Enregistrer</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.deleteBtn,
-                  { backgroundColor: colors.dangerMuted, borderColor: colors.danger },
-                  pressed && styles.pressed,
-                ]}
-                onPress={() => {
-                  tapHaptic();
-                  setShowMerchantDeleteConfirm(true);
-                }}
-              >
-                <Ionicons name="trash-outline" size={16} color={colors.danger} />
-                <Text style={[styles.deleteText, { color: colors.danger }]}>Supprimer de la liste</Text>
-              </Pressable>
-            </ScrollView>
-          </View>
-          {showMerchantDeleteConfirm && editingMerchant ? (
-            <View style={styles.confirmOverlay}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Annuler le retrait du marchand"
-                style={StyleSheet.absoluteFill}
-                onPress={() => setShowMerchantDeleteConfirm(false)}
-              />
-              <GlassContainer style={styles.confirmCard} padding={spacing.lg} borderRadius={radius.card} innerStyle={styles.confirmCardInner}>
-                <View style={[styles.confirmIcon, { backgroundColor: colors.dangerMuted }]}>
-                  <Ionicons name="trash-outline" size={20} color={colors.danger} />
-                </View>
-                <Text style={[styles.confirmTitle, { color: colors.text }]}>Retirer ce marchand ?</Text>
-                <Text style={[styles.confirmMessage, { color: colors.textMuted }]}>
-                  {editingMerchant.name} sera retiré de la liste Marchands. Les transactions existantes restent conservées.
-                </Text>
-                <View style={styles.confirmActions}>
-                  <Pressable
-                    accessibilityRole="button"
-                    style={({ pressed }) => [
-                      styles.confirmSecondaryButton,
-                      { backgroundColor: colors.surface, borderColor: colors.border },
-                      pressed && styles.pressed,
-                    ]}
-                    onPress={() => setShowMerchantDeleteConfirm(false)}
-                  >
-                    <Text style={[styles.confirmSecondaryText, { color: colors.textSecondary }]}>Annuler</Text>
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    style={({ pressed }) => [
-                      styles.confirmDestructiveButton,
-                      { backgroundColor: colors.danger, borderColor: colors.danger },
-                      pressed && styles.pressed,
-                    ]}
-                    onPress={() => void hideMerchant()}
-                  >
-                    <Text style={[styles.confirmDestructiveText, { color: colors.background }]}>Retirer</Text>
-                  </Pressable>
-                </View>
-              </GlassContainer>
-            </View>
-          ) : null}
-        </View>
-      </Modal>
+        merchant={editingMerchant}
+        bottomInset={insets.bottom}
+        onClose={closeMerchantEditor}
+        onSaved={load}
+      />
       <TransactionDetailSheet transaction={selected} onClose={() => setSelected(null)} onDeleted={() => { void load(); }} />
       <RecurringPaymentFormModal
         visible={recurringForm != null}
@@ -844,9 +614,13 @@ export default function TransactionsScreen() {
         categoryBudgets={recurringCategoryBudgets}
         saving={recurringSaving}
         bottomInset={insets.bottom}
-        onClose={() => setRecurringForm(null)}
+        onClose={() => {
+          setRecurringForm(null);
+          setRecurringFeedback(null);
+        }}
         onChange={setRecurringForm}
         onSave={() => void saveRecurringPayment()}
+        feedback={recurringFeedback}
       />
     </View>
     </PageTransition>
@@ -884,6 +658,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardBackground,
   },
   search: { flex: 1, color: colors.text, fontSize: typography.body, padding: 0 },
+  filterIconBtn: {
+    padding: 4,
+    marginLeft: spacing.xs,
+  },
   historyFilterWrap: {
     marginBottom: spacing.xl,
   },
@@ -1000,31 +778,36 @@ const styles = StyleSheet.create({
     height: PORTFOLIO_SECTION_GAP,
   },
   merchantRowInner: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
     gap: spacing.sm,
     minHeight: UNIFORM_ROW_MIN_HEIGHT,
+    paddingVertical: spacing.sm,
   },
   merchantRowEditing: {},
   merchantRowPressed: {
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
-  merchantChevron: { opacity: 0.5, marginLeft: spacing.xs },
-  merchantLogoCol: {
-    minWidth: MERCHANT_LOGO_SIZE,
+  merchantChevron: {
+    opacity: 0.5,
+    position: 'absolute',
+    right: 0,
+    top: '50%',
+    marginTop: -8,
+  },
+  merchantCenterCol: {
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
-  },
-  merchantLeft: {
-    flex: 1,
-    flexShrink: 1,
-    minWidth: 0,
-    paddingRight: spacing.sm,
+    width: '100%',
+    paddingHorizontal: spacing.xl,
+    gap: spacing.sm,
   },
   merchantName: {
     ...rowLabel,
     fontWeight: '800',
+    textAlign: 'center',
   },
   merchantMeta: {
     color: colors.textMuted,
@@ -1148,8 +931,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.scopeActive,
   },
   logoOptionIcon: {
-    width: 34,
-    height: 34,
+    width: ICON_WELL_SIZE,
+    height: ICON_WELL_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },

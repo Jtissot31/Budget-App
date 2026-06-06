@@ -1,6 +1,8 @@
 import type { AppColors } from '@/constants/theme';
-import { darkColors, radius } from '@/constants/theme';
+import { darkColors, ICON_WELL_SIZE, radius } from '@/constants/theme';
 import type { ViewStyle } from 'react-native';
+
+export { ICON_GLYPH_SIZE, ICON_WELL_SIZE } from '@/constants/theme';
 
 /** Charcoal icon well — same as dark theme icon wells (#181818). */
 export const USER_PICKED_ICON_WELL_BG_DARK = darkColors.surfaceElevated;
@@ -66,14 +68,15 @@ function iconWellStyleBase(size: number, backgroundColor: string): ViewStyle {
   };
 }
 
-export function userPickedIconWellStyle(size: number, isLight: boolean): ViewStyle {
+export function userPickedIconWellStyle(size: number = ICON_WELL_SIZE, isLight: boolean): ViewStyle {
   return iconWellStyleBase(size, resolveUserPickedIconWellBackground(isLight));
 }
 
-export function logoIconWellStyle(size: number, isLight: boolean): ViewStyle {
+export function logoIconWellStyle(size: number = ICON_WELL_SIZE, isLight: boolean): ViewStyle {
   return iconWellStyleBase(size, resolveLogoIconWellBackground(isLight));
 }
 
-export function userPickedIconGlyphSize(size: number, iconSize?: number): number {
+/** Vector glyph size inside a standard icon well (defaults to ICON_WELL_SIZE). */
+export function userPickedIconGlyphSize(size: number = ICON_WELL_SIZE, iconSize?: number): number {
   return iconSize ?? Math.max(16, size * 0.46);
 }

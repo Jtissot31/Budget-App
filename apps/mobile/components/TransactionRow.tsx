@@ -38,7 +38,7 @@ export function TransactionRow({ transaction: tx, accounts, onPress }: Props) {
         padding={spacing.md}
         innerStyle={styles.cardInner}
       >
-          <TransactionAvatar transaction={tx} size={34} />
+          <TransactionAvatar transaction={tx} size={48} />
           <View style={styles.body}>
             <View style={styles.labelRow}>
               <Text style={[styles.label, { color: colors.text }]} {...rowTitleTextProps}>
@@ -81,6 +81,7 @@ const styles = StyleSheet.create({
   labelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minWidth: 0 },
   label: {
     ...listRowTitle,
+    fontSize: 13,
   },
   accountPill: {
     alignSelf: 'flex-start',

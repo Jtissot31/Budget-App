@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -17,15 +16,20 @@ import { MotiView } from 'moti';
 import { CategoryBudgetProgress } from '@/components/CategoryBudgetProgress';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
+import { ThemedFormMessage } from '@/components/ThemedFormMessage';
+import { formValidationError, type FormFeedback, type FormSaveResult } from '@/lib/formFeedback';
 import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
+import { MdiIconPicker } from '@/components/MdiIconPicker';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import { GhostNumpad } from '@/components/GhostNumpad';
 import { DatePickerField } from '@/components/MinimalDatePicker';
-import { getCategoryIconName, MANUAL_ICON_PICKER_OPTIONS } from '@/constants/categoryOptions';
+import { getCategoryIconName } from '@/constants/categoryOptions';
+import { EXPENSE_MDI_ICON, type MdiIconName } from '@/lib/mdiIconCatalog';
 import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
 import { ghost, ghostCardShadow } from '@/constants/ghostUi';
 import {
   colors,
+  ICON_WELL_SIZE,
   interBoldText,
   interExtraBoldText,
   interMediumText,
@@ -61,6 +65,8 @@ type RecurringCategoryRule = {
   kinds?: RecurringPaymentKind[];
 };
 
+export type RecurringPaymentAddVariant = 'subscription' | 'bill' | 'income';
+
 export type PaymentForm = {
   id: string;
   name: string;
@@ -74,7 +80,7 @@ export type PaymentForm = {
   nextDate: string;
   endDate: string;
   active: boolean;
-  icon: IconName;
+  icon: string;
   color: string;
   logoUrl: string | null;
   logoMode: LogoSelectionMode;
@@ -88,7 +94,7 @@ const FREQUENCIES: Array<{ id: RecurringPaymentFrequency; label: string }> = [
   { id: 'yearly', label: 'Annuel' },
 ];
 const DEFAULT_COLOR = '#00A854';
-const DEFAULT_ICON: IconName = 'repeat-outline';
+const DEFAULT_ICON = 'RecurringEvent';
 const COMPACT_CATEGORY_LIMIT = 5;
 
 const INCOME_CATEGORY_TERMS = ['revenu', 'revenus', 'salaire', 'paie', 'paye', 'payroll', 'income'];
@@ -186,12 +192,18 @@ function amountFontSize(raw: string) {
   return Math.max(36, 64 - Math.min(len, 12) * 2.2);
 }
 
+const SUBSCRIPTION_CATEGORY_TERMS = ['abonnement', 'subscription', 'loisir', 'loisirs', 'divertissement'];
+const SUBSCRIPTION_DEFAULT_ICON = 'Movie';
+const SUBSCRIPTION_DEFAULT_COLOR = '#F43F5E';
+
 export function createNewRecurringPaymentForm(
   accounts: AccountOption[],
   categories: Category[],
-  kind: RecurringPaymentKind = 'payment',
+  variant: RecurringPaymentAddVariant = 'bill',
 ): PaymentForm {
+  const kind: RecurringPaymentKind = variant === 'income' ? 'income' : 'payment';
   const account = accounts[0] ?? manualAccountOptions()[0];
+  const isSubscription = variant === 'subscription';
   return {
     id: createLocalId(),
     name: '',
@@ -199,16 +211,16 @@ export function createNewRecurringPaymentForm(
     kind,
     accountId: account.id,
     accountLabel: account.label,
-    categoryId: getDefaultCategoryId(categories, kind),
+    categoryId: getDefaultCategoryIdForVariant(categories, variant),
     frequency: 'monthly',
     dueDay: '',
     nextDate: new Date().toISOString().slice(0, 10),
     endDate: '',
     active: true,
-    icon: kind === 'income' ? 'cash-outline' : DEFAULT_ICON,
-    color: kind === 'income' ? ghost.mint : DEFAULT_COLOR,
+    icon: kind === 'income' ? 'AttachMoney' : isSubscription ? SUBSCRIPTION_DEFAULT_ICON : DEFAULT_ICON,
+    color: kind === 'income' ? ghost.mint : isSubscription ? SUBSCRIPTION_DEFAULT_COLOR : DEFAULT_COLOR,
     logoUrl: null,
-    logoMode: 'auto',
+    logoMode: isSubscription ? 'icon' : 'auto',
     createdAt: new Date().toISOString(),
   };
 }
@@ -225,6 +237,7 @@ function PaymentFormModal({
   onChange,
   onSave,
   onDelete,
+  feedback,
 }: {
   visible: boolean;
   form: PaymentForm | null;
@@ -237,6 +250,7 @@ function PaymentFormModal({
   onChange: (form: PaymentForm | null | ((current: PaymentForm | null) => PaymentForm | null)) => void;
   onSave: () => void;
   onDelete?: () => void;
+  feedback?: FormFeedback | null;
 }) {
   const { colors: themeColors, isLight } = useAppTheme();
   const [showLogoPicker, setShowLogoPicker] = useState(false);
@@ -293,7 +307,7 @@ function PaymentFormModal({
   );
 
   if (!form) return null;
-  const displayAmount = `${form.kind === 'income' ? '+' : '-'}${form.amount || '0'} $`;
+  const displayAmount = `${form.kind === 'income' ? '+' : '−'}${form.amount || '0'} $`;
   const canSubmit = Boolean(form.name.trim()) && parseAmount(form.amount) > 0 && Boolean(form.accountId) && Boolean(form.nextDate.trim());
   const visibleCategories = getRecurringCategoryBase(categories, form.kind);
   const suggestedCategories = getRelevantRecurringCategoryChoices(form.name, visibleCategories, form.categoryId, form.kind);
@@ -302,8 +316,7 @@ function PaymentFormModal({
   const hasHiddenCategories = visibleCategories.some((category) => !shownCategoryIds.has(category.id));
   const autoLogoUrl = getMerchantLogoUrl(form.name.trim());
   const previewLogoUrl = form.logoMode === 'logo' ? form.logoUrl : form.logoMode === 'auto' ? autoLogoUrl : null;
-  const previewIcon = form.logoMode === 'icon' ? form.icon : form.kind === 'income' ? 'cash-outline' : DEFAULT_ICON;
-  const previewTint = form.logoMode === 'icon' ? form.color : form.kind === 'income' ? themeColors.primary : DEFAULT_COLOR;
+  const previewIcon = form.logoMode === 'icon' ? form.icon : form.kind === 'income' ? 'AttachMoney' : DEFAULT_ICON;
   const impactSummary = getRecurringImpactSummary(form, categoryBudgets);
   const selectedCategoryBudget =
     form.kind === 'payment' && form.categoryId
@@ -353,7 +366,7 @@ function PaymentFormModal({
                                 ...current,
                                 kind,
                                 categoryId: getDefaultCategoryId(categories, kind),
-                                icon: kind === 'income' ? 'cash-outline' : DEFAULT_ICON,
+                                icon: kind === 'income' ? 'AttachMoney' : DEFAULT_ICON,
                                 color: kind === 'income' ? ghost.mint : DEFAULT_COLOR,
                               }
                             : current,
@@ -393,39 +406,32 @@ function PaymentFormModal({
 
             <View style={[styles.logoSection, themed.logoPanel]}>
               <View style={styles.logoHeader}>
-                {previewLogoUrl ? (
-                  <LogoIconFrame uri={previewLogoUrl} size={52} />
-                ) : (
-                  <IconFrame size={52}>
-                    <Ionicons name={previewIcon} size={22} color={previewTint} />
-                  </IconFrame>
-                )}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Changer le logo ou l'icône"
+                  onPress={() => {
+                    tapHaptic();
+                    setShowLogoPicker((shown) => !shown);
+                  }}
+                >
+                  {previewLogoUrl ? (
+                    <LogoIconFrame uri={previewLogoUrl} size={52} />
+                  ) : (
+                    <UserPickedIconBadge icon={previewIcon} size={52} iconSize={22} wellGlyphWhite />
+                  )}
+                </Pressable>
                 <View style={styles.logoCopy}>
                   <DashboardSectionLabel>Logo</DashboardSectionLabel>
                   <Text style={[styles.logoHint, themed.textMuted]}>
                     {form.logoMode === 'auto'
                       ? autoLogoUrl
                         ? 'Logo automatique trouvé avec le nom.'
-                        : 'Automatique utilisera une icône si aucun logo exact existe.'
+                        : 'Touche l\'icône pour choisir dans la bibliothèque MDI.'
                       : form.logoMode === 'logo'
                         ? 'Logo manuel sélectionné.'
-                        : 'Icône manuelle sélectionnée.'}
+                        : 'Icône MDI sélectionnée.'}
                   </Text>
                 </View>
-                <Pressable
-                  onPress={() => {
-                    tapHaptic();
-                    setShowLogoPicker((shown) => !shown);
-                  }}
-                  hitSlop={8}
-                  style={({ pressed }) => [
-                    styles.logoEditButton,
-                    themed.controlStrong,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Ionicons name="pencil-outline" size={14} color={themeColors.textMuted} />
-                </Pressable>
               </View>
 
               {showLogoPicker ? (
@@ -488,33 +494,24 @@ function PaymentFormModal({
                     ))}
                   </View>
 
-                  <Text style={[styles.logoPickerHint, themed.textMuted]}>Icônes</Text>
-                  <View style={styles.logoOptionRow}>
-                    {MANUAL_ICON_PICKER_OPTIONS.map((option) => (
-                      <RecurringLogoOption
-                        key={option.id}
-                        label={option.label}
-                        selected={form.logoMode === 'icon' && form.icon === option.icon}
-                        fallbackIcon={option.icon}
-                        fallbackColor={option.color}
-                        onPress={() => {
-                          tapHaptic();
-                          onChange((current) =>
-                            current
-                              ? {
-                                  ...current,
-                                  logoMode: 'icon',
-                                  logoUrl: null,
-                                  icon: option.icon,
-                                  color: option.color,
-                                }
-                              : current,
-                          );
-                          setShowLogoPicker(false);
-                        }}
-                      />
-                    ))}
-                  </View>
+                  <Text style={[styles.logoPickerHint, themed.textMuted]}>Icônes MDI</Text>
+                  <MdiIconPicker
+                    selectedIcon={form.logoMode === 'icon' ? form.icon : previewIcon}
+                    onSelect={(icon: MdiIconName) => {
+                      onChange((current) =>
+                        current
+                          ? {
+                              ...current,
+                              logoMode: 'icon',
+                              logoUrl: null,
+                              icon,
+                              color: current.kind === 'income' ? ghost.mint : DEFAULT_COLOR,
+                            }
+                          : current,
+                      );
+                      setShowLogoPicker(false);
+                    }}
+                  />
                 </View>
               ) : null}
             </View>
@@ -677,6 +674,14 @@ function PaymentFormModal({
               </View>
             ) : null}
 
+            {feedback ? (
+              <ThemedFormMessage
+                variant={feedback.variant}
+                title={feedback.title}
+                message={feedback.message}
+              />
+            ) : null}
+
             <PrimarySaveButton
               label={saving ? 'Enregistrement...' : 'Enregistrer'}
               onPress={onSave}
@@ -706,14 +711,13 @@ function PaymentFormModal({
 }
 
 function RecurringPaymentAvatar({ payment, tint, size }: { payment: RecurringPayment; tint: string; size: number }) {
-  const icon = isIconName(payment.icon) ? payment.icon : defaultIconForKind(payment.kind === 'income' ? 'income' : 'payment');
-
   return (
     <UserPickedIconBadge
-      icon={icon}
+      icon={resolvePaymentIcon(payment)}
       color={tint}
       size={size}
       logoUrl={payment.logoUrl}
+      wellGlyphWhite
     />
   );
 }
@@ -749,9 +753,9 @@ function RecurringLogoOption({
       ]}
     >
       {logoUrl ? (
-        <LogoIconFrame uri={logoUrl} size={36} />
+        <LogoIconFrame uri={logoUrl} size={ICON_WELL_SIZE} />
       ) : (
-        <UserPickedIconBadge icon={fallbackIcon} color={fallbackColor} size={36} iconSize={17} />
+        <UserPickedIconBadge icon={fallbackIcon} color={fallbackColor} size={ICON_WELL_SIZE} />
       )}
     </Pressable>
   );
@@ -965,8 +969,28 @@ function getDefaultCategoryId(categories: Category[], kind: RecurringPaymentKind
   return category?.id ?? null;
 }
 
-function defaultIconForKind(kind: RecurringPaymentKind): IconName {
-  return kind === 'income' ? 'cash-outline' : DEFAULT_ICON;
+function getDefaultCategoryIdForVariant(categories: Category[], variant: RecurringPaymentAddVariant) {
+  if (variant === 'income') {
+    return getDefaultCategoryId(categories, 'income');
+  }
+
+  if (variant === 'subscription') {
+    const subscriptionCategory =
+      categories.find((category) => category.id === 'cat-fun') ??
+      findCategoriesByName(categories, SUBSCRIPTION_CATEGORY_TERMS)[0];
+    return subscriptionCategory?.id ?? getDefaultCategoryId(categories, 'payment');
+  }
+
+  return getDefaultCategoryId(categories, 'payment');
+}
+
+function defaultIconForKind(kind: RecurringPaymentKind): string {
+  return kind === 'income' ? 'AttachMoney' : DEFAULT_ICON;
+}
+
+function resolvePaymentIcon(payment: RecurringPayment): string {
+  if (payment.icon?.trim()) return payment.icon;
+  return defaultIconForKind(payment.kind === 'income' ? 'income' : 'payment');
 }
 
 function inferLogoMode(payment: RecurringPayment): LogoSelectionMode {
@@ -975,7 +999,7 @@ function inferLogoMode(payment: RecurringPayment): LogoSelectionMode {
     return logoUrl === getMerchantLogoUrl(payment.name) ? 'auto' : 'logo';
   }
 
-  const icon = isIconName(payment.icon) ? payment.icon : defaultIconForKind(payment.kind === 'income' ? 'income' : 'payment');
+  const icon = resolvePaymentIcon(payment);
   return icon === defaultIconForKind(payment.kind === 'income' ? 'income' : 'payment') ? 'auto' : 'icon';
 }
 
@@ -999,7 +1023,7 @@ export function recurringPaymentToForm(payment: RecurringPayment): PaymentForm {
     nextDate: payment.nextDate ?? getNextDate(payment.dueDay ?? null, payment.frequency) ?? '',
     endDate: payment.endDate ?? '',
     active: payment.active,
-    icon: isIconName(payment.icon) ? payment.icon : DEFAULT_ICON,
+    icon: resolvePaymentIcon(payment),
     color: normalizeColor(payment.color),
     logoUrl: payment.logoUrl ?? null,
     logoMode: inferLogoMode(payment),
@@ -1007,30 +1031,25 @@ export function recurringPaymentToForm(payment: RecurringPayment): PaymentForm {
   };
 }
 
-export async function saveRecurringPaymentForm(form: PaymentForm, accounts: AccountOption[]): Promise<boolean> {
+export async function saveRecurringPaymentForm(form: PaymentForm, accounts: AccountOption[]): Promise<FormSaveResult> {
   const name = form.name.trim();
   const amount = parseAmount(form.amount);
   const account = accounts.find((item) => item.id === form.accountId);
 
   if (!name) {
-    Alert.alert('Nom requis', 'Indique le paiement ou le revenu.');
-    return false;
+    return formValidationError('Nom requis', 'Indique le paiement ou le revenu.');
   }
   if (Number.isNaN(amount) || amount <= 0) {
-    Alert.alert('Montant invalide', 'Saisis un montant positif.');
-    return false;
+    return formValidationError('Montant invalide', 'Saisis un montant positif.');
   }
   if (!account) {
-    Alert.alert('Compte requis', 'Choisis le compte utilisé.');
-    return false;
+    return formValidationError('Compte requis', 'Choisis le compte utilisé.');
   }
   if (!form.nextDate.trim()) {
-    Alert.alert('Date requise', 'Choisis la prochaine date.');
-    return false;
+    return formValidationError('Date requise', 'Choisis la prochaine date.');
   }
   if (form.endDate.trim() && form.endDate.trim() < form.nextDate.trim()) {
-    Alert.alert('Date de fin invalide', 'La date de fin doit être après la prochaine date.');
-    return false;
+    return formValidationError('Date de fin invalide', 'La date de fin doit être après la prochaine date.');
   }
 
   await upsertRecurringPayment({
@@ -1312,8 +1331,8 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   logoOptionIcon: {
-    width: 34,
-    height: 34,
+    width: ICON_WELL_SIZE,
+    height: ICON_WELL_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },

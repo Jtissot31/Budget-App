@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Path } from 'react-native-svg';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { usePathname, useRouter } from 'expo-router';
 import { uiEvents } from '@/lib/events';
@@ -15,7 +16,7 @@ import {
   floatingGlassButtonPressed,
   floatingGlassFabSurface,
 } from '@/constants/floatingGlassButton';
-import { getFloatingTabBarBottomInset, radius, spacing } from '@/constants/theme';
+import { getFloatingTabBarBottomInset, lightColors, radius, spacing } from '@/constants/theme';
 import { UNIFORM_CHIP_FONT_SIZE } from '@/lib/uniformGroupStyles';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -42,10 +43,46 @@ const HIDDEN_ROUTES = new Set(['settings']);
 
 /** Brand green AI FAB gradients (expo-linear-gradient, 3-stop) */
 const AI_CHAT_FAB_GRADIENT_DARK = ['#003d1a', '#007a3d', '#00e664'] as const;
-const AI_CHAT_FAB_GRADIENT_LIGHT = ['#00e664', '#00a854', '#007a3d'] as const;
+const AI_CHAT_FAB_GRADIENT_LIGHT = [lightColors.primary, '#00a854', '#007a3d'] as const;
 const AI_CHAT_FAB_GRADIENT_LOCATIONS = [0, 0.5, 1] as const;
 
 const aiGraphic = (base: number) => Math.round(base * FLOATING_FAB_VISUAL_SCALE);
+
+/** `Plus` from src/icons — React Native SVG. */
+function PlusFabIcon({ size, color }: { size: number; color: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        fill={color}
+        d="M19 11h-6V5a1 1 0 0 0-2 0v6H5a1 1 0 0 0 0 2h6v6a1 1 0 0 0 2 0v-6h6a1 1 0 0 0 0-2Z"
+      />
+    </Svg>
+  );
+}
+
+/** `RecurringEvent` from src/icons — React Native SVG. */
+function RecurringEventFabIcon({ size, color }: { size: number; color: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 2048 2048" fill="none">
+      <Path
+        fill={color}
+        d="M256 1536h768v128H128V128h256V0h128v128h896V0h128v128h256v896h-128V640H256v896zm0-1280v256h1408V256h-128v128h-128V256H512v128H384V256H256zm1792 896v384h-384v-128h190q-45-60-112-94t-142-34q-59 0-111 20t-95 55t-70 85t-38 107l-127-22q14-81 54-149t98-118t133-78t156-28q91 0 174 35t146 102v-137h128zm-448 768q58 0 111-20t95-55t70-85t38-107l127 22q-14 81-54 149t-98 118t-133 78t-156 28q-91 0-174-35t-146-102v137h-128v-384h384v128h-190q45 60 112 94t142 34z"
+      />
+    </Svg>
+  );
+}
+
+/** `Chat` from src/icons — React Native SVG. */
+function DashboardChatIcon({ size, color }: { size: number; color: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        fill={color}
+        d="M3 20.077V4.615q0-.69.463-1.152Q3.925 3 4.615 3h14.77q.69 0 1.152.463q.463.462.463 1.152v10.77q0 .69-.462 1.153q-.463.462-1.153.462H6.077L3 20.077ZM6.5 13.5h7v-1h-7v1Zm0-3h11v-1h-11v1Zm0-3h11v-1h-11v1Z"
+      />
+    </Svg>
+  );
+}
 
 /** Vertical stack above tab bar: add (lowest) → scan when Historique FAB expanded. */
 const FAB_STACK_OFFSET_ADD = 104;
@@ -139,7 +176,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
             style={{ ...StyleSheet.absoluteFillObject, borderRadius: FLOATING_FAB_RADIUS }}
           />
           <View style={styles.aiChatIconWrap}>
-            <Ionicons name="sparkles" size={FLOATING_FAB_ICON_SIZE} color="#FFFFFF" />
+            <DashboardChatIcon size={FLOATING_FAB_ICON_SIZE + 5} color="#FFFFFF" />
           </View>
         </Pressable>
       ) : null}
@@ -186,7 +223,11 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           style={({ pressed }) => [
             styles.addOuter,
             styles.fabPosition,
-            { bottom: rightThumbFabBottom + FAB_STACK_OFFSET_ADD },
+            {
+              bottom: rightThumbFabBottom + FAB_STACK_OFFSET_ADD,
+              backgroundColor: colors.primary,
+              shadowColor: colors.primary,
+            },
             pressed && floatingGlassButtonPressed,
           ]}
           onPress={handleAddPress}
@@ -196,17 +237,13 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           }
           accessibilityLabel={shouldAddRecurringPayment ? 'Nouveau paiement récurrent' : 'Nouvelle transaction'}
         >
-          <MotiView
-            animate={{ rotate: shouldAddRecurringPayment ? '180deg' : '0deg' }}
-            transition={{ type: 'timing', duration: 260 }}
-            style={styles.addIconWrap}
-          >
+          <View style={styles.addIconWrap}>
             {shouldAddRecurringPayment ? (
-              <Ionicons name="repeat-outline" size={FLOATING_FAB_ICON_SIZE} color="#000000" />
+              <RecurringEventFabIcon size={28} color="#000000" />
             ) : (
-              <Text style={styles.addFabText}>+</Text>
+              <PlusFabIcon size={24} color="#000000" />
             )}
-          </MotiView>
+          </View>
         </Pressable>
       ) : null}
 
@@ -310,21 +347,12 @@ const styles = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: 27,
-    backgroundColor: '#00e664',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#00e664',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.35,
     shadowRadius: 16,
     elevation: 12,
-  },
-  addFabText: {
-    fontSize: 28,
-    color: '#000000',
-    fontWeight: '300',
-    lineHeight: 32,
-    includeFontPadding: false,
   },
   aiChatOuter: {
     position: 'absolute',

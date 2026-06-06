@@ -19,7 +19,7 @@ export {
 
 /** Light app canvas — single smooth diagonal warm-grey gradient */
 export const appBackgroundGradientLight = {
-  colors: ['#FAFAFA', '#F2F2F2', '#ECECEC', '#E4E4E4'] as const,
+  colors: ['#EFEFEF', '#E8E8E8', '#E0E0E0', '#D8D8D8'] as const,
   locations: [0, 0.38, 0.72, 1] as const,
   start: { x: 0, y: 0 },
   end: { x: 0.28, y: 1 },
@@ -37,15 +37,31 @@ export const CANVAS_CHARCOAL = DARK_CANVAS;
  */
 export const CONTAINER_SURFACE = '#111111';
 
+/** Segmented tab bar — Transactions / Portefeuille scope tabs (dark) */
+export const segmentedTabBarDark = {
+  track: '#1C1C1C',
+  activePill: '#2C2C2C',
+  activeText: '#FFFFFF',
+  inactiveText: '#6B6B6B',
+} as const;
+
+/** Segmented tab bar — light theme (unchanged from prior light work) */
+export const segmentedTabBarLight = {
+  track: 'rgba(10, 10, 10, 0.06)',
+  activePill: 'rgba(0, 168, 84, 0.14)',
+  activeText: '#0D1117',
+  inactiveText: '#52525B',
+} as const;
+
 /** Dashboard dark palette — single source of truth for app-wide dark surfaces */
 export const dashboardPalette = {
   bg: DARK_CANVAS,
   card: CONTAINER_SURFACE,
   iconBox: '#181818',
   /** Portfolio scope segmented control track — distinct from card surfaces */
-  scopeTrack: '#1C2128',
+  scopeTrack: segmentedTabBarDark.track,
   /** Active pill on scope track — slightly elevated from track */
-  scopeActive: '#21262D',
+  scopeActive: segmentedTabBarDark.activePill,
   border: '#1c1c1c',
   green: '#00e664',
   red: '#ff5555',
@@ -98,20 +114,24 @@ export const darkColors = {
   glassBlurIntensity: 0,
   scopeTrack: dashboardPalette.scopeTrack,
   scopeActive: dashboardPalette.scopeActive,
+  segmentedTabTrack: segmentedTabBarDark.track,
+  segmentedTabActivePill: segmentedTabBarDark.activePill,
+  segmentedTabActiveText: segmentedTabBarDark.activeText,
+  segmentedTabInactiveText: segmentedTabBarDark.inactiveText,
 } as const;
 
 export const lightColors = {
-  background: '#FFFFFF',
+  background: '#F0F0F0',
   screenCanvas: 'transparent',
-  surface: '#F6F8FA',
+  surface: '#FFFFFF',
   surfaceSolid: '#FFFFFF',
   cardBackground: '#FFFFFF',
   glassSolid: '#FFFFFF',
-  surfaceElevated: '#F6F8FA',
-  input: '#F6F8FA',
-  border: '#D0D7DE',
-  borderStrong: '#AFB8C1',
-  cardBorder: '#D0D7DE',
+  surfaceElevated: '#E8E8ED',
+  input: '#E8E8ED',
+  border: '#C0C0C8',
+  borderStrong: '#9090A0',
+  cardBorder: '#C0C0C8',
   text: '#0D1117',
   textSecondary: '#4B5563',
   textMuted: '#52525B',
@@ -137,8 +157,12 @@ export const lightColors = {
   /** @deprecated Use glassBorder */
   glassBorderBottom: 'rgba(255, 255, 255, 0.06)',
   glassBlurIntensity: 0,
-  scopeTrack: 'rgba(10, 10, 10, 0.06)',
-  scopeActive: 'rgba(0, 168, 84, 0.14)',
+  scopeTrack: segmentedTabBarLight.track,
+  scopeActive: segmentedTabBarLight.activePill,
+  segmentedTabTrack: segmentedTabBarLight.track,
+  segmentedTabActivePill: segmentedTabBarLight.activePill,
+  segmentedTabActiveText: segmentedTabBarLight.activeText,
+  segmentedTabInactiveText: segmentedTabBarLight.inactiveText,
 } as const;
 
 export type AppColors = typeof darkColors;
@@ -150,6 +174,26 @@ export const themeColors: Record<ThemePreference, AppColors> = {
 };
 
 export const colors = darkColors;
+
+/** Dashboard palette for the active theme (Comptes / alertes / styles statiques dashboard). */
+export function dashboardPaletteForTheme(isLight: boolean) {
+  return isLight ? lightDashboardPalette : dashboardPalette;
+}
+
+/** Dashboard palette shape derived from light tokens. */
+export const lightDashboardPalette = {
+  bg: lightColors.background,
+  card: lightColors.cardBackground,
+  iconBox: lightColors.surfaceElevated,
+  scopeTrack: lightColors.scopeTrack,
+  scopeActive: lightColors.scopeActive,
+  border: lightColors.border,
+  green: lightColors.primary,
+  red: lightColors.danger,
+  text: lightColors.text,
+  subtext: lightColors.textSecondary,
+  warning: lightColors.warning,
+} as const;
 
 /** Spacing scale: 4, 8, 12, 16, 24, 32 only */
 export const spacing = {
@@ -179,6 +223,20 @@ export const radius = {
 
 /** Standard progress bar track height */
 export const PROGRESS_BAR_TRACK_HEIGHT = 8;
+
+/**
+ * Standard icon well size (px) for cards, lists, dashboard rows, transaction avatars, etc.
+ * Matches dashboard « Prochain paiement » house icon well (34×34).
+ * Use with LogoIconFrame, IconFrame, userPickedIconWellStyle, UserPickedIconBadge in list/card context.
+ * Do NOT use for FAB buttons (FloatingTabBar) or tiny legend/calendar markers (12–16px).
+ */
+export const ICON_WELL_SIZE = 34;
+
+/**
+ * Full-bleed custom SVG glyph inside a standard well (e.g. DashboardHouseIcon).
+ * For Ionicons inside wells, use {@link userPickedIconGlyphSize}(ICON_WELL_SIZE) (~16px).
+ */
+export const ICON_GLYPH_SIZE = ICON_WELL_SIZE;
 
 export const typography = {
   fontFamily: fontFamilies.regular,
@@ -249,19 +307,86 @@ export const chartTokens = {
   periodActiveBgLight: 'rgba(0, 168, 84, 0.14)',
 } as const;
 
+const GOAL_VISUAL_SLOT_COUNT = 6;
+
+/**
+ * Map hash slots to non-adjacent palette indices so similar hashes still get contrasting tones.
+ */
+const GOAL_SLOT_PERMUTATION = [0, 4, 2, 5, 1, 3] as const;
+
+/**
+ * High-contrast solid greens for progress bars, badges, and legend dots (pale → deep).
+ */
+export const goalGreenPalette = {
+  dark: ['#00E676', '#3ADF8A', '#7AF5B4', '#00BA56', '#008F47', '#005C30'],
+  light: ['#00A854', '#34D399', '#10B981', '#059669', '#047857', '#065F46'],
+} as const;
+
+/** Overview chart: one base green + budget-style opacity ladder per goal. */
+const GOAL_CHART_OPACITY_LADDER = [1, 0.72, 0.48, 0.85, 0.58, 0.35] as const;
+
+/** Overview chart: alternate stroke patterns when lines overlap. */
+export const GOAL_CHART_DASH_PATTERNS: readonly (string | undefined)[] = [
+  undefined,
+  '10 6',
+  '5 5',
+  '12 5 3 5',
+  '8 8',
+  '3 5',
+];
+
+export function goalGreenPaletteIndex(goalId: string, paletteLength: number): number {
+  let hash = 0;
+  for (let i = 0; i < goalId.length; i++) {
+    hash = (hash * 31 + goalId.charCodeAt(i)) >>> 0;
+  }
+  return hash % paletteLength;
+}
+
+function getGoalMappedSlot(goalId: string): number {
+  const raw = goalGreenPaletteIndex(goalId, GOAL_VISUAL_SLOT_COUNT);
+  return GOAL_SLOT_PERMUTATION[raw]!;
+}
+
+/** Mono green base for overview lines (same family as chartTokens / budget donut). */
+export function getGoalChartBaseGreen(isLight: boolean): string {
+  return isLight ? chartTokens.lineLight : chartTokens.line;
+}
+
+/** Solid shade for progress bars, icon badges, legend dots. */
+export function getGoalGreenShade(goalId: string, isLight: boolean): string {
+  const palette = isLight ? goalGreenPalette.light : goalGreenPalette.dark;
+  return palette[getGoalMappedSlot(goalId)]!;
+}
+
+/** Per-goal stroke opacity for overview chart (budget segmentOpacity pattern, stronger spread). */
+export function getGoalChartOpacity(goalId: string): number {
+  return GOAL_CHART_OPACITY_LADDER[getGoalMappedSlot(goalId)]!;
+}
+
+/** Per-goal dash pattern for overview chart lines — always solid. */
+export function getGoalChartDashPattern(_goalId: string): undefined {
+  return undefined;
+}
+
+/** Palette index from goal id (stable across list reorder). */
+export function getGoalGreenPaletteIndex(goalId: string): number {
+  return getGoalMappedSlot(goalId);
+}
+
 /** Portefeuille light-theme palette */
 export const portfolioLight = {
-  background: '#FFFFFF',
+  background: '#F0F0F0',
   text: '#0D1117',
   chartFill: '#F6F8FA',
   chartCurve: chartTokens.lineLight,
   card: '#FFFFFF',
   deltaBg: 'rgba(0, 168, 84, 0.15)',
   deltaBorder: 'rgba(0, 168, 84, 0.28)',
-  scopeTrack: 'rgba(10, 10, 10, 0.06)',
-  scopeActive: 'rgba(0, 168, 84, 0.14)',
-  iconButton: '#F6F8FA',
-  border: '#D0D7DE',
+  scopeTrack: segmentedTabBarLight.track,
+  scopeActive: segmentedTabBarLight.activePill,
+  iconButton: '#E8E8ED',
+  border: '#C0C0C8',
 } as const;
 
 /** Portefeuille dark-theme palette */

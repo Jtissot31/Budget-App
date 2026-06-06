@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
@@ -20,8 +19,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { GhostNumpad } from '@/components/GhostNumpad';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
+import { ThemedFormMessage } from '@/components/ThemedFormMessage';
+import { formValidationError, type FormFeedback } from '@/lib/formFeedback';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import {
+  ICON_WELL_SIZE,
   interBoldText,
   interExtraBoldText,
   interMediumText,
@@ -31,14 +33,15 @@ import {
 } from '@/constants/theme';
 import { hasMerchantLogoCandidate } from '@/components/TransactionAvatar';
 import { LogoIconFrame } from '@/components/IconFrame';
+import { MdiIconPicker } from '@/components/MdiIconPicker';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import {
-  getIconPickerOptionByIcon,
-  MANUAL_ICON_PICKER_OPTIONS,
   TRANSFER_CATEGORY,
   getCategoryIconName,
   type IconName,
 } from '@/constants/categoryOptions';
+import { EXPENSE_DEFAULT_ICON, isExpenseDefaultIcon, type ExpenseFallbackIcon } from '@/lib/expenseIcon';
+import { EXPENSE_MDI_ICON, type MdiIconName } from '@/lib/mdiIconCatalog';
 import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
 import { getMerchantLogoUrl, KNOWN_MERCHANT_NAMES } from '@/lib/merchantLogo';
 import { useAppTheme } from '@/lib/themeContext';
@@ -53,7 +56,12 @@ import {
   insertTransaction,
   upsertCategory,
 } from '@/lib/db';
-import { getTransactionAccountDeltas, parseAccountIdFromNote, parseTransferAccountsFromNote } from '@/lib/accountTransactionFlow';
+import {
+  findInsufficientFundsViolation,
+  getTransactionAccountDeltas,
+  parseAccountIdFromNote,
+  parseTransferAccountsFromNote,
+} from '@/lib/accountTransactionFlow';
 import { formatMoneyAmountInput } from '@/lib/formatMoneyAmountInput';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
 import { createLocalTransaction, syncWithServer } from '@/lib/sync';
@@ -507,7 +515,7 @@ export default function AddTransactionScreen() {
   const [categoryManuallySelected, setCategoryManuallySelected] = useState(false);
   const [accountId, setAccountId] = useState<string>(MANUAL_ENTRY_ACCOUNTS[0].id);
   const [destinationAccountId, setDestinationAccountId] = useState<string>(MANUAL_ENTRY_ACCOUNTS[1].id);
-  const [fallbackIcon, setFallbackIcon] = useState<IconName>('receipt-outline');
+  const [fallbackIcon, setFallbackIcon] = useState<string>(EXPENSE_MDI_ICON);
   const [itemizedExpenses, setItemizedExpenses] = useState<ItemizedExpense[]>([]);
   const [categoryPickerItemId, setCategoryPickerItemId] = useState<string | null>(null);
   const [itemCategoryQuery, setItemCategoryQuery] = useState('');
@@ -516,6 +524,7 @@ export default function AddTransactionScreen() {
   const [receiptOptionsExpanded, setReceiptOptionsExpanded] = useState(false);
   const [showLogoPicker, setShowLogoPicker] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [formFeedback, setFormFeedback] = useState<FormFeedback | null>(null);
   const labelInputRef = useRef<TextInput>(null);
   const sheetScrollRef = useRef<ScrollView>(null);
   const amountSectionYRef = useRef(0);
@@ -573,6 +582,15 @@ export default function AddTransactionScreen() {
     setReceiptStatus(null);
     setReceiptOptionsExpanded(false);
   }, [type]);
+
+  useEffect(() => {
+    if (editId) return;
+    if (type === 'expense') {
+      setFallbackIcon(EXPENSE_DEFAULT_ICON);
+      return;
+    }
+    setFallbackIcon((current) => (current === EXPENSE_DEFAULT_ICON ? 'receipt-outline' : current));
+  }, [editId, type]);
 
   useEffect(() => {
     if (type === 'transfer') return;
@@ -638,7 +656,7 @@ export default function AddTransactionScreen() {
       kind: 'account',
       isSimulated: a.isSimulated,
       icon: 'card-outline',
-      color: '#666666',
+      color: colors.textSecondary,
     }));
     const goalEntries: TransferEndpoint[] = savingsGoals.map((g) => ({
       id: g.id,
@@ -647,10 +665,10 @@ export default function AddTransactionScreen() {
       kind: 'goal',
       isSimulated: false,
       icon: (g.icon as string) || 'flag-outline',
-      color: g.color || '#00e664',
+      color: g.color || colors.primary,
     }));
     return [...accountEntries, ...goalEntries];
-  }, [accountOptions, savingsGoals]);
+  }, [accountOptions, colors.primary, colors.textSecondary, savingsGoals]);
 
   useEffect(() => {
     if (!editId || prefilledEditId === editId || categories.length === 0 || accountOptions.length === 0) return;
@@ -679,7 +697,13 @@ export default function AddTransactionScreen() {
       setDestinationAccountId(
         isKnownEndpoint(transferAccounts.destinationId) ? transferAccounts.destinationId! : fallbackDestination.id,
       );
-      setFallbackIcon(isIconName(tx.transactionIcon) ? tx.transactionIcon : 'receipt-outline');
+      setFallbackIcon(
+        tx.type === 'expense'
+          ? isExpenseDefaultIcon(tx.transactionIcon)
+            ? EXPENSE_MDI_ICON
+            : tx.transactionIcon ?? EXPENSE_MDI_ICON
+          : tx.transactionIcon ?? 'AttachMoney',
+      );
       setItemizedExpenses(tx.type === 'expense' ? parseItemizedExpensesFromNote(tx.note) : []);
       setReceiptUri(tx.receiptUri ?? '');
       setReceiptStatus(tx.receiptStatus ?? null);
@@ -789,7 +813,7 @@ export default function AddTransactionScreen() {
     tapHaptic();
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission requise', 'Autorise l’accès à tes images pour importer un reçu.');
+      setFormFeedback(formValidationError('Permission requise', 'Autorise l’accès à tes images pour importer un reçu.'));
       return;
     }
 
@@ -808,7 +832,7 @@ export default function AddTransactionScreen() {
     tapHaptic();
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission requise', 'Autorise l’accès à la caméra pour prendre le reçu en photo.');
+      setFormFeedback(formValidationError('Permission requise', 'Autorise l’accès à la caméra pour prendre le reçu en photo.'));
       return;
     }
 
@@ -830,10 +854,7 @@ export default function AddTransactionScreen() {
   }, [amount, type]);
   const labelHasLogo = useMemo(() => hasMerchantLogoCandidate(label), [label]);
   const autoLogoUrl = useMemo(() => getMerchantLogoUrl(label.trim()), [label]);
-  const fallbackIconColor = useMemo(
-    () => getIconPickerOptionByIcon(fallbackIcon)?.color ?? colors.textSecondary,
-    [colors.textSecondary, fallbackIcon],
-  );
+  const fallbackIconColor = colors.textSecondary;
   const fallbackSourceAccount = accountOptions[0] ?? { id: 'checking', label: 'Chèques', isSimulated: false };
   const sourceAccount = accountOptions.find((account) => account.id === accountId) ?? fallbackSourceAccount;
   const destinationAccount =
@@ -911,7 +932,7 @@ export default function AddTransactionScreen() {
 
   const save = async () => {
     if (!isTransfer && !label.trim()) {
-      Alert.alert('Champ requis', 'Indiquez un marchand ou une description.');
+      setFormFeedback(formValidationError('Champ requis', 'Indiquez un marchand ou une description.'));
       return;
     }
     const itemNotes =
@@ -931,17 +952,40 @@ export default function AddTransactionScreen() {
         : [];
     const parsed = parseMoney(amount);
     if (!parsed || parsed <= 0) {
-      Alert.alert('Montant invalide', 'Saisissez un montant positif.');
+      setFormFeedback(formValidationError('Montant invalide', 'Saisissez un montant positif.'));
       return;
     }
     if (!categoryId) {
-      Alert.alert('Catégorie', 'Choisissez une catégorie.');
+      setFormFeedback(formValidationError('Catégorie', 'Choisissez une catégorie.'));
       return;
     }
     if (isTransfer && accountId === destinationAccountId) {
-      Alert.alert('Transfert invalide', 'Choisis deux comptes différents.');
+      setFormFeedback(formValidationError('Transfert invalide', 'Choisis deux comptes différents.'));
       return;
     }
+
+    const note = isTransfer
+      ? `transfert:${accountId}->${destinationAccountId}`
+      : itemNotes.length > 0
+        ? `compte:${accountId}\narticles:${JSON.stringify(itemNotes)}`
+        : `compte:${accountId}`;
+    const nextDeltas = getTransactionAccountDeltas({ amount: parsed, type, note });
+    const insufficientFunds = findInsufficientFundsViolation(
+      simulatedAccounts,
+      nextDeltas,
+      editingTransaction,
+    );
+    if (insufficientFunds) {
+      setFormFeedback(
+        formValidationError(
+          'Fonds insuffisants',
+          `Le solde de ${insufficientFunds.accountLabel} est insuffisant pour cette opération.`,
+        ),
+      );
+      return;
+    }
+
+    setFormFeedback(null);
 
     if (isTransfer) {
       await upsertCategory(TRANSFER_CATEGORY);
@@ -954,7 +998,13 @@ export default function AddTransactionScreen() {
       ? `Transfert ${srcLabel} → ${dstLabel}`
       : label.trim();
     const transactionDate = toTransactionDate(date);
-    const transactionIcon = isTransfer ? 'swap-horizontal-outline' : labelHasLogo ? null : fallbackIcon;
+    const transactionIcon = isTransfer
+      ? 'SwapHoriz'
+      : labelHasLogo
+        ? null
+        : type === 'expense' && isExpenseDefaultIcon(fallbackIcon)
+          ? null
+          : fallbackIcon;
     const normalizedReceiptUri = type === 'expense' ? receiptUri.trim() : '';
     const normalizedReceiptStatus =
       type === 'expense'
@@ -965,11 +1015,6 @@ export default function AddTransactionScreen() {
             : null
         : null;
 
-    const note = isTransfer
-      ? `transfert:${accountId}->${destinationAccountId}`
-      : itemNotes.length > 0
-        ? `compte:${accountId}\narticles:${JSON.stringify(itemNotes)}`
-        : `compte:${accountId}`;
     const tx = editingTransaction
       ? {
           ...editingTransaction,
@@ -1430,58 +1475,40 @@ export default function AddTransactionScreen() {
               {!isTransfer ? (
                 <View style={[styles.logoSection, themed.control]}>
                   <View style={styles.logoHeader}>
-                    {autoLogoUrl ? (
-                      <LogoIconFrame uri={autoLogoUrl} size={52} />
-                    ) : (
-                      <UserPickedIconBadge icon={fallbackIcon} color={fallbackIconColor} size={52} iconSize={22} />
-                    )}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Changer le logo ou l'icône"
+                      onPress={() => {
+                        tapHaptic();
+                        setShowLogoPicker((visible) => !visible);
+                      }}
+                    >
+                      {autoLogoUrl ? (
+                        <LogoIconFrame uri={autoLogoUrl} size={52} />
+                      ) : (
+                        <UserPickedIconBadge icon={fallbackIcon} color={fallbackIconColor} size={52} iconSize={22} />
+                      )}
+                    </Pressable>
                     <View style={styles.logoCopy}>
                       <DashboardSectionLabel>Logo</DashboardSectionLabel>
                       <Text style={[styles.logoHint, themed.textMuted]}>
                         {autoLogoUrl
                           ? 'Logo automatique trouvé avec le nom.'
-                          : 'Automatique utilisera une icône si aucun logo exact existe.'}
+                          : 'Touche l\'icône pour choisir dans la bibliothèque MDI.'}
                       </Text>
                     </View>
-                    <Pressable
-                      onPress={() => { tapHaptic(); setShowLogoPicker((v) => !v); }}
-                      hitSlop={8}
-                      style={({ pressed }) => [styles.logoEditButton, themed.controlStrong, pressed && styles.pressed]}
-                    >
-                      <Ionicons name="pencil-outline" size={14} color={colors.textMuted} />
-                    </Pressable>
                   </View>
 
-                  {showLogoPicker ? (
+                  {showLogoPicker && !autoLogoUrl ? (
                     <View style={styles.logoPicker}>
-                      <Text style={[styles.logoPickerHint, themed.textMuted]}>Icônes</Text>
-                      <View style={styles.logoOptionRow}>
-                        {MANUAL_ICON_PICKER_OPTIONS.map((option) => {
-                          const on = fallbackIcon === option.icon;
-                          return (
-                            <Pressable
-                              key={option.id}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Choisir l'icône ${option.label}`}
-                              onPress={() => { tapHaptic(); setFallbackIcon(option.icon); }}
-                              style={[
-                                styles.logoOption,
-                                {
-                                  backgroundColor: on ? colors.successMuted : colors.surfaceElevated,
-                                  borderColor: on ? colors.primary : colors.border,
-                                },
-                              ]}
-                            >
-                              <UserPickedIconBadge
-                                icon={option.icon}
-                                color={option.color}
-                                size={36}
-                                iconSize={17}
-                              />
-                            </Pressable>
-                          );
-                        })}
-                      </View>
+                      <Text style={[styles.logoPickerHint, themed.textMuted]}>Icônes MDI</Text>
+                      <MdiIconPicker
+                        selectedIcon={fallbackIcon}
+                        onSelect={(icon: MdiIconName) => {
+                          setFallbackIcon(icon);
+                          setShowLogoPicker(false);
+                        }}
+                      />
                     </View>
                   ) : null}
                 </View>
@@ -1659,6 +1686,14 @@ export default function AddTransactionScreen() {
                     })}
                   </View>
                 </View>
+              ) : null}
+
+              {formFeedback ? (
+                <ThemedFormMessage
+                  variant={formFeedback.variant}
+                  title={formFeedback.title}
+                  message={formFeedback.message}
+                />
               ) : null}
 
               <PrimarySaveButton

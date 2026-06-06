@@ -129,6 +129,7 @@ function RootLayoutContent() {
             />
             <Stack.Screen name="account-detail" options={{ headerShown: false }} />
             <Stack.Screen name="merchant-detail" options={{ headerShown: false }} />
+            <Stack.Screen name="merchant-receipts" options={{ headerShown: false }} />
             <Stack.Screen name="wealth-asset-detail" options={{ headerShown: false }} />
             <Stack.Screen name="wealth-asset-transactions" options={{ headerShown: false }} />
             <Stack.Screen name="savings-goal-transactions" options={{ headerShown: false }} />

@@ -1,17 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View, type ViewStyle } from 'react-native';
-import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
+import { type ViewStyle } from 'react-native';
 import { getCategoryIconName, isIconName, type IconName } from '@/constants/categoryOptions';
+import { EXPENSE_DEFAULT_ICON, resolveExpenseFallbackIcon } from '@/lib/expenseIcon';
 import { getMerchantLogoUrls } from '@/lib/merchantLogo';
-import {
-  normalizeUserIconColor,
-  resolveUserPickedIconGlyphColor,
-  userPickedIconGlyphSize,
-  userPickedIconLogoSize,
-  userPickedIconWellStyle,
-} from '@/lib/userPickedIcon';
-import { useAppTheme } from '@/lib/themeContext';
+import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import type { Transaction } from '@/types';
 
 type Props = {
@@ -22,46 +13,17 @@ type Props = {
 };
 
 export function TransactionAvatar({ transaction, size = 38, iconSize, style }: Props) {
-  const { colors, isLight } = useAppTheme();
-  const urls = useMemo(() => getMerchantLogoUrls(transaction.label), [transaction.label]);
-  const [sourceIndex, setSourceIndex] = useState(0);
-  const [giveUp, setGiveUp] = useState(false);
-
-  useEffect(() => {
-    setSourceIndex(0);
-    setGiveUp(false);
-  }, [urls]);
-
-  const uri = urls[sourceIndex];
-  const showRemote = Boolean(uri) && !giveUp;
   const fallbackIcon = getFallbackIcon(transaction);
-  const computedIconSize = userPickedIconGlyphSize(size, iconSize);
-  const categoryTint = normalizeUserIconColor(transaction.categoryColor);
-  const glyphColor = resolveUserPickedIconGlyphColor(categoryTint, isLight, colors);
-  const logoSize = userPickedIconLogoSize(size);
 
   return (
-    <View style={[userPickedIconWellStyle(size, isLight), styles.wrap, style]}>
-      {showRemote && uri ? (
-        <Image
-          source={{ uri }}
-          style={{ width: logoSize, height: logoSize }}
-          contentFit="contain"
-          transition={150}
-          cachePolicy="memory-disk"
-          recyclingKey={uri}
-          onError={() => {
-            if (sourceIndex < urls.length - 1) {
-              setSourceIndex((i) => i + 1);
-            } else {
-              setGiveUp(true);
-            }
-          }}
-        />
-      ) : (
-        <Ionicons name={fallbackIcon} size={computedIconSize} color={glyphColor} />
-      )}
-    </View>
+    <UserPickedIconWell
+      icon={fallbackIcon}
+      color={transaction.categoryColor}
+      size={size}
+      iconSize={iconSize}
+      merchantLabel={transaction.label}
+      style={style}
+    />
   );
 }
 
@@ -69,15 +31,10 @@ export function hasMerchantLogoCandidate(label: string): boolean {
   return getMerchantLogoUrls(label).length > 0;
 }
 
-function getFallbackIcon(transaction: Transaction): IconName {
+function getFallbackIcon(transaction: Transaction): IconName | typeof EXPENSE_DEFAULT_ICON {
+  if (transaction.type === 'expense') {
+    return resolveExpenseFallbackIcon(transaction.transactionIcon);
+  }
   if (isIconName(transaction.transactionIcon)) return transaction.transactionIcon;
   return getCategoryIconName(transaction);
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-});

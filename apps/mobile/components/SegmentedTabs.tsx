@@ -44,10 +44,10 @@ export function SegmentedTabs<T extends string>({
   inactiveLabelColor,
 }: Props<T>) {
   const { colors } = useAppTheme();
-  const trackBg = trackBgColor ?? colors.scopeTrack;
-  const activeBg = activeBgColor ?? colors.scopeActive;
-  const activeColor = activeLabelColor ?? colors.text;
-  const inactiveColor = inactiveLabelColor ?? colors.textMuted;
+  const trackBg = trackBgColor ?? colors.segmentedTabTrack;
+  const activeBg = activeBgColor ?? colors.segmentedTabActivePill;
+  const activeColor = activeLabelColor ?? colors.segmentedTabActiveText;
+  const inactiveColor = inactiveLabelColor ?? colors.segmentedTabInactiveText;
 
   return (
     <View style={[styles.wrap, showDivider && { borderBottomColor: colors.border, borderBottomWidth: 1 }]}>

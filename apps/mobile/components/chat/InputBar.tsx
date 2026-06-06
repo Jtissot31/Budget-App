@@ -1,5 +1,5 @@
-import { useCallback } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
@@ -11,6 +11,7 @@ import {
   typography,
 } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
+import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
 import { useAppTheme } from '@/lib/themeContext';
 import type { QuickSuggestion } from './types';
 
@@ -36,6 +37,7 @@ export function InputBar({
   const router = useRouter();
   const { colors, isLight } = useAppTheme();
   const canSend = value.trim().length > 0 && !disabled;
+  const [infoVisible, setInfoVisible] = useState(false);
 
   const handleSendPress = useCallback(() => {
     if (!canSend) return;
@@ -45,7 +47,7 @@ export function InputBar({
 
   const handleMicPress = useCallback(() => {
     tapHaptic();
-    Alert.alert('Chat vocal', 'La saisie vocale arrive bientôt.', [{ text: 'OK' }]);
+    setInfoVisible(true);
   }, []);
 
   const handleScanPress = useCallback(() => {
@@ -54,6 +56,7 @@ export function InputBar({
   }, [router]);
 
   return (
+    <>
     <View
       style={[
         styles.wrapper,
@@ -174,6 +177,17 @@ export function InputBar({
         </Pressable>
       </View>
     </View>
+
+    <ThemedConfirmModal
+      visible={infoVisible}
+      title="Chat vocal"
+      message="La saisie vocale arrive bientôt."
+      variant="info"
+      confirmLabel="OK"
+      onConfirm={() => setInfoVisible(false)}
+      onCancel={() => setInfoVisible(false)}
+    />
+    </>
   );
 }
 

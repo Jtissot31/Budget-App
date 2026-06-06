@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -17,9 +17,13 @@ import {
 import { BottomSheet } from '@/components/BottomSheet';
 import { CategoryBudgetProgress } from '@/components/CategoryBudgetProgress';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
+import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
+import type { FormFeedback } from '@/lib/formFeedback';
+import type { ThemedConfirmVariant } from '@/components/ThemedConfirmModal';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
+import { EXPENSE_DEFAULT_ICON } from '@/lib/expenseIcon';
 import { radius, spacing, typography, type AppColors } from '@/constants/theme';
 import {
   deleteRecurringPayment,
@@ -33,7 +37,7 @@ import {
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { detailHeroAmount, singleLineAmountProps } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
-import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { formatDisplayMoneyAbsolute, formatRecurringPaymentAmount } from '@/lib/formatDisplayMoney';
 import type { Category, CategoryBudget, RecurringPaymentFrequency, SimulatedAccount } from '@/types';
 
 export type PaymentDetailPayload = {
@@ -87,6 +91,18 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
   const [recurringEditLoading, setRecurringEditLoading] = useState(false);
   const [activeOverride, setActiveOverride] = useState<boolean | null>(null);
   const [togglingActive, setTogglingActive] = useState(false);
+  const [recurringFeedback, setRecurringFeedback] = useState<FormFeedback | null>(null);
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertTitle, setAlertTitle] = useState('');
+  const [alertMessage, setAlertMessage] = useState('');
+  const [alertVariant, setAlertVariant] = useState<ThemedConfirmVariant>('error');
+
+  const showAlert = (title: string, message: string, variant: ThemedConfirmVariant = 'error') => {
+    setAlertTitle(title);
+    setAlertMessage(message);
+    setAlertVariant(variant);
+    setAlertVisible(true);
+  };
 
   useEffect(() => {
     setDeleting(false);
@@ -150,10 +166,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
         const accounts = persistAccounts(simulatedAccounts);
         const payment = payments.find((item) => item.id === recurringEditId);
         if (!payment) {
-          Alert.alert(
-            'Introuvable',
-            'Ce paiement récurrent a peut-être été supprimé. Actualise puis réessaie.',
-          );
+          showAlert('Introuvable', 'Ce paiement récurrent a peut-être été supprimé. Actualise puis réessaie.');
           setRecurringEditorOpen(false);
           return;
         }
@@ -164,7 +177,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
         setRecurringForm(recurringPaymentToForm(payment));
       } catch {
         if (!cancelled) {
-          Alert.alert('Chargement impossible', "Impossible d'ouvrir l'édition pour le moment.");
+          showAlert('Chargement impossible', "Impossible d'ouvrir l'édition pour le moment.");
           setRecurringEditorOpen(false);
         }
       } finally {
@@ -261,7 +274,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
           setRecurringForm(createNewRecurringPaymentForm(accounts, categories, 'income'));
           setRecurringEditorOpen(true);
         } catch {
-          Alert.alert('Chargement impossible', "Impossible d'ouvrir le formulaire pour le moment.");
+          showAlert('Chargement impossible', "Impossible d'ouvrir le formulaire pour le moment.");
         }
       })();
     }
@@ -298,14 +311,20 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
   const showDeleteFooter = Boolean(recurringEditId || agendaIncomeTxId);
 
   const amountTint = detail.kind === 'income' ? colors.success : colors.text;
-  const amountPrefix = detail.kind === 'income' ? '+' : detail.kind === 'payment' ? '−' : '';
+  const formattedAmount = detail.recurring
+    ? formatRecurringPaymentAmount(detail.amount, detail.kind ?? 'payment')
+    : formatDisplayMoneyAbsolute(detail.amount);
 
   const onSaveRecurring = async () => {
     if (!recurringForm) return;
     setRecurringSaving(true);
-    const ok = await saveRecurringPaymentForm(recurringForm, recurringAccounts);
+    const result = await saveRecurringPaymentForm(recurringForm, recurringAccounts);
     setRecurringSaving(false);
-    if (!ok) return;
+    if (result !== true) {
+      setRecurringFeedback(result);
+      return;
+    }
+    setRecurringFeedback(null);
     setRecurringEditorOpen(false);
     setRecurringForm(null);
     await onDeleted?.();
@@ -319,7 +338,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
       const payments = await getRecurringPayments();
       const payment = payments.find((item) => item.id === recurringEditId);
       if (!payment) {
-        Alert.alert('Introuvable', 'Ce paiement récurrent a peut-être été supprimé.');
+        showAlert('Introuvable', 'Ce paiement récurrent a peut-être été supprimé.');
         return;
       }
       const nextActive = !isRecurringActive;
@@ -329,7 +348,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
       await onDeleted?.();
     } catch {
       setActiveOverride(null);
-      Alert.alert('Erreur', "Impossible de mettre à jour l'état actif pour le moment.");
+      showAlert('Erreur', "Impossible de mettre à jour l'état actif pour le moment.");
     } finally {
       setTogglingActive(false);
     }
@@ -390,8 +409,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
       {detail.subtitle ? <Text style={styles.subtitle}>{detail.subtitle}</Text> : null}
 
         <Text style={[styles.amount, { color: amountTint }]} {...singleLineAmountProps}>
-          {amountPrefix}
-        {formatDisplayMoneyAbsolute(detail.amount)}
+          {formattedAmount}
       </Text>
 
         {isEstimatedPayRow ? (
@@ -550,10 +568,12 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
         onClose={() => {
           setRecurringEditorOpen(false);
           setRecurringForm(null);
+          setRecurringFeedback(null);
         }}
         onChange={setRecurringForm}
         onSave={() => void onSaveRecurring()}
         onDelete={onDeleteRecurringForm}
+        feedback={recurringFeedback}
       />
 
       <ConfirmDeleteModal
@@ -616,6 +636,16 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
         }}
         onCancel={() => setConfirmFormDeleteVisible(false)}
       />
+
+      <ThemedConfirmModal
+        visible={alertVisible}
+        title={alertTitle}
+        message={alertMessage}
+        variant={alertVariant}
+        confirmLabel="Compris"
+        onConfirm={() => setAlertVisible(false)}
+        onCancel={() => setAlertVisible(false)}
+      />
     </>
   );
 }
@@ -635,15 +665,22 @@ const avatarShell = StyleSheet.create({
 function PaymentAvatar({ detail, size }: { detail: PaymentDetailPayload; size: number }) {
   const { colors } = useAppTheme();
   const tint = normalizeHex(detail.color) ?? (detail.kind === 'income' ? colors.success : colors.warning);
-  const icon: IconName =
-    detail.icon && detail.icon in Ionicons.glyphMap && detail.icon !== 'repeat-outline'
-      ? (detail.icon as IconName)
+  const icon =
+    detail.icon && detail.icon !== 'repeat-outline'
+      ? detail.icon
       : detail.kind === 'income'
-        ? 'cash-outline'
-        : 'receipt-outline';
+        ? 'AttachMoney'
+        : EXPENSE_DEFAULT_ICON;
 
   return (
-    <UserPickedIconBadge icon={icon} color={tint} size={size} logoUrl={detail.logoUrl} style={avatarShell.base} />
+    <UserPickedIconBadge
+      icon={icon}
+      color={tint}
+      size={size}
+      logoUrl={detail.logoUrl}
+      wellGlyphWhite={Boolean(detail.recurring)}
+      style={avatarShell.base}
+    />
   );
 }
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,11 +11,16 @@ import { TransactionAvatar } from '@/components/TransactionAvatar';
 import type { IconName } from '@/constants/categoryOptions';
 import { radius, spacing, typography, type AppColors } from '@/constants/theme';
 import { detailHeroAmount, rowTitleTextProps, rowValue, singleLineAmountProps } from '@/lib/textLayout';
-import { deleteTransactionById } from '@/lib/db';
+import { useSimulatedAccounts } from '@/hooks/useSimulatedAccounts';
+import {
+  getTransactionPaymentMethodFieldLabel,
+  resolveTransactionPaymentMethodLabel,
+} from '@/lib/accountTransactionFlow';
+import { deleteTransactionById, getSavingsGoals } from '@/lib/db';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
-import type { Transaction } from '@/types';
+import type { SavingsGoal, Transaction } from '@/types';
 
 type Props = {
   transaction: Transaction | null;
@@ -95,11 +100,37 @@ export function TransactionDetailSheet({ transaction: tx, onClose, onDeleted }: 
   const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const [confirmVisible, setConfirmVisible] = useState(false);
+  const storeAccounts = useSimulatedAccounts();
+  const [transferGoals, setTransferGoals] = useState<Pick<SavingsGoal, 'id' | 'name'>[]>([]);
+
+  useEffect(() => {
+    if (!tx || tx.type !== 'transfer') {
+      setTransferGoals([]);
+      return;
+    }
+
+    let cancelled = false;
+    void getSavingsGoals().then((goals) => {
+      if (!cancelled) setTransferGoals(goals);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tx?.id, tx?.type]);
+
+  const paymentMethodLabel = useMemo(
+    () => (tx ? resolveTransactionPaymentMethodLabel(tx, { accounts: storeAccounts, savingsGoals: transferGoals }) : null),
+    [storeAccounts, transferGoals, tx],
+  );
 
   if (!tx) return null;
 
   const isIncome = tx.type === 'income';
+  const isTransfer = tx.type === 'transfer';
   const visible = !!tx;
+  const paymentMethodFieldLabel = getTransactionPaymentMethodFieldLabel(tx.type);
+  const paymentMethodIcon = isTransfer ? 'swap-horizontal-outline' : isIncome ? 'wallet-outline' : 'card-outline';
   const itemizedNote = parseItemizedNote(tx.note);
   const syncStatus = getSyncStatusMeta(tx.syncStatus, colors);
   const editTransaction = () => {
@@ -173,6 +204,18 @@ export function TransactionDetailSheet({ transaction: tx, onClose, onDeleted }: 
           </View>
         </SurfaceCard>
       </View>
+
+      {paymentMethodLabel ? (
+        <SurfaceCard style={styles.paymentMethodCardShell} innerStyle={styles.paymentMethodCardInner} padding={spacing.md}>
+          <Ionicons name={paymentMethodIcon} size={14} color={colors.textMuted} />
+          <View style={styles.detailCopy}>
+            <Text style={styles.detailLabel}>{paymentMethodFieldLabel}</Text>
+            <Text style={styles.detailValue} numberOfLines={3}>
+              {paymentMethodLabel}
+            </Text>
+          </View>
+        </SurfaceCard>
+      ) : null}
 
       <SurfaceCard style={styles.syncCardShell} innerStyle={styles.syncCardInner} padding={spacing.md}>
         <View style={[styles.syncIconWrap, { backgroundColor: syncStatus.color + '1F' }]}>
@@ -324,6 +367,8 @@ function createStyles(colors: AppColors) {
     detailCopy: { flex: 1, minWidth: 0 },
     detailLabel: { color: colors.textMuted, fontSize: typography.micro },
     detailValue: { color: colors.text, fontSize: typography.meta, fontWeight: '700', marginTop: 2 },
+    paymentMethodCardShell: { marginBottom: spacing.md },
+    paymentMethodCardInner: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
     syncCardShell: { marginBottom: spacing.md },
     syncCardInner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     syncIconWrap: {

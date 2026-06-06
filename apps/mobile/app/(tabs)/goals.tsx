@@ -22,6 +22,8 @@ import { GoalSparkChart, buildGoalSparklineSeries } from '@/components/GoalSpark
 import { floatingGlassButtonPressed } from '@/constants/floatingGlassButton';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
+  LINEAR_CHART_ACCENT,
+  LINEAR_CHART_ACCENT_LIGHT,
   LINEAR_CHART_END_DOT_INNER_R,
   LINEAR_CHART_GLOW_MID_OPACITY,
   LINEAR_CHART_GLOW_MID_TRANSLATE_Y,
@@ -31,12 +33,14 @@ import {
   LINEAR_CHART_STROKE_MAIN,
 } from '@/constants/linearChart';
 import {
-  dashboardPalette,
   FLOATING_NAV_CONTENT_PADDING,
+  getGoalChartBaseGreen,
+  getGoalChartDashPattern,
+  getGoalChartOpacity,
+  getGoalGreenShade,
   interBoldText,
   interExtraBoldText,
   PAGE_PADDING_HORIZONTAL,
-  portfolioDark,
   portfolioLight,
   PORTFOLIO_SECTION_GAP,
   PROGRESS_BAR_TRACK_HEIGHT,
@@ -59,6 +63,7 @@ import { savingsGoalIncrementalProgress } from '@/lib/savingsGoalProgress';
 import { portfolioNumericText, rowLabel, rowTitleTextProps, rowValue, singleLineAmountProps } from '@/lib/textLayout';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
+import type { FormFeedback } from '@/lib/formFeedback';
 import type { CategoryBudget, DashboardSummary, RecurringPayment, SavingsGoal } from '@/types';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 import {
@@ -69,10 +74,6 @@ import {
   type GoalForm,
 } from '@/lib/savingsGoalsForm';
 
-const LIGHT_ACCENT = portfolioLight.chartCurve;
-const DARK_ACCENT = portfolioDark.chartCurve;
-const DELTA_MINT = portfolioDark.chartCurve;
-const LIGHT_DELTA_MINT = portfolioLight.chartCurve;
 const DELTA_MINT_BG = portfolioLight.deltaBg;
 const DELTA_MINT_BORDER = portfolioLight.deltaBorder;
 const DARK_DELTA_MINT_BG = 'rgba(0, 230, 118, 0.15)';
@@ -87,8 +88,6 @@ const OVERVIEW_PAD_X = 12;
 const OVERVIEW_PAD_Y = 12;
 const GOAL_ICON_WELL_SIZE = 40;
 const GOAL_ICON_SIZE = 22;
-const LIGHT_GOAL_LINE_COLORS = ['#00A854', '#D97706', '#7C3AED', '#CF222E', '#EA580C', '#F97316'];
-const DARK_GOAL_LINE_COLORS = [dashboardPalette.green, '#FBBF24', '#C084FC', dashboardPalette.red, '#E6A000', '#F97316'];
 
 type GoalProjection = {
   progress: number;
@@ -109,10 +108,6 @@ function formatMoney(value: number) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
-}
-
-function normalizeColor(color?: string) {
-  return color?.startsWith('#') ? color : LIGHT_ACCENT;
 }
 
 function colorWithAlpha(color: string, alpha: number) {
@@ -202,7 +197,7 @@ function GoalsHeaderRow({ onAdd, onManage }: { onAdd: () => void; onManage: () =
 function GoalsProgressBadge({ progress, targetAmount }: { progress: number; targetAmount: number }) {
   const { isLight } = useAppTheme();
   const pct = Math.round(progress * 100);
-  const deltaTextColor = isLight ? LIGHT_DELTA_MINT : DELTA_MINT;
+  const deltaTextColor = isLight ? LINEAR_CHART_ACCENT_LIGHT : LINEAR_CHART_ACCENT;
 
   return (
     <View
@@ -237,6 +232,7 @@ export default function GoalsHubScreen() {
   const [editForm, setEditForm] = useState<GoalForm | null>(null);
   const [iconPickerExpanded, setIconPickerExpanded] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [editFormFeedback, setEditFormFeedback] = useState<FormFeedback | null>(null);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
 
   const load = useCallback(async () => {
@@ -275,7 +271,7 @@ export default function GoalsHubScreen() {
   );
 
   const headerProgress = totals.target > 0 ? totals.current / totals.target : 0;
-  const accent = isLight ? LIGHT_ACCENT : DARK_ACCENT;
+  const headerGoalGreen = isLight ? LINEAR_CHART_ACCENT_LIGHT : LINEAR_CHART_ACCENT;
   const gridTone = isLight ? 'rgba(15,23,42,0.2)' : 'rgba(255,255,255,0.14)';
   const textColor = themeColors.text;
   const mutedTextColor = isLight ? themeColors.textMuted : '#909090';
@@ -312,6 +308,7 @@ export default function GoalsHubScreen() {
 
   const handleCloseEdit = useCallback(() => {
     setEditForm(null);
+    setEditFormFeedback(null);
     setIconPickerExpanded(false);
   }, []);
 
@@ -319,8 +316,12 @@ export default function GoalsHubScreen() {
     if (!editForm) return;
     setSavingEdit(true);
     try {
-      const didSave = await saveSavingsGoalForm(editForm);
-      if (!didSave) return;
+      const result = await saveSavingsGoalForm(editForm, isLight);
+      if (result !== true) {
+        setEditFormFeedback(result);
+        return;
+      }
+      setEditFormFeedback(null);
       await load();
       setEditForm(null);
       setIconPickerExpanded(false);
@@ -328,7 +329,7 @@ export default function GoalsHubScreen() {
     } finally {
       setSavingEdit(false);
     }
-  }, [editForm, load]);
+  }, [editForm, isLight, load]);
 
   const handleDeleteGoal = useCallback(() => {
     tapHaptic();
@@ -358,7 +359,9 @@ export default function GoalsHubScreen() {
     const remaining = Math.max(0, selectedGoal.targetAmount - selectedGoal.currentAmount);
     return { pct, proj, projection, remaining };
   }, [categoryBudgets, dashboard, recurringPayments, selectedGoal]);
-  const selectedGoalAccent = selectedGoal ? normalizeColor(selectedGoal.color) : accent;
+  const selectedGoalAccent = selectedGoal
+    ? getGoalGreenShade(selectedGoal.id, isLight)
+    : headerGoalGreen;
 
   return (
     <PageTransition>
@@ -451,7 +454,7 @@ export default function GoalsHubScreen() {
                 {goals.map((goal) => {
                   const progress = savingsGoalIncrementalProgress(goal);
                   const pct = Math.round(progress * 100);
-                  const goalAccent = normalizeColor(goal.color);
+                  const goalAccent = getGoalGreenShade(goal.id, isLight);
                   const metaParts = [
                     goal.weeklyContribution != null && goal.weeklyContribution > 0
                       ? `+${formatMoney(goal.weeklyContribution)} / sem`
@@ -469,7 +472,7 @@ export default function GoalsHubScreen() {
                       <View style={styles.goalCardMain}>
                         <View style={styles.goalIdentity}>
                           <UserPickedIconBadge
-                            icon={(goal.icon in Ionicons.glyphMap ? goal.icon : 'flag-outline') as keyof typeof Ionicons.glyphMap}
+                            icon={goal.icon || 'flag-outline'}
                             color={goalAccent}
                             size={GOAL_ICON_WELL_SIZE}
                             iconSize={GOAL_ICON_SIZE}
@@ -496,7 +499,7 @@ export default function GoalsHubScreen() {
                               {' '}/ {formatMoney(goal.targetAmount)}
                             </Text>
                           </Text>
-                          <View style={[styles.goalPctPill, { backgroundColor: colorWithAlpha(goalAccent, isLight ? 0.12 : 0.18) }]}>
+                          <View style={[styles.goalPctPill, { backgroundColor: colorWithAlpha(goalAccent, isLight ? 0.2 : 0.28) }]}>
                             <Text style={[styles.goalPct, { color: goalAccent }]}>{pct} %</Text>
                           </View>
                         </View>
@@ -738,6 +741,7 @@ export default function GoalsHubScreen() {
         setIconPickerExpanded={setIconPickerExpanded}
         onDismiss={handleCloseEdit}
         onSave={handleSaveEdit}
+        feedback={editFormFeedback}
       />
     </View>
     </PageTransition>
@@ -781,10 +785,10 @@ function GoalsOverviewChart({
   labelColor: string;
   titleColor: string;
 }) {
-  const lineColors = isLight ? LIGHT_GOAL_LINE_COLORS : DARK_GOAL_LINE_COLORS;
+  const chartBaseGreen = getGoalChartBaseGreen(isLight);
   const chart = useMemo(() => {
     const now = new Date();
-    const byGoal = goals.map((goal, index) => {
+    const byGoal = goals.map((goal) => {
       const series = buildGoalSparklineSeries(goal, now);
       const t0 = series.ticks[0]?.t ?? series.points[0]?.t ?? now.getTime();
       const tLast = now.getTime();
@@ -803,7 +807,10 @@ function GoalsOverviewChart({
       const path = points.map((point, pointIndex) => `${pointIndex === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
       return {
         goal,
-        color: lineColors[index % lineColors.length]!,
+        color: chartBaseGreen,
+        opacity: getGoalChartOpacity(goal.id),
+        dashPattern: getGoalChartDashPattern(goal.id),
+        legendColor: getGoalGreenShade(goal.id, isLight),
         path,
         last: points[points.length - 1] ?? null,
         ticks: series.ticks,
@@ -818,7 +825,7 @@ function GoalsOverviewChart({
       t0: byGoal[0]?.t0 ?? now.getTime(),
       span: byGoal[0]?.span ?? 1,
     };
-  }, [goals, lineColors]);
+  }, [chartBaseGreen, goals, isLight]);
 
   const legendGoals = chart.lines.slice(0, 6);
   const hiddenLegendCount = Math.max(0, chart.lines.length - legendGoals.length);
@@ -854,7 +861,8 @@ function GoalsOverviewChart({
             fill="none"
             stroke={line.color}
             strokeWidth={LINEAR_CHART_STROKE_GLOW_OUTER}
-            strokeOpacity={LINEAR_CHART_GLOW_OUTER_OPACITY}
+            strokeOpacity={LINEAR_CHART_GLOW_OUTER_OPACITY * line.opacity}
+            strokeDasharray={line.dashPattern}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
@@ -866,7 +874,8 @@ function GoalsOverviewChart({
             fill="none"
             stroke={line.color}
             strokeWidth={LINEAR_CHART_STROKE_GLOW_MID}
-            strokeOpacity={LINEAR_CHART_GLOW_MID_OPACITY}
+            strokeOpacity={LINEAR_CHART_GLOW_MID_OPACITY * line.opacity}
+            strokeDasharray={line.dashPattern}
             strokeLinecap="round"
             strokeLinejoin="round"
             transform={`translate(0 ${LINEAR_CHART_GLOW_MID_TRANSLATE_Y})`}
@@ -879,6 +888,8 @@ function GoalsOverviewChart({
             fill="none"
             stroke={line.color}
             strokeWidth={LINEAR_CHART_STROKE_MAIN}
+            strokeOpacity={line.opacity}
+            strokeDasharray={line.dashPattern}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
@@ -890,7 +901,7 @@ function GoalsOverviewChart({
               cx={line.last.x}
               cy={line.last.y}
               r={LINEAR_CHART_END_DOT_INNER_R}
-              fill={line.color}
+              fill={line.legendColor}
             />
           ) : null,
         )}
@@ -915,7 +926,7 @@ function GoalsOverviewChart({
       <View style={styles.overviewLegend}>
         {legendGoals.map((line) => (
           <View key={`${line.goal.id}-legend`} style={styles.overviewLegendItem}>
-            <View style={[styles.overviewLegendDot, { backgroundColor: line.color }]} />
+            <View style={[styles.overviewLegendDot, { backgroundColor: line.legendColor }]} />
             <Text style={[styles.overviewLegendLabel, { color: labelColor }]} {...rowTitleTextProps}>
               {line.goal.name}
             </Text>
@@ -1176,8 +1187,8 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   overviewLegendDot: {
-    width: 7,
-    height: 7,
+    width: 9,
+    height: 9,
     borderRadius: 99,
   },
   overviewLegendLabel: {

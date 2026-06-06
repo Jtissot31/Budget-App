@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -13,30 +14,35 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { GlassContainer } from '@/components/GlassContainer';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
+import { ThemedFormMessage } from '@/components/ThemedFormMessage';
+import { formValidationError, type FormFeedback } from '@/lib/formFeedback';
 import { PageTransition } from '@/components/PageTransition';
 import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
-import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
+import { UserPickedIconWell } from '@/components/UserPickedIconWell';
+import { EXPENSE_DEFAULT_ICON } from '@/lib/expenseIcon';
+import { getMerchantLogoUrl } from '@/lib/merchantLogo';
 import { MerchantLogo } from '@/components/MerchantLogo';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
-import {
-  RecurringPaymentFormModal,
-  manualAccountOptions,
-  recurringPaymentToForm,
-  saveRecurringPaymentForm,
-  toAccountOptions,
-  type PaymentForm,
-} from '@/lib/recurringPaymentsForm';
+import { PaymentDetailSheet, type PaymentDetailPayload } from '@/components/PaymentDetailSheet';
+import { frequencyLabel } from '@/lib/recurringPaymentsForm';
 import { SCREEN_TOP_GUTTER, ghostCardShadow } from '@/constants/ghostUi';
-import { colors, radius, SECTION_TITLE_STYLE, spacing, typography } from '@/constants/theme';
+import {
+  colors,
+  ICON_WELL_SIZE,
+  interBoldText,
+  interExtraBoldText,
+  interMediumText,
+  radius,
+  SECTION_TITLE_STYLE,
+  spacing,
+  typography,
+} from '@/constants/theme';
 import {
   deleteSimulatedAccount,
-  getCategories,
-  getCategoryBudgets,
   getMerchantOverrides,
   getRecurringPayments,
   getSavingsGoals,
@@ -51,7 +57,12 @@ import { getAccountLogoUrl } from '@/lib/merchantLogo';
 import { userPickedIconWellStyle } from '@/lib/userPickedIcon';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
-import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
+import {
+  creditLimitUtilizationBarColor,
+  creditLimitUtilizationPercent,
+  creditUsedFromBalance,
+} from '@/lib/creditLimitUtilization';
+import { formatDisplayMoneyAbsolute, formatRecurringPaymentAmount, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
 import { listRowTitle, rowTitleTextProps, rowValue, rowValueContainer, singleLineAmountProps } from '@/lib/textLayout';
 import type { AccountKind, Category, CategoryBudget, MerchantOverride, RecurringPayment, SavingsGoal, SimulatedAccount, Transaction } from '@/types';
 
@@ -94,6 +105,14 @@ function formatMoney(value: number) {
 
 function formatSignedMoney(value: number) {
   return formatSignedDisplayMoney(value);
+}
+
+function formatAgendaUpcomingDate(dateKey: string) {
+  return new Date(`${dateKey}T12:00:00`).toLocaleDateString('fr-FR', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'long',
+  });
 }
 
 function getLocalDayKey(isoDate: string) {
@@ -163,7 +182,7 @@ function AccountTransactionRow({
         padding={spacing.sm + 3}
         innerStyle={styles.transactionRowInner}
       >
-          <MerchantLogo name={merchantName} logoUrl={logoUrl} size={34} />
+          <MerchantLogo name={merchantName} logoUrl={logoUrl} size={ICON_WELL_SIZE} />
           <View style={styles.transactionBody}>
             <View style={styles.transactionTitleRow}>
               <Text style={[styles.transactionTitle, { color: colors.text }]} {...rowTitleTextProps}>
@@ -208,6 +227,7 @@ export default function AccountDetailScreen() {
   const [showRecurringPayments, setShowRecurringPayments] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [formFeedback, setFormFeedback] = useState<FormFeedback | null>(null);
   const [editingAccount, setEditingAccount] = useState<SimulatedAccount | null>(null);
   const [name, setName] = useState('');
   const [kind, setKind] = useState<AccountKind>('checking');
@@ -220,11 +240,7 @@ export default function AccountDetailScreen() {
   const [showLogoPicker, setShowLogoPicker] = useState(false);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
   const [pendingDeleteAccount, setPendingDeleteAccount] = useState<SimulatedAccount | null>(null);
-  const [recurringForm, setRecurringForm] = useState<PaymentForm | null>(null);
-  const [recurringAccounts, setRecurringAccounts] = useState(manualAccountOptions());
-  const [recurringCategories, setRecurringCategories] = useState<Category[]>([]);
-  const [recurringCategoryBudgets, setRecurringCategoryBudgets] = useState<CategoryBudget[]>([]);
-  const [recurringSaving, setRecurringSaving] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentDetailPayload | null>(null);
 
   const load = useCallback(async () => {
     const [nextAccounts, nextSavingsGoals, nextTransactions, nextRecurringPayments, nextMerchantOverrides] = await Promise.all([
@@ -273,6 +289,39 @@ export default function AccountDetailScreen() {
     if (!account) return [];
     return recurringPayments.filter((payment) => payment.accountId === account.id);
   }, [account, recurringPayments]);
+  const groupedAccountRecurringPayments = useMemo(() => {
+    const groups: Record<string, RecurringPayment[]> = {};
+    accountRecurringPayments.forEach((payment) => {
+      const key = payment.nextDate ?? '__no_date__';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(payment);
+    });
+    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+  }, [accountRecurringPayments]);
+  const checkingMonthlyStats = useMemo(() => {
+    if (!account || account.kind !== 'checking') return null;
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    let revenues = 0;
+    let expenses = 0;
+    accountTransactions.forEach((tx) => {
+      const date = new Date(tx.date);
+      if (date.getFullYear() !== currentYear || date.getMonth() !== currentMonth) return;
+      if (tx.type === 'income') revenues += Math.abs(tx.amount);
+      else if (tx.type === 'expense') expenses += Math.abs(tx.amount);
+    });
+    return { revenues, expenses, net: revenues - expenses };
+  }, [account, accountTransactions]);
+  const creditInfo = useMemo(() => {
+    if (!account || account.kind !== 'credit') return null;
+    const creditLimit =
+      typeof account.creditLimit === 'number' && account.creditLimit > 0 ? account.creditLimit : undefined;
+    const creditUsed = creditUsedFromBalance(account.balance);
+    const utilPct = creditLimitUtilizationPercent(account.balance, creditLimit);
+    const available = typeof creditLimit === 'number' ? Math.max(0, creditLimit - creditUsed) : undefined;
+    return { creditLimit, creditUsed, utilPct, available };
+  }, [account]);
   const logoSourceName = institution.trim() || name.trim();
   const selectedInstitutionLogo = useMemo(
     () => INSTITUTION_LOGO_OPTIONS.find((option) => option.id === selectedInstitutionLogoId) ?? null,
@@ -280,27 +329,7 @@ export default function AccountDetailScreen() {
   );
   const autoPreviewLogo = useMemo(() => getAccountLogoUrl(logoSourceName), [logoSourceName]);
   const previewLogo = selectedInstitutionLogo?.logoUrl ?? autoPreviewLogo;
-
-  const openEditRecurringPayment = async (payment: RecurringPayment) => {
-    tapHaptic();
-    const [categories, categoryBudgets] = await Promise.all([getCategories(), getCategoryBudgets()]);
-    const accountOptions = toAccountOptions(accounts);
-    setRecurringAccounts(accountOptions.length ? accountOptions : manualAccountOptions());
-    setRecurringCategories(categories);
-    setRecurringCategoryBudgets(categoryBudgets);
-    setRecurringForm(recurringPaymentToForm(payment));
-  };
-
-  const saveRecurringPayment = async () => {
-    if (!recurringForm) return;
-    setRecurringSaving(true);
-    const ok = await saveRecurringPaymentForm(recurringForm, recurringAccounts);
-    setRecurringSaving(false);
-    if (!ok) return;
-    setRecurringForm(null);
-    await load();
-    successHaptic();
-  };
+  const formThemed = usePortfolioFormTheme();
 
   const resetForm = () => {
     setEditingAccount(null);
@@ -332,6 +361,7 @@ export default function AccountDetailScreen() {
 
   const closeForm = () => {
     resetForm();
+    setFormFeedback(null);
     setShowForm(false);
   };
 
@@ -339,13 +369,15 @@ export default function AccountDetailScreen() {
     const parsedBalance = parseMoney(balance);
     if (!editingAccount) return;
     if (!name.trim()) {
-      Alert.alert('Nom requis', 'Exemple : Visa Desjardins, Tangerine chèque.');
+      setFormFeedback(formValidationError('Nom requis', 'Exemple : Visa Desjardins, Tangerine chèque.'));
       return;
     }
     if (Number.isNaN(parsedBalance)) {
-      Alert.alert('Solde invalide', 'Entre un montant valide.');
+      setFormFeedback(formValidationError('Solde invalide', 'Entre un montant valide.'));
       return;
     }
+
+    setFormFeedback(null);
 
     const nextAccount: SimulatedAccount = {
       id: editingAccount.id,
@@ -484,6 +516,137 @@ export default function AccountDetailScreen() {
               </Text>
             </GlassContainer>
 
+            {creditInfo ? (
+              <GlassContainer
+                style={styles.creditInfoCardShell}
+                innerStyle={styles.creditInfoCardInner}
+                padding={spacing.md}
+                borderRadius={radius.lg}
+              >
+                <Text style={[styles.creditSectionLabel, { color: colors.textMuted }]}>
+                  SANTÉ DU CRÉDIT
+                </Text>
+
+                {typeof creditInfo.available === 'number' ? (
+                  <View style={styles.creditHeroBlock}>
+                    <Text style={[styles.creditHeroAmount, { color: colors.success }]}>
+                      {formatMoney(creditInfo.available)}
+                    </Text>
+                    <Text style={[styles.creditHeroLabel, { color: colors.textMuted }]}>
+                      disponible
+                    </Text>
+                  </View>
+                ) : null}
+
+                {typeof creditInfo.utilPct === 'number' ? (
+                  <View style={styles.creditBarRow}>
+                    <View style={[styles.creditBarTrack, { backgroundColor: colors.surfaceElevated }]}>
+                      <View
+                        style={[
+                          styles.creditBarFill,
+                          {
+                            width: `${Math.min(Math.max(creditInfo.utilPct, 1), 100)}%` as `${number}%`,
+                            backgroundColor: creditLimitUtilizationBarColor(creditInfo.utilPct, colors, isLight),
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.creditBarPct,
+                        { color: creditLimitUtilizationBarColor(creditInfo.utilPct, colors, isLight) },
+                      ]}
+                    >
+                      {`${Math.round(creditInfo.utilPct)} %`}
+                    </Text>
+                  </View>
+                ) : null}
+
+                <View style={styles.creditChipRow}>
+                  {typeof creditInfo.creditLimit === 'number' ? (
+                    <View style={[styles.creditChip, { backgroundColor: colors.surfaceElevated }]}>
+                      <Text style={[styles.creditChipLabel, { color: colors.textMuted }]}>LIMITE</Text>
+                      <Text style={[styles.creditChipAmount, { color: colors.text }]}>
+                        {formatMoney(creditInfo.creditLimit)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View
+                    style={[
+                      styles.creditChip,
+                      {
+                        backgroundColor:
+                          typeof creditInfo.utilPct === 'number'
+                            ? creditInfo.utilPct >= 85
+                              ? colors.dangerMuted
+                              : creditInfo.utilPct >= 65
+                                ? colors.warningMuted
+                                : colors.successMuted
+                            : colors.surfaceElevated,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.creditChipLabel, { color: colors.textMuted }]}>UTILISÉ</Text>
+                    <Text
+                      style={[
+                        styles.creditChipAmount,
+                        {
+                          color:
+                            typeof creditInfo.utilPct === 'number'
+                              ? creditLimitUtilizationBarColor(creditInfo.utilPct, colors, isLight)
+                              : colors.text,
+                        },
+                      ]}
+                    >
+                      {formatMoney(creditInfo.creditUsed)}
+                    </Text>
+                  </View>
+                </View>
+              </GlassContainer>
+            ) : null}
+
+            {checkingMonthlyStats ? (
+              <GlassContainer
+                style={styles.creditInfoCardShell}
+                innerStyle={styles.creditInfoCardInner}
+                padding={spacing.md}
+                borderRadius={radius.lg}
+              >
+                <Text style={[styles.creditSectionLabel, { color: colors.textMuted }]}>
+                  CE MOIS-CI
+                </Text>
+
+                <View style={styles.creditHeroBlock}>
+                  <Text
+                    style={[
+                      styles.creditHeroAmount,
+                      { color: checkingMonthlyStats.net >= 0 ? colors.success : colors.danger },
+                    ]}
+                  >
+                    {formatSignedMoney(checkingMonthlyStats.net)}
+                  </Text>
+                  <Text style={[styles.creditHeroLabel, { color: colors.textMuted }]}>
+                    net ce mois
+                  </Text>
+                </View>
+
+                <View style={styles.creditChipRow}>
+                  <View style={[styles.creditChip, { backgroundColor: colors.successMuted }]}>
+                    <Text style={[styles.creditChipLabel, { color: colors.textMuted }]}>REVENUS</Text>
+                    <Text style={[styles.creditChipAmount, { color: colors.success }]}>
+                      {formatMoney(checkingMonthlyStats.revenues)}
+                    </Text>
+                  </View>
+                  <View style={[styles.creditChip, { backgroundColor: colors.surfaceElevated }]}>
+                    <Text style={[styles.creditChipLabel, { color: colors.textMuted }]}>DÉPENSES</Text>
+                    <Text style={[styles.creditChipAmount, { color: colors.text }]}>
+                      {formatMoney(checkingMonthlyStats.expenses)}
+                    </Text>
+                  </View>
+                </View>
+              </GlassContainer>
+            ) : null}
+
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Afficher les paiements récurrents"
@@ -510,43 +673,72 @@ export default function AccountDetailScreen() {
 
             {showRecurringPayments ? (
               <View style={styles.recurringList}>
-                {accountRecurringPayments.length > 0 ? (
-                  accountRecurringPayments.map((payment) => (
-                    <Pressable
-                      key={payment.id}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Modifier le paiement récurrent ${payment.name}`}
-                      android_ripple={null}
-                      onPress={() => {
-                        tapHaptic();
-                        void openEditRecurringPayment(payment);
-                      }}
-                    >
-                      <GlassContainer borderRadius={radius.lg} padding={spacing.sm + 2} innerStyle={styles.recurringPaymentRowInner}>
-                      <UserPickedIconBadge
-                        icon={isIconName(payment.icon) ? payment.icon : 'repeat-outline'}
-                        color={payment.color}
-                        size={34}
-                        iconSize={16}
-                        logoUrl={payment.logoUrl}
-                      />
-                      <View style={styles.recurringPaymentCopy}>
-                        <Text style={[styles.recurringPaymentName, { color: colors.text }]} numberOfLines={1}>
-                          {payment.name}
-                        </Text>
-                        <Text style={[styles.recurringPaymentMeta, { color: colors.textMuted }]} numberOfLines={1}>
-                          {frequencyLabel(payment.frequency)}
-                          {payment.nextDate ? ` · Prochain: ${payment.nextDate}` : ''}
-                          {payment.active ? '' : ' · inactif'}
+                {groupedAccountRecurringPayments.length > 0 ? (
+                  groupedAccountRecurringPayments.map(([dateKey, payments]) => (
+                    <View key={dateKey} style={styles.recurringGroup}>
+                      <View style={styles.recurringGroupHeader}>
+                        <Text style={styles.recurringGroupDate}>
+                          {dateKey !== '__no_date__' ? formatAgendaUpcomingDate(dateKey) : 'Date inconnue'}
                         </Text>
                       </View>
-                      <Text style={[styles.recurringPaymentAmount, { color: payment.kind === 'income' ? colors.success : colors.text }]}>
-                        {payment.kind === 'income' ? '+' : '−'}
-                        {formatDisplayMoneyAbsolute(payment.amount)}
-                      </Text>
-                      <Ionicons name="pencil-outline" size={14} color={colors.textMuted} />
-                      </GlassContainer>
-                    </Pressable>
+                      <View style={styles.recurringGroupItems}>
+                        {payments.map((payment) => (
+                          <Pressable
+                            key={payment.id}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Voir les détails du paiement récurrent ${payment.name}`}
+                            android_ripple={null}
+                            onPress={() => {
+                              tapHaptic();
+                              setSelectedPayment({
+                                name: payment.name,
+                                amount: payment.amount,
+                                sourceId: payment.id,
+                                recurring: true,
+                                kind: payment.kind === 'income' ? 'income' : 'payment',
+                                account: payment.accountLabel ?? null,
+                                logoUrl: payment.logoUrl ?? null,
+                                icon: payment.icon ?? null,
+                                color: payment.color ?? null,
+                                frequencyLabel: frequencyLabel(payment.frequency),
+                                frequency: payment.frequency,
+                                active: payment.active,
+                                categoryName: payment.categoryName ?? null,
+                                categoryId: payment.categoryId ?? null,
+                              });
+                            }}
+                          >
+                            <GlassContainer borderRadius={radius.lg} padding={spacing.sm + 2} innerStyle={styles.recurringPaymentRowInner}>
+                              <UserPickedIconWell
+                                icon={
+                                  payment.icon && payment.icon !== 'repeat-outline'
+                                    ? payment.icon
+                                    : payment.kind === 'income'
+                                      ? 'AttachMoney'
+                                      : EXPENSE_DEFAULT_ICON
+                                }
+                                color={payment.color}
+                                size={48}
+                                wellGlyphWhite
+                                logoUrl={payment.logoUrl?.trim() || getMerchantLogoUrl(payment.name) || null}
+                              />
+                              <View style={styles.recurringPaymentCopy}>
+                                <Text style={[styles.recurringPaymentName, { color: colors.text }]} numberOfLines={1}>
+                                  {payment.name}
+                                </Text>
+                                <Text style={[styles.recurringPaymentMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                                  {frequencyLabel(payment.frequency)}
+                                  {payment.active ? '' : ' · inactif'}
+                                </Text>
+                              </View>
+                              <Text style={[styles.recurringPaymentAmount, { color: payment.kind === 'income' ? colors.success : colors.text }]}>
+                                {formatRecurringPaymentAmount(payment.amount, payment.kind ?? 'payment')}
+                              </Text>
+                            </GlassContainer>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
                   ))
                 ) : (
                   <Text style={[styles.empty, { color: colors.textMuted }]}>Aucun paiement récurrent pour ce compte.</Text>
@@ -591,53 +783,38 @@ export default function AccountDetailScreen() {
               )}
             </View>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Supprimer le compte"
-              style={({ pressed }) => [
-                styles.deleteButton,
-                { backgroundColor: colors.dangerMuted, borderColor: colors.danger },
-                pressed && styles.pressed,
-              ]}
-              onPress={() => confirmDeleteAccount(account)}
-            >
-              <Ionicons name="trash-outline" size={16} color={colors.danger} />
-              <Text style={[styles.deleteText, { color: colors.danger }]}>Supprimer le compte</Text>
-            </Pressable>
           </>
         ) : (
           <Text style={[styles.empty, { color: colors.textMuted }]}>Compte introuvable.</Text>
         )}
       </ScrollView>
 
-      <Modal visible={showForm} animationType="fade" transparent onRequestClose={closeForm}>
-        <View style={styles.modalBackdrop}>
+      <Modal visible={showForm} animationType="slide" transparent onRequestClose={closeForm}>
+        <View style={[styles.modalBackdrop, formThemed.modalBackdrop]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={closeForm} />
-          <MotiView
-            from={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: 'timing', duration: 180 }}
-            style={[
-              styles.modalSheet,
-              ghostCardShadow,
-              {
-                backgroundColor: colors.surfaceSolid,
-                paddingBottom: Math.max(insets.bottom, spacing.md),
-              },
-            ]}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.modalKeyboard}
           >
-            <View style={styles.modalHandle} />
-            <View style={styles.modalTitleRow}>
-              <Text style={[styles.formTitle, { color: colors.text }]}>Modifier le compte</Text>
-              <Pressable
-                style={({ pressed }) => [styles.closeBtn, { backgroundColor: ghost.obsidianSoft }, pressed && styles.pressed]}
-                onPress={closeForm}
-              >
-                <Ionicons name="close" size={20} color={colors.textSecondary} />
-              </Pressable>
-            </View>
+            <View
+              style={[
+                styles.modalSheet,
+                ghostCardShadow,
+                formThemed.sheet,
+                { paddingBottom: Math.max(insets.bottom, spacing.md) },
+              ]}
+            >
+              <View style={[styles.modalHandle, formThemed.handle]} />
+              <View style={styles.modalTitleRow}>
+                <Text style={[styles.formTitle, formThemed.text]} numberOfLines={1}>
+                  Modifier le compte
+                </Text>
+                <Pressable onPress={closeForm} hitSlop={12} style={[styles.closeBtn, formThemed.closeButton]}>
+                  <Ionicons name="close" size={19} color={colors.textMuted} />
+                </Pressable>
+              </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
               <View style={styles.formHead}>
                 <View style={styles.logoPreviewWrap}>
                   {previewLogo ? (
@@ -663,7 +840,7 @@ export default function AccountDetailScreen() {
                     <Ionicons name="pencil-outline" size={15} color={isLight ? colors.text : ghost.void} />
                   </Pressable>
                 </View>
-                <Text style={[styles.formHint, { color: colors.textMuted }]}>
+                <Text style={[styles.formHint, formThemed.textMuted]}>
                   {selectedInstitutionLogo
                     ? 'Logo manuel sélectionné.'
                     : 'Le logo se déduit du nom. Exemple : Visa Desjardins -> Desjardins.'}
@@ -704,7 +881,7 @@ export default function AccountDetailScreen() {
                 </View>
               ) : null}
 
-              <Text style={[styles.label, { color: colors.textSecondary }]}>Type de compte</Text>
+              <Text style={[styles.label, formThemed.textSecondary]}>Type de compte</Text>
               <View style={styles.typeRow}>
                 {ACCOUNT_TYPES.map((type) => {
                   const selected = kind === type.id;
@@ -717,14 +894,11 @@ export default function AccountDetailScreen() {
                       }}
                       style={[
                         styles.typeChip,
-                        {
-                          backgroundColor: selected ? colors.text : ghost.obsidianSoft,
-                          borderColor: selected ? colors.text : colors.borderStrong,
-                        },
+                        selected ? formThemed.selected : formThemed.control,
                       ]}
                     >
-                      <Ionicons name={type.icon} size={16} color={selected ? ghost.void : colors.textSecondary} />
-                      <Text style={[styles.typeChipText, { color: selected ? ghost.void : colors.textSecondary }]}>
+                      <Ionicons name={type.icon} size={16} color={selected ? colors.primary : colors.textSecondary} />
+                      <Text style={[styles.typeChipText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
                         {type.label}
                       </Text>
                     </Pressable>
@@ -785,24 +959,43 @@ export default function AccountDetailScreen() {
                 />
               ) : null}
 
+              {formFeedback ? (
+                <ThemedFormMessage
+                  variant={formFeedback.variant}
+                  title={formFeedback.title}
+                  message={formFeedback.message}
+                />
+              ) : null}
+
               <PrimarySaveButton label="Enregistrer" onPress={() => void saveAccount()} />
-            </ScrollView>
-          </MotiView>
+
+              <View style={styles.deleteSection}>
+                <View style={[styles.deleteDivider, { backgroundColor: colors.border }]} />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Supprimer le compte"
+                  style={({ pressed }) => [
+                    styles.deleteButton,
+                    { backgroundColor: colors.dangerMuted, borderColor: colors.danger },
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => editingAccount && confirmDeleteAccount(editingAccount)}
+                >
+                  <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                  <Text style={[styles.deleteText, { color: colors.danger }]}>Supprimer le compte</Text>
+                </Pressable>
+              </View>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
       <TransactionDetailSheet transaction={selectedTransaction} onClose={() => setSelectedTransaction(null)} onDeleted={() => { void load(); }} />
-      <RecurringPaymentFormModal
-        visible={recurringForm != null}
-        form={recurringForm}
-        accounts={recurringAccounts}
-        categories={recurringCategories}
-        categoryBudgets={recurringCategoryBudgets}
-        saving={recurringSaving}
-        bottomInset={insets.bottom}
-        onClose={() => setRecurringForm(null)}
-        onChange={setRecurringForm}
-        onSave={() => void saveRecurringPayment()}
+      <PaymentDetailSheet
+        detail={selectedPayment}
+        onClose={() => setSelectedPayment(null)}
+        onDeleted={() => { void load(); }}
       />
       <ConfirmDeleteModal
         visible={confirmDeleteVisible}
@@ -825,30 +1018,62 @@ export default function AccountDetailScreen() {
   );
 }
 
+function usePortfolioFormTheme() {
+  const { colors, ghost, isLight } = useAppTheme();
+  return useMemo(
+    () => ({
+      modalBackdrop: { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' },
+      sheet: {
+        backgroundColor: colors.surfaceSolid,
+        borderColor: colors.border,
+        borderWidth: StyleSheet.hairlineWidth,
+      },
+      handle: { backgroundColor: colors.borderStrong },
+      closeButton: {
+        backgroundColor: colors.surfaceElevated,
+        borderColor: colors.border,
+        borderWidth: StyleSheet.hairlineWidth,
+      },
+      control: {
+        backgroundColor: ghost.obsidianSoft,
+        borderColor: colors.borderStrong,
+        borderWidth: StyleSheet.hairlineWidth,
+      },
+      selected: {
+        backgroundColor: colors.successMuted,
+        borderColor: colors.primary,
+        borderWidth: 1.5,
+      },
+      selectedText: { color: colors.primary },
+      text: { color: colors.text },
+      textSecondary: { color: colors.textSecondary },
+      textMuted: { color: colors.textMuted },
+    }),
+    [colors, ghost, isLight],
+  );
+}
+
 function AccountInput(props: React.ComponentProps<typeof TextInput> & { label: string; suffix?: string }) {
   const { label, suffix, ...inputProps } = props;
-  const { colors, ghost } = useAppTheme();
-  const controlStyle = {
-    backgroundColor: ghost.obsidianSoft,
-    borderColor: colors.borderStrong,
-  };
+  const { colors } = useAppTheme();
+  const formThemed = usePortfolioFormTheme();
 
   return (
     <View style={styles.inputGroup}>
-      <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>
+      <Text style={[styles.label, formThemed.textSecondary]}>{label}</Text>
       {suffix ? (
-        <View style={[styles.inputShell, controlStyle]}>
+        <View style={[styles.inputShell, formThemed.control]}>
           <TextInput
             {...inputProps}
-            style={[styles.inputWithSuffix, { color: colors.text }]}
+            style={[styles.inputWithSuffix, formThemed.text]}
             placeholderTextColor={colors.textMuted}
           />
-          <Text style={[styles.inputSuffix, { color: colors.textSecondary }]}>{suffix}</Text>
+          <Text style={[styles.inputSuffix, formThemed.textSecondary]}>{suffix}</Text>
         </View>
       ) : (
         <TextInput
           {...inputProps}
-          style={[styles.input, controlStyle, { color: colors.text }]}
+          style={[styles.input, formThemed.control, formThemed.text]}
           placeholderTextColor={colors.textMuted}
         />
       )}
@@ -881,9 +1106,9 @@ function LogoOption({
       ]}
     >
       {logoUrl ? (
-        <LogoIconFrame uri={logoUrl} size={34} />
+        <LogoIconFrame uri={logoUrl} size={ICON_WELL_SIZE} />
       ) : (
-        <IconFrame size={34}>
+        <IconFrame size={ICON_WELL_SIZE}>
           <Ionicons name="business-outline" size={17} color={colors.textMuted} />
         </IconFrame>
       )}
@@ -946,13 +1171,6 @@ function transactionBelongsToAccount(tx: Transaction, account: SimulatedAccount)
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function frequencyLabel(frequency: RecurringPayment['frequency']) {
-  if (frequency === 'weekly') return 'Hebdo';
-  if (frequency === 'biweekly') return 'Bihebdo';
-  if (frequency === 'yearly') return 'Annuel';
-  return 'Mensuel';
 }
 
 function isIconName(value: string): value is keyof typeof Ionicons.glyphMap {
@@ -1061,6 +1279,81 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     paddingBottom: 4,
   },
+  creditInfoCardShell: {
+    borderRadius: radius.lg,
+  },
+  creditInfoCardInner: {
+    gap: spacing.md,
+  },
+  creditSectionLabel: {
+    ...interBoldText,
+    fontSize: typography.micro,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  creditHeroBlock: {
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    gap: 3,
+  },
+  creditHeroAmount: {
+    ...interExtraBoldText,
+    fontSize: typography.displayAmount,
+    letterSpacing: -1,
+  },
+  creditHeroLabel: {
+    ...interMediumText,
+    fontSize: typography.meta,
+  },
+  creditBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  creditBarTrack: {
+    flex: 1,
+    height: 10,
+    borderRadius: radius.pill,
+    overflow: 'hidden',
+  },
+  creditBarFill: {
+    height: 10,
+    borderRadius: radius.pill,
+  },
+  creditBarPct: {
+    ...interBoldText,
+    fontSize: typography.meta,
+    minWidth: 42,
+    textAlign: 'right',
+  },
+  creditChipRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  creditChip: {
+    flex: 1,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    gap: 4,
+  },
+  creditChipLabel: {
+    ...interBoldText,
+    fontSize: typography.micro,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  creditChipAmount: {
+    ...interBoldText,
+    fontSize: typography.caption,
+  },
+  deleteSection: {
+    gap: spacing.md,
+    marginTop: spacing.xs,
+  },
+  deleteDivider: {
+    height: StyleSheet.hairlineWidth,
+  },
   deleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1082,8 +1375,25 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   recurringList: {
-    gap: spacing.xs,
+    gap: spacing.md,
     marginTop: -spacing.xs,
+  },
+  recurringGroup: {
+    gap: spacing.sm,
+  },
+  recurringGroupHeader: {
+    paddingBottom: spacing.xs,
+    paddingHorizontal: 2,
+  },
+  recurringGroupDate: {
+    color: colors.textMuted,
+    fontSize: typography.caption,
+    fontWeight: '700',
+    textTransform: 'capitalize',
+    letterSpacing: 0.2,
+  },
+  recurringGroupItems: {
+    gap: spacing.xs,
   },
   recurringPaymentRowInner: {
     flexDirection: 'row',
@@ -1092,8 +1402,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   recurringPaymentIcon: {
-    width: 34,
-    height: 34,
+    width: ICON_WELL_SIZE,
+    height: ICON_WELL_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1210,25 +1520,26 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    backgroundColor: 'rgba(0, 0, 0, 0.68)',
+    justifyContent: 'flex-end',
+  },
+  modalKeyboard: {
+    flex: 1,
+    justifyContent: 'flex-end',
   },
   modalSheet: {
-    maxHeight: '86%',
-    backgroundColor: colors.surfaceSolid,
-    borderRadius: 30,
-    paddingTop: spacing.sm,
+    marginTop: 88,
+    maxHeight: '92%',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: spacing.md,
     paddingHorizontal: spacing.lg,
-    ...ghostCardShadow,
   },
   modalHandle: {
     alignSelf: 'center',
     width: 44,
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    marginBottom: spacing.md,
+    height: 4,
+    borderRadius: radius.pill,
+    marginBottom: spacing.sm,
   },
   modalTitleRow: {
     flexDirection: 'row',
@@ -1238,9 +1549,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1254,13 +1565,14 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   formTitle: {
-    color: colors.text,
-    fontSize: typography.body,
-    fontWeight: '800',
+    flex: 1,
+    ...interExtraBoldText,
+    fontSize: typography.title,
+    letterSpacing: -0.4,
   },
   formHint: {
     flex: 1,
-    color: colors.textMuted,
+    ...interMediumText,
     fontSize: typography.meta,
     lineHeight: 17,
   },
@@ -1328,8 +1640,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cyanMuted,
   },
   logoOptionIcon: {
-    width: 34,
-    height: 34,
+    width: ICON_WELL_SIZE,
+    height: ICON_WELL_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1353,46 +1665,42 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   typeChipText: {
-    color: colors.textSecondary,
+    ...interMediumText,
     fontSize: typography.meta,
-    fontWeight: '600',
   },
-  inputGroup: { gap: spacing.xs },
+  inputGroup: { gap: spacing.sm },
   label: {
-    color: colors.textMuted,
-    fontSize: typography.meta,
-    fontWeight: '600',
-    letterSpacing: 0.2,
+    ...interBoldText,
+    fontSize: typography.caption,
+    lineHeight: 21,
   },
   input: {
-    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 50,
     borderRadius: radius.lg,
-    color: colors.text,
-    fontSize: typography.body,
-    fontWeight: '700',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
+    ...interBoldText,
+    fontSize: typography.body,
   },
   inputShell: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 50,
     borderRadius: radius.lg,
     paddingRight: spacing.md,
   },
   inputWithSuffix: {
     flex: 1,
     minWidth: 0,
-    color: colors.text,
-    fontSize: typography.body,
     paddingLeft: spacing.md,
     paddingRight: spacing.xs,
     paddingVertical: spacing.md,
+    ...interBoldText,
+    fontSize: typography.body,
   },
   inputSuffix: {
-    color: colors.textMuted,
+    ...interBoldText,
     fontSize: typography.body,
-    fontWeight: '700',
   },
   saveBtn: {
     backgroundColor: colors.primary,

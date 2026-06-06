@@ -1,6 +1,5 @@
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -16,15 +15,27 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import { GoalSparkChartCarousel } from '@/components/GoalSparkChartCarousel';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
+import { ThemedFormMessage } from '@/components/ThemedFormMessage';
+import { formValidationError, type FormFeedback, type FormSaveResult } from '@/lib/formFeedback';
 import { ProgressBar } from '@/components/ProgressBar';
+import { MdiIconPicker } from '@/components/MdiIconPicker';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
+import { isMdiIconName, type MdiIconName } from '@/lib/mdiIconCatalog';
 import {
   resolveUserPickedIconGlyphColor,
   resolveUserPickedIconWellBackground,
 } from '@/lib/userPickedIcon';
 import { SCREEN_TOP_GUTTER, ghost, ghostCardShadow } from '@/constants/ghostUi';
-import { GOAL_ICON_PICKER_OPTIONS } from '@/constants/categoryOptions';
-import { FLOATING_NAV_CONTENT_PADDING, PAGE_TITLE_CONTENT_GAP, colors, radius, spacing, typography } from '@/constants/theme';
+import { LINEAR_CHART_ACCENT_LIGHT } from '@/constants/linearChart';
+import {
+  FLOATING_NAV_CONTENT_PADDING,
+  getGoalGreenShade,
+  PAGE_TITLE_CONTENT_GAP,
+  colors,
+  radius,
+  spacing,
+  typography,
+} from '@/constants/theme';
 import { getCategoryBudgets, getDashboard, getRecurringPayments, getSavingsGoals, upsertSavingsGoal } from '@/lib/db';
 import { savingsGoalIncrementalProgress } from '@/lib/savingsGoalProgress';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
@@ -50,31 +61,20 @@ export type GoalForm = {
 type IconName = keyof typeof Ionicons.glyphMap;
 type IconSelectionMode = 'auto' | 'manual';
 
-const GOAL_COLOR_OPTIONS = [
-  '#10B981',
-  '#38BDF8',
-  '#6366F1',
-  '#8B5CF6',
-  '#EC4899',
-  '#F59E0B',
-  '#FB7185',
-  '#14B8A6',
-  '#64748B',
-  '#22C55E',
-];
-const DEFAULT_COLOR = GOAL_COLOR_OPTIONS[0]!;
+const DEFAULT_COLOR = LINEAR_CHART_ACCENT_LIGHT;
 const DEFAULT_ICON: IconName = 'flag-outline';
 
 export function createNewGoalForm(): GoalForm {
+  const id = createLocalId();
   return {
-    id: createLocalId(),
+    id,
     name: '',
     targetAmount: '',
     currentAmount: '',
     initialSavedAmount: '',
     weeklyContribution: '',
     dueDate: '',
-    color: DEFAULT_COLOR,
+    color: getGoalGreenShade(id, true),
     icon: DEFAULT_ICON,
     iconMode: 'auto',
     createdAt: new Date().toISOString(),
@@ -92,7 +92,7 @@ export function createGoalEditForm(goal: SavingsGoal): GoalForm {
     initialSavedAmount: String(goal.initialSavedAmount ?? 0),
     weeklyContribution: String(goal.weeklyContribution || ''),
     dueDate: goal.dueDate ?? '',
-    color: goal.color || DEFAULT_COLOR,
+    color: getGoalGreenShade(goal.id, true),
     icon: goal.icon || DEFAULT_ICON,
     iconMode: goal.icon === automaticIcon ? 'auto' : 'manual',
     createdAt: goal.createdAt,
@@ -111,6 +111,7 @@ export function SavingsGoalFormModal({
   setIconPickerExpanded,
   onDismiss,
   onSave,
+  feedback,
 }: {
   form: GoalForm | null;
   setForm: Dispatch<SetStateAction<GoalForm | null>>;
@@ -120,6 +121,7 @@ export function SavingsGoalFormModal({
   recurringPayments: RecurringPayment[];
   saving: boolean;
   iconPickerExpanded: boolean;
+  feedback?: FormFeedback | null;
   setIconPickerExpanded: Dispatch<SetStateAction<boolean>>;
   onDismiss: () => void;
   onSave: () => void | Promise<void>;
@@ -163,7 +165,7 @@ export function SavingsGoalFormModal({
     }),
     [isLight, themeColors, themeGhost],
   );
-  const selectedColor = normalizeColor(form?.color ?? DEFAULT_COLOR);
+  const selectedColor = form ? getGoalGreenShade(form.id, isLight) : LINEAR_CHART_ACCENT_LIGHT;
   const chartCarouselTone = useMemo(
     () => ({
       stroke: selectedColor,
@@ -219,10 +221,6 @@ export function SavingsGoalFormModal({
                   setForm((cur) => (cur ? { ...cur, icon, iconMode: 'manual' } : cur));
                   setIconPickerExpanded(false);
                 }}
-              />
-              <ColorPicker
-                selectedColor={selectedColor}
-                onSelect={(color) => setForm((cur) => (cur ? { ...cur, color } : cur))}
               />
               {form != null && goals.some((g) => g.id === form.id) ? (
                 <GoalSparkChartCarousel
@@ -302,6 +300,14 @@ export function SavingsGoalFormModal({
 
               {projection ? <GoalProjectionCard projection={projection} /> : null}
 
+              {feedback ? (
+                <ThemedFormMessage
+                  variant={feedback.variant}
+                  title={feedback.title}
+                  message={feedback.message}
+                />
+              ) : null}
+
               <PrimarySaveButton
                 label={saving ? 'Enregistrement...' : 'Enregistrer'}
                 onPress={() => void onSave()}
@@ -358,51 +364,37 @@ function GoalIconSelector({
   onSelectAuto,
   onSelectManual,
 }: {
-  selectedIcon: IconName;
+  selectedIcon: string;
   selectedColor: string;
   automaticIcon: IconName;
   mode: IconSelectionMode;
   expanded: boolean;
   onToggle: () => void;
   onSelectAuto: () => void;
-  onSelectManual: (icon: IconName) => void;
+  onSelectManual: (icon: string) => void;
 }) {
   const { colors, ghost, isLight } = useAppTheme();
-  const pickerOptions = useMemo(() => {
-    const options = [...GOAL_ICON_PICKER_OPTIONS];
-    if (isIconName(selectedIcon) && !options.some((option) => option.icon === selectedIcon)) {
-      options.unshift({
-        id: 'custom',
-        label: 'Personnalisé',
-        icon: selectedIcon,
-        color: normalizeColor(selectedColor) || colors.primary,
-      });
-    }
-    return options;
-  }, [colors.primary, selectedColor, selectedIcon]);
   const defaultGlyph = resolveUserPickedIconGlyphColor(null, isLight, colors);
 
   return (
     <View style={[styles.iconSelector, { backgroundColor: ghost.obsidianSoft, borderColor: colors.borderStrong }]}>
       <View style={styles.iconSelectorTop}>
-        <UserPickedIconBadge icon={selectedIcon} color={selectedColor} size={52} iconSize={28} />
-        <View style={styles.iconSelectorCopy}>
-          <Text style={[styles.iconSelectorLabel, { color: colors.text }]}>
-            {mode === 'auto' ? 'Icône automatique' : 'Icône choisie'}
-          </Text>
-          <Text style={[styles.iconSelectorMeta, { color: colors.textMuted }]}>
-            {mode === 'auto' ? "Adaptée au nom de l'objectif" : 'Choix personnalisé'}
-          </Text>
-        </View>
         <Pressable
           onPress={onToggle}
           accessibilityRole="button"
           accessibilityLabel="Modifier l'icône"
           hitSlop={10}
-          style={({ pressed }) => [styles.iconEditButton, { borderColor: colors.border }, pressed && styles.pressed]}
         >
-          <Ionicons name="pencil-outline" size={18} color={colors.textSecondary} />
+          <UserPickedIconBadge icon={selectedIcon} color={selectedColor} size={52} iconSize={28} />
         </Pressable>
+        <View style={styles.iconSelectorCopy}>
+          <Text style={[styles.iconSelectorLabel, { color: colors.text }]}>
+            {mode === 'auto' ? 'Icône automatique' : 'Icône choisie'}
+          </Text>
+          <Text style={[styles.iconSelectorMeta, { color: colors.textMuted }]}>
+            {mode === 'auto' ? "Adaptée au nom de l'objectif" : 'Touche pour parcourir la bibliothèque MDI'}
+          </Text>
+        </View>
       </View>
       {expanded ? (
         <View style={styles.iconGrid}>
@@ -431,75 +423,19 @@ function GoalIconSelector({
               Auto
             </Text>
           </Pressable>
-          {pickerOptions.map((option) => {
-            const selected = mode === 'manual' && selectedIcon === option.icon;
-
-            return (
-              <Pressable
-                key={option.id}
-                onPress={() => onSelectManual(option.icon)}
-                accessibilityRole="button"
-                accessibilityLabel={`Choisir l'icône ${option.label}`}
-                style={({ pressed }) => [
-                  styles.iconChoice,
-                  { backgroundColor: resolveUserPickedIconWellBackground(isLight), borderColor: colors.border },
-                  selected && [styles.iconChoiceSelected, { borderColor: selectedColor }],
-                  pressed && styles.pressed,
-                ]}
-              >
-                <UserPickedIconBadge icon={option.icon} color={option.color} size={36} iconSize={18} />
-              </Pressable>
-            );
-          })}
+          <View style={styles.mdiPickerWrap}>
+            <MdiIconPicker
+              selectedIcon={mode === 'manual' ? selectedIcon : null}
+              onSelect={(icon: MdiIconName) => onSelectManual(icon)}
+              maxHeight={280}
+            />
+          </View>
         </View>
       ) : null}
     </View>
   );
 }
 
-function ColorPicker({
-  selectedColor,
-  onSelect,
-}: {
-  selectedColor: string;
-  onSelect: (color: string) => void;
-}) {
-  const { colors, ghost } = useAppTheme();
-  const options = getColorOptions(GOAL_COLOR_OPTIONS, selectedColor);
-
-  return (
-    <View style={styles.pickerSection}>
-      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Couleur</Text>
-      <View style={styles.colorGrid}>
-        {options.map((color) => {
-          const selected = selectedColor.toLowerCase() === color.toLowerCase();
-
-          return (
-            <Pressable
-              key={color}
-              onPress={() => {
-                tapHaptic();
-                onSelect(color);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={`Choisir la couleur ${color}`}
-              style={({ pressed }) => [
-                styles.colorChoice,
-                { backgroundColor: ghost.obsidianSoft, borderColor: colors.border },
-                selected && [styles.colorChoiceSelected, { borderColor: color }],
-                pressed && styles.pressed,
-              ]}
-            >
-              <View style={[styles.colorSwatch, { backgroundColor: color }]}>
-                {selected ? <Ionicons name="checkmark" size={16} color={getReadableIconColor(color)} /> : null}
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
 
 type GoalProjection = {
   progress: number;
@@ -563,7 +499,7 @@ function createLocalId() {
   return `goal-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-export async function saveSavingsGoalForm(form: GoalForm) {
+export async function saveSavingsGoalForm(form: GoalForm, isLight: boolean): Promise<FormSaveResult> {
   const name = form.name.trim();
   const targetAmount = parseAmount(form.targetAmount);
   const currentAmount = parseAmount(form.currentAmount || '0');
@@ -572,20 +508,16 @@ export async function saveSavingsGoalForm(form: GoalForm) {
     : undefined;
 
   if (!name) {
-    Alert.alert('Nom requis', 'Ajoute un nom pour ton objectif.');
-    return false;
+    return formValidationError('Nom requis', 'Ajoute un nom pour ton objectif.');
   }
   if (Number.isNaN(targetAmount) || targetAmount <= 0) {
-    Alert.alert('Cible invalide', 'Entre un montant cible supérieur à 0.');
-    return false;
+    return formValidationError('Cible invalide', 'Entre un montant cible supérieur à 0.');
   }
   if (Number.isNaN(currentAmount) || currentAmount < 0) {
-    Alert.alert('Montant invalide', 'Entre un montant épargné positif ou 0.');
-    return false;
+    return formValidationError('Montant invalide', 'Entre un montant épargné positif ou 0.');
   }
   if (Number.isNaN(weeklyContribution) || weeklyContribution < 0) {
-    Alert.alert('Contribution invalide', 'Entre une contribution hebdomadaire positive ou 0.');
-    return false;
+    return formValidationError('Contribution invalide', 'Entre une contribution hebdomadaire positive ou 0.');
   }
 
   let initialSavedAmount: number;
@@ -594,8 +526,7 @@ export async function saveSavingsGoalForm(form: GoalForm) {
   } else {
     initialSavedAmount = parseAmount(form.initialSavedAmount);
     if (Number.isNaN(initialSavedAmount) || initialSavedAmount < 0) {
-      Alert.alert('Montant invalide', 'Réessaie avec un montant initial valide.');
-      return false;
+      return formValidationError('Montant invalide', 'Réessaie avec un montant initial valide.');
     }
   }
   initialSavedAmount = Math.min(Math.max(initialSavedAmount, 0), currentAmount);
@@ -608,7 +539,7 @@ export async function saveSavingsGoalForm(form: GoalForm) {
     initialSavedAmount,
     weeklyContribution,
     dueDate: form.dueDate.trim() || undefined,
-    color: normalizeColor(form.color),
+    color: getGoalGreenShade(form.id, isLight),
     icon: getSelectedGoalIcon(form),
     createdAt: form.createdAt,
   });
@@ -777,8 +708,9 @@ function formatGoalDuration(weeks: number) {
   return parts.join(' et ') || '0 jour';
 }
 
-function getSelectedGoalIcon(form: GoalForm): IconName {
+function getSelectedGoalIcon(form: GoalForm): string {
   if (form.iconMode === 'auto') return getAutomaticGoalIcon(form.name);
+  if (isMdiIconName(form.icon)) return form.icon;
   return isIconName(form.icon) ? form.icon : DEFAULT_ICON;
 }
 
@@ -833,39 +765,8 @@ function isIconName(value: string): value is IconName {
   return value in Ionicons.glyphMap;
 }
 
-function getColorOptions(options: string[], selectedColor: string) {
-  if (!options.some((color) => color.toLowerCase() === selectedColor.toLowerCase())) {
-    return [selectedColor, ...options];
-  }
-  return options;
-}
-
 function normalizeColor(color?: string) {
   return color?.startsWith('#') ? color : DEFAULT_COLOR;
-}
-
-function getReadableIconColor(backgroundColor: string): '#000000' | '#FFFFFF' {
-  const hex = backgroundColor.replace('#', '').trim();
-  const normalized =
-    hex.length === 3
-      ? hex
-          .split('')
-          .map((char) => char + char)
-          .join('')
-      : hex;
-
-  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return '#FFFFFF';
-
-  const red = parseInt(normalized.slice(0, 2), 16) / 255;
-  const green = parseInt(normalized.slice(2, 4), 16) / 255;
-  const blue = parseInt(normalized.slice(4, 6), 16) / 255;
-  const toLinear = (channel: number) =>
-    channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
-  const luminance = 0.2126 * toLinear(red) + 0.7152 * toLinear(green) + 0.0722 * toLinear(blue);
-  const contrastWithBlack = (luminance + 0.05) / 0.05;
-  const contrastWithWhite = 1.05 / (luminance + 0.05);
-
-  return contrastWithBlack > contrastWithWhite ? '#000000' : '#FFFFFF';
 }
 
 const styles = StyleSheet.create({
@@ -1049,8 +950,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   suggestionButtonText: { color: '#000000', fontSize: typography.micro, fontWeight: '800' },
-  pickerSection: { gap: spacing.sm },
   iconGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  mdiPickerWrap: { width: '100%' },
   autoIconChoice: {
     height: 42,
     minWidth: 82,
@@ -1078,25 +979,6 @@ const styles = StyleSheet.create({
   iconChoiceSelected: {
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1.5,
-  },
-  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  colorChoice: {
-    width: 42,
-    height: 42,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: ghost.obsidianSoft,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'transparent',
-  },
-  colorChoiceSelected: { borderWidth: 1.5 },
-  colorSwatch: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   projectionCard: {
     borderRadius: radius.xl,

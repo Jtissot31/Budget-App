@@ -24,18 +24,21 @@ import { PageTransition } from '@/components/PageTransition';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { GlassContainer } from '@/components/GlassContainer';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
-import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
+import { ThemedFormMessage } from '@/components/ThemedFormMessage';
+import type { FormFeedback } from '@/lib/formFeedback';
+import { MdiIconPicker } from '@/components/MdiIconPicker';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import {
   BUDGET_PRESETS,
   CATEGORY_COLOR_OPTIONS,
-  CATEGORY_ICON_PICKER_OPTIONS,
   getCategoryIconName,
   type IconName,
 } from '@/constants/categoryOptions';
+import type { MdiIconName } from '@/lib/mdiIconCatalog';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   FLOATING_NAV_CONTENT_PADDING,
+  ICON_WELL_SIZE,
   interBoldText,
   interExtraBoldText,
   interMediumText,
@@ -99,6 +102,8 @@ type BudgetCategoryFormModalProps = {
   onChangeForm: Dispatch<SetStateAction<CategoryForm | null>>;
   onClose: () => void;
   onSave: () => Promise<void>;
+  onDeleteCategory?: (category: CategoryBudget) => Promise<void>;
+  feedback?: FormFeedback | null;
 };
 
 function BudgetCategoryFormModal(props: BudgetCategoryFormModalProps) {
@@ -135,15 +140,11 @@ export default function BudgetScreen() {
   const [form, setForm] = useState<CategoryForm | null>(null);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [formErrorVisible, setFormErrorVisible] = useState(false);
-  const [formErrorTitle, setFormErrorTitle] = useState('');
-  const [formErrorMessage, setFormErrorMessage] = useState('');
+  const [formFeedback, setFormFeedback] = useState<FormFeedback | null>(null);
   const mutedTextColor = isLight ? colors.textMuted : '#909090';
 
   const showFormError = useCallback((title: string, message: string) => {
-    setFormErrorTitle(title);
-    setFormErrorMessage(message);
-    setFormErrorVisible(true);
+    setFormFeedback({ variant: 'error', title, message });
   }, []);
 
   const load = useCallback(async () => {
@@ -228,6 +229,7 @@ export default function BudgetScreen() {
     await refreshMonthlyBudgetLimit();
     await load();
     setSaving(false);
+    setFormFeedback(null);
     setForm(null);
     successHaptic();
   }, [form, load, saving, showFormError]);
@@ -297,7 +299,6 @@ export default function BudgetScreen() {
           setSelectedCategory(null);
           setHighlightedCategoryId(null);
         }}
-        onDeleteCategory={handleDeleteCategory}
         onEditCategory={handleEditCategory}
         onOpenHistory={(category) => {
           tapHaptic();
@@ -315,18 +316,13 @@ export default function BudgetScreen() {
         dashboard={dashboard}
         saving={saving}
         onChangeForm={setForm}
-        onClose={() => setForm(null)}
+        onClose={() => {
+          setFormFeedback(null);
+          setForm(null);
+        }}
         onSave={handleSaveCategory}
-      />
-
-      <ThemedConfirmModal
-        visible={formErrorVisible}
-        title={formErrorTitle}
-        message={formErrorMessage}
-        confirmLabel="Compris"
-        icon="alert-circle-outline"
-        onConfirm={() => setFormErrorVisible(false)}
-        onCancel={() => setFormErrorVisible(false)}
+        onDeleteCategory={handleDeleteCategory}
+        feedback={formFeedback}
       />
     </View>
     </PageTransition>
@@ -584,20 +580,16 @@ function AddCategoryCta({ onPress }: { onPress: () => void }) {
 function BudgetCategoryDetailSheet({
   category,
   onClose,
-  onDeleteCategory,
   onEditCategory,
   onOpenHistory,
 }: {
   category: CategoryBudget | null;
   onClose: () => void;
-  onDeleteCategory: (category: CategoryBudget) => Promise<void>;
   onEditCategory: (category: CategoryBudget) => void;
   onOpenHistory: (category: CategoryBudget) => void;
 }) {
   const { colors, isLight } = useAppTheme();
   const mutedTextColor = isLight ? colors.textMuted : '#909090';
-  const [deleting, setDeleting] = useState(false);
-  const [confirmVisible, setConfirmVisible] = useState(false);
   const iconName = category ? getCategoryIconName(category) : 'pricetag-outline';
   const usageState = category
     ? getCategoryBudgetUsage(category.limitAmount, category.spent)
@@ -617,13 +609,7 @@ function BudgetCategoryDetailSheet({
       )
     : colors.primary;
 
-  const confirmDelete = useCallback(() => {
-    if (!category || deleting) return;
-    setConfirmVisible(true);
-  }, [category, deleting]);
-
   return (
-    <>
     <BottomSheet
       visible={Boolean(category)}
       onClose={onClose}
@@ -718,40 +704,9 @@ function BudgetCategoryDetailSheet({
             <Ionicons name="list-outline" size={18} color={colors.primary} />
             <Text style={[allocStyles.historyWideText, { color: colors.text }]}>Voir l'historique</Text>
           </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Supprimer la catégorie ${category.categoryName}`}
-            disabled={deleting}
-            style={({ pressed }) => [
-              allocStyles.deleteWide,
-              { backgroundColor: colors.dangerMuted, borderColor: colors.danger },
-              pressed && allocStyles.detailBtnPressed,
-              deleting && allocStyles.disabled,
-            ]}
-            onPress={confirmDelete}
-          >
-            <Ionicons name="trash-outline" size={16} color={colors.danger} />
-            <Text style={[allocStyles.deleteWideText, { color: colors.danger }]}>
-              {deleting ? 'Suppression...' : 'Supprimer la catégorie'}
-            </Text>
-          </Pressable>
         </>
       ) : null}
     </BottomSheet>
-    <ConfirmDeleteModal
-      visible={confirmVisible}
-      title="Supprimer cette catégorie ?"
-      message={category ? `${category.categoryName} sera retirée de ton budget. Les transactions existantes restent conservées.` : undefined}
-      onConfirm={() => {
-        if (!category) return;
-        setConfirmVisible(false);
-        setDeleting(true);
-        void onDeleteCategory(category).finally(() => setDeleting(false));
-      }}
-      onCancel={() => setConfirmVisible(false)}
-    />
-    </>
   );
 }
 
@@ -763,10 +718,18 @@ function BudgetCategoryFormModalContent({
   onChangeForm,
   onClose,
   onSave,
+  onDeleteCategory,
+  feedback,
 }: BudgetCategoryFormModalProps) {
   const insets = useSafeAreaInsets();
   const { colors, ghost, isLight } = useAppTheme();
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
   const projection = useMemo(() => getCategoryProjection(form, items, dashboard), [dashboard, form, items]);
+  const editingCategory = useMemo(
+    () => (form ? items.find((item) => item.categoryId === form.id) ?? null : null),
+    [form, items],
+  );
 
   return (
     <Modal visible={form != null} animationType="slide" transparent onRequestClose={onClose}>
@@ -820,15 +783,67 @@ function BudgetCategoryFormModalContent({
 
               {projection ? <CategoryProjectionCard projection={projection} /> : null}
 
+              {feedback ? (
+                <ThemedFormMessage
+                  variant={feedback.variant}
+                  title={feedback.title}
+                  message={feedback.message}
+                />
+              ) : null}
+
               <PrimarySaveButton
                 label={saving ? 'Enregistrement...' : 'Enregistrer'}
                 onPress={() => void onSave()}
-                disabled={saving}
+                disabled={saving || deleting}
               />
+
+              {editingCategory && onDeleteCategory ? (
+                <>
+                  <View style={[allocStyles.formDeleteDivider, { backgroundColor: colors.border }]} />
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Supprimer la catégorie ${editingCategory.categoryName}`}
+                    disabled={saving || deleting}
+                    style={({ pressed }) => [
+                      allocStyles.deleteWide,
+                      { backgroundColor: colors.dangerMuted, borderColor: colors.danger },
+                      pressed && allocStyles.detailBtnPressed,
+                      (saving || deleting) && allocStyles.disabled,
+                    ]}
+                    onPress={() => setConfirmDeleteVisible(true)}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                    <Text style={[allocStyles.deleteWideText, { color: colors.danger }]}>
+                      {deleting ? 'Suppression...' : 'Supprimer la catégorie'}
+                    </Text>
+                  </Pressable>
+                </>
+              ) : null}
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </View>
+
+      <ConfirmDeleteModal
+        visible={confirmDeleteVisible}
+        title="Supprimer cette catégorie ?"
+        message={
+          editingCategory
+            ? `${editingCategory.categoryName} sera retirée de ton budget. Les transactions existantes restent conservées.`
+            : undefined
+        }
+        onConfirm={() => {
+          if (!editingCategory || !onDeleteCategory) return;
+          setConfirmDeleteVisible(false);
+          setDeleting(true);
+          void onDeleteCategory(editingCategory)
+            .then(() => {
+              onClose();
+            })
+            .finally(() => setDeleting(false));
+        }}
+        onCancel={() => setConfirmDeleteVisible(false)}
+      />
     </Modal>
   );
 }
@@ -875,48 +890,32 @@ function IconPicker({
   selectedColor: string;
   onSelect: (icon: string) => void;
 }) {
-  const { colors, isLight } = useAppTheme();
-  const pickerOptions = useMemo(() => {
-    const options = [...CATEGORY_ICON_PICKER_OPTIONS];
-    if (isIconName(selectedIcon) && !options.some((option) => option.icon === selectedIcon)) {
-      options.unshift({
-        id: 'custom',
-        label: 'Personnalisé',
-        icon: selectedIcon,
-        color: normalizeUserIconColor(selectedColor) ?? colors.primary,
-      });
-    }
-    return options;
-  }, [colors.primary, selectedColor, selectedIcon]);
+  const { colors } = useAppTheme();
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <View style={allocStyles.pickerSection}>
       <Text style={[allocStyles.fieldLabel, { color: colors.textMuted }]}>Icône</Text>
-      <View style={allocStyles.iconGrid}>
-        {pickerOptions.map((option) => {
-          const selected = selectedIcon === option.icon;
-
-          return (
-            <Pressable
-              key={option.id}
-              onPress={() => {
-                tapHaptic();
-                onSelect(option.icon);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={`Choisir l'icône ${option.label}`}
-              style={({ pressed }) => [
-                allocStyles.iconChoice,
-                { backgroundColor: resolveUserPickedIconWellBackground(isLight), borderColor: colors.border },
-                selected && [allocStyles.iconChoiceSelected, { borderColor: selectedColor }],
-                pressed && { opacity: 0.72 },
-              ]}
-            >
-              <UserPickedIconBadge icon={option.icon} color={option.color} size={36} iconSize={18} />
-            </Pressable>
-          );
-        })}
-      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Modifier l'icône de catégorie"
+        onPress={() => {
+          tapHaptic();
+          setExpanded((value) => !value);
+        }}
+        style={({ pressed }) => [allocStyles.iconPreviewTap, pressed && { opacity: 0.78 }]}
+      >
+        <UserPickedIconBadge icon={selectedIcon} color={selectedColor} size={52} iconSize={24} />
+      </Pressable>
+      {expanded ? (
+        <MdiIconPicker
+          selectedIcon={selectedIcon}
+          onSelect={(icon: MdiIconName) => {
+            onSelect(icon);
+            setExpanded(false);
+          }}
+        />
+      ) : null}
     </View>
   );
 }
@@ -1226,6 +1225,11 @@ const allocStyles = StyleSheet.create({
   },
   detailStatLabel: { fontSize: typography.micro, fontWeight: '600', marginBottom: 2 },
   detailStatValue: { fontSize: typography.meta, fontWeight: '700' },
+  formDeleteDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
   deleteWide: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1274,6 +1278,7 @@ const allocStyles = StyleSheet.create({
   },
   fieldHint: { fontSize: typography.micro, lineHeight: 17 },
   pickerSection: { gap: spacing.sm },
+  iconPreviewTap: { alignSelf: 'flex-start' },
   iconGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   iconChoice: {
     width: 46,

@@ -205,6 +205,7 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
       await ensureRecurringPaymentColumns(db);
       await ensureLoanColumns(db);
       await ensureWealthAssetColumns(db);
+      await ensureMerchantOverrideColumns(db);
       await removeDeprecatedBudgetCategories(db);
       return db;
     })(),
@@ -311,6 +312,7 @@ async function ensureLoanColumns(db: SQLite.SQLiteDatabase): Promise<void> {
   await addColumn('payment_account_id', 'payment_account_id TEXT NOT NULL DEFAULT ""');
   await addColumn('next_payment_date', 'next_payment_date TEXT NOT NULL DEFAULT ""');
   await addColumn('recurring_payment_id', 'recurring_payment_id TEXT');
+  await addColumn('icon', 'icon TEXT');
 }
 
 async function ensureWealthAssetColumns(db: SQLite.SQLiteDatabase): Promise<void> {
@@ -332,6 +334,16 @@ async function ensureWealthAssetColumns(db: SQLite.SQLiteDatabase): Promise<void
   await addColumn('property_type', 'property_type TEXT');
   await addColumn('address', 'address TEXT');
   await addColumn('notes', 'notes TEXT');
+}
+
+async function ensureMerchantOverrideColumns(db: SQLite.SQLiteDatabase): Promise<void> {
+  const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(merchant_overrides)');
+  if (!columns.some((column) => column.name === 'icon')) {
+    await db.execAsync('ALTER TABLE merchant_overrides ADD COLUMN icon TEXT');
+  }
+  if (!columns.some((column) => column.name === 'use_auto_logo')) {
+    await db.execAsync('ALTER TABLE merchant_overrides ADD COLUMN use_auto_logo INTEGER NOT NULL DEFAULT 1');
+  }
 }
 
 async function removeDeprecatedBudgetCategories(db: SQLite.SQLiteDatabase): Promise<void> {
@@ -571,6 +583,7 @@ export async function getLoans(): Promise<Loan[]> {
        COALESCE(payment_account_id, '') AS paymentAccountId,
        COALESCE(next_payment_date, '') AS nextPaymentDate,
        recurring_payment_id AS recurringPaymentId,
+       icon,
        created_at AS createdAt
      FROM loans
      ORDER BY created_at DESC`,
@@ -583,8 +596,8 @@ export async function upsertLoan(loan: Loan): Promise<void> {
     `INSERT OR REPLACE INTO loans (
        id, type, name, lender, principal, balance_remaining, interest_rate,
        monthly_payment, start_date, end_date, duration_amount, duration_unit,
-       payment_frequency, payment_account_id, next_payment_date, recurring_payment_id, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       payment_frequency, payment_account_id, next_payment_date, recurring_payment_id, icon, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       loan.id,
       loan.type,
@@ -602,6 +615,7 @@ export async function upsertLoan(loan: Loan): Promise<void> {
       loan.paymentAccountId,
       loan.nextPaymentDate,
       loan.recurringPaymentId ?? null,
+      loan.icon ?? null,
       loan.createdAt,
     ],
   );
@@ -629,6 +643,8 @@ export async function getMerchantOverrides(): Promise<MerchantOverride[]> {
     originalName: string;
     displayName?: string | null;
     logoUrl?: string | null;
+    icon?: string | null;
+    useAutoLogo: number;
     hidden: number;
     updatedAt: string;
   }>(
@@ -636,6 +652,8 @@ export async function getMerchantOverrides(): Promise<MerchantOverride[]> {
        original_name AS originalName,
        display_name AS displayName,
        logo_url AS logoUrl,
+       icon,
+       use_auto_logo AS useAutoLogo,
        hidden,
        updated_at AS updatedAt
      FROM merchant_overrides
@@ -643,25 +661,34 @@ export async function getMerchantOverrides(): Promise<MerchantOverride[]> {
   );
 
   return rows.map((row) => ({
-    ...row,
+    originalName: row.originalName,
+    displayName: row.displayName,
+    logoUrl: row.logoUrl,
+    icon: row.icon,
+    useAutoLogo: row.useAutoLogo !== 0,
     hidden: row.hidden === 1,
+    updatedAt: row.updatedAt,
   }));
 }
 
 export async function upsertMerchantOverride(override: MerchantOverride): Promise<void> {
   const db = await getDb();
   await db.runAsync(
-    `INSERT INTO merchant_overrides (original_name, display_name, logo_url, hidden, updated_at)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO merchant_overrides (original_name, display_name, logo_url, icon, use_auto_logo, hidden, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(original_name) DO UPDATE SET
        display_name = excluded.display_name,
        logo_url = excluded.logo_url,
+       icon = excluded.icon,
+       use_auto_logo = excluded.use_auto_logo,
        hidden = excluded.hidden,
        updated_at = excluded.updated_at`,
     [
       override.originalName,
       override.displayName?.trim() || null,
       override.logoUrl ?? null,
+      override.icon ?? null,
+      override.useAutoLogo !== false ? 1 : 0,
       override.hidden ? 1 : 0,
       override.updatedAt,
     ],
