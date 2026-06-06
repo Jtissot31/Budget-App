@@ -4,7 +4,6 @@ import {
   InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -18,24 +17,37 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { GhostNumpad } from '@/components/GhostNumpad';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { DatePickerField } from '@/components/MinimalDatePicker';
-import { PageTransition } from '@/components/PageTransition';
-import { hasMerchantLogoCandidate } from '@/components/TransactionAvatar';
 import {
-  TRANSACTION_ICON_OPTIONS,
+  interBoldText,
+  interExtraBoldText,
+  interMediumText,
+  radius,
+  spacing,
+  typography,
+} from '@/constants/theme';
+import { hasMerchantLogoCandidate } from '@/components/TransactionAvatar';
+import { LogoIconFrame } from '@/components/IconFrame';
+import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
+import {
+  getIconPickerOptionByIcon,
+  MANUAL_ICON_PICKER_OPTIONS,
   TRANSFER_CATEGORY,
   getCategoryIconName,
   type IconName,
 } from '@/constants/categoryOptions';
 import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
-import { KNOWN_MERCHANT_NAMES } from '@/lib/merchantLogo';
+import { getMerchantLogoUrl, KNOWN_MERCHANT_NAMES } from '@/lib/merchantLogo';
 import { useAppTheme } from '@/lib/themeContext';
 import {
   adjustSavingsGoalCurrentAmount,
   adjustSimulatedAccountBalance,
   getCategories,
+  getCategoryBudgets,
+  getSavingsGoals,
   getSimulatedAccounts,
   getTransactionById,
   insertTransaction,
@@ -45,12 +57,21 @@ import { getTransactionAccountDeltas, parseAccountIdFromNote, parseTransferAccou
 import { formatMoneyAmountInput } from '@/lib/formatMoneyAmountInput';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
 import { createLocalTransaction, syncWithServer } from '@/lib/sync';
-import type { Category, SimulatedAccount, Transaction, TransactionType } from '@/types';
+import type { Category, SavingsGoal, SimulatedAccount, Transaction, TransactionType } from '@/types';
 
 type PaymentAccountOption = {
   id: string;
   label: string;
   isSimulated: boolean;
+};
+type TransferEndpoint = {
+  id: string;
+  label: string;
+  sublabel: string;
+  kind: 'account' | 'goal';
+  isSimulated: boolean;
+  icon: string;
+  color: string;
 };
 type ItemizedExpense = {
   id: string;
@@ -460,12 +481,22 @@ async function applyLinkedSavingsGoalDeltas(
 
 export default function AddTransactionScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ editId?: string }>();
+  const params = useLocalSearchParams<{
+    editId?: string;
+    type?: string;
+    label?: string;
+    accountId?: string;
+  }>();
   const insets = useSafeAreaInsets();
-  const { colors, ghost, isLight } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
   const editId = typeof params.editId === 'string' ? params.editId : '';
+  const routeType = typeof params.type === 'string' ? params.type : '';
+  const routeLabel = typeof params.label === 'string' ? params.label : '';
+  const routeAccountId = typeof params.accountId === 'string' ? params.accountId : '';
   const [categories, setCategories] = useState<Category[]>([]);
+  const [budgetCategoryIds, setBudgetCategoryIds] = useState<Set<string>>(new Set());
   const [simulatedAccounts, setSimulatedAccounts] = useState<SimulatedAccount[]>([]);
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [prefilledEditId, setPrefilledEditId] = useState<string | null>(null);
   const [type, setType] = useState<TransactionType>('expense');
@@ -483,6 +514,7 @@ export default function AddTransactionScreen() {
   const [receiptUri, setReceiptUri] = useState('');
   const [receiptStatus, setReceiptStatus] = useState<Transaction['receiptStatus'] | null>(null);
   const [receiptOptionsExpanded, setReceiptOptionsExpanded] = useState(false);
+  const [showLogoPicker, setShowLogoPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const labelInputRef = useRef<TextInput>(null);
   const sheetScrollRef = useRef<ScrollView>(null);
@@ -515,7 +547,24 @@ export default function AddTransactionScreen() {
   }, [editId, editingTransaction?.type, type]);
 
   useEffect(() => {
+    if (editId) return;
+    if (routeType === 'income') setType('income');
+    if (routeLabel) setLabel(routeLabel);
+    if (routeAccountId) setAccountId(routeAccountId);
+  }, [editId, routeAccountId, routeLabel, routeType]);
+
+  useEffect(() => {
     void getSimulatedAccounts().then(setSimulatedAccounts);
+  }, []);
+
+  useEffect(() => {
+    void getCategoryBudgets().then((budgets) => {
+      setBudgetCategoryIds(new Set(budgets.map((b) => b.categoryId)));
+    });
+  }, []);
+
+  useEffect(() => {
+    void getSavingsGoals().then(setSavingsGoals);
   }, []);
 
   useEffect(() => {
@@ -552,13 +601,19 @@ export default function AddTransactionScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [merchantSuggestions.length]);
 
-  const visibleCats = useMemo(
-    () =>
-      type === 'transfer'
-        ? [categories.find((c) => c.id === TRANSFER_CATEGORY.id) ?? TRANSFER_CATEGORY]
-        : categories.filter((c) => (type === 'income' ? c.name === 'Revenus' : c.name !== 'Revenus')),
-    [categories, type],
-  );
+  const visibleCats = useMemo(() => {
+    if (type === 'transfer') {
+      return [categories.find((c) => c.id === TRANSFER_CATEGORY.id) ?? TRANSFER_CATEGORY];
+    }
+    if (type === 'income') {
+      return categories.filter((c) => c.name === 'Revenus');
+    }
+    // expense: only show categories that exist in the budget page
+    const budgetCats = categories.filter(
+      (c) => c.name !== 'Revenus' && budgetCategoryIds.has(c.id),
+    );
+    return budgetCats.length > 0 ? budgetCats : categories.filter((c) => c.name !== 'Revenus');
+  }, [categories, type, budgetCategoryIds]);
   const accountOptions = useMemo<PaymentAccountOption[]>(() => {
     if (simulatedAccounts.length > 0) {
       return simulatedAccounts.map((account) => ({
@@ -575,6 +630,28 @@ export default function AddTransactionScreen() {
     }));
   }, [simulatedAccounts]);
 
+  const transferEndpoints = useMemo<TransferEndpoint[]>(() => {
+    const accountEntries: TransferEndpoint[] = accountOptions.map((a) => ({
+      id: a.id,
+      label: a.label.split(' • ')[0] ?? a.label,
+      sublabel: a.label.includes(' • ') ? `••${a.label.split(' • ')[1]}` : 'Compte',
+      kind: 'account',
+      isSimulated: a.isSimulated,
+      icon: 'card-outline',
+      color: '#666666',
+    }));
+    const goalEntries: TransferEndpoint[] = savingsGoals.map((g) => ({
+      id: g.id,
+      label: g.name,
+      sublabel: `${Math.round(g.currentAmount).toLocaleString('fr-CA')} $`,
+      kind: 'goal',
+      isSimulated: false,
+      icon: (g.icon as string) || 'flag-outline',
+      color: g.color || '#00e664',
+    }));
+    return [...accountEntries, ...goalEntries];
+  }, [accountOptions, savingsGoals]);
+
   useEffect(() => {
     if (!editId || prefilledEditId === editId || categories.length === 0 || accountOptions.length === 0) return;
 
@@ -586,6 +663,9 @@ export default function AddTransactionScreen() {
       const fallbackAccount = accountOptions[0];
       const fallbackDestination = accountOptions[1] ?? fallbackAccount;
 
+      const isKnownEndpoint = (id: string | null) =>
+        id ? (accountOptions.some((a) => a.id === id) || savingsGoals.some((g) => g.id === id)) : false;
+
       setEditingTransaction(tx);
       setType(tx.type);
       setLabel(tx.type === 'transfer' ? '' : tx.label);
@@ -594,14 +674,10 @@ export default function AddTransactionScreen() {
       setCategoryId(tx.categoryId);
       setCategoryManuallySelected(true);
       setAccountId(
-        sourceAccountId && accountOptions.some((account) => account.id === sourceAccountId)
-          ? sourceAccountId
-          : fallbackAccount.id,
+        isKnownEndpoint(sourceAccountId) ? sourceAccountId! : fallbackAccount.id,
       );
       setDestinationAccountId(
-        transferAccounts.destinationId && accountOptions.some((account) => account.id === transferAccounts.destinationId)
-          ? transferAccounts.destinationId
-          : fallbackDestination.id,
+        isKnownEndpoint(transferAccounts.destinationId) ? transferAccounts.destinationId! : fallbackDestination.id,
       );
       setFallbackIcon(isIconName(tx.transactionIcon) ? tx.transactionIcon : 'receipt-outline');
       setItemizedExpenses(tx.type === 'expense' ? parseItemizedExpensesFromNote(tx.note) : []);
@@ -614,7 +690,7 @@ export default function AddTransactionScreen() {
     return () => {
       cancelled = true;
     };
-  }, [accountOptions, categories.length, editId, prefilledEditId]);
+  }, [accountOptions, categories.length, editId, prefilledEditId, savingsGoals]);
 
   useEffect(() => {
     if (accountOptions.length === 0) return;
@@ -747,23 +823,23 @@ export default function AddTransactionScreen() {
     }
   };
 
-  const prepareReceiptScan = () => {
-    tapHaptic();
-    setReceiptUri(`scan://receipt/${Date.now()}`);
-    setReceiptStatus('scan_pending');
-    router.push('/scan?source=expense-entry');
-  };
-
   const displayAmount = useMemo(() => {
     const amt = amount.length ? formatMoneyAmountInput(amount) : '0';
     const sign = type === 'transfer' ? '' : type === 'income' ? '+' : '−';
     return `${sign}${amt} $`;
   }, [amount, type]);
   const labelHasLogo = useMemo(() => hasMerchantLogoCandidate(label), [label]);
+  const autoLogoUrl = useMemo(() => getMerchantLogoUrl(label.trim()), [label]);
+  const fallbackIconColor = useMemo(
+    () => getIconPickerOptionByIcon(fallbackIcon)?.color ?? colors.textSecondary,
+    [colors.textSecondary, fallbackIcon],
+  );
   const fallbackSourceAccount = accountOptions[0] ?? { id: 'checking', label: 'Chèques', isSimulated: false };
   const sourceAccount = accountOptions.find((account) => account.id === accountId) ?? fallbackSourceAccount;
   const destinationAccount =
     accountOptions.find((account) => account.id === destinationAccountId) ?? accountOptions[1] ?? fallbackSourceAccount;
+  const sourceEndpoint = transferEndpoints.find((e) => e.id === accountId);
+  const destinationEndpoint = transferEndpoints.find((e) => e.id === destinationAccountId);
   const isTransfer = type === 'transfer';
   const isEditing = Boolean(editingTransaction);
   const sheetTitle = isEditing
@@ -776,22 +852,34 @@ export default function AddTransactionScreen() {
   const themed = useMemo(
     () => ({
       modalBackdrop: { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' },
-      sheet: { backgroundColor: colors.surfaceSolid, borderColor: colors.border },
+      sheet: { backgroundColor: colors.cardBackground, borderColor: colors.border },
       handle: { backgroundColor: colors.borderStrong },
-      closeButton: { backgroundColor: ghost.obsidianSoft },
-      control: { backgroundColor: ghost.obsidianSoft, borderColor: colors.border },
-      controlStrong: { backgroundColor: ghost.obsidianSoft, borderColor: colors.borderStrong },
-      selected: { backgroundColor: colors.text },
-      selectedText: { color: ghost.void },
-      text: { color: colors.text },
-      textSecondary: { color: colors.textSecondary },
-      textMuted: { color: colors.textMuted },
-      detectedCategory: {
-        backgroundColor: isLight ? 'rgba(25, 22, 18, 0.06)' : 'rgba(255, 255, 255, 0.06)',
+      closeButton: {
+        backgroundColor: colors.surfaceElevated,
+        borderColor: colors.border,
+        borderWidth: StyleSheet.hairlineWidth,
       },
-      submitDisabled: { backgroundColor: ghost.obsidianSoft },
+      control: {
+        backgroundColor: colors.surfaceElevated,
+        borderColor: colors.border,
+        borderWidth: StyleSheet.hairlineWidth,
+      },
+      controlStrong: {
+        backgroundColor: colors.input,
+        borderColor: colors.border,
+        borderWidth: StyleSheet.hairlineWidth,
+      },
+      selected: {
+        backgroundColor: colors.successMuted,
+        borderColor: colors.primary,
+        borderWidth: 1.5,
+      },
+      selectedText: { color: colors.primary },
+      text: { color: colors.text },
+      textMuted: { color: colors.textMuted },
+      detectedCategory: { backgroundColor: colors.successMuted },
     }),
-    [colors, ghost, isLight],
+    [colors, isLight],
   );
 
   const canSubmit =
@@ -860,8 +948,10 @@ export default function AddTransactionScreen() {
     }
 
     setSaving(true);
+    const srcLabel = sourceEndpoint?.label ?? sourceAccount.label;
+    const dstLabel = destinationEndpoint?.label ?? destinationAccount.label;
     const transactionLabel = isTransfer
-      ? `Transfert ${sourceAccount.label} vers ${destinationAccount.label}`
+      ? `Transfert ${srcLabel} → ${dstLabel}`
       : label.trim();
     const transactionDate = toTransactionDate(date);
     const transactionIcon = isTransfer ? 'swap-horizontal-outline' : labelHasLogo ? null : fallbackIcon;
@@ -934,16 +1024,22 @@ export default function AddTransactionScreen() {
         await applyLinkedSavingsGoalDeltas(simulatedAccounts, nextDeltas);
       }
     } else if (isTransfer) {
-      if (sourceAccount.isSimulated) {
+      if (sourceEndpoint?.kind === 'goal') {
+        await adjustSavingsGoalCurrentAmount(sourceEndpoint.id, -parsed);
+      } else if (sourceAccount.isSimulated) {
         await adjustSimulatedAccountBalance(sourceAccount.id, -parsed);
       }
-      if (destinationAccount.isSimulated) {
+      if (destinationEndpoint?.kind === 'goal') {
+        await adjustSavingsGoalCurrentAmount(destinationEndpoint.id, parsed);
+      } else if (destinationAccount.isSimulated) {
         await adjustSimulatedAccountBalance(destinationAccount.id, parsed);
       }
-      await applyLinkedSavingsGoalDeltas(
-        simulatedAccounts,
-        getTransactionAccountDeltas({ amount: parsed, type, note }),
-      );
+      if (sourceEndpoint?.kind !== 'goal' && destinationEndpoint?.kind !== 'goal') {
+        await applyLinkedSavingsGoalDeltas(
+          simulatedAccounts,
+          getTransactionAccountDeltas({ amount: parsed, type, note }),
+        );
+      }
     } else if (sourceAccount.isSimulated) {
       await adjustSimulatedAccountBalance(sourceAccount.id, type === 'income' ? parsed : -parsed);
     }
@@ -954,12 +1050,12 @@ export default function AddTransactionScreen() {
   };
 
   return (
-    <PageTransition>
-    <View style={styles.screen}>
-      <Modal visible animationType="slide" transparent onRequestClose={() => router.back()}>
-        <View style={[styles.modalBackdrop, themed.modalBackdrop]}>
-          <KeyboardAvoidingView behavior="padding" style={styles.modalKeyboard}>
-            <ScrollView
+    <View style={[styles.screen, styles.modalBackdrop, themed.modalBackdrop]}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.modalKeyboard}
+      >
+        <ScrollView
               ref={sheetScrollRef}
               style={[styles.sheet, themed.sheet]}
               keyboardShouldPersistTaps="handled"
@@ -977,7 +1073,7 @@ export default function AddTransactionScreen() {
               </View>
 
               <View style={styles.section}>
-                <Text style={[styles.fieldEyebrow, themed.textSecondary]}>Type</Text>
+                <DashboardSectionLabel>Type</DashboardSectionLabel>
                 <View style={styles.wrapRow}>
                   {(['expense', 'income', 'transfer'] as const).map((t) => {
                     const on = type === t;
@@ -1005,23 +1101,7 @@ export default function AddTransactionScreen() {
                   style={styles.section}
                   onLayout={(e) => { nameSectionYRef.current = e.nativeEvent.layout.y; }}
                 >
-                  <Text style={[styles.fieldEyebrow, themed.textSecondary]}>{type === 'income' ? 'Source du revenu' : 'Marchand / paiement'}</Text>
-                  {type === 'expense' ? (
-                    <Pressable
-                      onPress={prepareReceiptScan}
-                      style={({ pressed }) => [styles.inlineScanControl, themed.control, pressed && styles.pressed]}
-                    >
-                      <View style={styles.inlineScanLabel}>
-                        <Ionicons name="scan-outline" size={15} color={colors.textMuted} />
-                        <Text style={[styles.inlineScanText, themed.text]} numberOfLines={1}>
-                          Scanner un reçu
-                        </Text>
-                      </View>
-                      <View style={[styles.premiumBadge, themed.detectedCategory]}>
-                        <Text style={[styles.premiumBadgeText, themed.textMuted]}>Premium</Text>
-                      </View>
-                    </Pressable>
-                  ) : null}
+                  <DashboardSectionLabel>{type === 'income' ? 'Source du revenu' : 'Marchand / paiement'}</DashboardSectionLabel>
                   <TextInput
                     ref={labelInputRef}
                     style={[styles.input, themed.controlStrong, themed.text]}
@@ -1083,7 +1163,7 @@ export default function AddTransactionScreen() {
 
               {type === 'expense' ? (
                 <View style={styles.section}>
-                  <Text style={[styles.fieldEyebrow, themed.textSecondary]}>Compte utilisé comme paiement</Text>
+                  <DashboardSectionLabel>Compte utilisé comme paiement</DashboardSectionLabel>
                   <View style={styles.accountRow}>
                     {accountOptions.map((a) => {
                       const on = accountId === a.id;
@@ -1115,7 +1195,7 @@ export default function AddTransactionScreen() {
                 <View style={styles.section}>
                   <View style={styles.sectionTitleRow}>
                     <View>
-                      <Text style={[styles.fieldEyebrow, themed.textSecondary]}>Articles</Text>
+                      <DashboardSectionLabel>Articles</DashboardSectionLabel>
                       <Text style={[styles.sectionHint, themed.textMuted]}>Facultatif, sans changer le montant.</Text>
                     </View>
                   </View>
@@ -1167,7 +1247,7 @@ export default function AddTransactionScreen() {
                               <Ionicons
                                 name={getCategoryIconName(item.detectedCategory)}
                                 size={13}
-                                color={item.hasManualCategory ? ghost.void : item.detectedCategory.color}
+                                color={item.hasManualCategory ? colors.primary : colors.textSecondary}
                                 style={styles.categoryChipIcon}
                               />
                               <Text
@@ -1223,7 +1303,7 @@ export default function AddTransactionScreen() {
                                     <Ionicons
                                       name={getCategoryIconName(c)}
                                       size={13}
-                                      color={on ? ghost.void : c.color}
+                                      color={on ? colors.primary : colors.textSecondary}
                                       style={styles.categoryChipIcon}
                                     />
                                     <Text
@@ -1258,7 +1338,7 @@ export default function AddTransactionScreen() {
 
               {type === 'expense' && !hasItemizedItems ? (
                 <View style={styles.section}>
-                  <Text style={[styles.fieldEyebrow, themed.textSecondary]}>Catégorie</Text>
+                  <DashboardSectionLabel>Catégorie</DashboardSectionLabel>
                   <View style={styles.wrapRow}>
                     {relevantCategoryChoices.map((c) => {
                       const on = categoryId === c.id;
@@ -1275,7 +1355,7 @@ export default function AddTransactionScreen() {
                           <Ionicons
                             name={getCategoryIconName(c)}
                             size={14}
-                            color={on ? ghost.void : c.color}
+                            color={on ? colors.primary : colors.textSecondary}
                             style={styles.categoryChipIcon}
                           />
                           <Text
@@ -1297,7 +1377,7 @@ export default function AddTransactionScreen() {
                 <View style={styles.section}>
                   <View style={styles.sectionTitleRow}>
                     <View>
-                      <Text style={[styles.fieldEyebrow, themed.textSecondary]}>Reçu</Text>
+                      <DashboardSectionLabel>Reçu</DashboardSectionLabel>
                       <Text style={[styles.sectionHint, themed.textMuted]}>Facultatif, lié à cette dépense.</Text>
                     </View>
                     {receiptUri.trim() || receiptStatus ? (
@@ -1347,49 +1427,76 @@ export default function AddTransactionScreen() {
                 </View>
               ) : null}
 
-              {!isTransfer && !labelHasLogo ? (
-                <View style={styles.section}>
-                  <Text style={[styles.fieldEyebrow, themed.textSecondary]}>Icône</Text>
-                  <View style={styles.iconGrid}>
-                    {TRANSACTION_ICON_OPTIONS.map((icon) => {
-                      const on = fallbackIcon === icon;
-                      return (
-                        <Pressable
-                          key={icon}
-                          onPress={() => {
-                            tapHaptic();
-                            setFallbackIcon(icon);
-                          }}
-                          accessibilityRole="button"
-                          accessibilityLabel="Choisir cette icône"
-                          style={({ pressed }) => [
-                            styles.iconChoice,
-                            themed.control,
-                            on && themed.selected,
-                            pressed && styles.pressed,
-                          ]}
-                        >
-                          <Ionicons name={icon} size={21} color={on ? ghost.void : colors.textMuted} />
-                        </Pressable>
-                      );
-                    })}
+              {!isTransfer ? (
+                <View style={[styles.logoSection, themed.control]}>
+                  <View style={styles.logoHeader}>
+                    {autoLogoUrl ? (
+                      <LogoIconFrame uri={autoLogoUrl} size={52} />
+                    ) : (
+                      <UserPickedIconBadge icon={fallbackIcon} color={fallbackIconColor} size={52} iconSize={22} />
+                    )}
+                    <View style={styles.logoCopy}>
+                      <DashboardSectionLabel>Logo</DashboardSectionLabel>
+                      <Text style={[styles.logoHint, themed.textMuted]}>
+                        {autoLogoUrl
+                          ? 'Logo automatique trouvé avec le nom.'
+                          : 'Automatique utilisera une icône si aucun logo exact existe.'}
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => { tapHaptic(); setShowLogoPicker((v) => !v); }}
+                      hitSlop={8}
+                      style={({ pressed }) => [styles.logoEditButton, themed.controlStrong, pressed && styles.pressed]}
+                    >
+                      <Ionicons name="pencil-outline" size={14} color={colors.textMuted} />
+                    </Pressable>
                   </View>
+
+                  {showLogoPicker ? (
+                    <View style={styles.logoPicker}>
+                      <Text style={[styles.logoPickerHint, themed.textMuted]}>Icônes</Text>
+                      <View style={styles.logoOptionRow}>
+                        {MANUAL_ICON_PICKER_OPTIONS.map((option) => {
+                          const on = fallbackIcon === option.icon;
+                          return (
+                            <Pressable
+                              key={option.id}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Choisir l'icône ${option.label}`}
+                              onPress={() => { tapHaptic(); setFallbackIcon(option.icon); }}
+                              style={[
+                                styles.logoOption,
+                                {
+                                  backgroundColor: on ? colors.successMuted : colors.surfaceElevated,
+                                  borderColor: on ? colors.primary : colors.border,
+                                },
+                              ]}
+                            >
+                              <UserPickedIconBadge
+                                icon={option.icon}
+                                color={option.color}
+                                size={36}
+                                iconSize={17}
+                              />
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
 
-              {type !== 'expense' ? (
+              {type !== 'expense' && !isTransfer ? (
                 <View style={styles.section}>
-                  <Text style={[styles.fieldEyebrow, themed.textSecondary]}>{isTransfer ? 'Compte source' : 'Compte de dépôt'}</Text>
+                  <DashboardSectionLabel>Compte de dépôt</DashboardSectionLabel>
                   <View style={styles.accountRow}>
                     {accountOptions.map((a) => {
                       const on = accountId === a.id;
                       return (
                         <Pressable
                           key={a.id}
-                          onPress={() => {
-                            tapHaptic();
-                            setAccountId(a.id);
-                          }}
+                          onPress={() => { tapHaptic(); setAccountId(a.id); }}
                           style={[styles.accountChip, themed.control, on && themed.selected]}
                         >
                           <Text
@@ -1409,40 +1516,117 @@ export default function AddTransactionScreen() {
 
               {isTransfer ? (
                 <View style={styles.section}>
-                  <Text style={[styles.fieldEyebrow, themed.textSecondary]}>Compte de destination</Text>
-                  <View style={styles.accountRow}>
-                    {accountOptions.map((a) => {
-                      const on = destinationAccountId === a.id;
-                      return (
-                        <Pressable
-                          key={a.id}
-                          onPress={() => {
-                            tapHaptic();
-                            setDestinationAccountId(a.id);
-                          }}
-                          style={[styles.accountChip, themed.control, on && themed.selected]}
-                        >
-                          <Text
-                            style={[styles.accountText, themed.text, on && themed.selectedText]}
-                            numberOfLines={2}
-                            adjustsFontSizeToFit
-                            minimumFontScale={0.78}
-                          >
-                            {a.label.replace(' • ', '\n')}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+                  <DashboardSectionLabel>De</DashboardSectionLabel>
+                  {transferEndpoints.length === 0 ? (
+                    <Text style={[styles.sectionHint, themed.textMuted]}>Aucun compte ou objectif trouvé.</Text>
+                  ) : null}
+                  {accountOptions.length > 0 ? (
+                    <>
+                      <Text style={[styles.transferGroupLabel, themed.textMuted]}>Comptes</Text>
+                      <View style={styles.accountRow}>
+                        {accountOptions.map((a) => {
+                          const on = accountId === a.id;
+                          return (
+                            <Pressable
+                              key={a.id}
+                              onPress={() => { tapHaptic(); setAccountId(a.id); }}
+                              style={[styles.accountChip, themed.control, on && themed.selected]}
+                            >
+                              <Text style={[styles.accountText, themed.text, on && themed.selectedText]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.78}>
+                                {a.label.replace(' • ', '\n')}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </>
+                  ) : null}
+                  {savingsGoals.length > 0 ? (
+                    <>
+                      <Text style={[styles.transferGroupLabel, themed.textMuted]}>Objectifs d'épargne</Text>
+                      <View style={styles.accountRow}>
+                        {savingsGoals.map((g) => {
+                          const on = accountId === g.id;
+                          return (
+                            <Pressable
+                              key={g.id}
+                              onPress={() => { tapHaptic(); setAccountId(g.id); }}
+                              style={[styles.transferGoalChip, themed.control, on && themed.selected]}
+                            >
+                              <Ionicons name={(g.icon as string) || 'flag-outline'} size={15} color={on ? colors.primary : colors.textSecondary} />
+                              <Text style={[styles.transferGoalName, themed.text, on && themed.selectedText]} numberOfLines={1}>
+                                {g.name}
+                              </Text>
+                              <Text style={[styles.transferGoalBalance, on ? themed.selectedText : themed.textMuted]} numberOfLines={1}>
+                                {Math.round(g.currentAmount).toLocaleString('fr-CA')} $
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {isTransfer ? (
+                <View style={styles.section}>
+                  <DashboardSectionLabel>Vers</DashboardSectionLabel>
+                  {accountOptions.length > 0 ? (
+                    <>
+                      <Text style={[styles.transferGroupLabel, themed.textMuted]}>Comptes</Text>
+                      <View style={styles.accountRow}>
+                        {accountOptions.map((a) => {
+                          const on = destinationAccountId === a.id;
+                          return (
+                            <Pressable
+                              key={a.id}
+                              onPress={() => { tapHaptic(); setDestinationAccountId(a.id); }}
+                              style={[styles.accountChip, themed.control, on && themed.selected]}
+                            >
+                              <Text style={[styles.accountText, themed.text, on && themed.selectedText]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.78}>
+                                {a.label.replace(' • ', '\n')}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </>
+                  ) : null}
+                  {savingsGoals.length > 0 ? (
+                    <>
+                      <Text style={[styles.transferGroupLabel, themed.textMuted]}>Objectifs d'épargne</Text>
+                      <View style={styles.accountRow}>
+                        {savingsGoals.map((g) => {
+                          const on = destinationAccountId === g.id;
+                          return (
+                            <Pressable
+                              key={g.id}
+                              onPress={() => { tapHaptic(); setDestinationAccountId(g.id); }}
+                              style={[styles.transferGoalChip, themed.control, on && themed.selected]}
+                            >
+                              <Ionicons name={(g.icon as string) || 'flag-outline'} size={15} color={on ? colors.primary : colors.textSecondary} />
+                              <Text style={[styles.transferGoalName, themed.text, on && themed.selectedText]} numberOfLines={1}>
+                                {g.name}
+                              </Text>
+                              <Text style={[styles.transferGoalBalance, on ? themed.selectedText : themed.textMuted]} numberOfLines={1}>
+                                {Math.round(g.currentAmount).toLocaleString('fr-CA')} $
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </>
+                  ) : null}
                   {accountId === destinationAccountId ? (
-                    <Text style={[styles.transferWarning, { color: colors.warning }]}>Sélectionne deux comptes différents.</Text>
+                    <Text style={[styles.transferWarning, { color: colors.warning }]}>Sélectionne deux sources différentes.</Text>
                   ) : null}
                 </View>
               ) : null}
 
               {type === 'income' ? (
                 <View style={styles.section}>
-                  <Text style={[styles.fieldEyebrow, themed.textSecondary]}>Catégorie</Text>
+                  <DashboardSectionLabel>Catégorie</DashboardSectionLabel>
                   <View style={styles.wrapRow}>
                     {relevantCategoryChoices.map((c) => {
                       const on = categoryId === c.id;
@@ -1459,7 +1643,7 @@ export default function AddTransactionScreen() {
                           <Ionicons
                             name={getCategoryIconName(c)}
                             size={14}
-                            color={on ? ghost.void : c.color}
+                            color={on ? colors.primary : colors.textSecondary}
                             style={styles.categoryChipIcon}
                           />
                           <Text
@@ -1482,12 +1666,9 @@ export default function AddTransactionScreen() {
                 onPress={() => void save()}
                 disabled={saving || !canSubmit}
               />
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
-    </PageTransition>
   );
 }
 
@@ -1505,14 +1686,14 @@ const styles = StyleSheet.create({
   sheet: {
     marginTop: 88,
     maxHeight: '92%',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     borderWidth: StyleSheet.hairlineWidth,
   },
   sheetContent: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    gap: 14,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    gap: spacing.md,
   },
   handle: {
     alignSelf: 'center',
@@ -1529,8 +1710,8 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     flex: 1,
-    fontSize: 22,
-    fontWeight: '800',
+    ...interExtraBoldText,
+    fontSize: typography.title,
     letterSpacing: -0.4,
   },
   sheetClose: {
@@ -1546,36 +1727,31 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
   },
   amountText: {
-    fontWeight: '900',
+    ...interExtraBoldText,
     letterSpacing: -2,
     fontVariant: ['tabular-nums'],
   },
-  section: { gap: 8 },
+  section: { gap: spacing.sm },
   sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
   },
-  fieldEyebrow: {
-    fontSize: 16,
-    fontWeight: '800',
-    lineHeight: 21,
-  },
   sectionHint: {
-    fontSize: 12,
-    fontWeight: '700',
-    lineHeight: 16,
-    marginTop: 1,
+    ...interMediumText,
+    fontSize: typography.micro,
+    lineHeight: 17,
+    marginTop: 2,
   },
   input: {
     minHeight: 50,
-    borderRadius: 13,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 18,
-    fontWeight: '700',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    ...interBoldText,
+    fontSize: typography.body,
   },
   suggestionRow: {
     flexDirection: 'row',
@@ -1592,30 +1768,30 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   suggestionText: {
-    fontSize: 13,
-    fontWeight: '800',
+    ...interBoldText,
+    fontSize: typography.meta,
     maxWidth: 138,
   },
   addItemBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: spacing.xs,
     minHeight: 48,
-    borderRadius: 14,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
   addItemText: {
-    fontSize: 14,
-    fontWeight: '900',
+    ...interExtraBoldText,
+    fontSize: typography.caption,
   },
   itemCard: {
-    gap: 8,
-    borderRadius: 16,
+    gap: spacing.sm,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: 8,
+    padding: spacing.sm,
   },
   itemRow: {
     flexDirection: 'row',
@@ -1629,32 +1805,32 @@ const styles = StyleSheet.create({
   itemInput: {
     flex: 1,
     minHeight: 44,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     paddingVertical: 9,
-    fontSize: 15,
+    fontSize: typography.caption,
   },
   priceInputWrap: {
     width: 92,
     minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 13,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingLeft: 8,
+    paddingLeft: spacing.sm,
     paddingRight: 9,
   },
   priceInput: {
     minWidth: 0,
     flex: 1,
     paddingVertical: 9,
-    fontSize: 15,
-    fontWeight: '700',
+    ...interBoldText,
+    fontSize: typography.caption,
     textAlign: 'right',
   },
   priceCurrency: {
-    marginLeft: 4,
-    fontSize: 13,
-    fontWeight: '900',
+    marginLeft: spacing.xs,
+    ...interExtraBoldText,
+    fontSize: typography.meta,
   },
   removeItemBtn: {
     width: 32,
@@ -1673,8 +1849,8 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   itemCategoryLabel: {
-    fontSize: 11,
-    fontWeight: '900',
+    ...interExtraBoldText,
+    fontSize: typography.micro,
     paddingHorizontal: 2,
   },
   changeCategoryBtn: {
@@ -1687,20 +1863,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   changeCategoryText: {
-    fontSize: 12,
-    fontWeight: '900',
+    ...interExtraBoldText,
+    fontSize: typography.micro,
   },
   itemCategoryPicker: {
     gap: 6,
   },
   categorySearchInput: {
     minHeight: 40,
-    borderRadius: 12,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 14,
-    fontWeight: '700',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...interBoldText,
+    fontSize: typography.caption,
   },
   itemCategoryChips: {
     flexDirection: 'row',
@@ -1720,8 +1896,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   itemCategoryChipText: {
-    fontSize: 12,
-    fontWeight: '900',
+    ...interExtraBoldText,
+    fontSize: typography.micro,
     lineHeight: 15,
     flexShrink: 1,
   },
@@ -1740,8 +1916,8 @@ const styles = StyleSheet.create({
     maxWidth: 150,
   },
   itemTotalText: {
-    fontSize: 13,
-    fontWeight: '900',
+    ...interExtraBoldText,
+    fontSize: typography.meta,
     textAlign: 'right',
   },
   inlineScanControl: {
@@ -1763,8 +1939,8 @@ const styles = StyleSheet.create({
   },
   inlineScanText: {
     flexShrink: 1,
-    fontSize: 13,
-    fontWeight: '900',
+    ...interExtraBoldText,
+    fontSize: typography.meta,
   },
   receiptStatusPill: {
     flexDirection: 'row',
@@ -1776,8 +1952,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   receiptStatusText: {
-    fontSize: 11,
-    fontWeight: '900',
+    ...interExtraBoldText,
+    fontSize: typography.micro,
   },
   receiptAttachButton: {
     minHeight: 42,
@@ -1809,45 +1985,87 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   receiptActionText: {
-    fontSize: 13,
-    fontWeight: '900',
+    ...interExtraBoldText,
+    fontSize: typography.meta,
     textAlign: 'center',
   },
   premiumBadge: {
-    borderRadius: 999,
+    borderRadius: radius.pill,
     paddingHorizontal: 7,
     paddingVertical: 3,
     marginLeft: 2,
   },
   premiumBadgeText: {
+    ...interExtraBoldText,
     fontSize: 10,
-    fontWeight: '900',
   },
-  iconGrid: {
+  logoSection: {
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  logoHeader: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    alignItems: 'center',
+    gap: 12,
   },
-  iconChoice: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+  logoCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  logoHint: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    lineHeight: 15,
+  },
+  logoEditButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  logoPicker: {
+    gap: 10,
+  },
+  logoPickerHint: {
+    ...interExtraBoldText,
+    fontSize: typography.micro,
+    letterSpacing: 0.2,
+  },
+  logoOptionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  logoOption: {
+    width: 54,
+    minHeight: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: spacing.sm,
+  },
+  wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
+    flex: 1,
+    minWidth: 0,
     maxWidth: '100%',
-    borderRadius: 9,
-    paddingHorizontal: 13,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
     paddingVertical: 10,
+    alignItems: 'center',
   },
   categoryChip: {
     maxWidth: '100%',
     minHeight: 34,
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 999,
+    borderRadius: radius.pill,
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
@@ -1855,14 +2073,14 @@ const styles = StyleSheet.create({
     marginRight: 5,
   },
   chipText: {
-    fontSize: 16,
-    fontWeight: '800',
+    ...interBoldText,
+    fontSize: typography.caption,
     lineHeight: 20,
     textAlign: 'center',
   },
   categoryChipText: {
-    fontSize: 13,
-    fontWeight: '800',
+    ...interBoldText,
+    fontSize: typography.meta,
     lineHeight: 16,
     flexShrink: 1,
   },
@@ -1875,29 +2093,54 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: '31%',
     minHeight: 66,
-    borderRadius: 12,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 5,
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
   },
   accountText: {
     textAlign: 'center',
-    fontSize: 12,
-    fontWeight: '800',
+    ...interBoldText,
+    fontSize: typography.micro,
     lineHeight: 15,
     flexShrink: 1,
   },
   transferWarning: {
-    fontSize: 14,
-    fontWeight: '800',
+    ...interBoldText,
+    fontSize: typography.caption,
     lineHeight: 18,
   },
-  submit: {
-    alignItems: 'center',
-    borderRadius: 14,
-    paddingVertical: 17,
-    marginTop: 2,
+  transferGroupLabel: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginTop: spacing.xs,
+    marginBottom: 2,
   },
-  submitText: { fontSize: 18, fontWeight: '800' },
+  transferGoalChip: {
+    flexGrow: 1,
+    flexBasis: '45%',
+    minHeight: 66,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    gap: spacing.xs,
+  },
+  transferGoalName: {
+    textAlign: 'center',
+    ...interBoldText,
+    fontSize: typography.micro,
+    lineHeight: 15,
+    flexShrink: 1,
+  },
+  transferGoalBalance: {
+    textAlign: 'center',
+    ...interMediumText,
+    fontSize: typography.micro,
+    lineHeight: 14,
+  },
 });

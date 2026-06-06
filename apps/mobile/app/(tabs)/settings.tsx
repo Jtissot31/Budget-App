@@ -148,7 +148,7 @@ export default function SettingsScreen() {
 }
 
 const createStyles = (colors: AppColors) => StyleSheet.create({
-  screen: { flex: 1, backgroundColor: 'transparent' },
+  screen: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: spacing.lg, paddingBottom: FLOATING_NAV_CONTENT_PADDING, gap: PAGE_TITLE_CONTENT_GAP },
   title: { color: colors.text, fontSize: typography.title, fontWeight: '800', letterSpacing: -0.5 },
   accountCard: { gap: spacing.md },
@@ -158,12 +158,12 @@ const createStyles = (colors: AppColors) => StyleSheet.create({
     gap: spacing.md,
   },
   accountIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.cyanMuted,
+    backgroundColor: colors.surfaceElevated,
   },
   accountCopy: { flex: 1, minWidth: 0 },
   accountTitle: { color: colors.text, fontSize: typography.body, fontWeight: '800' },

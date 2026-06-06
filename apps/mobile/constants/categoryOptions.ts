@@ -27,9 +27,9 @@ export const TRANSFER_CATEGORY: Category = {
 
 export const CATEGORY_COLOR_OPTIONS = [
   '#34D399',
-  '#38BDF8',
-  '#3B82F6',
-  '#6366F1',
+  '#14B8A6',
+  '#00A854',
+  '#8B5CF6',
   '#8B5CF6',
   '#D946EF',
   '#EC4899',
@@ -62,7 +62,7 @@ export const BUDGET_PRESETS: BudgetPreset[] = [
     name: 'Téléphone / internet',
     helper: 'Cellulaire, internet et forfaits',
     icon: 'phone-portrait-outline',
-    color: '#38BDF8',
+    color: '#14B8A6',
     defaultLimit: 0,
   },
   {
@@ -94,7 +94,7 @@ export const BUDGET_PRESETS: BudgetPreset[] = [
     name: 'Transport',
     helper: 'Transport en commun, taxi et stationnement',
     icon: 'train-outline',
-    color: '#3B82F6',
+    color: '#00A854',
     defaultLimit: 0,
   },
   {
@@ -102,7 +102,7 @@ export const BUDGET_PRESETS: BudgetPreset[] = [
     name: 'Paiement d’auto',
     helper: 'Versement mensuel du véhicule',
     icon: 'car-sport-outline',
-    color: '#38BDF8',
+    color: '#14B8A6',
     defaultLimit: 0,
   },
   {
@@ -110,7 +110,7 @@ export const BUDGET_PRESETS: BudgetPreset[] = [
     name: 'Assurance auto',
     helper: 'Prime d’assurance véhicule',
     icon: 'shield-checkmark-outline',
-    color: '#6366F1',
+    color: '#8B5CF6',
     defaultLimit: 0,
   },
   {
@@ -166,7 +166,7 @@ export const BUDGET_PRESETS: BudgetPreset[] = [
     name: 'Voyages',
     helper: 'Billets, hôtels et déplacements',
     icon: 'airplane-outline',
-    color: '#38BDF8',
+    color: '#14B8A6',
     defaultLimit: 0,
   },
   {
@@ -174,7 +174,7 @@ export const BUDGET_PRESETS: BudgetPreset[] = [
     name: 'Éducation',
     helper: 'Cours, livres et formation',
     icon: 'school-outline',
-    color: '#3B82F6',
+    color: '#00A854',
     defaultLimit: 0,
   },
   {
@@ -262,7 +262,7 @@ export const BUDGET_PRESETS: BudgetPreset[] = [
     name: 'Électronique',
     helper: 'Appareils, accessoires et logiciels',
     icon: 'laptop-outline',
-    color: '#38BDF8',
+    color: '#14B8A6',
     defaultLimit: 0,
   },
 ];
@@ -313,76 +313,108 @@ function normalizeLabel(value: string): string {
   return value.normalize('NFD').replace(/\p{M}/gu, '').trim().toLowerCase();
 }
 
-export const CATEGORY_ICON_OPTIONS: IconName[] = [
-  'basket-outline',
-  'restaurant-outline',
-  'cafe-outline',
-  'flame-outline',
-  'train-outline',
-  'car-outline',
-  'car-sport-outline',
-  'construct-outline',
-  'home-outline',
-  'flash-outline',
-  'phone-portrait-outline',
-  'bag-handle-outline',
-  'shirt-outline',
-  'medkit-outline',
-  'shield-checkmark-outline',
-  'game-controller-outline',
-  'airplane-outline',
-  'school-outline',
-  'gift-outline',
-  'paw-outline',
-  'hammer-outline',
-  'receipt-outline',
-  'cash-outline',
-  'briefcase-outline',
-  'swap-horizontal-outline',
-  'trending-up-outline',
-  'card-outline',
-  'wallet-outline',
-  'people-outline',
-  'sparkles-outline',
-  'barbell-outline',
-  'laptop-outline',
-  'storefront-outline',
-  'pricetag-outline',
+export type IconPickerOption = {
+  id: string;
+  label: string;
+  icon: IconName;
+  color: string;
+};
+
+/** Curated manual icons — shared across transactions, recurring payments, and budgets. */
+export const MANUAL_ICON_PICKER_OPTIONS: IconPickerOption[] = [
+  { id: 'home', label: 'Logement', icon: 'home-outline', color: '#8B5CF6' },
+  { id: 'utilities', label: 'Électricité', icon: 'flash-outline', color: '#FBBF24' },
+  { id: 'internet', label: 'Internet', icon: 'wifi-outline', color: '#14B8A6' },
+  { id: 'phone', label: 'Téléphone', icon: 'phone-portrait-outline', color: '#22C55E' },
+  { id: 'water', label: 'Eau', icon: 'water-outline', color: '#38BDF8' },
+  { id: 'car', label: 'Auto', icon: 'car-sport-outline', color: '#FB7185' },
+  { id: 'gas', label: 'Essence', icon: 'flame-outline', color: '#F97316' },
+  { id: 'transit', label: 'Transport', icon: 'bus-outline', color: '#00A854' },
+  { id: 'groceries', label: 'Épicerie', icon: 'basket-outline', color: '#34D399' },
+  { id: 'restaurant', label: 'Restaurant', icon: 'restaurant-outline', color: '#F97316' },
+  { id: 'cafe', label: 'Café', icon: 'cafe-outline', color: '#D97706' },
+  { id: 'nightout', label: 'Sortie', icon: 'beer-outline', color: '#EAB308' },
+  { id: 'subscription', label: 'Abonnement', icon: 'tv-outline', color: '#F43F5E' },
+  { id: 'music', label: 'Musique', icon: 'musical-notes-outline', color: '#EC4899' },
+  { id: 'gaming', label: 'Jeux', icon: 'game-controller-outline', color: '#8B5CF6' },
+  { id: 'gym', label: 'Gym', icon: 'barbell-outline', color: '#34D399' },
+  { id: 'cinema', label: 'Cinéma', icon: 'film-outline', color: '#A78BFA' },
+  { id: 'shopping', label: 'Shopping', icon: 'bag-handle-outline', color: '#D946EF' },
+  { id: 'clothing', label: 'Vêtements', icon: 'shirt-outline', color: '#FB7185' },
+  { id: 'beauty', label: 'Beauté', icon: 'cut-outline', color: '#F472B6' },
+  { id: 'health', label: 'Santé', icon: 'medkit-outline', color: '#EF4444' },
+  { id: 'pets', label: 'Animaux', icon: 'paw-outline', color: '#F59E0B' },
+  { id: 'bill', label: 'Facture', icon: 'receipt-outline', color: '#64748B' },
+  { id: 'insurance', label: 'Assurance', icon: 'shield-checkmark-outline', color: '#F97316' },
+  { id: 'card', label: 'Carte', icon: 'card-outline', color: '#94A3B8' },
+  { id: 'wallet', label: 'Portefeuille', icon: 'wallet-outline', color: '#14B8A6' },
+  { id: 'income', label: 'Revenu', icon: 'cash-outline', color: '#00A854' },
+  { id: 'salary', label: 'Paie', icon: 'briefcase-outline', color: '#00A854' },
+  { id: 'investment', label: 'Placement', icon: 'trending-up-outline', color: '#22C55E' },
+  { id: 'travel', label: 'Voyage', icon: 'airplane-outline', color: '#38BDF8' },
+  { id: 'hotel', label: 'Hôtel', icon: 'bed-outline', color: '#818CF8' },
+  { id: 'education', label: 'Études', icon: 'school-outline', color: '#6366F1' },
+  { id: 'gift', label: 'Cadeau', icon: 'gift-outline', color: '#EC4899' },
+  { id: 'repair', label: 'Réparation', icon: 'build-outline', color: '#78716C' },
+  { id: 'family', label: 'Famille', icon: 'people-outline', color: '#F472B6' },
+  { id: 'other', label: 'Autre', icon: 'ellipsis-horizontal-circle-outline', color: '#94A3B8' },
 ];
 
-export const TRANSACTION_ICON_OPTIONS: IconName[] = [
-  'receipt-outline',
-  'storefront-outline',
-  'basket-outline',
-  'cart-outline',
-  'restaurant-outline',
-  'cafe-outline',
-  'flame-outline',
-  'train-outline',
-  'car-outline',
-  'home-outline',
-  'flash-outline',
-  'phone-portrait-outline',
-  'repeat-outline',
-  'bag-handle-outline',
-  'shirt-outline',
-  'medkit-outline',
-  'shield-checkmark-outline',
-  'game-controller-outline',
-  'airplane-outline',
-  'school-outline',
-  'gift-outline',
-  'paw-outline',
-  'hammer-outline',
-  'cash-outline',
-  'briefcase-outline',
-  'swap-horizontal-outline',
-  'trending-up-outline',
-  'card-outline',
-  'wallet-outline',
-  'people-outline',
-  'sparkles-outline',
-  'barbell-outline',
-  'laptop-outline',
-  'pricetag-outline',
+/** Curated icons for savings goals. */
+export const GOAL_ICON_PICKER_OPTIONS: IconPickerOption[] = [
+  { id: 'flag', label: 'Objectif', icon: 'flag-outline', color: '#00A854' },
+  { id: 'rocket', label: 'Projet', icon: 'rocket-outline', color: '#8B5CF6' },
+  { id: 'trophy', label: 'Réussite', icon: 'trophy-outline', color: '#FBBF24' },
+  { id: 'diamond', label: 'Luxe', icon: 'diamond-outline', color: '#38BDF8' },
+  { id: 'star', label: 'Priorité', icon: 'star-outline', color: '#FACC15' },
+  { id: 'home', label: 'Maison', icon: 'home-outline', color: '#A78BFA' },
+  { id: 'car', label: 'Auto', icon: 'car-sport-outline', color: '#FB7185' },
+  { id: 'travel', label: 'Voyage', icon: 'airplane-outline', color: '#38BDF8' },
+  { id: 'education', label: 'Études', icon: 'school-outline', color: '#6366F1' },
+  { id: 'wedding', label: 'Mariage', icon: 'heart-outline', color: '#EC4899' },
+  { id: 'emergency', label: 'Urgence', icon: 'umbrella-outline', color: '#14B8A6' },
+  { id: 'invest', label: 'Placement', icon: 'trending-up-outline', color: '#22C55E' },
+  { id: 'wallet', label: 'Épargne', icon: 'wallet-outline', color: '#00A854' },
+  { id: 'family', label: 'Famille', icon: 'people-outline', color: '#F472B6' },
+  { id: 'health', label: 'Santé', icon: 'fitness-outline', color: '#10B981' },
+  { id: 'gift', label: 'Cadeau', icon: 'gift-outline', color: '#EC4899' },
+  { id: 'bike', label: 'Vélo', icon: 'bicycle-outline', color: '#34D399' },
+  { id: 'tech', label: 'Techno', icon: 'laptop-outline', color: '#64748B' },
+  { id: 'nature', label: 'Nature', icon: 'leaf-outline', color: '#34D399' },
+  { id: 'cash', label: 'Fonds', icon: 'cash-outline', color: '#00A854' },
 ];
+
+function uniqueIconNames(icons: IconName[]): IconName[] {
+  return [...new Set(icons)];
+}
+
+export function getIconPickerOptionByIcon(
+  icon: IconName,
+  options: IconPickerOption[] = MANUAL_ICON_PICKER_OPTIONS,
+): IconPickerOption | undefined {
+  return options.find((option) => option.icon === icon);
+}
+
+export const TRANSACTION_ICON_OPTIONS: IconName[] = MANUAL_ICON_PICKER_OPTIONS.map((option) => option.icon);
+
+const CATEGORY_EXTRA_ICON_OPTIONS: IconPickerOption[] = [
+  { id: 'store', label: 'Commerce', icon: 'storefront-outline', color: '#94A3B8' },
+  { id: 'tech', label: 'Techno', icon: 'laptop-outline', color: '#64748B' },
+  { id: 'deals', label: 'Promo', icon: 'pricetag-outline', color: '#F97316' },
+  { id: 'tools', label: 'Outils', icon: 'hammer-outline', color: '#78716C' },
+  { id: 'maintenance', label: 'Entretien', icon: 'construct-outline', color: '#78716C' },
+  { id: 'train', label: 'Train', icon: 'train-outline', color: '#00A854' },
+  { id: 'misc', label: 'Divers', icon: 'sparkles-outline', color: '#8B5CF6' },
+  { id: 'transfer', label: 'Transfert', icon: 'swap-horizontal-outline', color: '#64748B' },
+];
+
+export const CATEGORY_ICON_PICKER_OPTIONS: IconPickerOption[] = [
+  ...MANUAL_ICON_PICKER_OPTIONS,
+  ...CATEGORY_EXTRA_ICON_OPTIONS.filter(
+    (extra) => !MANUAL_ICON_PICKER_OPTIONS.some((option) => option.icon === extra.icon),
+  ),
+];
+
+export const CATEGORY_ICON_OPTIONS: IconName[] = CATEGORY_ICON_PICKER_OPTIONS.map((option) => option.icon);
+
+export const GOAL_ICON_OPTIONS: IconName[] = GOAL_ICON_PICKER_OPTIONS.map((option) => option.icon);

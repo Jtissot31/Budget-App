@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { usePathname, useRouter } from 'expo-router';
+import { uiEvents } from '@/lib/events';
 import {
   FLOATING_FAB_ICON_SIZE,
   FLOATING_FAB_RADIUS,
@@ -14,7 +15,7 @@ import {
   floatingGlassButtonPressed,
   floatingGlassFabSurface,
 } from '@/constants/floatingGlassButton';
-import { FLOATING_TABBAR_ANDROID_BOTTOM_EXTRA, radius, spacing } from '@/constants/theme';
+import { getFloatingTabBarBottomInset, radius, spacing } from '@/constants/theme';
 import { UNIFORM_CHIP_FONT_SIZE } from '@/lib/uniformGroupStyles';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -39,9 +40,9 @@ const ROUTE_LABELS: Record<string, string> = {
 
 const HIDDEN_ROUTES = new Set(['settings']);
 
-/** Smooth blue AI-style FAB gradients (expo-linear-gradient, 3-stop) */
-const AI_CHAT_FAB_GRADIENT_DARK = ['#1E3A8A', '#2563EB', '#3B82F6'] as const;
-const AI_CHAT_FAB_GRADIENT_LIGHT = ['#3B82F6', '#2563EB', '#1D4ED8'] as const;
+/** Brand green AI FAB gradients (expo-linear-gradient, 3-stop) */
+const AI_CHAT_FAB_GRADIENT_DARK = ['#003d1a', '#007a3d', '#00e664'] as const;
+const AI_CHAT_FAB_GRADIENT_LIGHT = ['#00e664', '#00a854', '#007a3d'] as const;
 const AI_CHAT_FAB_GRADIENT_LOCATIONS = [0, 0.5, 1] as const;
 
 const aiGraphic = (base: number) => Math.round(base * FLOATING_FAB_VISUAL_SCALE);
@@ -57,8 +58,8 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const pathname = usePathname();
   const { colors, isLight } = useAppTheme();
   const fabSurface = floatingGlassFabSurface(colors, isLight);
-  const androidExtra = Platform.OS === 'android' ? FLOATING_TABBAR_ANDROID_BOTTOM_EXTRA : 0;
-  const bottom = Math.max(insets.bottom, spacing.sm) + androidExtra;
+  const bottom = getFloatingTabBarBottomInset(insets.bottom);
+  const isAndroid = Platform.OS === 'android';
   const activeRouteName = state.routes[state.index]?.name;
   const activeRouteParams = state.routes[state.index]?.params as { view?: string } | undefined;
   const transactionsView = activeRouteName === 'transactions' ? (activeRouteParams?.view ?? 'history') : undefined;
@@ -67,7 +68,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const isTransactionsMerchantsView = transactionsView === 'merchants';
   const showDashboardAiChatFab = isDashboard;
   const showAddButton =
-    pathname !== '/recurring-payments' &&
     activeRouteName !== 'accounts' &&
     activeRouteName !== 'goals' &&
     activeRouteName !== 'budgets' &&
@@ -108,11 +108,18 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
       return;
     }
 
-    router.push(shouldAddRecurringPayment ? '/recurring-payments?new=1' : '/add-transaction');
+    if (shouldAddRecurringPayment) {
+      uiEvents.requestNewRecurringPayment();
+      return;
+    }
+
+    router.push('/add-transaction');
   };
 
+  const navShellBg = colors.cardBackground;
+
   return (
-    <View style={[styles.wrap, { paddingBottom: bottom }]} pointerEvents="box-none">
+    <View style={styles.wrap} pointerEvents="box-none">
       {showDashboardAiChatFab ? (
         <Pressable
           style={({ pressed }) => [
@@ -189,40 +196,31 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           }
           accessibilityLabel={shouldAddRecurringPayment ? 'Nouveau paiement récurrent' : 'Nouvelle transaction'}
         >
-          <LinearGradient
-            colors={
-              isLight
-                ? [colors.primary, '#008050']
-                : [colors.primary, 'rgba(0, 140, 80, 0.92)']
-            }
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={{ ...StyleSheet.absoluteFillObject, borderRadius: FLOATING_FAB_SIZE / 2 }}
-          />
           <MotiView
             animate={{ rotate: shouldAddRecurringPayment ? '180deg' : '0deg' }}
             transition={{ type: 'timing', duration: 260 }}
             style={styles.addIconWrap}
           >
-            <Ionicons
-              name={shouldAddRecurringPayment ? 'repeat-outline' : 'add'}
-              size={shouldAddRecurringPayment ? FLOATING_FAB_ICON_SIZE : 34}
-              color={isLight ? '#ffffff' : '#ffffff'}
-            />
+            {shouldAddRecurringPayment ? (
+              <Ionicons name="repeat-outline" size={FLOATING_FAB_ICON_SIZE} color="#000000" />
+            ) : (
+              <Text style={styles.addFabText}>+</Text>
+            )}
           </MotiView>
         </Pressable>
       ) : null}
 
       <View
         style={[
-          styles.pill,
+          styles.navShell,
           {
-            backgroundColor: isLight ? colors.navPill : '#0A0A0A',
-            borderColor: isLight ? colors.glassBorder : colors.border,
-            borderWidth: 1,
+            paddingBottom: bottom,
+            backgroundColor: navShellBg,
+            borderTopColor: isLight ? colors.border : colors.border,
           },
         ]}
       >
+        <View style={[styles.pill, isAndroid && styles.pillAndroid]}>
           {state.routes.map((route, index) => {
             if (HIDDEN_ROUTES.has(route.name)) return null;
             const focused = state.index === index;
@@ -238,7 +236,17 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                 target: route.key,
                 canPreventDefault: true,
               });
-              if (!focused && !event.defaultPrevented) {
+              if (event.defaultPrevented) return;
+
+              if (route.name === 'transactions') {
+                const subView = (route.params as { view?: string } | undefined)?.view;
+                if (!focused || (subView && subView !== 'history')) {
+                  navigation.navigate('transactions', { view: 'history' });
+                }
+                return;
+              }
+
+              if (!focused) {
                 navigation.navigate(route.name, route.params);
               }
             };
@@ -274,6 +282,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
               </Pressable>
             );
           })}
+        </View>
       </View>
     </View>
   );
@@ -285,9 +294,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    alignItems: 'center',
-    gap: 10,
+    alignItems: 'stretch',
     backgroundColor: 'transparent',
+  },
+  navShell: {
+    width: '100%',
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   fabPosition: {
     position: 'absolute',
@@ -295,12 +307,24 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   addOuter: {
-    width: FLOATING_FAB_SIZE,
-    height: FLOATING_FAB_SIZE,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: '#00e664',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: FLOATING_FAB_RADIUS,
-    overflow: 'hidden',
+    shadowColor: '#00e664',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  addFabText: {
+    fontSize: 28,
+    color: '#000000',
+    fontWeight: '300',
+    lineHeight: 32,
+    includeFontPadding: false,
   },
   aiChatOuter: {
     position: 'absolute',
@@ -412,12 +436,12 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     justifyContent: 'space-between',
     width: '100%',
-    maxWidth: 390,
-    marginHorizontal: spacing.lg,
     paddingVertical: 11,
     paddingHorizontal: 4,
-    borderRadius: radius.pill,
-    overflow: 'hidden',
+  },
+  pillAndroid: {
+    paddingTop: 9,
+    paddingBottom: 7,
   },
   tab: {
     flex: 1,

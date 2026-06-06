@@ -169,7 +169,7 @@ export function InputBar({
           <Ionicons
             name="arrow-up"
             size={20}
-            color={canSend ? (isLight ? '#FFFFFF' : '#0D1117') : colors.textDisabled}
+            color={canSend ? (isLight ? '#FFFFFF' : '#111111') : colors.textDisabled}
           />
         </Pressable>
       </View>

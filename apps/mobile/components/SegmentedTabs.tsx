@@ -1,7 +1,11 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { MotiView } from 'moti';
 import { Ionicons } from '@expo/vector-icons';
-import { interMediumText, interSemiboldText, radius, spacing } from '@/constants/theme';
+import {
+  interBoldText,
+  interExtraBoldText,
+  radius,
+  spacing,
+} from '@/constants/theme';
 import {
   UNIFORM_CHIP_FONT_SIZE,
   UNIFORM_SEGMENT_HEIGHT,
@@ -9,19 +13,7 @@ import {
 } from '@/lib/uniformGroupStyles';
 import { useAppTheme } from '@/lib/themeContext';
 
-/** Shared by every segment label — same base size + auto-shrink scale. */
-const SEGMENT_LABEL_FONT_SIZE = UNIFORM_CHIP_FONT_SIZE;
 const SEGMENT_LABEL_MIN_FONT_SCALE = 0.72;
-
-const segmentLabelBaseStyle = {
-  ...interMediumText,
-  fontSize: SEGMENT_LABEL_FONT_SIZE,
-  lineHeight: SEGMENT_LABEL_FONT_SIZE + 3,
-  textAlign: 'center' as const,
-  includeFontPadding: true,
-  textTransform: 'uppercase' as const,
-  letterSpacing: 0.35,
-};
 
 type Tab<T extends string> = { id: T; label: string; icon?: keyof typeof Ionicons.glyphMap };
 
@@ -30,65 +22,64 @@ type Props<T extends string> = {
   active: T;
   onChange: (id: T) => void;
   showDivider?: boolean;
+  /** Override track background color */
+  trackBgColor?: string;
+  /** Override active pill background color */
+  activeBgColor?: string;
+  /** Override active label color */
+  activeLabelColor?: string;
+  /** Override inactive label color */
+  inactiveLabelColor?: string;
 };
 
+/** Matches Portefeuille Comptes / Patrimoine scope track styling. */
 export function SegmentedTabs<T extends string>({
   tabs,
   active,
   onChange,
   showDivider = true,
+  trackBgColor,
+  activeBgColor,
+  activeLabelColor,
+  inactiveLabelColor,
 }: Props<T>) {
-  const { colors, isLight } = useAppTheme();
-  const inactivePillBackground = isLight ? colors.input : '#0A0A0A';
-  const activePillBackground = isLight ? 'rgba(0, 168, 84, 0.14)' : '#1C2128';
-  const activeTextColor = colors.text;
-
-  const trackBackground = isLight ? 'transparent' : colors.background;
+  const { colors } = useAppTheme();
+  const trackBg = trackBgColor ?? colors.scopeTrack;
+  const activeBg = activeBgColor ?? colors.scopeActive;
+  const activeColor = activeLabelColor ?? colors.text;
+  const inactiveColor = inactiveLabelColor ?? colors.textMuted;
 
   return (
     <View style={[styles.wrap, showDivider && { borderBottomColor: colors.border, borderBottomWidth: 1 }]}>
-      <View style={[styles.row, { backgroundColor: trackBackground }]}>
+      <View style={[styles.track, { backgroundColor: trackBg }]}>
         {tabs.map((tab) => {
           const selected = tab.id === active;
           return (
-            <Pressable key={tab.id} onPress={() => onChange(tab.id)} style={styles.tab}>
-              <MotiView
-                animate={{
-                  scale: selected ? 1 : 0.98,
-                  opacity: selected ? 1 : 0.86,
-                }}
-                transition={{ type: 'timing', duration: 180 }}
-                style={[
-                  styles.glassPill,
-                  { backgroundColor: inactivePillBackground },
-                  selected && [
-                    styles.glassPillActive,
-                    {
-                      backgroundColor: activePillBackground,
-                      borderColor: colors.borderStrong,
-                    },
-                  ],
-                ]}
-              >
-                <View style={styles.labelRow}>
-                  {tab.icon ? (
-                    <Ionicons name={tab.icon} size={14} color={selected ? activeTextColor : colors.textMuted} />
-                  ) : null}
-                  <Text
-                    style={[
-                      styles.label,
-                      segmentLabelBaseStyle,
-                      { color: selected ? activeTextColor : colors.textMuted },
-                      selected && styles.labelActive,
-                    ]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={SEGMENT_LABEL_MIN_FONT_SCALE}
-                  >
-                    {tab.label}
-                  </Text>
-                </View>
-              </MotiView>
+            <Pressable
+              key={tab.id}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              onPress={() => onChange(tab.id)}
+              style={[styles.tab, selected && { backgroundColor: activeBg }]}
+            >
+              <View style={styles.labelRow}>
+                {tab.icon ? (
+                  <Ionicons name={tab.icon} size={14} color={selected ? activeColor : inactiveColor} />
+                ) : null}
+                <Text
+                  style={[
+                    styles.label,
+                    { color: selected ? activeColor : inactiveColor, fontSize: UNIFORM_CHIP_FONT_SIZE },
+                    selected && styles.labelActive,
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={SEGMENT_LABEL_MIN_FONT_SCALE}
+                  ellipsizeMode="tail"
+                >
+                  {tab.label}
+                </Text>
+              </View>
             </Pressable>
           );
         })}
@@ -99,35 +90,30 @@ export function SegmentedTabs<T extends string>({
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: spacing.lg,
+    alignSelf: 'stretch',
+    width: '100%',
   },
-  row: {
+  track: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    justifyContent: 'center',
+    alignSelf: 'stretch',
     width: '100%',
+    borderRadius: radius.xxl,
+    padding: 4,
+    gap: 4,
     minHeight: UNIFORM_SEGMENT_HEIGHT,
   },
   tab: {
     flex: 1,
-    alignSelf: 'stretch',
-    alignItems: 'stretch',
-    paddingHorizontal: spacing.xs / 2,
     minWidth: 0,
-  },
-  glassPill: {
-    flex: 1,
-    width: '100%',
-    minHeight: UNIFORM_SEGMENT_INNER_HEIGHT,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    borderRadius: radius.xxl - 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    minHeight: UNIFORM_SEGMENT_INNER_HEIGHT,
   },
-  glassPillActive: {},
   labelRow: {
     maxWidth: '100%',
     flexDirection: 'row',
@@ -137,9 +123,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   label: {
+    ...interBoldText,
+    textAlign: 'center',
+    lineHeight: UNIFORM_CHIP_FONT_SIZE + 4,
     width: '100%',
     minWidth: 0,
     flexShrink: 1,
   },
-  labelActive: { ...interSemiboldText },
+  labelActive: {
+    ...interExtraBoldText,
+  },
 });

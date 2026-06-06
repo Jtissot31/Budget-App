@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -9,20 +8,51 @@ import {
   Text,
   useWindowDimensions,
   View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
   type ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { MotiView } from 'moti';
 import Svg, { Circle, Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DASHBOARD_ACCOUNTS } from '@/constants/dashboardMockAccounts';
 import { SCREEN_TOP_GUTTER, ghost } from '@/constants/ghostUi';
-import { FLOATING_NAV_CONTENT_PADDING, PAGE_PADDING_HORIZONTAL, colors, radius, spacing, typography, type AppColors } from '@/constants/theme';
-import { getDashboard, getMerchantOverrides, getRecurringPayments, getSetting, getSimulatedAccounts, setSetting } from '@/lib/db';
+import {
+  dashboardPalette,
+  FLOATING_NAV_CONTENT_PADDING,
+  PAGE_PADDING_HORIZONTAL,
+  PAGE_TITLE_CONTENT_GAP,
+  PAGE_TITLE_STYLE,
+  SECTION_TITLE_STYLE,
+  interBoldText,
+  interMediumText,
+  interSemiboldText,
+  spacing,
+  typography,
+  type AppColors,
+} from '@/constants/theme';
+import { BudgetHealthCard } from '@/components/BudgetHealthCard';
+import { DashboardCard } from '@/components/DashboardCard';
+import { DashboardDateBadge } from '@/components/DashboardDateBadge';
+import { DashboardProgressBar } from '@/components/DashboardProgressBar';
+import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
+import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
+import { LogoIconFrame } from '@/components/IconFrame';
+import {
+  getDashboard,
+  getMerchantOverrides,
+  getRecentIncomeTransactions,
+  getRecurringPayments,
+  getSetting,
+  getSimulatedAccounts,
+  setSetting,
+} from '@/lib/db';
+import { PAYCHECK_TRANSACTION_LOOKBACK_LIMIT, resolveNextPaycheckForAccount, resolvePaycheckForPaymentAlert } from '@/lib/estimatedPaycheck';
+import {
+  evaluateCheckingInsufficientFunds,
+  type InsufficientFundsCheckingAlert,
+} from '@/lib/insufficientFundsAlert';
 import { dataEvents } from '@/lib/events';
 import { getUserDisplayName } from '@/lib/userDisplay';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
@@ -30,27 +60,49 @@ import {
   creditLimitUtilizationBarColor,
   creditLimitUtilizationPercent,
   creditUsedFromBalance,
-  formatCreditUtilTimelineLabel,
 } from '@/lib/creditLimitUtilization';
-import { getAccountLogoUrl, getMerchantLogoUrls } from '@/lib/merchantLogo';
+import { getAccountLogoUrl } from '@/lib/merchantLogo';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
-import { rowTitleTextProps, singleLineAmountProps } from '@/lib/textLayout';
+import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
+import { formatUpcomingStatusBadge } from '@/lib/paymentStatusBadge';
+import {
+  dashboardPaymentAmount,
+  heroStatAmount,
+  percentStat,
+  rowLabel,
+  rowTitleTextProps,
+  rowValue,
+  singleLineAmountProps,
+} from '@/lib/textLayout';
 import { tapHaptic } from '@/lib/haptics';
 import { syncWithServer } from '@/lib/sync';
+import {
+  buildPaycheckEntryMessage,
+  disablePaycheckReminder,
+  dismissPaycheckEntryPromptForToday,
+  enablePaycheckReminder,
+  findDuePaycheckEntryPrompt,
+  loadAlertUiState,
+  setAlertCollapsed,
+  type PaycheckEntryPrompt,
+  type PaycheckReminderSchedule,
+} from '@/lib/paycheckReminder';
+import type { EstimatedPaycheck } from '@/lib/estimatedPaycheck';
 import { useAppTheme } from '@/lib/themeContext';
 import {
   logoIconWellStyle,
   userPickedIconLogoSize,
   userPickedIconWellStyle,
 } from '@/lib/userPickedIcon';
-import { GlassContainer } from '@/components/GlassContainer';
 import { PageTransition } from '@/components/PageTransition';
 import type {
+  CategoryBudget,
   DashboardSummary,
   MerchantOverride,
   RecurringPayment,
   RecurringPaymentKind,
   SimulatedAccount,
+  Transaction,
 } from '@/types';
 
 type UpcomingPayment = {
@@ -116,10 +168,12 @@ const UPCOMING_PAYMENTS: UpcomingPayment[] = [
 
 const BALANCE_COMPARE_SETTING_KEY = 'dashboard_balance_compare_account_ids';
 
-/** Matches `styles.content` horizontal padding — used until `onLayout` provides the real strip width. */
-const DASHBOARD_CONTENT_HORIZONTAL_PADDING = PAGE_PADDING_HORIZONTAL;
+const C = dashboardPalette;
+
+const DASHBOARD_BOTTOM_PADDING = 110;
 
 const PAYMENT_WARNING_TITLE_CHECKING = 'Fonds insuffisants';
+const PAYMENT_SUCCESS_TITLE_CHECKING = 'Fonds disponibles';
 const PAYMENT_WARNING_TITLE_CREDIT_LIMIT = 'Limite de crédit';
 
 type BalanceCompareAccount = Pick<
@@ -164,10 +218,7 @@ function greetingLine() {
 }
 
 function formatMoneyDetailed(value: number) {
-  return `${value.toLocaleString('fr-CA', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })} $`;
+  return formatDisplayMoneyAbsolute(value);
 }
 
 function toBalanceCompareAccounts(accounts: SimulatedAccount[]): BalanceCompareAccount[] {
@@ -223,50 +274,6 @@ function formatAccountMeta(account: BalanceCompareAccount) {
   return account.institution ?? 'Compte disponible';
 }
 
-type BudgetInsightTone = 'safe' | 'warning' | 'danger';
-
-function getDashboardBudgetInsight(
-  summary: DashboardSummary,
-  projectedExpenses: number,
-): { message: string; tone: BudgetInsightTone } {
-  const limit = summary.monthlyBudgetLimit;
-  const spent = summary.monthlyExpenses;
-  /** Dépassement réel ce mois : dépenses > limite (> 100 % utilisé si limite définie). */
-  const isOverBudget = limit > 0 && spent > limit;
-
-  if (limit <= 0) {
-    return { message: 'Définis une limite budgétaire.', tone: 'warning' };
-  }
-
-  if (isOverBudget) {
-    return {
-      message: 'Compense le mois prochain en réduisant un peu tes dépenses.',
-      tone: 'danger',
-    };
-  }
-
-  const progress = spent / limit;
-
-  if (projectedExpenses > limit) {
-    return {
-      message: 'À ce rythme, risque de dépassement — ralentis les achats.',
-      tone: 'warning',
-    };
-  }
-
-  if (progress >= 0.82) {
-    return {
-      message: 'Peu de marge avant la limite — sois vigilant.',
-      tone: 'warning',
-    };
-  }
-
-  return {
-    message: 'Bon rythme, tu respectes bien ton budget.',
-    tone: 'safe',
-  };
-}
-
 function formatUpcomingDate(isoDate: string) {
   return new Date(`${isoDate}T12:00:00`).toLocaleDateString('fr-FR', {
     weekday: 'short',
@@ -282,10 +289,51 @@ function daysUntil(isoDate: string) {
   return Math.max(0, Math.ceil((target.getTime() - today.getTime()) / 86_400_000));
 }
 
-function formatDaysUntilLabel(days: number) {
-  if (days <= 0) return "aujourd'hui";
-  if (days === 1) return 'demain';
-  return `dans ${days} jours`;
+type AlertStatRow = {
+  currentBalance: number;
+  paymentAmount: number;
+  afterAmount: number;
+  afterLabel: string;
+  kind: 'credit' | 'checking';
+};
+
+type DashboardAlertItem = {
+  id: string;
+  color: string;
+  bg: string;
+  title: string;
+  body: string;
+  date: string;
+  accountName?: string;
+  accountId?: string;
+  paymentName?: string;
+  paymentDateRaw?: Date;
+  paycheckDateRaw?: Date;
+  stats?: AlertStatRow;
+  /** Dépôt de paie (estimé ou réel) avant ou le jour du paiement */
+  paycheckBeforePayment?: boolean;
+  paycheckIsEstimated?: boolean;
+  collapsedSummary?: string;
+};
+
+function AlertWarningIcon({ color }: { color: string }) {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={10} stroke={color} strokeWidth={2} />
+      <Line x1={12} y1={8} x2={12} y2={13} stroke={color} strokeWidth={2} strokeLinecap="round" />
+      <Circle cx={12} cy={16} r={1} fill={color} />
+    </Svg>
+  );
+}
+
+function PaymentCheckIcon() {
+  return (
+    <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={10} stroke={C.green} strokeWidth={2} />
+      <Line x1={9} y1={12} x2={11} y2={14} stroke={C.green} strokeWidth={2} strokeLinecap="round" />
+      <Line x1={11} y1={14} x2={16} y2={9} stroke={C.green} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  );
 }
 
 function addDays(date: Date, days: number) {
@@ -518,53 +566,7 @@ function insufficientFundsAlertPillLabel(
   return name;
 }
 
-function clampPercent(value: number) {
-  return `${Math.max(0, Math.min(100, value))}%`;
-}
-
-/**
- * Barre d’utilisation — mocks tableau de bord uniquement (pas l’onglet Portefeuille).
- * Seuils en part de 100 :
- * - &lt; 80 % → couleur primaire (marge confortable)
- * - 80 % à &lt; 95 % → orange (zone d’avertissement)
- * - ≥ 95 % → rouge (critique / proche ou au-delà du plafond)
- */
-function mockCreditUtilizationBarColor(utilizationPercent: number, theme: AppColors, isLight: boolean): string {
-  if (utilizationPercent >= 95) return isLight ? '#dc2626' : '#ff3131';
-  if (utilizationPercent >= 80) return isLight ? '#f97316' : '#ff8a00';
-  return theme.primary;
-}
-
-function clampMarkerPercent(value: number) {
-  return `${Math.max(7, Math.min(93, value))}%`;
-}
-
-const BUDGET_RING_SEGMENT_COUNT = 144;
-const BUDGET_RING_SEGMENTS = Array.from({ length: BUDGET_RING_SEGMENT_COUNT }, (_, index) => index);
-const TIMELINE_INTENSITY_BANDS = Array.from({ length: 80 }, (_, index) => 0.32 + (index / 79) * 0.68);
-
-function getBudgetRingColor(usedPercent: number, isLight: boolean) {
-  if (usedPercent >= 121) return isLight ? '#dc2626' : '#ff3131';
-  if (usedPercent >= 101) return isLight ? '#f97316' : '#ff8a00';
-  return isLight ? '#00a86b' : '#00fa9a';
-}
-
-function timelinePosition(date: Date, start: Date, end: Date) {
-  const duration = Math.max(1, end.getTime() - start.getTime());
-  const elapsed = date.getTime() - start.getTime();
-  return clampPercent((elapsed / duration) * 100);
-}
-
-function timelineMarkerPosition(date: Date, start: Date, end: Date) {
-  const duration = Math.max(1, end.getTime() - start.getTime());
-  const elapsed = date.getTime() - start.getTime();
-  return clampMarkerPercent((elapsed / duration) * 100);
-}
-
-/** Données de démonstration fixes — aucune lecture/écriture DB. */
-const MOCK_CHECKING_SHORTFALL = 142.51;
-const MOCK_CHECKING_PAYMENT_NAME = 'Hydro Québec';
-const MOCK_CHECKING_ACCOUNT_NAME = 'Desjardins · 4521';
+/** Données de démonstration fixes (limite crédit) — aucune lecture/écriture DB. */
 const MOCK_CREDIT_CARD_NAME = 'Visa · 4782';
 /** Limite carte (démo). */
 const MOCK_CREDIT_LIMIT = 5000;
@@ -575,514 +577,501 @@ const MOCK_CREDIT_PAYMENT_AMOUNT = 450;
 /** Ex. zone orange 80-94,99 % (mockCreditUtilizationBarColor) : usedAfter / limite ~0,88 -> ajuster PAYMENT ou BALANCE. */
 const MOCK_CREDIT_PAYMENT_NAME = 'Abonnement cloud';
 
-type PaymentPreviewTone = 'ok' | 'warning';
 
-/** Bloc carte « prochain paiement » (réutilisable live / simulation). */
-function PaymentPreviewSection({
-  name,
-  amount,
-  dateLabel,
-  accountNameLine,
-  /** Pastille compte/carte lorsque tone === 'warning' (séparée du corps du message). */
-  warningAccountLabel,
-  amountColor,
-  iconFallbackColor,
-  logoUrl,
-  merchantOverrides,
-  colors,
-  tone,
-  cardShadow,
-}: {
-  name: string;
-  amount: number;
-  dateLabel: string;
-  /** Ligne courte sous le paiement : avertissement ou « compte · délai ». */
-  accountNameLine: string;
-  warningAccountLabel?: string | null;
-  amountColor: string;
-  iconFallbackColor: string;
-  logoUrl: string | null;
-  merchantOverrides: MerchantOverride[];
-  colors: AppColors;
-  tone: PaymentPreviewTone;
-  cardShadow: ViewStyle | ViewStyle[] | undefined;
-}) {
-  const resolvedLogoUrl =
-    logoUrl ?? merchantOverrides.find((override) => override.originalName === name)?.logoUrl ?? null;
-  const successColor = colors.success;
-  const textSecondaryColor = colors.textSecondary;
+const ALERT_BAR_H = 9;
+const ALERT_MARKER_SIZE = 26;
+const ALERT_MARKER_OUTER = ALERT_MARKER_SIZE + 4;
+const ALERT_BAR_PADDING_V = 16; // space above bar for ▼ triangle
 
-  return (
-    <View style={styles.openSection}>
-      <Text style={[styles.sectionEyebrow, { color: colors.textMuted }]}>Prochain paiement</Text>
-      <GlassContainer style={[styles.paymentPreview, cardShadow]} padding={12} borderRadius={20}>
-        <View style={styles.paymentPreviewInner}>
-        <View style={styles.paymentHeaderRow}>
-          <UpcomingPaymentLogo
-            name={name}
-            logoUrl={resolvedLogoUrl}
-            fallbackColor={iconFallbackColor}
-          />
-          <View style={styles.paymentCopy}>
-            <Text style={[styles.rowTitle, { color: colors.text }]} {...rowTitleTextProps}>
-              {name}
-            </Text>
-            <Text style={[styles.paymentDateLine, { color: colors.textMuted }]} {...rowTitleTextProps}>
-              {dateLabel}
-            </Text>
-          </View>
-          <Text style={[styles.rowAmountStrong, { color: amountColor }]} {...singleLineAmountProps}>
-            {formatMoneyDetailed(amount)}
-          </Text>
-        </View>
-
-        {tone === 'warning' ? (
-          <>
-            {warningAccountLabel?.trim().length ? (
-              <View style={styles.paymentAlertAccountStrip}>
-                <AlertAccountPill label={warningAccountLabel} colors={colors} />
-              </View>
-            ) : null}
-            <View style={styles.paymentAlertRow}>
-              <Ionicons name="warning" size={13} color={iconFallbackColor} style={{ marginTop: 2 }} />
-              <Text
-                style={[styles.paymentAlertText, { color: amountColor }]}
-                numberOfLines={4}
-                ellipsizeMode="tail"
-              >
-                {accountNameLine}
-              </Text>
-            </View>
-          </>
-        ) : (
-          <View style={styles.paymentAlertRow}>
-            <Ionicons name="checkmark-circle-outline" size={13} color={successColor} style={{ marginTop: 2 }} />
-            <Text
-              style={[styles.paymentAlertText, { color: textSecondaryColor }]}
-              {...singleLineAmountProps}
-            >
-              {accountNameLine}
-            </Text>
-          </View>
-        )}
-        </View>
-      </GlassContainer>
-    </View>
-  );
+function startOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
 }
 
-/** Pastille minimaliste : compte / carte visé par l’alerte (tronquée si trop long). */
-function AlertAccountPill({
-  label,
-  colors,
-  containerStyle,
-}: {
-  label: string;
-  colors: AppColors;
-  containerStyle?: ViewStyle;
-}) {
-  const trimmed = label.trim();
-  if (!trimmed) return null;
-  return (
-    <View
-      style={[
-        styles.alertAccountPill,
-        {
-          backgroundColor: colors.surface,
-          borderColor: colors.border,
-        },
-        containerStyle,
-      ]}
-    >
-      <Text style={[styles.alertAccountPillText, { color: colors.textSecondary }]} {...singleLineAmountProps}>
-        {trimmed}
-      </Text>
-    </View>
-  );
+function isPaycheckOnOrBeforePayment(paymentDate: Date, paycheckDate: Date) {
+  return startOfDay(paycheckDate).getTime() <= startOfDay(paymentDate).getTime();
 }
 
-/** Carte alerte avec ligne de temps (réutilisable live + simulations vue seule). */
-function FundsTimelineAlertCard({
-  eyebrow,
-  accountPillLabel,
-  bodyText,
-  warningColor,
-  warningBadgeBg,
-  colors,
-  cardShadow,
-  monthStart,
-  timelineEnd,
-  today,
-  timelineFillWidth,
-  todayPosition,
-  nextPaymentPosition,
-  nextPayPosition,
-  nextPaymentDate,
-  estimatedPayDate,
-  highlightPaymentLegend,
-  markerIconColor,
-  paymentLegendLine,
-  timelineTodayUtilLabel,
-  timelineAfterPaymentUtilLabel,
-}: {
-  eyebrow: string;
-  /** Compte ou carte concerné(e) ; pastille omise si vide. */
-  accountPillLabel?: string | null;
-  bodyText: string;
-  warningColor: string;
-  warningBadgeBg: string;
-  colors: AppColors;
-  cardShadow: ViewStyle | ViewStyle[] | undefined;
-  monthStart: Date;
-  timelineEnd: Date;
-  today: Date;
-  timelineFillWidth: string;
-  todayPosition: string;
-  nextPaymentPosition: string;
-  nextPayPosition: string;
-  nextPaymentDate: Date;
-  estimatedPayDate: Date;
-  highlightPaymentLegend: boolean;
-  markerIconColor: string;
-  /** Si défini (ex. carte en maj.), remplace la ligne « Paiement · date » de la légende. */
-  paymentLegendLine?: string;
-  /** % utilisation actuelle (carte), au-dessus du marqueur « aujourd’hui ». */
-  timelineTodayUtilLabel?: string | null;
-  /** % utilisation projetée après le paiement récurrent, sous le marqueur paiement. */
-  timelineAfterPaymentUtilLabel?: string | null;
-}) {
-  const hasTimelineUtilLabels = Boolean(
-    timelineTodayUtilLabel?.trim().length || timelineAfterPaymentUtilLabel?.trim().length,
-  );
-
-  return (
-    <GlassContainer style={[styles.forecastSurface, cardShadow]} padding={0} borderRadius={24}>
-      <View style={styles.forecastClip}>
-        <View style={styles.forecastInline}>
-          <View style={styles.timelineAlertHeader}>
-          <Text
-            style={[styles.inlineEyebrow, styles.timelineAlertEyebrow, { color: colors.textMuted }]}
-            numberOfLines={2}
-            ellipsizeMode="tail"
-          >
-            {eyebrow}
-          </Text>
-          {accountPillLabel ? (
-            <AlertAccountPill label={accountPillLabel} colors={colors} containerStyle={styles.alertAccountPillInCardHeader} />
-          ) : null}
-          </View>
-          <View style={[styles.shortfallCard, { backgroundColor: warningBadgeBg }]}>
-          <View style={[styles.shortfallIconBadge, { backgroundColor: warningBadgeBg }]}>
-            <Ionicons name="alert-circle" size={18} color={warningColor} style={{ marginTop: 2 }} />
-          </View>
-          <View style={styles.shortfallMessageColumn}>
-            <Text
-              style={[styles.shortfallText, { color: warningColor }]}
-              numberOfLines={4}
-              ellipsizeMode="tail"
-            >
-              {bodyText}
-            </Text>
-          </View>
-          </View>
-          <View style={styles.timelineDates}>
-          <Text style={[styles.timelineDateText, { color: colors.textMuted }]}>{formatShortDate(monthStart)}</Text>
-          <Text style={[styles.timelineDateText, { color: colors.textMuted }]}>{formatShortDate(timelineEnd)}</Text>
-          </View>
-          <View
-            style={[
-              styles.timeline,
-              hasTimelineUtilLabels ? styles.timelineExpanded : styles.timelineCompact,
-            ]}
-          >
-          {timelineTodayUtilLabel?.trim() ? (
-            <Text
-              style={[
-                styles.timelineTodayUtilLabel,
-                { left: todayPosition, color: colors.textSecondary },
-              ]}
-              {...singleLineAmountProps}
-            >
-              {timelineTodayUtilLabel.trim()}
-            </Text>
-          ) : null}
-          <View style={hasTimelineUtilLabels ? styles.timelineTrackLayer : styles.timelineTrackLayerCompact}>
-            <View style={[styles.timelineRail, { backgroundColor: colors.borderStrong }]} />
-            <MotiView
-              style={[styles.timelineFill, { backgroundColor: 'transparent' }]}
-              from={{ width: '0%' }}
-              animate={{ width: timelineFillWidth }}
-              transition={{ type: 'timing', duration: 900 }}
-            >
-              {TIMELINE_INTENSITY_BANDS.map((opacity, index) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.timelineFillBand,
-                    {
-                      backgroundColor: warningColor,
-                      opacity,
-                    },
-                  ]}
-                />
-              ))}
-            </MotiView>
-            <View style={[styles.todayMarker, { left: todayPosition, borderTopColor: colors.textSecondary }]} />
-            <View
-              style={[
-                styles.iconMarker,
-                styles.paymentMarker,
-                { left: nextPaymentPosition, backgroundColor: warningColor, borderColor: colors.surfaceSolid },
-              ]}
-            >
-              <Ionicons name="warning" size={13} color={markerIconColor} />
-            </View>
-            <View
-              style={[
-                styles.iconMarker,
-                styles.payMarker,
-                { left: nextPayPosition, backgroundColor: colors.primary, borderColor: colors.surfaceSolid },
-              ]}
-            >
-              <Ionicons name="wallet" size={14} color={colors.background} />
-            </View>
-          </View>
-          {timelineAfterPaymentUtilLabel?.trim() ? (
-            <Text
-              style={[
-                styles.timelineAfterPayUtilLabel,
-                { left: nextPaymentPosition, color: warningColor },
-              ]}
-              {...singleLineAmountProps}
-            >
-              {timelineAfterPaymentUtilLabel.trim()}
-            </Text>
-          ) : null}
-        </View>
-        <View style={styles.timelineLegend}>
-          <View style={styles.legendLabels}>
-            <View style={styles.legendPair}>
-              <View style={[styles.legendTodayMarker, { borderTopColor: colors.textSecondary }]} />
-              <Text style={[styles.legendLabel, { color: colors.textMuted }]}>Aujourd’hui · {formatShortDate(today)}</Text>
-            </View>
-            <View style={styles.legendPair}>
-              <Ionicons name="warning" size={11} color={warningColor} />
-              <Text
-                style={[styles.legendLabel, { color: colors.textMuted }, highlightPaymentLegend && { color: warningColor }]}
-              >
-                {paymentLegendLine ?? `Paiement · ${formatShortDate(nextPaymentDate)}`}
-              </Text>
-            </View>
-            <View style={styles.legendPair}>
-              <View style={[styles.legendIconMarker, styles.legendPayMarker, { backgroundColor: colors.primary }]}>
-                <Ionicons name="wallet" size={10} color={colors.background} />
-              </View>
-              <Text style={[styles.legendLabel, { color: colors.textMuted }]}>
-                Dépôt de paie estimé · {formatShortDate(estimatedPayDate)}
-              </Text>
-            </View>
-          </View>
-        </View>
-        </View>
-      </View>
-    </GlassContainer>
-  );
-}
-
-// ── Multi-ring concentric gauge with glow effect ─────────────────────────────
-const GAUGE_RINGS = [
-  { r: 63, sw: 13, opFactor: 1.0 },
-  { r: 50, sw: 9,  opFactor: 0.72 },
-  { r: 39, sw: 6,  opFactor: 0.48 },
-] as const;
-
-const GAUGE_GLOW_LAYERS = [
-  { extraSW: 36, opacity: 0.03 },
-  { extraSW: 24, opacity: 0.06 },
-  { extraSW: 14, opacity: 0.12 },
-  { extraSW:  6, opacity: 0.25 },
-] as const;
-
-const GAUGE_SVG_SIZE = 160;
-const GAUGE_CX = GAUGE_SVG_SIZE / 2;
-const GAUGE_CY = GAUGE_SVG_SIZE / 2;
-const GAUGE_TICK_COUNT = 36;
-const GAUGE_TICKS = Array.from({ length: GAUGE_TICK_COUNT }, (_, i) => {
-  const angleRad = ((i * 360) / GAUGE_TICK_COUNT - 90) * (Math.PI / 180);
+function paycheckMetaFromTimeline(
+  paymentDate: Date,
+  paycheck: EstimatedPaycheck | null | undefined,
+  fallbackPaycheckDate: Date,
+) {
+  const paycheckDate = paycheck?.date ?? fallbackPaycheckDate;
   return {
-    x1: GAUGE_CX + 70 * Math.cos(angleRad),
-    y1: GAUGE_CY + 70 * Math.sin(angleRad),
-    x2: GAUGE_CX + 75 * Math.cos(angleRad),
-    y2: GAUGE_CY + 75 * Math.sin(angleRad),
+    paycheckBeforePayment: isPaycheckOnOrBeforePayment(paymentDate, paycheckDate),
+    paycheckIsEstimated: paycheck ? paycheck.source !== 'actual' : true,
   };
-});
-
-function gaugeRingColor(usedPercent: number, isLight: boolean): string {
-  if (usedPercent >= 100) return isLight ? '#DC2626' : '#FF3131';
-  if (usedPercent >= 80)  return isLight ? '#F97316' : '#FF8A00';
-  return isLight ? '#00A86B' : '#00FA9A';
 }
 
-function BudgetUsageChart({
-  usedPercent,
-  budgetAvailable,
-  progress,
-  isLight,
-  mutedColor,
-  textColor,
+function markerLeftOnTrack(xPx: number, trackWidth: number) {
+  return Math.max(0, Math.min(trackWidth - ALERT_MARKER_OUTER, xPx - ALERT_MARKER_OUTER / 2));
+}
+
+/** Carte de crédit : solde affiché en négatif (−X$). */
+function formatAlertCreditBalance(balance: number) {
+  const signed = balance <= 0 ? balance : -Math.abs(balance);
+  return formatSignedDisplayMoney(signed);
+}
+
+function formatAlertCheckingBalance(balance: number) {
+  if (balance < 0) {
+    return `${formatMoneyDetailed(Math.abs(balance))} dû`;
+  }
+  return formatMoneyDetailed(balance);
+}
+
+function AlertCard({
+  alert,
+  today,
+  collapsed,
+  reminderEnabled,
+  onToggleReminder,
+  onExpand,
+  onCollapse,
 }: {
-  usedPercent: number;
-  /** Raw remaining budget — can be negative when over budget. */
-  budgetAvailable: number;
-  /** Fraction spent (can be > 1 when over budget, capped to 1 for arc). */
-  progress: number;
-  isLight: boolean;
-  mutedColor: string;
-  textColor: string;
+  alert: DashboardAlertItem;
+  today: Date;
+  collapsed: boolean;
+  reminderEnabled: boolean;
+  onToggleReminder: () => void;
+  onExpand: () => void;
+  onCollapse: () => void;
 }) {
-  const isOverBudget = usedPercent >= 100;
-  const isWarning    = usedPercent >= 80 && usedPercent < 100;
-  const ringCol      = gaugeRingColor(usedPercent, isLight);
-  const cappedProg   = Math.max(0, Math.min(1, progress));
+  const [barPx, setBarPx] = useState(0);
+  const showBell = alert.paycheckBeforePayment === true;
+  const paymentDateKey = alert.paymentDateRaw
+    ? alert.paymentDateRaw.toISOString().slice(0, 10)
+    : today.toISOString().slice(0, 10);
 
-  const usageLabel = isOverBudget
-    ? `OVERDRIVE ${Math.round(usedPercent)}%`
-    : `${Math.round(usedPercent)}%`;
+  const todayNorm = startOfDay(today);
+  const paymentDate = startOfDay(alert.paymentDateRaw ?? addDays(today, 4));
+  const paycheckDate = startOfDay(alert.paycheckDateRaw ?? addDays(today, 14));
+  const periodStart = startOfDay(new Date(today.getFullYear(), today.getMonth(), 1));
+  const periodEnd =
+    paycheckDate.getTime() >= paymentDate.getTime() ? paycheckDate : startOfDay(addDays(paymentDate, 7));
+  const totalMs = Math.max(periodEnd.getTime() - periodStart.getTime(), 1);
 
-  const sign        = budgetAvailable < 0 ? '\u2212\u00A0' : '';
-  const absAmt      = Math.abs(budgetAvailable);
-  const amountStr   = `${sign}$ ${absAmt.toLocaleString('fr-CA', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  const clamp = (v: number) => Math.max(0, Math.min(1, v));
+  const todayPct = clamp((todayNorm.getTime() - periodStart.getTime()) / totalMs);
+  const payPct = clamp((paymentDate.getTime() - periodStart.getTime()) / totalMs);
+  const paycheckPct = clamp((paycheckDate.getTime() - periodStart.getTime()) / totalMs);
 
-  const warnColor = isOverBudget
-    ? (isLight ? '#DC2626' : '#FF3131')
-    : (isLight ? '#F97316' : '#FF8A00');
+  const todayX = barPx * todayPct;
+  const payX = barPx * payPct;
+  const paycheckX = barPx * paycheckPct;
+
+  const fmtDate = (d: Date) =>
+    d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+
+  const startLabel    = fmtDate(periodStart);
+  const endLabel      = fmtDate(periodEnd);
+  const todayLabel    = fmtDate(today);
+  const paymentLabel = fmtDate(paymentDate);
+  const paycheckLabel = fmtDate(paycheckDate);
+
+  const trackTop = ALERT_BAR_PADDING_V;
+  const markerTop = trackTop + ALERT_BAR_H / 2 - ALERT_MARKER_OUTER / 2;
+
+  if (collapsed) {
+    return (
+      <DashboardCard style={aStyles.collapsedCard}>
+        <Pressable
+          style={aStyles.collapsedMainPress}
+          onPress={() => {
+            tapHaptic();
+            onExpand();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`${alert.title}, appuyer pour développer`}
+        >
+          <DashboardDateBadge dateKey={paymentDateKey} />
+          <View style={aStyles.collapsedCopy}>
+            <Text style={aStyles.collapsedTitle}>{alert.title}</Text>
+            <Text style={aStyles.collapsedSummary} numberOfLines={1}>
+              {alert.collapsedSummary ?? alert.body}
+            </Text>
+          </View>
+          <Ionicons name="chevron-down" size={18} color={C.subtext} />
+        </Pressable>
+        {showBell ? (
+          <Pressable
+            onPress={() => {
+              tapHaptic();
+              onToggleReminder();
+            }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={reminderEnabled ? 'Désactiver le rappel de paie' : 'Rappel le jour de la paie'}
+            style={aStyles.bellButton}
+          >
+            <Ionicons
+              name={reminderEnabled ? 'notifications' : 'notifications-outline'}
+              size={20}
+              color={reminderEnabled ? C.warning : C.subtext}
+            />
+          </Pressable>
+        ) : null}
+      </DashboardCard>
+    );
+  }
 
   return (
-    <GlassContainer borderRadius={20} padding={18}>
-      <View style={styles.gaugeRow}>
+    <View style={aStyles.card}>
 
-        {/* ── Left: SVG gauge ─────────────────────────────────────────────── */}
-        <Svg width={GAUGE_SVG_SIZE} height={GAUGE_SVG_SIZE}>
-          {GAUGE_RINGS.flatMap(({ r, sw, opFactor }, ri) => {
-            const circ    = 2 * Math.PI * r;
-            const dashOff = circ - cappedProg * circ;
-            const origin  = `${GAUGE_CX}, ${GAUGE_CY}`;
-            const arcs: ReactElement[] = [];
-
-            // Track (dim background arc)
-            arcs.push(
-              <Circle
-                key={`tr${ri}`}
-                cx={GAUGE_CX} cy={GAUGE_CY} r={r}
-                stroke={ringCol}
-                strokeOpacity={0.13 * opFactor}
-                strokeWidth={sw}
-                fill="none"
-              />,
-            );
-
-            // Glow halos behind fill (over-budget only) — widest first
-            if (isOverBudget) {
-              GAUGE_GLOW_LAYERS.forEach(({ extraSW, opacity }, gi) => {
-                arcs.push(
-                  <Circle
-                    key={`gl${ri}-${gi}`}
-                    cx={GAUGE_CX} cy={GAUGE_CY} r={r}
-                    stroke={ringCol}
-                    strokeOpacity={opacity * opFactor}
-                    strokeWidth={sw + extraSW}
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeDasharray={`${circ} ${circ}`}
-                    strokeDashoffset={dashOff}
-                    rotation={-90}
-                    origin={origin}
-                  />,
-                );
-              });
-            }
-
-            // Main fill arc
-            arcs.push(
-              <Circle
-                key={`fi${ri}`}
-                cx={GAUGE_CX} cy={GAUGE_CY} r={r}
-                stroke={ringCol}
-                strokeOpacity={opFactor}
-                strokeWidth={sw}
-                fill="none"
-                strokeLinecap="round"
-                strokeDasharray={`${circ} ${circ}`}
-                strokeDashoffset={dashOff}
-                rotation={-90}
-                origin={origin}
-              />,
-            );
-
-            return arcs;
-          })}
-
-          {/* Tick marks — evenly spaced around outer ring */}
-          {GAUGE_TICKS.map((t, i) => (
-            <Line
-              key={`tk${i}`}
-              x1={t.x1} y1={t.y1}
-              x2={t.x2} y2={t.y2}
-              stroke="#ffffff"
-              strokeOpacity={0.28}
-              strokeWidth={1}
-            />
-          ))}
-        </Svg>
-
-        {/* ── Right: text copy ─────────────────────────────────────────────── */}
-        <View style={styles.gaugeCopy}>
-          {/* Warning icon — top-right, only when 80%+ */}
-          {(isOverBudget || isWarning) ? (
-            <Ionicons
-              name="warning"
-              size={16}
-              color={warnColor}
-              style={styles.gaugeWarnIcon}
-            />
-          ) : (
-            <View style={styles.gaugeWarnIconPlaceholder} />
-          )}
-
-          <Text
-            style={[styles.gaugeUsageLabel, { color: isOverBudget ? warnColor : textColor }]}
-            numberOfLines={2}
-            adjustsFontSizeToFit
-            minimumFontScale={0.65}
+      {/* ── Header : titre + actions ── */}
+      <View style={aStyles.cardHeaderRow}>
+        <Text style={aStyles.cardTitle}>{alert.title.toUpperCase()}</Text>
+        <View style={aStyles.cardHeaderActions}>
+          {showBell ? (
+            <Pressable
+              onPress={() => {
+                tapHaptic();
+                onToggleReminder();
+              }}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={reminderEnabled ? 'Désactiver le rappel de paie' : 'Rappel le jour de la paie'}
+              style={aStyles.bellButton}
+            >
+              <Ionicons
+                name={reminderEnabled ? 'notifications' : 'notifications-outline'}
+                size={20}
+                color={reminderEnabled ? C.warning : C.subtext}
+              />
+            </Pressable>
+          ) : null}
+          <Pressable
+            onPress={() => {
+              tapHaptic();
+              onCollapse();
+            }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Réduire l'alerte"
           >
-            {usageLabel}
-          </Text>
-          <Text style={[styles.gaugeEyebrow, { color: mutedColor }]}>
-            BUDGET UTILISÉ
-          </Text>
+            <Ionicons name="chevron-up" size={18} color={C.subtext} />
+          </Pressable>
+        </View>
+      </View>
+      {alert.accountName ? (
+        <View style={aStyles.accountPill}>
+          <Text style={aStyles.accountPillText}>{alert.accountName}</Text>
+        </View>
+      ) : null}
 
-          <View style={styles.gaugeSpacer} />
+      {/* ── Stats financières ── */}
+      {alert.stats ? (
+        <View style={aStyles.statsRow}>
+          <View style={aStyles.statChip}>
+            <Text style={aStyles.statLabel}>Solde actuel</Text>
+            <Text
+              style={[
+                aStyles.statValue,
+                {
+                  color:
+                    alert.stats.kind === 'credit' || alert.stats.currentBalance < 0 ? alert.color : C.text,
+                },
+              ]}
+            >
+              {alert.stats.kind === 'credit'
+                ? formatAlertCreditBalance(alert.stats.currentBalance)
+                : formatAlertCheckingBalance(alert.stats.currentBalance)}
+            </Text>
+          </View>
+          <View style={aStyles.statDivider} />
+          <View style={aStyles.statChip}>
+            <Text style={aStyles.statLabel}>Paiement</Text>
+            <Text style={[aStyles.statValue, { color: alert.color }]}>
+              {formatMoneyDetailed(alert.stats.paymentAmount)}
+            </Text>
+          </View>
+        </View>
+      ) : null}
 
-          <Text
-            style={[styles.gaugeAmountLabel, { color: textColor }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.6}
-          >
-            {amountStr}
-          </Text>
-          <Text style={[styles.gaugeEyebrow, { color: mutedColor }]}>
-            DISPONIBLE
-          </Text>
+      {/* ── Message ── */}
+      <View style={[aStyles.msgBox, { backgroundColor: alert.bg, borderColor: `${alert.color}44` }]}>
+        <View style={[aStyles.msgIcon, { backgroundColor: `${alert.color}28` }]}>
+          <AlertWarningIcon color={alert.color} />
+        </View>
+        <Text style={[aStyles.msgText, { color: alert.color }]}>{alert.body}</Text>
+      </View>
+
+      {/* ── Timeline ── */}
+      <View style={aStyles.timeline}>
+
+        {/* Date labels */}
+        <View style={aStyles.dateRow}>
+          <Text style={aStyles.dateLabel}>{startLabel}</Text>
+          <Text style={aStyles.dateLabel}>{endLabel}</Text>
         </View>
 
+        {/* Bar zone — measured width, markers centered on dates */}
+        <View
+          style={[aStyles.barZone, { height: ALERT_BAR_PADDING_V + ALERT_BAR_H + ALERT_MARKER_OUTER / 2 + 8 }]}
+          onLayout={(e) => setBarPx(e.nativeEvent.layout.width)}
+        >
+          {barPx > 0 && (
+            <>
+              {/* Today caret — aligned to today on the bar */}
+              <View style={[aStyles.todayArrow, { left: Math.max(0, Math.min(barPx - 12, todayX - 6)), top: 0 }]}>
+                <Ionicons name="caret-down" size={12} color={C.subtext} />
+              </View>
+
+              {/* Track — fill = elapsed time until today */}
+              <View style={[aStyles.track, { top: trackTop }]}>
+                <View style={[aStyles.fill, { width: todayX, backgroundColor: alert.color }]} />
+              </View>
+
+              {/* Warning — date du paiement récurrent */}
+              <View
+                style={[
+                  aStyles.markerRing,
+                  { left: markerLeftOnTrack(payX, barPx), top: markerTop, borderColor: alert.color },
+                ]}
+              >
+                <View style={[aStyles.marker, { backgroundColor: alert.color }]}>
+                  <Ionicons name="warning" size={14} color="#fff" />
+                </View>
+              </View>
+
+              {/* Wallet — dépôt de paie estimé */}
+              <View
+                style={[
+                  aStyles.markerRing,
+                  { left: markerLeftOnTrack(paycheckX, barPx), top: markerTop, borderColor: C.green },
+                ]}
+              >
+                <View style={[aStyles.marker, { backgroundColor: C.green }]}>
+                  <Ionicons name="wallet" size={14} color="#000" />
+                </View>
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Legend */}
+        <View style={aStyles.legend}>
+          <View style={aStyles.legendRow}>
+            <Ionicons name="caret-down" size={12} color={C.subtext} style={aStyles.legendIcon} />
+            <Text style={aStyles.legendText}>Aujourd'hui · {todayLabel}</Text>
+          </View>
+          <View style={aStyles.legendRow}>
+            <Ionicons name="warning" size={12} color={alert.color} style={aStyles.legendIcon} />
+            <Text style={[aStyles.legendText, { color: alert.color }]}>
+              {alert.paymentName ?? 'Paiement'} · {paymentLabel}
+            </Text>
+          </View>
+          <View style={aStyles.legendRow}>
+            <Ionicons name="wallet" size={12} color={C.green} style={aStyles.legendIcon} />
+            <Text style={[aStyles.legendText, { color: C.green }]}>Dépôt de paie estimé · {paycheckLabel}</Text>
+          </View>
+        </View>
       </View>
-    </GlassContainer>
+    </View>
   );
 }
+
+const aStyles = StyleSheet.create({
+  collapsedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
+    overflow: 'hidden',
+  },
+  collapsedMainPress: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    minWidth: 0,
+  },
+  collapsedCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  collapsedTitle: {
+    ...interBoldText,
+    fontSize: typography.meta,
+    color: C.text,
+    letterSpacing: -0.2,
+  },
+  collapsedSummary: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    color: C.subtext,
+  },
+  bellButton: {
+    padding: 4,
+  },
+  card: {
+    backgroundColor: C.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 18,
+    gap: 14,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cardHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  cardTitle: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    letterSpacing: 0.8,
+    color: C.subtext,
+  },
+  accountPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: C.iconBox,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  accountPillText: {
+    ...interBoldText,
+    fontSize: 15,
+    color: C.text,
+    letterSpacing: -0.3,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  statChip: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 3,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  statLabel: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    color: C.subtext,
+  },
+  statValue: {
+    ...interBoldText,
+    fontSize: typography.caption,
+    letterSpacing: -0.2,
+  },
+  msgBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+  },
+  msgIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  msgText: {
+    ...interBoldText,
+    fontSize: typography.caption,
+    lineHeight: typography.caption + 5,
+    flex: 1,
+  },
+  timeline: {
+    gap: 6,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  dateLabel: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    color: C.subtext,
+  },
+  barZone: {
+    position: 'relative',
+    overflow: 'visible',
+  },
+  todayArrow: {
+    position: 'absolute',
+  },
+  todayArrowText: {
+    ...interBoldText,
+    fontSize: 10,
+    color: C.subtext,
+    lineHeight: 12,
+  },
+  track: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: ALERT_BAR_H,
+    borderRadius: 99,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
+  },
+  fill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: 99,
+  },
+  markerRing: {
+    position: 'absolute',
+    width: ALERT_MARKER_SIZE + 4,
+    height: ALERT_MARKER_SIZE + 4,
+    borderRadius: (ALERT_MARKER_SIZE + 4) / 2,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.bg,
+  },
+  marker: {
+    width: ALERT_MARKER_SIZE,
+    height: ALERT_MARKER_SIZE,
+    borderRadius: ALERT_MARKER_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  legend: {
+    gap: 6,
+    marginTop: 4,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  legendIcon: {
+    width: 14,
+    textAlign: 'center',
+  },
+  legendText: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    color: C.subtext,
+  },
+});
 
 function BalanceCompareAccountAvatar({
   account,
@@ -1141,63 +1130,16 @@ function BalanceCompareAccountAvatar({
   );
 }
 
-function UpcomingPaymentLogo({
-  name,
-  logoUrl,
-  fallbackColor,
-}: {
-  name: string;
-  logoUrl?: string | null;
-  fallbackColor: string;
-}) {
-  const { isLight } = useAppTheme();
-  const paymentIconSize = 34;
-  const urls = useMemo(() => (logoUrl ? [logoUrl] : getMerchantLogoUrls(name)), [logoUrl, name]);
-  const [sourceIndex, setSourceIndex] = useState(0);
-  const [giveUp, setGiveUp] = useState(false);
-  const uri = urls[sourceIndex];
-  const showLogo = Boolean(uri) && !giveUp;
-  const logoSize = userPickedIconLogoSize(paymentIconSize);
-
-  useEffect(() => {
-    setSourceIndex(0);
-    setGiveUp(false);
-  }, [urls]);
-
-  return (
-    <View style={[styles.paymentIcon, userPickedIconWellStyle(paymentIconSize, isLight)]}>
-      {showLogo && uri ? (
-        <Image
-          source={{ uri }}
-          style={{ width: logoSize, height: logoSize }}
-          contentFit="contain"
-          transition={150}
-          cachePolicy="memory-disk"
-          recyclingKey={uri}
-          onError={() => {
-            if (sourceIndex < urls.length - 1) {
-              setSourceIndex((i) => i + 1);
-            } else {
-              setGiveUp(true);
-            }
-          }}
-        />
-      ) : (
-        <Ionicons name="calendar-clear-outline" size={17} color={fallbackColor} />
-      )}
-    </View>
-  );
-}
-
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const balanceSelectorMaxHeight = Math.min(windowHeight * 0.82, windowHeight - insets.top - 24);
-  const { colors, ghost, ghostCardShadow, isLight, toggleLightMode } = useAppTheme();
+  const { colors, isLight, toggleLightMode } = useAppTheme();
   const scrollRef = useRef<ScrollView>(null);
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
+  const [incomeTransactions, setIncomeTransactions] = useState<Transaction[]>([]);
   const [merchantOverrides, setMerchantOverrides] = useState<MerchantOverride[]>([]);
   const [displayName, setDisplayName] = useState('Jérémie');
   const [refreshing, setRefreshing] = useState(false);
@@ -1206,24 +1148,140 @@ export default function HomeScreen() {
   const [selectedBalanceAccountIds, setSelectedBalanceAccountIds] = useState<string[]>([]);
   const [draftBalanceAccountIds, setDraftBalanceAccountIds] = useState<string[]>([]);
   const [balanceSelectorVisible, setBalanceSelectorVisible] = useState(false);
-  const [balanceInsightPage, setBalanceInsightPage] = useState(0);
-  const [balanceInsightPagerWidth, setBalanceInsightPagerWidth] = useState<number | null>(null);
+  const [alertIdx, setAlertIdx] = useState(0);
+  const alertCarouselRef = useRef<ScrollView>(null);
+  const [alertReminders, setAlertReminders] = useState<Record<string, boolean>>({});
+  const [alertCollapsed, setAlertCollapsed] = useState<Record<string, boolean>>({});
+  const [reminderConfirmVisible, setReminderConfirmVisible] = useState(false);
+  const [pendingReminderAlert, setPendingReminderAlert] = useState<Pick<
+    DashboardAlertItem,
+    'id' | 'paycheckDateRaw' | 'paymentName' | 'accountName' | 'accountId' | 'paycheckIsEstimated'
+  > | null>(null);
+  const [payEntryPrompt, setPayEntryPrompt] = useState<PaycheckEntryPrompt | null>(null);
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
+
+  const paycheckReminderScheduleFromAlert = useCallback(
+    (alertItem: Pick<
+      DashboardAlertItem,
+      'paycheckDateRaw' | 'paymentName' | 'accountName' | 'accountId' | 'paycheckIsEstimated'
+    >): PaycheckReminderSchedule | undefined => {
+      const paycheckDateKey = alertItem.paycheckDateRaw?.toISOString().slice(0, 10);
+      if (!paycheckDateKey) return undefined;
+      return {
+        paycheckDateKey,
+        paymentName: alertItem.paymentName ?? '',
+        accountName: alertItem.accountName ?? '',
+        accountId: alertItem.accountId,
+        paycheckIsEstimated: alertItem.paycheckIsEstimated,
+      };
+    },
+    [],
+  );
+
+  const applyPaycheckReminderEnabled = useCallback(
+    async (
+      alertItem: Pick<
+        DashboardAlertItem,
+        'id' | 'paycheckDateRaw' | 'paymentName' | 'accountName' | 'accountId' | 'paycheckIsEstimated'
+      >,
+    ) => {
+      const schedule = paycheckReminderScheduleFromAlert(alertItem);
+      await enablePaycheckReminder(alertItem.id, schedule);
+      setAlertReminders((prev) => ({ ...prev, [alertItem.id]: true }));
+      setAlertCollapsed((prev) => ({ ...prev, [alertItem.id]: true }));
+    },
+    [paycheckReminderScheduleFromAlert],
+  );
+
+  const checkPaycheckEntryPrompt = useCallback(async () => {
+    const due = await findDuePaycheckEntryPrompt(['live', 'mock-credit']);
+    setPayEntryPrompt(due);
+  }, []);
+
+  const handleTogglePaycheckReminder = useCallback(
+    async (alertItem: DashboardAlertItem) => {
+      const enabled = alertReminders[alertItem.id];
+      if (enabled) {
+        await disablePaycheckReminder(alertItem.id);
+        setAlertReminders((prev) => ({ ...prev, [alertItem.id]: false }));
+        setAlertCollapsed((prev) => ({ ...prev, [alertItem.id]: false }));
+        if (payEntryPrompt?.alertId === alertItem.id) setPayEntryPrompt(null);
+      } else if (alertItem.paycheckBeforePayment) {
+        setPendingReminderAlert(alertItem);
+        setReminderConfirmVisible(true);
+      } else {
+        await applyPaycheckReminderEnabled(alertItem);
+        await checkPaycheckEntryPrompt();
+      }
+    },
+    [alertReminders, applyPaycheckReminderEnabled, checkPaycheckEntryPrompt, payEntryPrompt?.alertId],
+  );
+
+  const confirmPaycheckReminder = useCallback(async () => {
+    if (pendingReminderAlert) {
+      tapHaptic();
+      await applyPaycheckReminderEnabled(pendingReminderAlert);
+      await checkPaycheckEntryPrompt();
+    }
+    setReminderConfirmVisible(false);
+    setPendingReminderAlert(null);
+  }, [pendingReminderAlert, applyPaycheckReminderEnabled, checkPaycheckEntryPrompt]);
+
+  const cancelPaycheckReminderConfirm = useCallback(() => {
+    setReminderConfirmVisible(false);
+    setPendingReminderAlert(null);
+  }, []);
+
+  const dismissPayEntryPromptForToday = useCallback(async () => {
+    if (payEntryPrompt) {
+      await dismissPaycheckEntryPromptForToday(payEntryPrompt.alertId);
+    }
+    setPayEntryPrompt(null);
+  }, [payEntryPrompt]);
+
+  const openPayEntryFromPrompt = useCallback(async () => {
+    if (!payEntryPrompt) return;
+    tapHaptic();
+    await dismissPaycheckEntryPromptForToday(payEntryPrompt.alertId);
+    setPayEntryPrompt(null);
+    router.push({
+      pathname: '/add-transaction',
+      params: {
+        type: 'income',
+        label: 'Paie',
+        ...(payEntryPrompt.accountId ? { accountId: payEntryPrompt.accountId } : {}),
+      },
+    });
+  }, [payEntryPrompt, router]);
+
+  const handleExpandAlert = useCallback(async (alertId: string) => {
+    await setAlertCollapsed(alertId, false);
+    setAlertCollapsed((prev) => ({ ...prev, [alertId]: false }));
+  }, []);
+
+  const handleCollapseAlert = useCallback(async (alertId: string) => {
+    await setAlertCollapsed(alertId, true);
+    setAlertCollapsed((prev) => ({ ...prev, [alertId]: true }));
+  }, []);
 
   const load = useCallback(async () => {
-    const [dash, name, recurring, overrides, loadedSimulatedAccounts, storedBalanceIds] = await Promise.all([
-      getDashboard(),
-      getUserDisplayName(),
-      getRecurringPayments(),
-      getMerchantOverrides(),
-      getSimulatedAccounts(),
-      getSetting(BALANCE_COMPARE_SETTING_KEY, ''),
-    ]);
+    const [dash, name, recurring, overrides, loadedSimulatedAccounts, storedBalanceIds, incomeTx] =
+      await Promise.all([
+        getDashboard(),
+        getUserDisplayName(),
+        getRecurringPayments(),
+        getMerchantOverrides(),
+        getSimulatedAccounts(),
+        getSetting(BALANCE_COMPARE_SETTING_KEY, ''),
+        getRecentIncomeTransactions(PAYCHECK_TRANSACTION_LOOKBACK_LIMIT),
+      ]);
     const compareAccounts = toBalanceCompareAccounts(loadedSimulatedAccounts);
     const storedIds = parseBalanceCompareIds(storedBalanceIds);
 
     setData(dash);
     setDisplayName(name);
     setRecurringPayments(recurring);
+    setIncomeTransactions(incomeTx);
     setMerchantOverrides(overrides);
     setSimulatedAccounts(loadedSimulatedAccounts);
     setBalanceAccountOptions(compareAccounts);
@@ -1234,9 +1292,34 @@ export default function HomeScreen() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (data !== null) {
+      setLoadTimedOut(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      console.warn('[Boot] dashboard data still null after 2s — showing skeleton');
+      setLoadTimedOut(true);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [data]);
+
   useEffect(() => dataEvents.subscribe(load), [load]);
 
+  useEffect(() => {
+    void loadAlertUiState(['live', 'mock-credit']).then(({ reminders, collapsed }) => {
+      setAlertReminders(reminders);
+      setAlertCollapsed(collapsed);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!data) return;
+    void checkPaycheckEntryPrompt();
+  }, [data, alertReminders, checkPaycheckEntryPrompt]);
+
   useRefreshOnFocus(load);
+  useRefreshOnFocus(checkPaycheckEntryPrompt);
   useScrollToTopOnFocus(
     useCallback(() => {
       scrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -1266,11 +1349,6 @@ export default function HomeScreen() {
   const balanceCompareAccounts = useMemo(
     () => resolveBalanceCompareSelection(balanceAccountOptions, selectedBalanceAccountIds),
     [balanceAccountOptions, selectedBalanceAccountIds],
-  );
-
-  const balanceCompareMax = useMemo(
-    () => Math.max(1, ...balanceCompareAccounts.map((account) => Math.abs(account.balance))),
-    [balanceCompareAccounts],
   );
 
   const openBalanceSelector = useCallback(() => {
@@ -1311,191 +1389,213 @@ export default function HomeScreen() {
   );
 
   if (!data) {
-    return <View style={styles.screen} />;
+    if (!loadTimedOut) {
+      return <View style={[styles.screen, { backgroundColor: C.bg }]} />;
+    }
+    return (
+      <View style={[styles.screen, dashStyles.skeletonScreen, { backgroundColor: C.bg, paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
+        <View style={dashStyles.skeletonGreeting} />
+        <View style={dashStyles.skeletonCard} />
+        <View style={[dashStyles.skeletonCard, { height: 48 }]} />
+        <View style={dashStyles.skeletonCard} />
+        <View style={dashStyles.skeletonCard} />
+        <Text style={dashStyles.skeletonHint}>Chargement du tableau de bord…</Text>
+      </View>
+    );
   }
 
   const limit = data.monthlyBudgetLimit;
-  const budgetAvailable = data.monthlyBudgetLimit - data.monthlyExpenses;
-  const budgetUsedPercent =
-    limit <= 0 ? 0 : Math.min(999, Math.round((data.monthlyExpenses / limit) * 100));
-  const budgetProgress = limit <= 0 ? 0 : data.monthlyExpenses / limit;
-  const budgetInsight = getDashboardBudgetInsight(data, projection.projected);
-  const budgetInsightColor =
-    budgetInsight.tone === 'danger'
-      ? colors.danger
-      : budgetInsight.tone === 'warning'
-        ? colors.warning
-        : colors.textMuted;
+  const spent = data.monthlyExpenses;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const nextPayment =
-    upcomingPayments.find((payment) => payment.date >= isoDate(today)) ??
-    upcomingPayments[0];
+  const todayIso = isoDate(today);
+  const sortedUpcomingPayments = [...upcomingPayments].sort((a, b) => a.date.localeCompare(b.date));
+  const defaultNextPayment =
+    sortedUpcomingPayments.find((payment) => payment.date >= todayIso) ?? sortedUpcomingPayments[0];
 
-  const resolvedAccount = resolvePaymentAccountForUpcoming(
+  let nextPayment = defaultNextPayment;
+  let resolvedAccount = resolvePaymentAccountForUpcoming(
     nextPayment.account,
     nextPayment.accountId,
     paymentResolutionPool,
   );
 
-  const isIncomeRecurring = nextPayment.kind === 'income';
-  const isCreditWithLimit = Boolean(
-    resolvedAccount &&
-      resolvedAccount.kind === 'credit' &&
-      typeof resolvedAccount.creditLimit === 'number' &&
-      resolvedAccount.creditLimit > 0,
-  );
-
   let nextPaymentShortfall = 0;
   let showInsufficientFundsWarning = false;
   let creditRiskActive: Extract<CreditPaymentRisk, { shouldWarn: true }> | null = null;
+  let checkingFundsAlert: InsufficientFundsCheckingAlert | null = null;
 
-  if (!isIncomeRecurring && nextPayment.recurring && resolvedAccount) {
-    if (resolvedAccount.kind === 'credit') {
-      if (isCreditWithLimit && resolvedAccount.creditLimit != null) {
-        const risk = evaluateCreditPaymentRisk(
-          resolvedAccount.creditLimit,
-          resolvedAccount.balance,
-          nextPayment.amount,
-        );
-        if (risk.shouldWarn) {
-          showInsufficientFundsWarning = true;
-          creditRiskActive = risk;
-        }
-      }
-      // Sans limite enregistrée : pas d’heuristique « solde ≥ 0 » (inadaptée aux cartes).
-    } else {
-      const available = Math.max(0, resolvedAccount.balance);
-      nextPaymentShortfall = Math.max(0, nextPayment.amount - available);
-      showInsufficientFundsWarning = nextPaymentShortfall > 0;
+  for (const candidate of sortedUpcomingPayments) {
+    if (candidate.date < todayIso || candidate.kind === 'income' || !candidate.recurring) continue;
+
+    const candidateAccount = resolvePaymentAccountForUpcoming(
+      candidate.account,
+      candidate.accountId,
+      paymentResolutionPool,
+    );
+    if (!candidateAccount) continue;
+
+    if (candidateAccount.kind === 'credit') {
+      const creditLimit = candidateAccount.creditLimit;
+      if (typeof creditLimit !== 'number' || creditLimit <= 0) continue;
+
+      const risk = evaluateCreditPaymentRisk(creditLimit, candidateAccount.balance, candidate.amount);
+      if (!risk.shouldWarn) continue;
+
+      nextPayment = candidate;
+      resolvedAccount = candidateAccount;
+      showInsufficientFundsWarning = true;
+      creditRiskActive = risk;
+      checkingFundsAlert = null;
+      break;
     }
+
+    const candidatePaymentDate = new Date(`${candidate.date}T00:00:00`);
+    const resolvedPaycheck = resolvePaycheckForPaymentAlert(
+      candidate.accountId,
+      recurringPayments,
+      incomeTransactions,
+      candidatePaymentDate,
+      today,
+    );
+    const alert = evaluateCheckingInsufficientFunds(
+      candidateAccount.balance,
+      candidate.amount,
+      candidatePaymentDate,
+      resolvedPaycheck,
+    );
+    if (!alert) continue;
+
+    nextPayment = candidate;
+    resolvedAccount = candidateAccount;
+    showInsufficientFundsWarning = true;
+    creditRiskActive = null;
+    checkingFundsAlert = alert;
+    nextPaymentShortfall = alert.currentShortfall;
+    break;
   }
 
+  const isIncomeRecurring = nextPayment.kind === 'income';
+
   const nextPaymentAccountName = resolvedAccount?.name ?? nextPayment.account;
-  const insufficientFundsPillLabel = creditRiskActive
-    ? nextPaymentAccountName
-    : insufficientFundsAlertPillLabel(resolvedAccount);
   const nextPaymentDate = new Date(`${nextPayment.date}T00:00:00`);
-  const nextPaymentLogoUrl =
-    nextPayment.logoUrl ??
-    merchantOverrides.find((override) => override.originalName === nextPayment.name)?.logoUrl ??
-    null;
-  const creditTimelinePaymentLegendLine =
-    creditRiskActive && resolvedAccount
-      ? `${nextPayment.name} · ${formatShortDate(nextPaymentDate)}`
-      : undefined;
   const daysToNextPayment = daysUntil(nextPayment.date);
-  const estimatedPayDate = addDays(today, 14);
-  const riskBeforePay =
-    nextPaymentDate < estimatedPayDate && showInsufficientFundsWarning && !isIncomeRecurring;
-
-  const fundsAlertEyebrow = creditRiskActive
-    ? PAYMENT_WARNING_TITLE_CREDIT_LIMIT
-    : PAYMENT_WARNING_TITLE_CHECKING;
-
-  /** Phrase très courte commune quand une échéance tombe avant le dépôt de paie supposé. */
-  const beforePayRiskFragment = riskBeforePay ? ' Avant le dépôt de paie.' : '';
-
-  const creditTimelineTodayUtilLabel =
-    creditRiskActive && resolvedAccount && typeof resolvedAccount.creditLimit === 'number' && resolvedAccount.creditLimit > 0
-      ? formatCreditUtilTimelineLabel(
-          (creditUsedFromBalance(resolvedAccount.balance) / resolvedAccount.creditLimit) * 100,
-        )
-      : undefined;
-  const creditTimelineAfterPaymentUtilLabel =
-    creditRiskActive && resolvedAccount && typeof resolvedAccount.creditLimit === 'number' && resolvedAccount.creditLimit > 0
-      ? formatCreditUtilTimelineLabel((creditRiskActive.usedAfter / resolvedAccount.creditLimit) * 100)
-      : undefined;
+  const nextPaymentStatusBadge = formatUpcomingStatusBadge(daysToNextPayment);
+  const resolvedPaycheckForTimeline =
+    checkingFundsAlert?.resolvedPaycheck ??
+    resolvePaycheckForPaymentAlert(
+      nextPayment.accountId,
+      recurringPayments,
+      incomeTransactions,
+      nextPaymentDate,
+      today,
+    ) ??
+    resolveNextPaycheckForAccount(nextPayment.accountId, recurringPayments, incomeTransactions, today);
+  const estimatedPayDate = resolvedPaycheckForTimeline?.date ?? addDays(today, 14);
+  const riskBeforePay = creditRiskActive
+    ? nextPaymentDate.getTime() < estimatedPayDate.getTime() && !isIncomeRecurring
+    : checkingFundsAlert
+      ? !checkingFundsAlert.paycheckArrivesBeforePayment
+      : false;
 
   const forecastShortfallMessage = (() => {
     if (creditRiskActive) {
       return creditRiskActive.reason === 'over_limit'
-        ? `Limite dépassée après « ${nextPayment.name} ».${beforePayRiskFragment}`.trim()
-        : `Marge ≤ 10 % après « ${nextPayment.name} ».${beforePayRiskFragment}`.trim();
+        ? 'Ce paiement dépasse ta limite.'
+        : 'Moins de 10 % de marge après ce paiement.';
     }
-    if (showInsufficientFundsWarning) {
-      return `Manque ${formatMoneyDetailed(nextPaymentShortfall)} — « ${nextPayment.name} ».${beforePayRiskFragment}`.trim();
+    if (checkingFundsAlert || (!creditRiskActive && showInsufficientFundsWarning)) {
+      const shortfall = checkingFundsAlert?.currentShortfall ?? nextPaymentShortfall;
+      const noPayFragment =
+        checkingFundsAlert && !checkingFundsAlert.paycheckArrivesBeforePayment ? " Paie après l'échéance." : '';
+      return `Il manque ${formatMoneyDetailed(shortfall)} pour le paiement de ${nextPayment.name}.${noPayFragment}`.trim();
     }
     return '';
   })();
 
-  const paymentAlertLine = (() => {
-    if (creditRiskActive) {
-      return creditRiskActive.reason === 'over_limit'
-        ? `Dépassement · ${formatDaysUntilLabel(daysToNextPayment)}`
-        : `Marge ≤ 10 % · ${formatDaysUntilLabel(daysToNextPayment)}`;
-    }
-    if (showInsufficientFundsWarning) {
-      return `Manque ${formatMoneyDetailed(nextPaymentShortfall)} · ${formatDaysUntilLabel(daysToNextPayment)}`;
-    }
-    return `${nextPaymentAccountName} · ${formatDaysUntilLabel(daysToNextPayment)}`;
-  })();
-
-  const balanceInsightPagerWidthFallback = Math.max(
-    280,
-    windowWidth - DASHBOARD_CONTENT_HORIZONTAL_PADDING * 2,
-  );
-  const balanceInsightPagerStripWidth = balanceInsightPagerWidth ?? balanceInsightPagerWidthFallback;
-  const mockRiskBeforePayScenario = true;
-  const mockRiskBeforePaymentFragment = mockRiskBeforePayScenario ? ' Avant le dépôt de paie.' : '';
-  const mockCheckingForecastMessage =
-    `Manque ${formatMoneyDetailed(MOCK_CHECKING_SHORTFALL)} — « ${MOCK_CHECKING_PAYMENT_NAME} ».${mockRiskBeforePaymentFragment}`.trim();
-
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-  const timelineEnd = [nextPaymentDate, estimatedPayDate, monthEnd].reduce((latest, date) =>
-    date > latest ? date : latest
-  );
-  const todayPosition = timelineMarkerPosition(today, monthStart, timelineEnd);
-  const nextPaymentPosition = timelineMarkerPosition(nextPaymentDate, monthStart, timelineEnd);
-  const nextPayPosition = timelineMarkerPosition(estimatedPayDate, monthStart, timelineEnd);
-  const shortfallWarningColor = isLight ? '#f97316' : '#ff8a00';
-  const shortfallWarningBadge = isLight ? 'rgba(249, 115, 22, 0.15)' : 'rgba(255, 138, 0, 0.2)';
-  const creditDangerBadge = isLight ? 'rgba(220, 38, 38, 0.12)' : 'rgba(255, 49, 49, 0.18)';
-  const timelineFill = timelinePosition(today, monthStart, timelineEnd);
-
-  /** Paiement récurrent démo carte : J+3 (aligné légende « Paiement »). */
   const mockCreditNextPaymentDate = addDays(today, 3);
-  const mockCreditTimelineEnd = [mockCreditNextPaymentDate, estimatedPayDate, monthEnd].reduce((latest, date) =>
-    date > latest ? date : latest,
+  const mockCreditPaycheckDate = addDays(today, 1);
+  const mockCreditOverLimitBody = `96 % de ta limite atteinte après ce paiement.`;
+  const livePaycheckMeta = paycheckMetaFromTimeline(nextPaymentDate, resolvedPaycheckForTimeline, estimatedPayDate);
+  const liveAlertTitle = creditRiskActive ? PAYMENT_WARNING_TITLE_CREDIT_LIMIT : PAYMENT_WARNING_TITLE_CHECKING;
+  const liveAccountLabel = resolvedAccount
+    ? insufficientFundsAlertPillLabel(resolvedAccount)
+    : nextPaymentAccountName;
+
+  const dashboardAlerts: DashboardAlertItem[] = [];
+  if (showInsufficientFundsWarning && forecastShortfallMessage) {
+    dashboardAlerts.push({
+      id: 'live',
+      color: creditRiskActive ? C.red : C.warning,
+      bg: creditRiskActive ? 'rgba(255,85,85,0.08)' : 'rgba(230,160,0,0.08)',
+      title: liveAlertTitle,
+      body: forecastShortfallMessage,
+      date: formatShortDate(nextPaymentDate),
+      accountName: liveAccountLabel,
+      accountId: nextPayment.accountId,
+      paymentName: nextPayment.name,
+      paymentDateRaw: nextPaymentDate,
+      paycheckDateRaw: estimatedPayDate,
+      collapsedSummary: `${liveAlertTitle} · ${forecastShortfallMessage}`,
+      ...livePaycheckMeta,
+      stats: {
+        currentBalance: resolvedAccount?.balance ?? 0,
+        paymentAmount: nextPayment.amount,
+        afterAmount: (resolvedAccount?.balance ?? 0) - nextPayment.amount,
+        afterLabel: creditRiskActive ? 'Après paiement' : 'Manque',
+        kind: creditRiskActive ? 'credit' : 'checking',
+      },
+    });
+  }
+  dashboardAlerts.push(
+    {
+      id: 'mock-credit',
+      color: C.red,
+      bg: 'rgba(255,85,85,0.08)',
+      title: PAYMENT_WARNING_TITLE_CREDIT_LIMIT,
+      body: mockCreditOverLimitBody,
+      date: formatShortDate(mockCreditNextPaymentDate),
+      accountName: MOCK_CREDIT_CARD_NAME,
+      paymentName: MOCK_CREDIT_PAYMENT_NAME,
+      paymentDateRaw: mockCreditNextPaymentDate,
+      paycheckDateRaw: mockCreditPaycheckDate,
+      collapsedSummary: `${PAYMENT_WARNING_TITLE_CREDIT_LIMIT} · ${mockCreditOverLimitBody}`,
+      paycheckBeforePayment: true,
+      paycheckIsEstimated: true,
+      stats: {
+        currentBalance: MOCK_CREDIT_BALANCE_BEFORE,
+        paymentAmount: MOCK_CREDIT_PAYMENT_AMOUNT,
+        afterAmount: MOCK_CREDIT_BALANCE_BEFORE - MOCK_CREDIT_PAYMENT_AMOUNT,
+        afterLabel: 'Après paiement',
+        kind: 'credit',
+      },
+    },
   );
-  const mockCreditTodayPosition = timelineMarkerPosition(today, monthStart, mockCreditTimelineEnd);
-  const mockCreditTimelineFill = timelinePosition(today, monthStart, mockCreditTimelineEnd);
-  const mockCreditNextPaymentPosition = timelineMarkerPosition(
-    mockCreditNextPaymentDate,
-    monthStart,
-    mockCreditTimelineEnd,
-  );
-  const mockCreditNextPayPosition = timelineMarkerPosition(estimatedPayDate, monthStart, mockCreditTimelineEnd);
-  const mockCreditUsedAfter = creditUsedFromBalance(MOCK_CREDIT_BALANCE_BEFORE) + MOCK_CREDIT_PAYMENT_AMOUNT;
-  const mockCreditCurrentUtilPct =
-    (creditUsedFromBalance(MOCK_CREDIT_BALANCE_BEFORE) / MOCK_CREDIT_LIMIT) * 100;
-  const mockCreditProjectedUtilPct = (mockCreditUsedAfter / MOCK_CREDIT_LIMIT) * 100;
-  const mockCreditTimelineTodayLabel = formatCreditUtilTimelineLabel(mockCreditCurrentUtilPct);
-  const mockCreditTimelineAfterLabel = formatCreditUtilTimelineLabel(mockCreditProjectedUtilPct);
-  const mockCreditBarColor = mockCreditUtilizationBarColor(mockCreditProjectedUtilPct, colors, isLight);
-  const mockCreditAlertBadgeBg =
-    mockCreditProjectedUtilPct >= 95 ? creditDangerBadge : shortfallWarningBadge;
-  const mockCreditLegendHighlight =
-    mockCreditNextPaymentDate < estimatedPayDate && mockRiskBeforePayScenario;
-  const mockCreditMarkerIconColor = mockCreditProjectedUtilPct >= 95 ? colors.background : colors.text;
-  const mockCreditOverLimitBody =
-    `Limite critique après ce paiement.${mockRiskBeforePaymentFragment}`.trim();
+
+  const categorySnapshots = data.topBudgets;
+
   const themeLabel = isLight ? 'Mode clair' : 'Mode sombre';
   const nextThemeLabel = isLight ? 'sombre' : 'clair';
   const themeIcon = isLight ? 'sunny-outline' : 'moon-outline';
 
   return (
     <PageTransition>
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: C.bg }]}>
+    <LinearGradient
+      colors={['rgba(0,230,100,0.055)', 'transparent']}
+      style={dashStyles.ambientGlow}
+      pointerEvents="none"
+      start={{ x: 0.5, y: 0 }}
+      end={{ x: 0.5, y: 1 }}
+    />
     <ScrollView
       ref={scrollRef}
       style={styles.screen}
       contentContainerStyle={[
-        styles.content,
+        dashStyles.scrollContent,
         {
           paddingTop: insets.top + SCREEN_TOP_GUTTER,
-          paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING + spacing.md,
+          paddingBottom: insets.bottom + DASHBOARD_BOTTOM_PADDING,
         },
       ]}
       showsVerticalScrollIndicator={false}
@@ -1548,7 +1648,7 @@ export default function HomeScreen() {
                 style={[
                   styles.themeSwitchTrack,
                   {
-                    backgroundColor: isLight ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.12)',
+                    backgroundColor: isLight ? 'rgba(10, 10, 10, 0.08)' : 'rgba(255, 255, 255, 0.12)',
                     borderColor: colors.borderStrong,
                   },
                 ]}
@@ -1570,313 +1670,252 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <View style={styles.budgetSummaryOpen}>
-        <BudgetUsageChart
-          usedPercent={budgetUsedPercent}
-          budgetAvailable={budgetAvailable}
-          progress={budgetProgress}
-          isLight={isLight}
-          mutedColor={colors.textMuted}
-          textColor={colors.text}
-        />
-
-        <GlassContainer padding={9}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 7 }}>
-            <View style={[styles.aiDot, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Ionicons name="sparkles" size={14} color={budgetInsight.tone === 'safe' ? ghost.mint : ghost.blaze} />
-            </View>
-            <Text
-              style={[styles.health, { color: budgetInsightColor }]}
-              numberOfLines={2}
-              ellipsizeMode="tail"
-            >
-              {budgetInsight.message}
-            </Text>
-          </View>
-        </GlassContainer>
+      <View style={dashStyles.sectionFirst}>
+        <BudgetHealthCard spent={spent} limit={limit} />
       </View>
 
-      <View
-        style={styles.balanceInsightPagerWrap}
-        onLayout={(event) => {
-          const nextWidth = Math.round(event.nativeEvent.layout.width);
-          if (nextWidth <= 0) return;
-          setBalanceInsightPagerWidth((prev) => (prev !== nextWidth ? nextWidth : prev));
-        }}
-      >
+      <View style={dashStyles.section}>
+        <View style={dashStyles.sectionHeaderRow}>
+          <DashboardSectionLabel>Alertes</DashboardSectionLabel>
+          <View style={dashStyles.alertDots}>
+            {dashboardAlerts.map((alert, index) => (
+              <Pressable
+                key={alert.id}
+                onPress={() => {
+                  tapHaptic();
+                  setAlertIdx(index);
+                  alertCarouselRef.current?.scrollTo({ x: index * windowWidth, animated: true });
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Alerte ${index + 1}`}
+                style={[
+                  dashStyles.alertDot,
+                  index === alertIdx && dashStyles.alertDotActive,
+                ]}
+              />
+            ))}
+          </View>
+        </View>
+
         <ScrollView
+          ref={alertCarouselRef}
           horizontal
           pagingEnabled
-          nestedScrollEnabled
-          directionalLockEnabled={Platform.OS === 'ios'}
-          keyboardShouldPersistTaps="handled"
           showsHorizontalScrollIndicator={false}
-          removeClippedSubviews
-          style={[styles.balanceInsightPagerViewport, { width: '100%' }]}
-          contentContainerStyle={styles.balanceInsightPagerPages}
           decelerationRate="fast"
-          onMomentumScrollEnd={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
-            const step = balanceInsightPagerStripWidth;
-            if (step <= 0) return;
-            const page = Math.round(e.nativeEvent.contentOffset.x / step);
-            setBalanceInsightPage(Math.max(0, Math.min(2, page)));
+          style={{ marginHorizontal: -16 }}
+          onMomentumScrollEnd={(e) => {
+            const page = Math.round(e.nativeEvent.contentOffset.x / windowWidth);
+            setAlertIdx(page);
           }}
         >
-          <View style={[styles.balanceInsightPage, { width: balanceInsightPagerStripWidth }]}>
-            {showInsufficientFundsWarning ? (
-              <GlassContainer padding={0} style={styles.balanceInsightPagerCard}>
-              <FundsTimelineAlertCard
-                eyebrow={fundsAlertEyebrow}
-                accountPillLabel={insufficientFundsPillLabel}
-                bodyText={forecastShortfallMessage}
-                warningColor={shortfallWarningColor}
-                warningBadgeBg={shortfallWarningBadge}
-                colors={colors}
-                cardShadow={ghostCardShadow}
-                monthStart={monthStart}
-                timelineEnd={timelineEnd}
+          {dashboardAlerts.map((alert) => (
+            <View key={alert.id} style={{ width: windowWidth, paddingHorizontal: 16 }}>
+              <AlertCard
+                alert={alert}
                 today={today}
-                timelineFillWidth={timelineFill}
-                todayPosition={todayPosition}
-                nextPaymentPosition={nextPaymentPosition}
-                nextPayPosition={nextPayPosition}
-                nextPaymentDate={nextPaymentDate}
-                estimatedPayDate={estimatedPayDate}
-                highlightPaymentLegend={riskBeforePay}
-                markerIconColor={colors.text}
-                paymentLegendLine={creditTimelinePaymentLegendLine}
+                collapsed={alertCollapsed[alert.id] ?? false}
+                reminderEnabled={alertReminders[alert.id] ?? false}
+                onToggleReminder={() => void handleTogglePaycheckReminder(alert)}
+                onExpand={() => void handleExpandAlert(alert.id)}
+                onCollapse={() => void handleCollapseAlert(alert.id)}
               />
-              </GlassContainer>
-            ) : (
-              <GlassContainer padding={18} style={styles.balanceInsightPagerCard}>
-                <Pressable
-                  onPress={openBalanceSelector}
-                  accessibilityRole="button"
-                  accessibilityLabel="Choisir les comptes à comparer"
-                  android_ripple={null}
-                >
-                  <View style={{ gap: 18 }}>
-                  <View style={styles.balanceCompareHeader}>
-                    <View style={styles.balanceCompareTitleBlock}>
-                      <Text
-                        style={[styles.inlineEyebrow, { color: colors.textMuted }]}
-                        {...rowTitleTextProps}
-                      >
-                        2 comptes favoris
-                      </Text>
-                      <Text
-                        style={[styles.balanceCompareTitle, { color: colors.text }]}
-                        {...rowTitleTextProps}
-                      >
-                        Mes soldes
-                      </Text>
-                    </View>
-                    <View style={[styles.balanceCompareAction, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                      <Ionicons name="swap-horizontal-outline" size={15} color={colors.textSecondary} />
-                      <Text style={[styles.balanceCompareActionText, { color: colors.textSecondary }]}>Choisir</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.balanceCompareChart}>
-                    {balanceCompareAccounts.map((account, index) => {
-                      const creditUtilPct =
-                        account.kind === 'credit'
-                          ? creditLimitUtilizationPercent(account.balance, account.creditLimit)
-                          : undefined;
-                      const barFillColor = balanceCompareProgressBarColor(
-                        account,
-                        creditUtilPct,
-                        colors,
-                        isLight,
-                      );
-                      const utilizationLabelColor =
-                        typeof creditUtilPct === 'number'
-                          ? creditLimitUtilizationBarColor(creditUtilPct, colors, isLight)
-                          : colors.primary;
-                      const width = `${Math.max(9, Math.min(100, (Math.abs(account.balance) / balanceCompareMax) * 100))}%`;
-
-                      return (
-                        <View key={account.id} style={styles.balanceCompareRow}>
-                          <BalanceCompareAccountAvatar account={account} colors={colors} />
-                          <View style={styles.balanceCompareRowBody}>
-                            <View style={styles.balanceCompareRowHeader}>
-                              <View style={styles.balanceCompareAccountCopy}>
-                                <Text style={[styles.balanceCompareAccountName, { color: colors.text }]} {...rowTitleTextProps}>
-                                  {account.name}
-                                </Text>
-                                <Text style={[styles.balanceCompareAccountMeta, { color: colors.textMuted }]} {...rowTitleTextProps}>
-                                  {formatAccountMeta(account)}
-                                </Text>
-                              </View>
-                              <View style={styles.balanceCompareAmountBlock}>
-                                <Text
-                                  style={[
-                                    styles.balanceCompareAmount,
-                                    { color: account.balance < 0 ? colors.danger : colors.text },
-                                  ]}
-                                  {...singleLineAmountProps}
-                                >
-                                  {formatCompactCurrency(account.balance)}
-                                </Text>
-                                {typeof creditUtilPct === 'number' ? (
-                                  <Text
-                                    style={[styles.balanceCompareCreditUtil, { color: utilizationLabelColor }]}
-                                    {...singleLineAmountProps}
-                                  >
-                                    {`${Math.round(creditUtilPct)} % utilisé`}
-                                  </Text>
-                                ) : null}
-                              </View>
-                            </View>
-                            <View style={[styles.balanceCompareTrack, { backgroundColor: colors.borderStrong }]}>
-                              <MotiView
-                                from={{ width: '8%' }}
-                                animate={{ width }}
-                                transition={{ type: 'timing', duration: 760 + index * 120 }}
-                                style={[styles.balanceCompareFill, { backgroundColor: barFillColor }]}
-                              />
-                            </View>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                  </View>
-                </Pressable>
-              </GlassContainer>
-            )}
-      </View>
-
-          <View style={[styles.balanceInsightPage, { width: balanceInsightPagerStripWidth }]}>
-            <GlassContainer padding={0} style={styles.balanceInsightPagerCard}>
-            <FundsTimelineAlertCard
-              eyebrow={PAYMENT_WARNING_TITLE_CHECKING}
-              accountPillLabel={MOCK_CHECKING_ACCOUNT_NAME}
-              bodyText={mockCheckingForecastMessage}
-              warningColor={shortfallWarningColor}
-              warningBadgeBg={shortfallWarningBadge}
-              colors={colors}
-              cardShadow={ghostCardShadow}
-              monthStart={monthStart}
-              timelineEnd={timelineEnd}
-              today={today}
-              timelineFillWidth={timelineFill}
-              todayPosition={todayPosition}
-              nextPaymentPosition={nextPaymentPosition}
-              nextPayPosition={nextPayPosition}
-              nextPaymentDate={nextPaymentDate}
-              estimatedPayDate={estimatedPayDate}
-              highlightPaymentLegend={mockRiskBeforePayScenario}
-              markerIconColor={colors.text}
-            />
-            </GlassContainer>
-          </View>
-
-          <View style={[styles.balanceInsightPage, { width: balanceInsightPagerStripWidth }]}>
-            <GlassContainer padding={0} style={styles.balanceInsightPagerCard}>
-            <FundsTimelineAlertCard
-              eyebrow={PAYMENT_WARNING_TITLE_CREDIT_LIMIT}
-              accountPillLabel={MOCK_CREDIT_CARD_NAME}
-              bodyText={mockCreditOverLimitBody}
-              warningColor={mockCreditBarColor}
-              warningBadgeBg={mockCreditAlertBadgeBg}
-              colors={colors}
-              cardShadow={ghostCardShadow}
-              monthStart={monthStart}
-              timelineEnd={mockCreditTimelineEnd}
-              today={today}
-              timelineFillWidth={mockCreditTimelineFill}
-              todayPosition={mockCreditTodayPosition}
-              nextPaymentPosition={mockCreditNextPaymentPosition}
-              nextPayPosition={mockCreditNextPayPosition}
-              nextPaymentDate={mockCreditNextPaymentDate}
-              estimatedPayDate={estimatedPayDate}
-              highlightPaymentLegend={mockCreditLegendHighlight}
-              markerIconColor={mockCreditMarkerIconColor}
-              paymentLegendLine={`${MOCK_CREDIT_PAYMENT_NAME} · ${formatShortDate(mockCreditNextPaymentDate)}`}
-            />
-            </GlassContainer>
-          </View>
-        </ScrollView>
-
-        <View style={styles.pagerDotsRow} accessibilityRole="tablist">
-          {[0, 1, 2].map((i) => (
-            <View
-              key={i}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: balanceInsightPage === i }}
-              style={[
-                styles.pagerDot,
-                { backgroundColor: colors.borderStrong },
-                balanceInsightPage === i && { backgroundColor: colors.primary, width: 18 },
-              ]}
-            />
-          ))}
-        </View>
-        <Text style={[styles.balancePagerHint, { color: colors.textMuted }]} pointerEvents="none">
-          Glissez pour des exemples d’alertes (démo)
-        </Text>
-      </View>
-      <View style={styles.openSection}>
-        <Text style={[styles.sectionEyebrow, { color: colors.textMuted }]}>Prochain paiement</Text>
-        <GlassContainer padding={spacing.md}>
-          <View style={{ gap: spacing.sm }}>
-            <View style={styles.paymentHeaderRow}>
-              <UpcomingPaymentLogo
-                name={nextPayment.name}
-                logoUrl={nextPaymentLogoUrl}
-                fallbackColor={showInsufficientFundsWarning ? shortfallWarningColor : colors.textSecondary}
-              />
-              <View style={styles.paymentCopy}>
-                <Text style={[styles.rowTitle, { color: colors.text }]} {...rowTitleTextProps}>
-                  {nextPayment.name}
-                </Text>
-                <Text style={[styles.paymentDateLine, { color: colors.textMuted }]} {...rowTitleTextProps}>
-                  {formatUpcomingDate(nextPayment.date)}
-                </Text>
-              </View>
-              <Text
-                style={[
-                  styles.rowAmountStrong,
-                  { color: showInsufficientFundsWarning ? shortfallWarningColor : colors.text },
-                ]}
-                {...singleLineAmountProps}
-              >
-                {formatMoneyDetailed(nextPayment.amount)}
-              </Text>
             </View>
+          ))}
+        </ScrollView>
+      </View>
 
-            {showInsufficientFundsWarning ? (
-              <>
-                {insufficientFundsPillLabel.trim().length ? (
-                  <View style={styles.paymentAlertAccountStrip}>
-                    <AlertAccountPill label={insufficientFundsPillLabel} colors={colors} />
-                  </View>
-                ) : null}
-                <View style={styles.paymentAlertRow}>
-                  <Ionicons name="warning" size={13} color={shortfallWarningColor} style={{ marginTop: 2 }} />
-                  <Text
-                    style={[styles.paymentAlertText, { color: shortfallWarningColor }]}
-                    numberOfLines={4}
-                    ellipsizeMode="tail"
-                  >
-                    {paymentAlertLine}
-                  </Text>
-                </View>
-              </>
-            ) : (
-              <View style={styles.paymentAlertRow}>
-                <Ionicons name="checkmark-circle-outline" size={13} color={colors.success} style={{ marginTop: 2 }} />
-                <Text
-                  style={[styles.paymentAlertText, { color: colors.textSecondary }]}
-                  {...singleLineAmountProps}
-                >
-                  {nextPaymentAccountName} · {formatDaysUntilLabel(daysToNextPayment)}
-                </Text>
-              </View>
-            )}
+      <View style={dashStyles.section}>
+        <View style={dashStyles.sectionHeaderRow}>
+          <View>
+            <DashboardSectionLabel>2 comptes favoris</DashboardSectionLabel>
+            <Text style={dashStyles.sectionTitle}>Mes soldes</Text>
           </View>
-        </GlassContainer>
+          <Pressable
+            onPress={openBalanceSelector}
+            accessibilityRole="button"
+            accessibilityLabel="Choisir les comptes à comparer"
+            style={dashStyles.chooseButton}
+          >
+            <Text style={dashStyles.chooseButtonText}>⇄ Choisir</Text>
+          </Pressable>
+        </View>
+
+        <DashboardCard style={dashStyles.accountsCard}>
+          {balanceCompareAccounts.map((account, index) => {
+            const creditUtilPct =
+              account.kind === 'credit'
+                ? creditLimitUtilizationPercent(account.balance, account.creditLimit)
+                : undefined;
+            const creditUtilColor =
+              typeof creditUtilPct === 'number'
+                ? creditUtilPct >= 95
+                  ? C.red
+                  : creditUtilPct >= 80
+                    ? C.warning
+                    : C.green
+                : undefined;
+            const institution = account.institution?.trim() || formatAccountMeta(account);
+            const logoUrl = getBalanceCompareAccountLogoUrl(account);
+            const logoTone =
+              account.kind === 'credit'
+                ? colors.warning
+                : account.kind === 'savings'
+                  ? colors.primaryAlt
+                  : colors.primary;
+
+            return (
+              <View
+                key={account.id}
+                style={[
+                  dashStyles.accountRow,
+                  index < balanceCompareAccounts.length - 1 && dashStyles.accountRowBorder,
+                ]}
+              >
+                <View style={dashStyles.accountRowTop}>
+                  <View style={dashStyles.accountIdentity}>
+                    {logoUrl ? (
+                      <LogoIconFrame uri={logoUrl} size={36} />
+                    ) : (
+                      <View style={userPickedIconWellStyle(36, isLight)}>
+                        <Ionicons name={iconForKind(account.kind)} size={16} color={logoTone} />
+                      </View>
+                    )}
+                    <View>
+                      <Text style={dashStyles.accountName}>{account.name}</Text>
+                      <Text style={dashStyles.accountSub}>{institution}</Text>
+                    </View>
+                  </View>
+                  <View style={dashStyles.accountAmountBlock}>
+                    <Text
+                      style={[
+                        dashStyles.accountAmount,
+                        account.balance < 0
+                          ? { color: C.red }
+                          : account.kind === 'credit' && account.balance > 0
+                            ? { color: C.green }
+                            : null,
+                      ]}
+                    >
+                      {formatCompactCurrency(account.balance, {
+                        leadingPlusWhenPositive: account.kind === 'credit' && account.balance > 0,
+                      })}
+                    </Text>
+                    {typeof creditUtilPct === 'number' ? (
+                      <Text style={[dashStyles.accountUsed, { color: creditUtilColor }]}>
+                        {`${Math.round(creditUtilPct)}% utilisé`}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+        </DashboardCard>
+      </View>
+
+      <View style={dashStyles.section}>
+        <DashboardSectionLabel style={dashStyles.paymentSectionLabel}>Prochain paiement</DashboardSectionLabel>
+        <DashboardCard style={dashStyles.paymentCard}>
+          <DashboardDateBadge dateKey={nextPayment.date} />
+          <View style={dashStyles.paymentCopy}>
+            <Text style={dashStyles.paymentTitle}>{nextPayment.name}</Text>
+            <View style={dashStyles.paymentMetaRow}>
+              <PaymentCheckIcon />
+              <Text style={dashStyles.paymentMeta}>{nextPaymentAccountName}</Text>
+            </View>
+          </View>
+          <View style={dashStyles.paymentAmountBlock}>
+            <View style={[dashStyles.paymentBadge, isIncomeRecurring ? dashStyles.paymentBadgeIncome : dashStyles.paymentBadgeExpense]}>
+              <Text style={[dashStyles.paymentBadgeText, isIncomeRecurring ? dashStyles.paymentBadgeTextIncome : dashStyles.paymentBadgeTextExpense]}>{nextPaymentStatusBadge}</Text>
+            </View>
+            <Text
+              style={[
+                dashStyles.paymentAmount,
+                isIncomeRecurring ? dashStyles.paymentAmountIncome : dashStyles.paymentAmountExpense,
+              ]}
+              {...singleLineAmountProps}
+            >
+              {isIncomeRecurring
+                ? `+${formatMoneyDetailed(nextPayment.amount)}`
+                : `−${formatMoneyDetailed(nextPayment.amount)}`}
+            </Text>
+          </View>
+        </DashboardCard>
+      </View>
+
+      <View style={dashStyles.section}>
+        <View style={dashStyles.sectionHeaderRow}>
+          <View>
+            <DashboardSectionLabel>Budget mensuel</DashboardSectionLabel>
+            <Text style={dashStyles.sectionTitle}>Catégories</Text>
+          </View>
+          <Pressable
+            onPress={() => {
+              tapHaptic();
+              router.push('/budgets');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Voir toutes les catégories"
+            style={dashStyles.viewAllButton}
+          >
+            <Text style={dashStyles.viewAllButtonText}>Voir tout →</Text>
+          </Pressable>
+        </View>
+
+        <DashboardCard style={dashStyles.accountsCard}>
+          {categorySnapshots.length === 0 ? (
+            <Pressable
+              onPress={() => { tapHaptic(); router.push('/budgets'); }}
+              style={dashStyles.categoryEmptyWrap}
+            >
+              <Text style={dashStyles.categoryEmptyText}>
+                Définis des limites dans Budgets pour les voir ici.
+              </Text>
+              <Text style={dashStyles.categoryEmptyLink}>Configurer →</Text>
+            </Pressable>
+          ) : (
+            categorySnapshots.map((category, index) => {
+              const usagePct = Math.round((category.spent / category.limitAmount) * 100);
+              const barPct = Math.min(usagePct, 100);
+              const isOver = usagePct > 100;
+              const isWarning = usagePct >= 80 && !isOver;
+              const barColor = isOver ? C.red : isWarning ? C.warning : C.green;
+
+              return (
+                <Pressable
+                  key={category.categoryId}
+                  onPress={() => { tapHaptic(); router.push(`/budget-category-transactions?id=${category.categoryId}`); }}
+                  style={[
+                    dashStyles.categoryRow,
+                    index < categorySnapshots.length - 1 && dashStyles.accountRowBorder,
+                  ]}
+                >
+                  <View style={dashStyles.categoryRowTop}>
+                    <View style={dashStyles.categoryIdentity}>
+                      <View style={[dashStyles.categoryDot, { backgroundColor: category.categoryColor }]} />
+                      <Text style={dashStyles.categoryName} numberOfLines={1}>{category.categoryName}</Text>
+                    </View>
+                    <View style={dashStyles.categoryAmountsBlock}>
+                      <Text style={[dashStyles.categoryPct, { color: barColor }]}>
+                        {usagePct} %
+                      </Text>
+                      <Text style={dashStyles.categoryAmounts}>
+                        <Text style={dashStyles.categorySpent}>
+                          {Math.round(category.spent).toLocaleString('fr-CA')} $
+                        </Text>
+                        <Text style={dashStyles.categoryLimit}>
+                          {' '}/ {Math.round(category.limitAmount).toLocaleString('fr-CA')} $
+                        </Text>
+                      </Text>
+                    </View>
+                  </View>
+                  <DashboardProgressBar pct={barPct > 0 ? barPct : 1} color={barColor} height={3} />
+                </Pressable>
+              );
+            })
+          )}
+        </DashboardCard>
       </View>
 
       <Modal
@@ -2022,12 +2061,33 @@ export default function HomeScreen() {
 
     </ScrollView>
     </View>
+
+    <ThemedConfirmModal
+      visible={reminderConfirmVisible}
+      title="Rappel activé"
+      message="Le rappel est bien activé. Tu seras averti le jour de ta prochaine paie."
+      confirmLabel="Compris"
+      icon="notifications"
+      onConfirm={() => void confirmPaycheckReminder()}
+      onCancel={cancelPaycheckReminderConfirm}
+    />
+
+    <ThemedConfirmModal
+      visible={payEntryPrompt !== null}
+      title="Dépôt de paie"
+      message={payEntryPrompt ? buildPaycheckEntryMessage(payEntryPrompt) : ''}
+      confirmLabel="Entrer ma paie"
+      cancelLabel="Plus tard"
+      icon="wallet-outline"
+      onConfirm={() => void openPayEntryFromPrompt()}
+      onCancel={() => void dismissPayEntryPromptForToday()}
+    />
     </PageTransition>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+  screen: { flex: 1 },
   content: { paddingHorizontal: PAGE_PADDING_HORIZONTAL, gap: spacing.xl },
   block: { gap: spacing.md },
   budgetSummaryOpen: {
@@ -2164,7 +2224,7 @@ const styles = StyleSheet.create({
   },
   greetingBlock: {
     paddingTop: 0,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.xl,
   },
   headerRow: {
     flexDirection: 'row',
@@ -2183,11 +2243,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
     // Visual-only offset: aligns with the theme switch row without moving dashboard content.
     transform: [{ translateY: 48 }],
-    fontSize: typography.screenTitle,
-    fontWeight: '700',
+    ...PAGE_TITLE_STYLE,
     color: ghost.text,
-    letterSpacing: -0.35,
-    lineHeight: typography.screenTitle + 7,
   },
   headerIconButton: {
     width: 40,
@@ -2223,7 +2280,7 @@ const styles = StyleSheet.create({
     fontSize: typography.meta,
     fontWeight: '700',
     lineHeight: typography.meta + 4,
-    color: 'rgba(245,245,245,0.72)',
+    color: 'rgba(245,245,245,0.84)',
   },
   healthWarning: { color: 'rgba(255,235,226,0.82)' },
   pressed: { opacity: 0.72 },
@@ -2281,7 +2338,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 2.2,
-    color: 'rgba(245,245,245,0.68)',
+    color: 'rgba(245,245,245,0.80)',
     lineHeight: typography.micro + 4,
   },
   balanceMint: {
@@ -2295,7 +2352,7 @@ const styles = StyleSheet.create({
   metricUnit: {
     fontSize: typography.dashboardGreeting,
     fontWeight: '800',
-    color: 'rgba(245,245,245,0.72)',
+    color: 'rgba(245,245,245,0.84)',
   },
   balanceWhite: {
     marginTop: 8,
@@ -2453,7 +2510,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 2.2,
-    color: 'rgba(245,245,245,0.68)',
+    color: 'rgba(245,245,245,0.80)',
   },
   forecastAmount: {
     flexShrink: 1,
@@ -2470,7 +2527,7 @@ const styles = StyleSheet.create({
     marginTop: -2,
   },
   timelineDateText: {
-    color: 'rgba(245,245,245,0.62)',
+    color: 'rgba(245,245,245,0.74)',
     fontSize: typography.micro,
     fontWeight: '600',
   },
@@ -2612,7 +2669,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,250,154,0.9)',
   },
   legendLabel: {
-    color: 'rgba(245,245,245,0.66)',
+    color: 'rgba(245,245,245,0.78)',
     fontSize: typography.micro,
     fontWeight: '700',
   },
@@ -2628,7 +2685,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 2.4,
-    color: 'rgba(245,245,245,0.62)',
+    color: 'rgba(245,245,245,0.74)',
   },
   sectionHead: {
     flexDirection: 'row',
@@ -2644,7 +2701,7 @@ const styles = StyleSheet.create({
   },
   fill: { height: 5, borderRadius: 999 },
   alertText: { fontSize: typography.caption, fontWeight: '600', color: 'rgba(245,245,245,0.78)', marginTop: 4 },
-  captionMuted: { flex: 1, fontSize: typography.meta, fontWeight: '700', color: 'rgba(245,245,245,0.68)', lineHeight: typography.meta + 4 },
+  captionMuted: { flex: 1, fontSize: typography.meta, fontWeight: '700', color: 'rgba(245,245,245,0.80)', lineHeight: typography.meta + 4 },
   paymentPreview: {
     gap: 9,
   },
@@ -2670,24 +2727,18 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rowTitle: {
-    flex: 1,
-    minWidth: 0,
-    flexShrink: 1,
-    fontSize: typography.caption,
-    fontWeight: '700',
+    ...rowLabel,
+    fontWeight: '800',
     color: ghost.text,
-    lineHeight: typography.caption + 5,
   },
   paymentDateLine: { fontSize: typography.meta, fontWeight: '700', lineHeight: typography.meta + 4, flexShrink: 1 },
-  rowSub: { fontSize: typography.meta, fontWeight: '700', color: 'rgba(245,245,245,0.64)', marginTop: 2 },
+  rowSub: { fontSize: typography.meta, fontWeight: '700', color: 'rgba(245,245,245,0.76)', marginTop: 2 },
   rowAmountStrong: {
+    ...rowValue,
     flexShrink: 0,
     maxWidth: '40%',
     textAlign: 'right',
-    fontSize: typography.caption,
-    fontWeight: '700',
     color: ghost.text,
-    fontVariant: ['tabular-nums'],
   },
   paymentWarningCallout: {
     flexDirection: 'row',
@@ -2874,5 +2925,299 @@ const styles = StyleSheet.create({
   selectorDoneText: {
     fontSize: typography.caption,
     fontWeight: '900',
+  },
+});
+
+const DASH_SECTION_BREAK = spacing.xxl + spacing.lg;
+
+const dashStyles = StyleSheet.create({
+  skeletonScreen: {
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+    gap: spacing.lg,
+  },
+  skeletonGreeting: {
+    height: 38,
+    width: '62%',
+    borderRadius: 10,
+    backgroundColor: C.border,
+    opacity: 0.55,
+  },
+  skeletonCard: {
+    height: 120,
+    borderRadius: 16,
+    backgroundColor: C.card,
+    opacity: 0.45,
+  },
+  skeletonHint: {
+    ...interMediumText,
+    fontSize: typography.meta,
+    color: C.subtext,
+    textAlign: 'center',
+    marginTop: spacing.md,
+  },
+  ambientGlow: {
+    position: 'absolute',
+    top: -100,
+    alignSelf: 'center',
+    width: 420,
+    height: 260,
+    zIndex: 0,
+  },
+  scrollContent: {
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+  },
+  sectionFirst: {
+    paddingTop: PAGE_TITLE_CONTENT_GAP,
+    paddingBottom: spacing.sm,
+  },
+  section: {
+    paddingTop: DASH_SECTION_BREAK,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: C.border,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  sectionTitle: {
+    ...SECTION_TITLE_STYLE,
+    color: C.text,
+    marginTop: spacing.xs,
+  },
+  chooseButton: {
+    backgroundColor: C.card,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  chooseButtonText: {
+    ...interSemiboldText,
+    fontSize: typography.micro,
+    color: C.subtext,
+  },
+  accountsCard: {
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    overflow: 'hidden',
+  },
+  accountRow: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+  },
+  accountRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: C.border,
+  },
+  accountRowTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  accountIdentity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
+    minWidth: 0,
+  },
+  accountName: {
+    ...interBoldText,
+    fontSize: typography.meta,
+    color: C.text,
+    letterSpacing: -0.2,
+    lineHeight: typography.meta + 5,
+  },
+  accountSub: {
+    ...interBoldText,
+    fontSize: typography.micro,
+    color: C.subtext,
+    marginTop: 1,
+    letterSpacing: 0.2,
+  },
+  accountAmountBlock: {
+    alignItems: 'flex-end',
+  },
+  accountAmount: {
+    ...dashboardPaymentAmount,
+    color: C.text,
+    lineHeight: typography.dashboardGreeting + 4,
+  },
+  accountUsed: {
+    ...interSemiboldText,
+    fontSize: typography.micro,
+    marginTop: spacing.xs,
+  },
+  alertDots: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    alignItems: 'center',
+  },
+  alertDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 99,
+    backgroundColor: C.border,
+  },
+  alertDotActive: {
+    width: 18,
+    backgroundColor: C.green,
+  },
+  alertDate: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    color: C.subtext,
+    marginTop: spacing.xs,
+  },
+  paymentSectionLabel: {
+    marginBottom: spacing.lg,
+  },
+  paymentCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.lg,
+  },
+  paymentCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  paymentTitle: {
+    ...interBoldText,
+    fontSize: typography.meta,
+    color: C.text,
+    letterSpacing: -0.2,
+  },
+  paymentMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  paymentMeta: {
+    ...interBoldText,
+    fontSize: typography.micro,
+    color: C.subtext,
+    flexShrink: 1,
+    letterSpacing: 0.2,
+  },
+  paymentAmountBlock: {
+    alignItems: 'flex-end',
+  },
+  paymentAmount: {
+    ...dashboardPaymentAmount,
+  },
+  paymentAmountExpense: {
+    color: C.red,
+  },
+  paymentAmountIncome: {
+    color: C.green,
+  },
+  paymentBadge: {
+    marginBottom: spacing.xs,
+    borderRadius: 6,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  paymentBadgeExpense: {
+    backgroundColor: 'rgba(230,160,0,0.14)',
+  },
+  paymentBadgeIncome: {
+    backgroundColor: 'rgba(0,230,100,0.1)',
+  },
+  paymentBadgeText: {
+    ...interBoldText,
+    fontSize: typography.micro,
+    letterSpacing: 0.5,
+  },
+  paymentBadgeTextExpense: {
+    color: C.warning,
+  },
+  paymentBadgeTextIncome: {
+    color: C.green,
+  },
+  viewAllButton: {
+    backgroundColor: 'rgba(0,230,100,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,230,100,0.2)',
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  viewAllButtonText: {
+    ...interBoldText,
+    fontSize: typography.micro,
+    color: C.green,
+  },
+  categoryRow: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  categoryRowTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  categoryIdentity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+    minWidth: 0,
+  },
+  categoryDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 99,
+    flexShrink: 0,
+  },
+  categoryName: {
+    ...interSemiboldText,
+    fontSize: typography.caption,
+    color: C.text,
+    flexShrink: 1,
+  },
+  categoryAmountsBlock: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+    marginLeft: spacing.sm,
+  },
+  categoryPct: {
+    ...interBoldText,
+    fontSize: typography.meta,
+    lineHeight: typography.meta + 2,
+  },
+  categoryAmounts: {
+    textAlign: 'right',
+  },
+  categorySpent: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    color: C.subtext,
+  },
+  categoryLimit: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    color: C.subtext,
+  },
+  categoryEmptyWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  categoryEmptyText: {
+    ...interMediumText,
+    fontSize: typography.meta,
+    color: C.subtext,
+    textAlign: 'center',
+    lineHeight: typography.meta + 5,
+  },
+  categoryEmptyLink: {
+    ...interBoldText,
+    fontSize: typography.meta,
+    color: C.green,
   },
 });

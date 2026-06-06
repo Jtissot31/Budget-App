@@ -23,6 +23,32 @@ import type {
 } from '@/types';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
+let dbOpenFailed = false;
+
+const DB_OPEN_TIMEOUT_MS = 5_000;
+
+export function isDatabaseAvailable(): boolean {
+  return !dbOpenFailed;
+}
+
+function withDbOpenTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${DB_OPEN_TIMEOUT_MS}ms`)),
+      DB_OPEN_TIMEOUT_MS,
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 /** Parses stored `transactions.date` for chronological ordering (ISO from device / API). */
 export function transactionInstantMs(dateStr: string): number {
@@ -43,7 +69,8 @@ export function sortTransactionsNewestFirst(transactions: Transaction[]): Transa
 
 export async function getDb(): Promise<SQLite.SQLiteDatabase> {
   if (!dbPromise) {
-    dbPromise = (async () => {
+    dbPromise = withDbOpenTimeout(
+      (async () => {
       const db = await SQLite.openDatabaseAsync('budget.db');
       await db.execAsync(`
         PRAGMA journal_mode = WAL;
@@ -180,7 +207,14 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
       await ensureWealthAssetColumns(db);
       await removeDeprecatedBudgetCategories(db);
       return db;
-    })();
+    })(),
+      'SQLite open',
+    ).catch((error: unknown) => {
+      dbPromise = null;
+      dbOpenFailed = true;
+      console.warn('[Boot] SQLite open failed', error);
+      throw error;
+    });
   }
   return dbPromise;
 }
@@ -676,6 +710,20 @@ export async function upsertSavingsGoal(goal: SavingsGoal): Promise<void> {
   dataEvents.emit();
 }
 
+export async function deleteSavingsGoal(id: string): Promise<void> {
+  const trimmed = id.trim();
+  if (!trimmed) return;
+
+  const db = await getDb();
+  await db.runAsync('UPDATE transactions SET savings_goal_id = NULL WHERE savings_goal_id = ?', [trimmed]);
+  await db.runAsync(
+    'UPDATE simulated_accounts SET linked_savings_goal_id = NULL WHERE linked_savings_goal_id = ?',
+    [trimmed],
+  );
+  await db.runAsync('DELETE FROM savings_goals WHERE id = ?', [trimmed]);
+  dataEvents.emit();
+}
+
 export async function getRecurringPayments(): Promise<RecurringPayment[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<{
@@ -957,12 +1005,23 @@ export async function getTransactionsForSavingsGoal(goalId: string): Promise<Tra
     const note = tx.note ?? '';
     const normalizedNote = note.toLowerCase();
     const normalizedGoalId = trimmed.toLowerCase();
+
     if (
       normalizedNote.includes(`goal:${normalizedGoalId}`) ||
       normalizedNote.includes(`objectif:${normalizedGoalId}`) ||
       normalizedNote.includes(`savingsgoal:${normalizedGoalId}`)
     ) {
       return true;
+    }
+
+    // Transferts directs vers/depuis l'objectif : note = "transfert:source->dest"
+    if (tx.type === 'transfer') {
+      const match = /^transfert:(.+)->(.+)$/.exec(note.split('\n')[0] ?? '');
+      if (match) {
+        const sourceId = match[1]?.trim();
+        const destId = match[2]?.trim();
+        if (sourceId === trimmed || destId === trimmed) return true;
+      }
     }
 
     if (linkedAccountIds.size > 0) {
@@ -1150,7 +1209,7 @@ export async function getDashboard(): Promise<DashboardSummary> {
      LIMIT 3`,
   );
 
-  const topBudgets = (await getCategoryBudgets()).slice(0, 3);
+  const topBudgets = (await getCategoryBudgets()).filter((b) => b.limitAmount > 0);
 
   return {
     balance,

@@ -12,25 +12,24 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import { GoalSparkChartCarousel } from '@/components/GoalSparkChartCarousel';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
-import { PageTransition } from '@/components/PageTransition';
 import { ProgressBar } from '@/components/ProgressBar';
-import { GlassContainer } from '@/components/GlassContainer';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import {
   resolveUserPickedIconGlyphColor,
   resolveUserPickedIconWellBackground,
 } from '@/lib/userPickedIcon';
 import { SCREEN_TOP_GUTTER, ghost, ghostCardShadow } from '@/constants/ghostUi';
+import { GOAL_ICON_PICKER_OPTIONS } from '@/constants/categoryOptions';
 import { FLOATING_NAV_CONTENT_PADDING, PAGE_TITLE_CONTENT_GAP, colors, radius, spacing, typography } from '@/constants/theme';
 import { getCategoryBudgets, getDashboard, getRecurringPayments, getSavingsGoals, upsertSavingsGoal } from '@/lib/db';
 import { savingsGoalIncrementalProgress } from '@/lib/savingsGoalProgress';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import type { CategoryBudget, DashboardSummary, RecurringPayment, SavingsGoal } from '@/types';
 
 export type GoalForm = {
@@ -65,24 +64,6 @@ const GOAL_COLOR_OPTIONS = [
 ];
 const DEFAULT_COLOR = GOAL_COLOR_OPTIONS[0]!;
 const DEFAULT_ICON: IconName = 'flag-outline';
-const GOAL_ICON_OPTIONS: IconName[] = [
-  'flag-outline',
-  'umbrella-outline',
-  'airplane-outline',
-  'home-outline',
-  'car-outline',
-  'school-outline',
-  'gift-outline',
-  'trophy-outline',
-  'wallet-outline',
-  'sparkles-outline',
-  'briefcase-outline',
-  'bicycle-outline',
-  'heart-outline',
-  'diamond-outline',
-  'rocket-outline',
-  'cash-outline',
-];
 
 export function createNewGoalForm(): GoalForm {
   return {
@@ -116,238 +97,6 @@ export function createGoalEditForm(goal: SavingsGoal): GoalForm {
     iconMode: goal.icon === automaticIcon ? 'auto' : 'manual',
     createdAt: goal.createdAt,
   };
-}
-
-function firstRouteSegment(value?: string | string[]): string {
-  if (value == null) return '';
-  if (typeof value === 'string') return value.trim();
-  const head = value[0];
-  return typeof head === 'string' ? head.trim() : '';
-}
-
-function isCreateGoalFromRouteParam(raw?: string | string[]): boolean {
-  if (raw == null) return false;
-  if (typeof raw === 'string') return raw === '1';
-  return raw.some((segment) => segment === '1');
-}
-
-export default function SavingsGoalsScreen() {
-  const router = useRouter();
-  const params = useLocalSearchParams<{ new?: string | string[]; goalId?: string | string[] }>();
-  const insets = useSafeAreaInsets();
-  const { colors: themeColors, ghost: themeGhost, ghostCardShadow: themedGhostCardShadow, isLight } = useAppTheme();
-  const [goals, setGoals] = useState<SavingsGoal[]>([]);
-  const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
-  const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudget[]>([]);
-  const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
-  const [form, setForm] = useState<GoalForm | null>(null);
-  const [iconPickerExpanded, setIconPickerExpanded] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const load = useCallback(async () => {
-    const [nextGoals, nextDashboard, nextCategoryBudgets, nextRecurringPayments] = await Promise.all([
-      getSavingsGoals(),
-      getDashboard(),
-      getCategoryBudgets(),
-      getRecurringPayments(),
-    ]);
-    setGoals(nextGoals);
-    setDashboard(nextDashboard);
-    setCategoryBudgets(nextCategoryBudgets);
-    setRecurringPayments(nextRecurringPayments);
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const totals = useMemo(
-    () =>
-      goals.reduce(
-        (acc, goal) => ({
-          current: acc.current + goal.currentAmount,
-          target: acc.target + goal.targetAmount,
-        }),
-        { current: 0, target: 0 },
-      ),
-    [goals],
-  );
-  const themed = useMemo(
-    () => ({
-      modalBackdrop: { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' },
-      sheet: { backgroundColor: themeColors.surfaceSolid, borderColor: themeColors.border },
-      handle: { backgroundColor: themeColors.borderStrong },
-      closeButton: { backgroundColor: themeGhost.obsidianSoft },
-      control: { backgroundColor: themeGhost.obsidianSoft, borderColor: themeColors.border },
-      controlStrong: { backgroundColor: themeGhost.obsidianSoft, borderColor: themeColors.borderStrong },
-      selected: { backgroundColor: themeColors.text },
-      selectedText: { color: themeGhost.void },
-      card: { backgroundColor: themeColors.surfaceSolid, borderColor: themeColors.border },
-      subtlePill: {
-        backgroundColor: isLight ? 'rgba(25, 22, 18, 0.06)' : 'rgba(255, 255, 255, 0.06)',
-      },
-      text: { color: themeColors.text },
-      textSecondary: { color: themeColors.textSecondary },
-      textMuted: { color: themeColors.textMuted },
-      warningCard: {
-        backgroundColor: isLight ? 'rgba(201, 111, 26, 0.10)' : 'rgba(255, 177, 92, 0.12)',
-        borderColor: themeColors.warning,
-      },
-      warningText: { color: themeColors.warning },
-      submitDisabled: { backgroundColor: themeGhost.obsidianSoft },
-    }),
-    [isLight, themeColors, themeGhost],
-  );
-  const openNew = useCallback(() => {
-    tapHaptic();
-    setIconPickerExpanded(false);
-    setForm(createNewGoalForm());
-  }, []);
-
-  const openEdit = useCallback((goal: SavingsGoal) => {
-    tapHaptic();
-    setIconPickerExpanded(false);
-    setForm(createGoalEditForm(goal));
-  }, []);
-
-  const dismissGoalFormSheet = useCallback(() => {
-    router.setParams({ new: undefined, goalId: undefined });
-    setForm(null);
-  }, [router]);
-
-  useEffect(() => {
-    if (!isCreateGoalFromRouteParam(params.new)) return;
-    openNew();
-    router.setParams({ new: undefined, goalId: undefined });
-  }, [params.new, router, openNew]);
-
-  useEffect(() => {
-    const gid = firstRouteSegment(params.goalId);
-    if (!gid) return;
-    if (goals.length === 0) return;
-    const g = goals.find((x) => x.id === gid);
-    if (g) {
-      openEdit(g);
-    }
-    router.setParams({ new: undefined, goalId: undefined });
-  }, [params.goalId, goals, router, openEdit]);
-
-  const save = async () => {
-    if (!form) return;
-    setSaving(true);
-    try {
-      const didSave = await saveSavingsGoalForm(form);
-      if (!didSave) return;
-      await load();
-      setForm(null);
-      successHaptic();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <PageTransition>
-    <View style={styles.screen}>
-      <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
-        <Pressable
-          onPress={() => {
-            tapHaptic();
-            router.back();
-          }}
-          hitSlop={12}
-          style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-        >
-          <Ionicons name="chevron-back" size={26} color={themeGhost.mutedSoft} />
-        </Pressable>
-        <Text style={[styles.topTitle, { color: themeGhost.muted }]}>Objectifs</Text>
-        <Pressable
-          onPress={openNew}
-          hitSlop={12}
-          style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-        >
-          <Ionicons name="add" size={26} color={themeColors.primary} />
-        </Pressable>
-      </View>
-
-      <ScrollView
-        style={styles.scroller}
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: FLOATING_NAV_CONTENT_PADDING + Math.max(insets.bottom, 16) },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        <GlassContainer style={themedGhostCardShadow} borderRadius={radius.xxl} padding={spacing.lg} innerStyle={styles.summaryCardInner}>
-          <Text style={[styles.eyebrow, themed.textMuted]}>Épargne planifiée</Text>
-          <Text style={[styles.total, themed.text]}>
-            {totals.current.toFixed(0)} $ / {totals.target.toFixed(0)} $
-          </Text>
-          <ProgressBar progress={totals.target <= 0 ? 0 : totals.current / totals.target} color={DEFAULT_COLOR} />
-          <Text style={[styles.helper, themed.textMuted]}>Suis les montants accumulés pour chaque objectif.</Text>
-        </GlassContainer>
-
-        <View style={styles.list}>
-          {goals.map((goal) => {
-            const progress = savingsGoalIncrementalProgress(goal);
-            const remaining = Math.max(0, goal.targetAmount - goal.currentAmount);
-            const goalAccent = normalizeColor(goal.color);
-
-            return (
-              <Pressable
-                key={goal.id}
-                onPress={() => openEdit(goal)}
-                style={({ pressed }) => [pressed && styles.pressedCard]}
-              >
-                <GlassContainer style={themedGhostCardShadow} borderRadius={radius.xxl} padding={spacing.md} innerStyle={styles.cardInner}>
-                <UserPickedIconBadge
-                  icon={(goal.icon in Ionicons.glyphMap ? goal.icon : 'flag-outline') as keyof typeof Ionicons.glyphMap}
-                  color={goalAccent}
-                  size={46}
-                  iconSize={21}
-                />
-                <View style={styles.cardBody}>
-                  <View style={styles.rowBetween}>
-                    <Text style={[styles.cardTitle, themed.text]}>{goal.name}</Text>
-                    <Text style={[styles.percent, { color: goalAccent }]}>{Math.round(progress * 100)} %</Text>
-                  </View>
-                  <ProgressBar progress={progress} color={goalAccent} />
-                  <View style={styles.rowBetween}>
-                    <Text style={[styles.meta, themed.textMuted]}>{goal.currentAmount.toFixed(0)} $ épargné</Text>
-                    <Text style={[styles.meta, themed.textMuted]}>{remaining.toFixed(0)} $ restant</Text>
-                  </View>
-                  {goal.dueDate ? <Text style={[styles.dueDate, themed.textMuted]}>Date cible: {goal.dueDate}</Text> : null}
-                </View>
-                </GlassContainer>
-              </Pressable>
-            );
-          })}
-
-          {goals.length === 0 ? (
-            <GlassContainer style={themedGhostCardShadow} borderRadius={radius.xxl} padding={spacing.lg} innerStyle={styles.emptyCardInner}>
-              <Text style={[styles.emptyTitle, themed.text]}>Aucun objectif</Text>
-              <Text style={[styles.helper, themed.textMuted]}>Ajoute un fonds d’urgence, un voyage ou un projet à financer.</Text>
-            </GlassContainer>
-          ) : null}
-        </View>
-      </ScrollView>
-
-      <SavingsGoalFormModal
-        form={form}
-        setForm={setForm}
-        goals={goals}
-        dashboard={dashboard}
-        categoryBudgets={categoryBudgets}
-        recurringPayments={recurringPayments}
-        saving={saving}
-        iconPickerExpanded={iconPickerExpanded}
-        setIconPickerExpanded={setIconPickerExpanded}
-        onDismiss={dismissGoalFormSheet}
-        onSave={save}
-      />
-    </View>
-    </PageTransition>
-  );
 }
 
 export function SavingsGoalFormModal({
@@ -542,7 +291,7 @@ export function SavingsGoalFormModal({
               {isWeeklyBelowSuggestion && suggestedWeekly != null ? (
                 <View style={[styles.weeklyWarning, themed.warningCard]}>
                   <Text style={[styles.weeklyWarningText, themed.warningText]}>
-                    Ce montant ne permettra pas d’atteindre la date cible. Entre au moins{' '}
+                    Ce montant ne permettra pas d'atteindre la date cible. Entre au moins{' '}
                     {formatSuggestedAmount(suggestedWeekly)} $ / semaine pour la respecter.
                   </Text>
                 </View>
@@ -619,7 +368,18 @@ function GoalIconSelector({
   onSelectManual: (icon: IconName) => void;
 }) {
   const { colors, ghost, isLight } = useAppTheme();
-  const options = getIconOptions(GOAL_ICON_OPTIONS, selectedIcon);
+  const pickerOptions = useMemo(() => {
+    const options = [...GOAL_ICON_PICKER_OPTIONS];
+    if (isIconName(selectedIcon) && !options.some((option) => option.icon === selectedIcon)) {
+      options.unshift({
+        id: 'custom',
+        label: 'Personnalisé',
+        icon: selectedIcon,
+        color: normalizeColor(selectedColor) || colors.primary,
+      });
+    }
+    return options;
+  }, [colors.primary, selectedColor, selectedIcon]);
   const defaultGlyph = resolveUserPickedIconGlyphColor(null, isLight, colors);
 
   return (
@@ -631,13 +391,13 @@ function GoalIconSelector({
             {mode === 'auto' ? 'Icône automatique' : 'Icône choisie'}
           </Text>
           <Text style={[styles.iconSelectorMeta, { color: colors.textMuted }]}>
-            {mode === 'auto' ? 'Adaptée au nom de l’objectif' : 'Choix personnalisé'}
+            {mode === 'auto' ? "Adaptée au nom de l'objectif" : 'Choix personnalisé'}
           </Text>
         </View>
         <Pressable
           onPress={onToggle}
           accessibilityRole="button"
-          accessibilityLabel="Modifier l’icône"
+          accessibilityLabel="Modifier l'icône"
           hitSlop={10}
           style={({ pressed }) => [styles.iconEditButton, { borderColor: colors.border }, pressed && styles.pressed]}
         >
@@ -649,7 +409,7 @@ function GoalIconSelector({
           <Pressable
             onPress={onSelectAuto}
             accessibilityRole="button"
-            accessibilityLabel="Utiliser l’icône automatique"
+            accessibilityLabel="Utiliser l'icône automatique"
             style={({ pressed }) => [
               styles.autoIconChoice,
               { backgroundColor: resolveUserPickedIconWellBackground(isLight), borderColor: colors.border },
@@ -671,15 +431,15 @@ function GoalIconSelector({
               Auto
             </Text>
           </Pressable>
-          {options.map((icon) => {
-            const selected = mode === 'manual' && selectedIcon === icon;
+          {pickerOptions.map((option) => {
+            const selected = mode === 'manual' && selectedIcon === option.icon;
 
             return (
               <Pressable
-                key={icon}
-                onPress={() => onSelectManual(icon)}
+                key={option.id}
+                onPress={() => onSelectManual(option.icon)}
                 accessibilityRole="button"
-                accessibilityLabel="Choisir cette icône"
+                accessibilityLabel={`Choisir l'icône ${option.label}`}
                 style={({ pressed }) => [
                   styles.iconChoice,
                   { backgroundColor: resolveUserPickedIconWellBackground(isLight), borderColor: colors.border },
@@ -687,11 +447,7 @@ function GoalIconSelector({
                   pressed && styles.pressed,
                 ]}
               >
-                <Ionicons
-                  name={icon}
-                  size={22}
-                  color={selected ? (normalizeColor(selectedColor) || defaultGlyph) : defaultGlyph}
-                />
+                <UserPickedIconBadge icon={option.icon} color={option.color} size={36} iconSize={18} />
               </Pressable>
             );
           })}
@@ -765,18 +521,18 @@ function GoalProjectionCard({ projection }: { projection: GoalProjection }) {
     <View style={[styles.projectionCard, { backgroundColor: ghost.obsidianSoft, borderColor: colors.border }]}>
       <Text style={[styles.projectionTitle, { color: colors.text }]}>Projection</Text>
       <ProjectionRow label="Progression" value={formatPercent(projection.progress)} />
-      <ProjectionRow label="Reste à épargner" value={`${formatMoney(projection.remaining)} $`} />
+      <ProjectionRow label="Reste à épargner" value={formatDisplayMoneyAbsolute(projection.remaining)} />
       {projection.weeksToGoal != null ? (
         <ProjectionRow label="Durée au rythme choisi" value={formatGoalDuration(projection.weeksToGoal)} />
       ) : null}
       {projection.requiredWeekly != null ? (
-        <ProjectionRow label="Requis par semaine" value={`${formatMoney(projection.requiredWeekly)} $`} />
+        <ProjectionRow label="Requis par semaine" value={formatDisplayMoneyAbsolute(projection.requiredWeekly)} />
       ) : null}
       {projection.targetDate != null && projection.requiredWeekly == null ? (
-        <ProjectionRow label="Date estimée d’atteinte" value={projection.targetDate} />
+        <ProjectionRow label="Date estimée d'atteinte" value={projection.targetDate} />
       ) : null}
       {projection.monthlyContribution > 0 ? (
-        <ProjectionRow label="Montant par mois" value={`${formatMoney(projection.monthlyContribution)} $`} />
+        <ProjectionRow label="Montant par mois" value={formatDisplayMoneyAbsolute(projection.monthlyContribution)} />
       ) : null}
       {projection.budgetUseRatio != null && projection.monthlyContribution > 0 ? (
         <ProjectionRow label="Part du budget" value={formatPercent(projection.budgetUseRatio)} />
@@ -784,7 +540,7 @@ function GoalProjectionCard({ projection }: { projection: GoalProjection }) {
       {projection.weeklyObligationsTotal > 0 ? (
         <ProjectionRow
           label="Obligations + objectif / semaine"
-          value={`${formatMoney(projection.weeklyObligationsTotal)} $ / semaine`}
+          value={`${formatDisplayMoneyAbsolute(projection.weeklyObligationsTotal)} / semaine`}
         />
       ) : null}
       <Text style={[styles.projectionHint, { color: colors.textMuted }]}>{projection.hint}</Text>
@@ -977,7 +733,7 @@ function getWeeklyContributionFeedback(projection: GoalProjection) {
     return 'Ça va être serré, mais réalisable avec de la rigueur.';
   }
   return projection.targetDate
-    ? `À ce rythme, tu atteindras l’objectif vers le ${projection.targetDate}.`
+    ? `À ce rythme, tu atteindras l'objectif vers le ${projection.targetDate}.`
     : null;
 }
 
@@ -1062,10 +818,6 @@ function parseAmount(value: string) {
   return Number.parseFloat(value.replace(',', '.'));
 }
 
-function formatMoney(value: number) {
-  return value.toFixed(0);
-}
-
 function formatSuggestedAmount(value: number) {
   if (!Number.isFinite(value)) return '0';
   const rounded = Math.round(value * 100) / 100;
@@ -1079,13 +831,6 @@ function formatPercent(value: number) {
 
 function isIconName(value: string): value is IconName {
   return value in Ionicons.glyphMap;
-}
-
-function getIconOptions(options: IconName[], selectedIcon: string) {
-  if (isIconName(selectedIcon) && !options.includes(selectedIcon)) {
-    return [selectedIcon, ...options];
-  }
-  return options;
 }
 
 function getColorOptions(options: string[], selectedColor: string) {

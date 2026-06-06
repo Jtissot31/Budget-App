@@ -3,8 +3,9 @@ import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MerchantLogo } from '@/components/MerchantLogo';
 import { GlassContainer } from '@/components/GlassContainer';
+import { MerchantLogo } from '@/components/MerchantLogo';
+import { TransactionRow } from '@/components/TransactionRow';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import { PageTransition } from '@/components/PageTransition';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
@@ -14,6 +15,8 @@ import { dataEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { heroStatAmount } from '@/lib/textLayout';
 import type { MerchantOverride, Transaction } from '@/types';
 
 function getLocalDayKey(isoDate: string) {
@@ -72,58 +75,6 @@ function getTransactionTitle(tx: Transaction, fallbackTitle: string) {
   const names = itemized.slice(0, 2).map((item) => item.name);
   const suffix = itemized.length > names.length ? ` + ${itemized.length - names.length}` : '';
   return `${names.join(', ')}${suffix}`;
-}
-
-function MerchantTransactionRow({
-  transaction: tx,
-  merchantName,
-  logoUrl,
-  onPress,
-}: {
-  transaction: Transaction;
-  merchantName: string;
-  logoUrl?: string | null;
-  onPress: () => void;
-}) {
-  const { colors, isLight } = useAppTheme();
-  const isIncome = tx.type === 'income';
-  const isTransfer = tx.type === 'transfer';
-  const amountColor = isIncome ? colors.success : isTransfer ? colors.textMuted : colors.text;
-  const hasReceipt = Boolean(tx.receiptUri || tx.receiptStatus);
-  const title = getTransactionTitle(tx, merchantName);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Voir la transaction ${title}`}
-      style={({ pressed }) => [
-        styles.transactionRow,
-        {
-          backgroundColor: pressed ? colors.surface : colors.surfaceSolid,
-          borderColor: colors.border,
-        },
-      ]}
-      onPress={onPress}
-    >
-      <MerchantLogo name={merchantName} logoUrl={logoUrl} size={34} />
-      <View style={styles.transactionBody}>
-        <View style={styles.transactionTitleRow}>
-          <Text style={[styles.transactionTitle, { color: colors.text }]} numberOfLines={2}>
-            {title}
-          </Text>
-          {hasReceipt ? (
-            <View style={[styles.receiptBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Ionicons name="receipt-outline" size={13} color={colors.textMuted} />
-            </View>
-          ) : null}
-        </View>
-      </View>
-      <Text style={[styles.transactionAmount, { color: amountColor }]} numberOfLines={1}>
-        {isTransfer ? '' : isIncome ? '+' : '−'}
-        {tx.amount.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $
-      </Text>
-    </Pressable>
-  );
 }
 
 export default function MerchantDetailScreen() {
@@ -220,7 +171,7 @@ export default function MerchantDetailScreen() {
         <View>
           <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Total</Text>
           <Text style={[styles.summaryAmount, { color: colors.text }]}>
-            {total.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $
+            {formatDisplayMoneyAbsolute(total)}
           </Text>
         </View>
         <View style={styles.summaryMeta}>
@@ -262,11 +213,9 @@ export default function MerchantDetailScreen() {
             </Text>
             <View style={styles.groupTransactions}>
               {txs.map((tx) => (
-                <MerchantTransactionRow
+                <TransactionRow
                   key={tx.id}
-                  transaction={tx}
-                  merchantName={merchantName}
-                  logoUrl={logoUrl}
+                  transaction={{ ...tx, label: getTransactionTitle(tx, merchantName) }}
                   onPress={() => {
                     tapHaptic();
                     setSelected(tx);
@@ -341,9 +290,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   summaryAmount: {
+    ...heroStatAmount,
     color: colors.text,
-    fontSize: typography.heroStat,
-    fontWeight: '800',
     marginTop: 2,
   },
   summaryMeta: {

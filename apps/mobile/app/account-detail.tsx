@@ -23,10 +23,20 @@ import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import { MerchantLogo } from '@/components/MerchantLogo';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
+import {
+  RecurringPaymentFormModal,
+  manualAccountOptions,
+  recurringPaymentToForm,
+  saveRecurringPaymentForm,
+  toAccountOptions,
+  type PaymentForm,
+} from '@/lib/recurringPaymentsForm';
 import { SCREEN_TOP_GUTTER, ghostCardShadow } from '@/constants/ghostUi';
-import { colors, radius, spacing, typography } from '@/constants/theme';
+import { colors, radius, SECTION_TITLE_STYLE, spacing, typography } from '@/constants/theme';
 import {
   deleteSimulatedAccount,
+  getCategories,
+  getCategoryBudgets,
   getMerchantOverrides,
   getRecurringPayments,
   getSavingsGoals,
@@ -41,7 +51,9 @@ import { getAccountLogoUrl } from '@/lib/merchantLogo';
 import { userPickedIconWellStyle } from '@/lib/userPickedIcon';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
-import type { AccountKind, MerchantOverride, RecurringPayment, SavingsGoal, SimulatedAccount, Transaction } from '@/types';
+import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
+import { listRowTitle, rowTitleTextProps, rowValue, rowValueContainer, singleLineAmountProps } from '@/lib/textLayout';
+import type { AccountKind, Category, CategoryBudget, MerchantOverride, RecurringPayment, SavingsGoal, SimulatedAccount, Transaction } from '@/types';
 
 const ACCOUNT_TYPES: Array<{
   id: AccountKind;
@@ -77,11 +89,11 @@ const INSTITUTION_LOGO_OPTIONS = [
 }));
 
 function formatMoney(value: number) {
-  return `${Math.abs(value).toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
+  return formatDisplayMoneyAbsolute(value);
 }
 
 function formatSignedMoney(value: number) {
-  return `${value < 0 ? '−' : ''}${formatMoney(value)}`;
+  return formatSignedDisplayMoney(value);
 }
 
 function getLocalDayKey(isoDate: string) {
@@ -154,7 +166,7 @@ function AccountTransactionRow({
           <MerchantLogo name={merchantName} logoUrl={logoUrl} size={34} />
           <View style={styles.transactionBody}>
             <View style={styles.transactionTitleRow}>
-              <Text style={[styles.transactionTitle, { color: colors.text }]} numberOfLines={1}>
+              <Text style={[styles.transactionTitle, { color: colors.text }]} {...rowTitleTextProps}>
                 {merchantName}
               </Text>
               {hasReceipt ? (
@@ -169,10 +181,12 @@ function AccountTransactionRow({
               </Text>
             ) : null}
           </View>
-          <Text style={[styles.transactionAmount, { color: amountColor }]} numberOfLines={1}>
-            {isTransfer ? '' : isIncome ? '+' : '−'}
-            {tx.amount.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $
-          </Text>
+          <View style={styles.transactionAmountCol}>
+            <Text style={[styles.transactionAmount, { color: amountColor }]} {...singleLineAmountProps}>
+              {isTransfer ? '' : isIncome ? '+' : '−'}
+              {formatDisplayMoneyAbsolute(tx.amount)}
+            </Text>
+          </View>
       </GlassContainer>
     </Pressable>
   );
@@ -206,6 +220,11 @@ export default function AccountDetailScreen() {
   const [showLogoPicker, setShowLogoPicker] = useState(false);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
   const [pendingDeleteAccount, setPendingDeleteAccount] = useState<SimulatedAccount | null>(null);
+  const [recurringForm, setRecurringForm] = useState<PaymentForm | null>(null);
+  const [recurringAccounts, setRecurringAccounts] = useState(manualAccountOptions());
+  const [recurringCategories, setRecurringCategories] = useState<Category[]>([]);
+  const [recurringCategoryBudgets, setRecurringCategoryBudgets] = useState<CategoryBudget[]>([]);
+  const [recurringSaving, setRecurringSaving] = useState(false);
 
   const load = useCallback(async () => {
     const [nextAccounts, nextSavingsGoals, nextTransactions, nextRecurringPayments, nextMerchantOverrides] = await Promise.all([
@@ -261,6 +280,27 @@ export default function AccountDetailScreen() {
   );
   const autoPreviewLogo = useMemo(() => getAccountLogoUrl(logoSourceName), [logoSourceName]);
   const previewLogo = selectedInstitutionLogo?.logoUrl ?? autoPreviewLogo;
+
+  const openEditRecurringPayment = async (payment: RecurringPayment) => {
+    tapHaptic();
+    const [categories, categoryBudgets] = await Promise.all([getCategories(), getCategoryBudgets()]);
+    const accountOptions = toAccountOptions(accounts);
+    setRecurringAccounts(accountOptions.length ? accountOptions : manualAccountOptions());
+    setRecurringCategories(categories);
+    setRecurringCategoryBudgets(categoryBudgets);
+    setRecurringForm(recurringPaymentToForm(payment));
+  };
+
+  const saveRecurringPayment = async () => {
+    if (!recurringForm) return;
+    setRecurringSaving(true);
+    const ok = await saveRecurringPaymentForm(recurringForm, recurringAccounts);
+    setRecurringSaving(false);
+    if (!ok) return;
+    setRecurringForm(null);
+    await load();
+    successHaptic();
+  };
 
   const resetForm = () => {
     setEditingAccount(null);
@@ -421,8 +461,22 @@ export default function AccountDetailScreen() {
             >
               <View>
                 <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Solde actuel</Text>
-                <Text style={[styles.summaryAmount, { color: account.balance < 0 ? colors.danger : colors.text }]}>
-                  {formatSignedMoney(account.balance)}
+                <Text
+                  style={[
+                    styles.summaryAmount,
+                    {
+                      color:
+                        account.balance < 0
+                          ? colors.danger
+                          : account.kind === 'credit' && account.balance > 0
+                            ? colors.success
+                            : colors.text,
+                    },
+                  ]}
+                >
+                  {formatSignedDisplayMoney(account.balance, {
+                    leadingPlusWhenPositive: account.kind === 'credit' && account.balance > 0,
+                  })}
                 </Text>
               </View>
               <Text style={[styles.summaryMeta, { color: colors.textMuted }]}>
@@ -465,7 +519,7 @@ export default function AccountDetailScreen() {
                       android_ripple={null}
                       onPress={() => {
                         tapHaptic();
-                        router.push({ pathname: '/recurring-payments', params: { editId: payment.id } });
+                        void openEditRecurringPayment(payment);
                       }}
                     >
                       <GlassContainer borderRadius={radius.lg} padding={spacing.sm + 2} innerStyle={styles.recurringPaymentRowInner}>
@@ -488,7 +542,7 @@ export default function AccountDetailScreen() {
                       </View>
                       <Text style={[styles.recurringPaymentAmount, { color: payment.kind === 'income' ? colors.success : colors.text }]}>
                         {payment.kind === 'income' ? '+' : '−'}
-                        {payment.amount.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $
+                        {formatDisplayMoneyAbsolute(payment.amount)}
                       </Text>
                       <Ionicons name="pencil-outline" size={14} color={colors.textMuted} />
                       </GlassContainer>
@@ -738,6 +792,18 @@ export default function AccountDetailScreen() {
       </Modal>
 
       <TransactionDetailSheet transaction={selectedTransaction} onClose={() => setSelectedTransaction(null)} onDeleted={() => { void load(); }} />
+      <RecurringPaymentFormModal
+        visible={recurringForm != null}
+        form={recurringForm}
+        accounts={recurringAccounts}
+        categories={recurringCategories}
+        categoryBudgets={recurringCategoryBudgets}
+        saving={recurringSaving}
+        bottomInset={insets.bottom}
+        onClose={() => setRecurringForm(null)}
+        onChange={setRecurringForm}
+        onSave={() => void saveRecurringPayment()}
+      />
       <ConfirmDeleteModal
         visible={confirmDeleteVisible}
         title="Supprimer le compte ?"
@@ -1106,11 +1172,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   transactionTitle: {
-    flexShrink: 1,
+    ...listRowTitle,
     color: colors.text,
-    fontSize: typography.body,
-    fontWeight: '800',
-    lineHeight: typography.body + 3,
   },
   transactionSubtitle: {
     color: colors.textMuted,
@@ -1127,11 +1190,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
+  transactionAmountCol: {
+    ...rowValueContainer,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    minWidth: 88,
+  },
   transactionAmount: {
+    ...rowValue,
     color: colors.text,
-    fontSize: typography.body,
-    fontWeight: '700',
-    flexShrink: 0,
     textAlign: 'right',
   },
   empty: {

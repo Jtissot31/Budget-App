@@ -18,11 +18,14 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
+import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
+import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { PageTransition } from '@/components/PageTransition';
 import { GlassContainer } from '@/components/GlassContainer';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import Svg, { Circle, Path } from 'react-native-svg';
+import { NetWorthAmountRow } from '@/components/NetWorthAmountRow';
 import { PortfolioChartCard, type NetWorthTrendPoint } from '@/components/PortfolioChartCard';
 import {
   FLOATING_SCROLL_ICON_SIZE,
@@ -46,6 +49,7 @@ import {
   portfolioLight,
   PAGE_PADDING_HORIZONTAL,
   PORTFOLIO_SECTION_GAP,
+  SECTION_TITLE_STYLE,
   PROGRESS_BAR_TRACK_HEIGHT,
   radius,
   spacing,
@@ -73,12 +77,11 @@ import {
 import { estimateWealthAssetValue } from '@/lib/assetValuation';
 import {
   formatCompactCurrency,
-  formatCompactGainDollarMagnitude,
   formatCompactGainDollars,
   formatCompactMoneyMagnitude,
-  formatFrCaMoneyMainAndSeparatedDollarSuffix,
 } from '@/lib/formatCompactGainDollars';
-import { rowTitleTextProps, singleLineAmountProps } from '@/lib/textLayout';
+import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
+import { rowLabel, rowTitleTextProps, rowValue, singleLineAmountProps } from '@/lib/textLayout';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
 import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
 import { getAccountLogoUrl } from '@/lib/merchantLogo';
@@ -89,11 +92,6 @@ import {
   type NetWorthChartScope,
 } from '@/lib/settings';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
-import {
-  UNIFORM_CHIP_FONT_SIZE,
-  UNIFORM_SEGMENT_HEIGHT,
-  UNIFORM_SEGMENT_INNER_HEIGHT,
-} from '@/lib/uniformGroupStyles';
 import { useAppTheme } from '@/lib/themeContext';
 import type { AccountMoneyFlow } from '@/lib/accountTransactionFlow';
 import type {
@@ -214,6 +212,9 @@ const LIGHT_SECTION_CARD_SURFACE = '#FFFFFF';
 const LIGHT_SECTION_SOFT_SURFACE = '#F6F8FA';
 const LIGHT_SECTION_BORDER = '#D0D7DE';
 const PORTFOLIO_PAGE_PADDING = PAGE_PADDING_HORIZONTAL;
+/** Espacement vertical entre blocs majeurs (chart → comptes → patrimoine / prêts). */
+const PORTFOLIO_BLOCK_GAP = spacing.xl;
+const PORTFOLIO_BLOCK_BREAK = spacing.xxl + spacing.lg;
 const CHART_RED = '#F85149';
 const LIGHT_PORTFOLIO_TEXT = portfolioLight.text;
 const DELTA_MINT = '#00E676';
@@ -232,7 +233,25 @@ type PortfolioSectionMetrics = Record<PortfolioScrollTarget, { y: number; height
 type PortfolioScrollOffsetMode = 'center' | 'top';
 
 function formatMoney(value: number) {
-  return `${Math.abs(value).toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
+  return formatDisplayMoneyAbsolute(value);
+}
+
+/** Actif : pas de « + » ; négatif seulement avec « − ». */
+function formatPortfolioAsset(value: number) {
+  if (value < 0) return `−${formatDisplayMoneyAbsolute(Math.abs(value))}`;
+  return formatDisplayMoneyAbsolute(value);
+}
+
+/** Dette ou sortie d'argent : toujours préfixé « − » (sauf zéro). */
+function formatPortfolioOutflow(value: number) {
+  const abs = Math.abs(value);
+  if (abs === 0) return formatDisplayMoneyAbsolute(0);
+  return `−${formatDisplayMoneyAbsolute(abs)}`;
+}
+
+/** Entrée d'argent : préfixe « + » si > 0. */
+function formatPortfolioInflow(value: number) {
+  return formatSignedDisplayMoney(Math.abs(value), { leadingPlusWhenPositive: true });
 }
 
 function formatDateKey(date: Date) {
@@ -284,23 +303,6 @@ function formatSignedMoney(value: number) {
 
 function formatMonthlyNetWorthDelta(value: number) {
   return `${formatCompactGainDollars(value, { leadingPlusWhenPositive: true })} ce mois-ci`;
-}
-
-function NetWorthAmountRow({ totalBalance }: { totalBalance: number }) {
-  const { isLight } = useAppTheme();
-  const textColor = isLight ? LIGHT_PORTFOLIO_TEXT : portfolioDark.text;
-  const sign = totalBalance < 0 ? '−' : '';
-  const { main } = formatFrCaMoneyMainAndSeparatedDollarSuffix(totalBalance);
-
-  return (
-    <View style={styles.netWorthAmountRow}>
-      <Text style={[styles.netWorthAmountMain, { color: textColor }]} {...singleLineAmountProps}>
-        {sign}
-        {main}
-      </Text>
-      <Text style={[styles.netWorthAmountDollar, { color: textColor }]}>$</Text>
-    </View>
-  );
 }
 
 function NetWorthDeltaBadge({ delta }: { delta: number }) {
@@ -367,53 +369,6 @@ function PortfolioHeaderRow() {
           <Ionicons name="bar-chart-outline" size={20} color={iconColor} />
         </Pressable>
       </View>
-    </View>
-  );
-}
-
-function PortfolioScopeSegmented({
-  active,
-  onChange,
-}: {
-  active: NetWorthChartScope;
-  onChange: (scope: NetWorthChartScope) => void;
-}) {
-  const { colors, isLight } = useAppTheme();
-  const trackBg = isLight ? portfolioLight.scopeTrack : portfolioDark.scopeTrack;
-  const activeBg = isLight ? portfolioLight.scopeActive : portfolioDark.scopeActive;
-  const activeColor = isLight ? LIGHT_PORTFOLIO_TEXT : portfolioDark.text;
-  const inactiveColor = isLight ? colors.textMuted : portfolioDark.textMuted;
-  const tabs: Array<{ id: NetWorthChartScope; label: string }> = [
-    { id: 'accounts_only', label: 'Comptes uniquement' },
-    { id: 'inclusive', label: 'Comptes + patrimoine' },
-  ];
-
-  return (
-    <View style={[styles.portfolioScopeTrack, { backgroundColor: trackBg }]}>
-      {tabs.map((tab) => {
-        const selected = tab.id === active;
-        return (
-          <Pressable
-            key={tab.id}
-            accessibilityRole="button"
-            accessibilityState={{ selected }}
-            onPress={() => onChange(tab.id)}
-            style={[styles.portfolioScopeTab, selected && { backgroundColor: activeBg }]}
-          >
-            <Text
-              style={[
-                styles.portfolioScopeLabel,
-                { color: selected ? activeColor : inactiveColor, fontSize: UNIFORM_CHIP_FONT_SIZE },
-                selected && styles.portfolioScopeLabelActive,
-              ]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {tab.label}
-            </Text>
-          </Pressable>
-        );
-      })}
     </View>
   );
 }
@@ -519,6 +474,10 @@ export default function AccountsScreen() {
   const handleNetWorthChartScopeChange = useCallback((scope: NetWorthChartScope) => {
     setNetWorthChartScopeState(scope);
     void setNetWorthChartScope(scope);
+    clearPortfolioProgrammaticScroll();
+    portfolioProgrammaticScrollStageRef.current = null;
+    setPortfolioScrollState('top');
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
   }, []);
 
   const populateWealthFromAsset = useCallback((asset: WealthAsset) => {
@@ -593,6 +552,16 @@ export default function AccountsScreen() {
   const loansTotalBalance = useMemo(
     () => loans.reduce((sum, loan) => sum + Math.max(loan.balanceRemaining, 0), 0),
     [loans],
+  );
+  const chartScopeBreakdown = useMemo(
+    () =>
+      computeNetWorthBreakdown(
+        netWorthChartScope,
+        accounts,
+        offAccountAssetsBalance,
+        loansTotalBalance,
+      ),
+    [netWorthChartScope, accounts, offAccountAssetsBalance, loansTotalBalance],
   );
   const totalNetWorth = totalBalance + offAccountAssetsBalance;
   const chartNetWorthTotal = netWorthChartScope === 'inclusive' ? totalNetWorth : totalBalance;
@@ -787,10 +756,16 @@ export default function AccountsScreen() {
       return;
     }
 
-    const wealthOffset = getPortfolioScrollOffset('wealth', 'top');
+    if (netWorthChartScope === 'inclusive') {
+      const wealthOffset = getPortfolioScrollOffset('wealth', 'top');
+      const wealthThreshold = Math.max(wealthOffset * 0.35, spacing.lg);
+      setPortfolioScrollState(offsetY >= wealthThreshold ? 'wealth' : 'top');
+      return;
+    }
+
     const balancesOffset = getPortfolioScrollOffset('balances', 'top');
-    const wealthThreshold = balancesOffset + Math.max((wealthOffset - balancesOffset) / 2, spacing.lg);
-    setPortfolioScrollState(offsetY >= wealthThreshold ? 'wealth' : 'balances');
+    const balancesThreshold = Math.max(balancesOffset * 0.35, spacing.lg);
+    setPortfolioScrollState(offsetY >= balancesThreshold ? 'balances' : 'top');
   };
 
   const scrollToPortfolioTop = () => {
@@ -809,7 +784,13 @@ export default function AccountsScreen() {
   };
 
   const nextPortfolioScrollTarget: PortfolioScrollTarget | null =
-    portfolioScrollStage === 'top' ? 'balances' : portfolioScrollStage === 'balances' ? 'wealth' : null;
+    netWorthChartScope === 'inclusive'
+      ? portfolioScrollStage === 'top'
+        ? 'wealth'
+        : null
+      : portfolioScrollStage === 'top'
+        ? 'balances'
+        : null;
 
   const saveAccount = async () => {
     const parsedBalance = parseMoney(balance);
@@ -1108,10 +1089,10 @@ export default function AccountsScreen() {
 
   return (
     <PageTransition>
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView
         ref={scrollRef}
-        style={styles.screen}
+        style={[styles.screen, { backgroundColor: colors.background }]}
         contentContainerStyle={[
           styles.content,
           {
@@ -1142,75 +1123,90 @@ export default function AccountsScreen() {
         <View style={styles.portfolioHeroBlock}>
           <PortfolioHeaderRow />
           <View style={styles.portfolioScopeWrap}>
-            <PortfolioScopeSegmented active={netWorthChartScope} onChange={handleNetWorthChartScopeChange} />
+            <SegmentedTabs
+              tabs={[
+                { id: 'accounts_only', label: 'Comptes' },
+                { id: 'inclusive', label: 'Patrimoine' },
+              ]}
+              active={netWorthChartScope}
+              onChange={handleNetWorthChartScopeChange}
+              showDivider={false}
+              trackBgColor="#161616"
+              activeBgColor="#2c2c2c"
+              activeLabelColor="#ffffff"
+              inactiveLabelColor="rgba(255,255,255,0.38)"
+            />
           </View>
-          <Text style={[styles.heroEyebrow, { color: isLight ? colors.textMuted : portfolioDark.textTertiary }]}>
-            VALEUR NETTE
-          </Text>
+          <DashboardSectionLabel style={styles.heroEyebrow}>VALEUR NETTE</DashboardSectionLabel>
           <NetWorthAmountRow totalBalance={chartNetWorthTotal} />
           <NetWorthDeltaBadge delta={netWorthDelta} />
         </View>
-        <PortfolioChartCard points={netWorthTrend} />
-        <View
-          onLayout={(event) => handlePortfolioSectionLayout('balances', event)}
-          style={styles.accountPortfolioSection}
-        >
-          <AccountBalanceChart
-            accounts={visibleAccounts}
-            savingsGoals={savingsGoals}
-            monthlyFlowsByAccountId={accountMonthlyFlows}
-            onAccountPress={openAccountDetail}
-            onAddAccount={openNewAccountForm}
-            onManageAccounts={openAccountManager}
-          />
-          <LoansSection
-            loans={loans}
-            onAdd={openNewLoanForm}
-            onEdit={openEditLoanForm}
-            onDelete={handleDeleteLoan}
+        <View style={styles.chartSectionWrap}>
+          <PortfolioChartCard
+            points={netWorthTrend}
+            totalAssets={chartScopeBreakdown.totalAssets}
+            totalDebts={chartScopeBreakdown.totalDebts}
           />
         </View>
-        <View
-          onLayout={(event) => handlePortfolioSectionLayout('wealth', event)}
-          style={[styles.wealthPortfolioSection, { paddingBottom: portfolioBottomPadding }]}
-        >
-          <View style={styles.balanceChartHeader}>
-            <View style={styles.balanceChartTitleGroup}>
-              <Text style={[styles.balanceChartEyebrow, { color: colors.textMuted }]}>
-                Actifs hors compte
-              </Text>
-              <Text style={[styles.balanceChartTitle, { color: colors.text }]}>
-                Patrimoine
-              </Text>
-            </View>
-            {wealthAssets.length > 0 && (
-              <View
-                style={[
-                  styles.wealthToggleBadge,
-                  {
-                    backgroundColor: isLight
-                      ? 'rgba(15, 23, 42, 0.07)'
-                      : 'rgba(255, 255, 255, 0.10)',
-                  },
-                ]}
-              >
-                <Text style={[styles.wealthToggleBadgeLabel, { color: colors.textSecondary }]}>
-                  {wealthAssets.length}
-                </Text>
-              </View>
-            )}
+        {netWorthChartScope === 'accounts_only' ? (
+          <View
+            onLayout={(event) => handlePortfolioSectionLayout('balances', event)}
+            style={[styles.accountPortfolioSection, { paddingBottom: portfolioBottomPadding }]}
+          >
+            <AccountBalanceChart
+              accounts={visibleAccounts}
+              savingsGoals={savingsGoals}
+              monthlyFlowsByAccountId={accountMonthlyFlows}
+              onAccountPress={openAccountDetail}
+              onAddAccount={openNewAccountForm}
+              onManageAccounts={openAccountManager}
+            />
+            <LoansSection
+              loans={loans}
+              onAdd={openNewLoanForm}
+              onEdit={openEditLoanForm}
+              onDelete={handleDeleteLoan}
+            />
           </View>
+        ) : (
+          <View
+            onLayout={(event) => handlePortfolioSectionLayout('wealth', event)}
+            style={[
+              styles.wealthPortfolioSection,
+              styles.wealthPortfolioSectionUnderChart,
+              { paddingBottom: portfolioBottomPadding },
+            ]}
+          >
+            <View style={styles.balanceChartHeader}>
+              <View style={styles.balanceChartTitleGroup}>
+                <DashboardSectionLabel>Actifs hors compte</DashboardSectionLabel>
+                <Text style={[styles.balanceChartTitle, { color: colors.text }]}>Patrimoine</Text>
+              </View>
+              {wealthAssets.length > 0 && (
+                <View
+                  style={[
+                    styles.wealthToggleBadge,
+                    { backgroundColor: colors.surfaceElevated },
+                  ]}
+                >
+                  <Text style={[styles.wealthToggleBadgeLabel, { color: colors.textSecondary }]}>
+                    {wealthAssets.length}
+                  </Text>
+                </View>
+              )}
+            </View>
 
-          <WealthAssetsSection
-            assets={wealthAssets}
-            onAdd={openNewWealthForm}
-            onOpenAsset={(asset) => {
-              tapHaptic();
-              skipPortfolioScrollToTopOnceRef.current = true;
-              router.push({ pathname: '/wealth-asset-detail', params: { id: asset.id } });
-            }}
-          />
-        </View>
+            <WealthAssetsSection
+              assets={wealthAssets}
+              onAdd={openNewWealthForm}
+              onOpenAsset={(asset) => {
+                tapHaptic();
+                skipPortfolioScrollToTopOnceRef.current = true;
+                router.push({ pathname: '/wealth-asset-detail', params: { id: asset.id } });
+              }}
+            />
+          </View>
+        )}
       </ScrollView>
 
       <View
@@ -1351,7 +1347,7 @@ export default function AccountsScreen() {
                         style={({ pressed }) => [
                           styles.accountVisibilityButton,
                           {
-                            backgroundColor: account.hidden ? 'transparent' : colors.cyanMuted,
+                            backgroundColor: account.hidden ? 'transparent' : colors.successMuted,
                             borderColor: account.hidden ? colors.borderStrong : colors.primary,
                           },
                           pressed && styles.pressed,
@@ -1716,7 +1712,7 @@ export default function AccountsScreen() {
                           style={[
                             styles.wealthMaterialOption,
                             {
-                              backgroundColor: selected ? colors.cyanMuted : ghost.obsidianSoft,
+                              backgroundColor: selected ? colors.scopeActive : ghost.obsidianSoft,
                               borderColor: selected ? colors.primary : colors.borderStrong,
                             },
                           ]}
@@ -2189,7 +2185,7 @@ function WealthPatrimoineAssetCard({
       onPress={() => onOpenAsset(asset)}
       style={ghostCardShadow}
     >
-      <GlassContainer style={styles.wealthCard} padding={spacing.lg} borderRadius={radius.xl}>
+      <GlassContainer style={styles.wealthCard} padding={spacing.lg} borderRadius={radius.card}>
       <View style={styles.wealthPatrimoineAssetIdentity}>
         <View style={[styles.wealthAssetIcon, { backgroundColor: mutedSurface }]}>
           {asset.type === 'real_estate' ? (
@@ -2422,7 +2418,7 @@ function LoanCard({
       onPress={() => onEdit(loan)}
       style={ghostCardShadow}
     >
-      <GlassContainer style={styles.loanCard} padding={spacing.md} borderRadius={radius.xl}>
+      <GlassContainer style={styles.loanCard} padding={spacing.md} borderRadius={radius.card}>
       <View style={styles.loanCardTopRow}>
         <View style={[styles.loanCardIcon, { backgroundColor: mutedSurface }]}>
           <Ionicons name="business-outline" size={20} color={colors.danger} />
@@ -2437,7 +2433,7 @@ function LoanCard({
         </View>
         <View style={styles.loanCardAmountStack}>
           <Text style={[styles.loanCardBalance, { color: colors.danger }]} {...singleLineAmountProps}>
-            {formatMoney(loan.balanceRemaining)}
+            {formatPortfolioOutflow(loan.balanceRemaining)}
           </Text>
           <Text style={[styles.loanCardBalanceLabel, { color: colors.textMuted }]}>restant</Text>
         </View>
@@ -2458,7 +2454,7 @@ function LoanCard({
         </Text>
         <View style={styles.loanCardMetaRight}>
           <Text style={[styles.loanCardMeta, { color: colors.textMuted }]}>
-            {loan.monthlyPayment.toLocaleString('fr-CA', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} $/{loanPaymentFrequencyLabel(loan.paymentFrequency)} · fin {loan.endDate}
+            {formatPortfolioOutflow(loan.monthlyPayment)}/{loanPaymentFrequencyLabel(loan.paymentFrequency)} · fin {loan.endDate}
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -2494,17 +2490,14 @@ function LoansSection({
     <View style={styles.loansSectionContainer}>
       <View style={styles.balanceChartHeader}>
         <View style={styles.balanceChartTitleGroup}>
-          <Text style={[styles.balanceChartEyebrow, { color: colors.textMuted }]}>Dettes</Text>
+          <DashboardSectionLabel>Dettes</DashboardSectionLabel>
           <Text style={[styles.balanceChartTitle, { color: colors.text }]}>Prêts bancaires</Text>
         </View>
         <View style={styles.loansSectionHeaderActions}>
           {loans.length > 0 && (
-            <View style={[
-              styles.wealthToggleBadge,
-              { backgroundColor: isLight ? 'rgba(15, 23, 42, 0.07)' : 'rgba(255, 255, 255, 0.10)' },
-            ]}>
+            <View style={[styles.wealthToggleBadge, { backgroundColor: colors.surfaceElevated }]}>
               <Text style={[styles.wealthToggleBadgeLabel, { color: colors.danger }]}>
-                {formatCompactMoneyMagnitude(totalDebt)}
+                {formatPortfolioOutflow(totalDebt)}
               </Text>
             </View>
           )}
@@ -2560,17 +2553,9 @@ function AccountBalanceChart({
   onManageAccounts: () => void;
 }) {
   const { colors, ghost, ghostCardShadow, isLight } = useAppTheme();
-  const sectionCardSurface = isLight ? LIGHT_SECTION_CARD_SURFACE : colors.surfaceSolid;
-  const sectionSoftSurface = isLight ? LIGHT_SECTION_SOFT_SURFACE : ghost.obsidianSoft;
-  const sectionBorder = isLight ? LIGHT_SECTION_BORDER : colors.border;
-  const maxPositiveBalance = useMemo(
-    () =>
-      Math.max(
-        ...accounts.filter((account) => account.kind !== 'credit').map((account) => Math.max(account.balance, 0)),
-        1,
-      ),
-    [accounts],
-  );
+  const sectionCardSurface = colors.cardBackground;
+  const sectionSoftSurface = colors.surfaceElevated;
+  const sectionBorder = colors.border;
   const savingsGoalNameById = useMemo(
     () => new Map(savingsGoals.map((goal) => [goal.id, goal.name])),
     [savingsGoals],
@@ -2580,7 +2565,7 @@ function AccountBalanceChart({
     <View style={styles.accountVisualSection}>
       <View style={styles.balanceChartHeader}>
         <View style={styles.balanceChartTitleGroup}>
-          <Text style={[styles.balanceChartEyebrow, { color: colors.textMuted }]}>Répartition</Text>
+          <DashboardSectionLabel>Répartition</DashboardSectionLabel>
           <Text style={[styles.balanceChartTitle, { color: colors.text }]}>Soldes des comptes</Text>
         </View>
         <Pressable
@@ -2598,13 +2583,7 @@ function AccountBalanceChart({
       </View>
 
       {accounts.length === 0 ? (
-        <View
-          style={[
-            styles.balanceChartEmpty,
-            ghostCardShadow,
-            { borderColor: sectionBorder, backgroundColor: sectionCardSurface },
-          ]}
-        >
+        <View style={[styles.balanceChartEmpty, { backgroundColor: sectionCardSurface }]}>
           <View style={[styles.emptyVisualIcon, { backgroundColor: sectionSoftSurface }]}>
             <Ionicons name="bar-chart-outline" size={18} color={colors.textMuted} />
           </View>
@@ -2626,14 +2605,11 @@ function AccountBalanceChart({
             const creditRemaining = creditLimit ? creditLimit - creditUsed : undefined;
             const isNearCreditLimit = typeof creditRemaining === 'number' && creditRemaining < 100;
             const monthFlow = monthlyFlowsByAccountId[account.id] ?? { moneyIn: 0, moneyOut: 0 };
-            const monthlyFlowTotal = monthFlow.moneyIn + monthFlow.moneyOut;
-            const monthlyFlowInRatio = monthlyFlowTotal > 0 ? monthFlow.moneyIn / monthlyFlowTotal : 0;
-            const monthlyFlowOutRatio = monthlyFlowTotal > 0 ? monthFlow.moneyOut / monthlyFlowTotal : 0;
             const flowInColor = colors.primary;
             const flowOutColor = colors.danger;
             const tone = account.balance < 0 ? colors.danger : account.kind === 'savings' ? colors.primaryAlt : colors.primary;
             const showAccountProgressBar = account.kind === 'credit';
-            const showMonthlyFlowBar = account.kind !== 'credit';
+            const creditBalanceIsPositive = isCreditCard && account.balance > 0;
             const progressBarFillColor =
               isCreditCard && typeof creditUsagePercent === 'number'
                 ? creditLimitUtilizationBarColor(creditUsagePercent, colors, isLight)
@@ -2641,12 +2617,10 @@ function AccountBalanceChart({
             const showCreditLimitNearlyAtCap =
               isCreditCard && typeof creditUsagePercent === 'number' && creditUsagePercent >= 90;
             const logoUrl = getSimulatedAccountLogoUrl(account);
-            const positiveBalance = Math.max(account.balance, 0);
-            const balanceRatio = isCreditCard
-              ? typeof creditUsagePercent === 'number'
+            const balanceRatio =
+              typeof creditUsagePercent === 'number'
                 ? creditUsagePercent
-                : Math.min((creditUsed / Math.max(creditUsed, 1)) * 100, 100)
-              : Math.min((positiveBalance / maxPositiveBalance) * 100, 100);
+                : Math.min((creditUsed / Math.max(creditUsed, 1)) * 100, 100);
             const statusLabel = isCreditCard
               ? typeof creditUsagePercent === 'number'
                 ? `${Math.round(creditUsagePercent)}% utilisé`
@@ -2671,7 +2645,7 @@ function AccountBalanceChart({
                 onPress={() => onAccountPress(account)}
               >
                 <GlassContainer
-                  borderRadius={radius.lg}
+                  borderRadius={radius.card}
                   padding={0}
                   innerStyle={styles.accountVisualCard}
                   outlineColors={isNearCreditLimit ? creditWarningOutline : undefined}
@@ -2699,10 +2673,21 @@ function AccountBalanceChart({
 
                   <View style={styles.accountVisualBalanceStack}>
                     <Text
-                      style={[styles.accountVisualAmount, { color: account.balance < 0 ? colors.danger : textColor }]}
+                      style={[
+                        styles.accountVisualAmount,
+                        {
+                          color: account.balance < 0
+                            ? colors.danger
+                            : creditBalanceIsPositive
+                              ? colors.success
+                              : textColor,
+                        },
+                      ]}
                       {...singleLineAmountProps}
                     >
-                      {formatSignedMoney(account.balance)}
+                      {formatCompactCurrency(account.balance, {
+                        leadingPlusWhenPositive: creditBalanceIsPositive,
+                      })}
                     </Text>
                     <View
                       style={[
@@ -2742,8 +2727,8 @@ function AccountBalanceChart({
                         </Text>
                         <Text style={[styles.accountVisualDetailValue, { color: textColor }]} numberOfLines={1}>
                           {typeof creditRemaining === 'number'
-                            ? `${formatMoney(Math.max(creditRemaining, 0))} dispo`
-                            : formatMoney(creditUsed)}
+                            ? `${formatPortfolioAsset(Math.max(creditRemaining, 0))} dispo`
+                            : formatPortfolioOutflow(creditUsed)}
                         </Text>
                       </View>
                       {showCreditLimitNearlyAtCap ? (
@@ -2771,22 +2756,7 @@ function AccountBalanceChart({
                     </View>
                   ) : null}
 
-                  <View
-                    style={[
-                      showMonthlyFlowBar ? styles.accountVisualTrackGroup : null,
-                      styles.accountVisualMonthlyFlowGroup,
-                    ]}
-                  >
-                    {showMonthlyFlowBar ? (
-                      <View style={[styles.accountVisualFlowTrack, { backgroundColor: mutedSurface }]}>
-                        {monthlyFlowTotal > 0 ? (
-                          <>
-                            <View style={[styles.accountVisualFlowFill, { flex: monthlyFlowInRatio, backgroundColor: flowInColor }]} />
-                            <View style={[styles.accountVisualFlowFill, { flex: monthlyFlowOutRatio, backgroundColor: flowOutColor }]} />
-                          </>
-                        ) : null}
-                      </View>
-                    ) : null}
+                  <View style={styles.accountVisualMonthlyFlowGroup}>
                     <View style={styles.accountVisualFlowSplit}>
                       <View style={styles.accountVisualFlowItem}>
                         <Ionicons name="arrow-down" size={13} color={flowInColor} />
@@ -2800,7 +2770,7 @@ function AccountBalanceChart({
                             adjustsFontSizeToFit
                             minimumFontScale={0.72}
                           >
-                            {formatMoney(monthFlow.moneyIn)}
+                            {formatPortfolioInflow(monthFlow.moneyIn)}
                           </Text>
                         </View>
                       </View>
@@ -2816,7 +2786,7 @@ function AccountBalanceChart({
                             adjustsFontSizeToFit
                             minimumFontScale={0.72}
                           >
-                            {formatMoney(monthFlow.moneyOut)}
+                            {formatPortfolioOutflow(monthFlow.moneyOut)}
                           </Text>
                         </View>
                       </View>
@@ -2932,7 +2902,7 @@ function materialTone(material: WealthMaterial, isLight: boolean) {
   if (material === 'gold') return { fill: isLight ? '#FDE68A' : '#FACC15', stroke: '#A16207' };
   if (material === 'silver') return { fill: isLight ? '#E5E7EB' : '#CBD5E1', stroke: '#64748B' };
   if (material === 'platinum') return { fill: isLight ? '#D8F3F0' : '#9FE7DF', stroke: '#0F766E' };
-  return { fill: isLight ? '#DBEAFE' : '#93C5FD', stroke: '#2563EB' };
+  return { fill: isLight ? '#EDE9FE' : '#C4B5FD', stroke: '#7C3AED' };
 }
 
 function materialLabel(material: WealthMaterial) {
@@ -2995,6 +2965,31 @@ function sortAccountsForDisplay(accounts: SimulatedAccount[]) {
   });
 }
 
+function computeNetWorthBreakdown(
+  scope: NetWorthChartScope,
+  accounts: SimulatedAccount[],
+  offAccountAssetsBalance: number,
+  loansTotalBalance: number,
+) {
+  const accountAssets = accounts.reduce((sum, account) => sum + Math.max(account.balance, 0), 0);
+  const accountDebts = accounts.reduce(
+    (sum, account) => sum + creditUsedFromBalance(account.balance),
+    0,
+  );
+
+  if (scope === 'inclusive') {
+    return {
+      totalAssets: accountAssets + offAccountAssetsBalance,
+      totalDebts: accountDebts + loansTotalBalance,
+    };
+  }
+
+  return {
+    totalAssets: accountAssets,
+    totalDebts: accountDebts,
+  };
+}
+
 function buildNetWorthTrend(
   scope: NetWorthChartScope,
   netWorthTotal: number,
@@ -3035,14 +3030,18 @@ function buildRecentMonthLabels(monthCount: number) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+  screen: { flex: 1 },
   content: {
     flexGrow: 1,
     paddingHorizontal: 0,
     paddingBottom: FLOATING_NAV_CONTENT_PADDING,
-    gap: PORTFOLIO_SECTION_GAP,
+    gap: 0,
+  },
+  chartSectionWrap: {
+    marginBottom: PORTFOLIO_BLOCK_GAP,
   },
   portfolioHeroBlock: {
+    alignItems: 'flex-start',
     gap: 0,
     paddingHorizontal: PORTFOLIO_PAGE_PADDING,
   },
@@ -3067,36 +3066,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   portfolioScopeWrap: {
-    marginBottom: spacing.md,
-  },
-  portfolioScopeTrack: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    borderRadius: radius.xxl,
-    padding: 4,
-    gap: 4,
-    minHeight: UNIFORM_SEGMENT_HEIGHT,
-  },
-  portfolioScopeTab: {
-    flex: 1,
-    minWidth: 0,
     alignSelf: 'stretch',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.xxl - 4,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    minHeight: UNIFORM_SEGMENT_INNER_HEIGHT,
-  },
-  portfolioScopeLabel: {
-    ...interBoldText,
-    flex: 1,
-    minWidth: 0,
-    textAlign: 'center',
-    lineHeight: UNIFORM_CHIP_FONT_SIZE + 3,
-  },
-  portfolioScopeLabelActive: {
-    ...interExtraBoldText,
+    width: '100%',
+    marginBottom: spacing.md,
   },
   pageTitle: {
     ...interExtraBoldText,
@@ -3109,30 +3081,7 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     paddingHorizontal: 0,
   },
-  netWorthAmountRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginTop: 4,
-  },
-  netWorthAmountDollar: {
-    ...interBoldText,
-    fontSize: 28,
-    opacity: 0.6,
-    marginLeft: 2,
-  },
-  netWorthAmountMain: {
-    ...interExtraBoldText,
-    flex: 1,
-    minWidth: 0,
-    flexShrink: 1,
-    fontSize: 52,
-    letterSpacing: -2,
-  },
   heroEyebrow: {
-    ...interBoldText,
-    fontSize: 10,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
     marginBottom: 6,
   },
   deltaBadge: {
@@ -3147,17 +3096,11 @@ const styles = StyleSheet.create({
     ...interBoldText,
     fontSize: 13,
   },
-  sectionTitle: {
-    color: colors.textSecondary,
-    fontSize: typography.caption,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
   wealthSection: {
     gap: PORTFOLIO_SECTION_GAP,
   },
   premiumAddCta: {
-    marginTop: PORTFOLIO_SECTION_GAP,
+    marginTop: spacing.md,
     alignSelf: 'stretch',
     flexDirection: 'row',
     alignItems: 'center',
@@ -3193,10 +3136,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   wealthPatrimoineAssetName: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: typography.body,
-    fontWeight: '700',
+    ...rowLabel,
+    fontWeight: '800',
   },
   wealthPatrimoineAssetSubtitle: {
     fontSize: typography.meta,
@@ -3392,8 +3333,10 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   accountPortfolioSection: {
-    gap: PORTFOLIO_SECTION_GAP,
+    gap: 0,
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+    marginTop: PORTFOLIO_BLOCK_GAP,
+    paddingTop: spacing.sm,
   },
   accountVisualSection: {
     gap: spacing.lg,
@@ -3401,6 +3344,12 @@ const styles = StyleSheet.create({
   wealthPortfolioSection: {
     gap: PORTFOLIO_SECTION_GAP,
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+    marginTop: PORTFOLIO_BLOCK_BREAK,
+    paddingTop: spacing.md,
+  },
+  wealthPortfolioSectionUnderChart: {
+    marginTop: 0,
+    paddingTop: 0,
   },
   accountVisualCards: {
     gap: spacing.md,
@@ -3465,11 +3414,8 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   accountVisualAmount: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '800',
+    ...rowValue,
     letterSpacing: -0.45,
-    lineHeight: 22,
     textAlign: 'right',
   },
   accountVisualStatusPill: {
@@ -3533,16 +3479,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.35,
   },
-  accountVisualFlowTrack: {
-    width: '100%',
-    height: PROGRESS_BAR_TRACK_HEIGHT,
-    borderRadius: radius.pill,
-    overflow: 'hidden',
-    flexDirection: 'row',
-  },
-  accountVisualFlowFill: {
-    height: '100%',
-  },
   accountVisualTrack: {
     width: '100%',
     height: PROGRESS_BAR_TRACK_HEIGHT,
@@ -3601,53 +3537,40 @@ const styles = StyleSheet.create({
   },
   balanceChartCard: {
     backgroundColor: colors.surfaceSolid,
-    borderRadius: radius.xxl,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderRadius: radius.card,
     padding: spacing.lg,
     gap: spacing.md,
-    ...ghostCardShadow,
   },
   balanceChartHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: spacing.md,
+    marginBottom: spacing.md,
   },
   balanceChartTitleGroup: {
     flex: 1,
     minWidth: 0,
-    gap: spacing.sm,
-  },
-  balanceChartEyebrow: {
-    color: colors.textMuted,
-    fontSize: typography.micro,
-    fontWeight: '800',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+    gap: spacing.xs,
   },
   balanceChartTitle: {
+    ...SECTION_TITLE_STYLE,
     color: colors.text,
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.3,
   },
   balanceChartManageButton: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    borderRadius: 19,
+    borderRadius: 22,
   },
   balanceChartEmpty: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: radius.xl,
-    backgroundColor: ghost.obsidianSoft,
+    borderRadius: radius.card,
+    backgroundColor: colors.cardBackground,
     padding: spacing.lg,
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   balanceChartEmptyTitle: {
     color: colors.text,
@@ -3851,7 +3774,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   accountManagerName: {
-    fontSize: typography.body,
+    ...rowLabel,
     fontWeight: '800',
   },
   accountManagerMeta: {
@@ -4036,12 +3959,9 @@ const styles = StyleSheet.create({
   },
   formCard: {
     backgroundColor: colors.surfaceSolid,
-    borderRadius: radius.xxl,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderRadius: radius.card,
     padding: spacing.lg,
     gap: spacing.md,
-    ...ghostCardShadow,
   },
   formHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   formHeadCopy: { flex: 1, minWidth: 0, gap: 4 },
@@ -4109,7 +4029,7 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   logoOptionActive: {
-    backgroundColor: colors.cyanMuted,
+    backgroundColor: colors.scopeActive,
   },
   logoOptionIcon: {
     width: 34,
@@ -4193,8 +4113,7 @@ const styles = StyleSheet.create({
   saveText: { color: colors.background, fontSize: typography.body, fontWeight: '800' },
   groupCard: {
     backgroundColor: colors.surfaceSolid,
-    borderRadius: radius.xxl,
-    ...ghostCardShadow,
+    borderRadius: radius.card,
   },
   accountRow: {
     flexDirection: 'row',
@@ -4211,7 +4130,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: radius.md,
-    backgroundColor: colors.cyanMuted,
+    backgroundColor: colors.surfaceElevated,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     alignItems: 'center',
@@ -4222,9 +4141,9 @@ const styles = StyleSheet.create({
     minWidth: 0,
     gap: spacing.xs,
   },
-  accName: { color: colors.text, fontSize: typography.body, fontWeight: '600' },
+  accName: { ...rowLabel, color: colors.text, fontWeight: '800' },
   accNum: { color: colors.textMuted, fontSize: typography.meta },
-  accBal: { color: colors.text, fontSize: typography.body, fontWeight: '600', flexShrink: 0 },
+  accBal: { ...rowValue, color: colors.text, flexShrink: 0 },
   neg: { color: colors.danger },
   empty: {
     color: colors.textMuted,
@@ -4234,7 +4153,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   loansSectionContainer: {
-    gap: spacing.xs,
+    gap: PORTFOLIO_SECTION_GAP,
+    marginTop: PORTFOLIO_BLOCK_BREAK,
+    paddingTop: spacing.md,
   },
   loansSectionHeaderActions: {
     flexDirection: 'row',
@@ -4270,8 +4191,8 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   loanCardName: {
-    fontSize: typography.body,
-    fontWeight: '600',
+    ...rowLabel,
+    fontWeight: '800',
     letterSpacing: -0.1,
   },
   loanCardSub: {
@@ -4283,9 +4204,9 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   loanCardBalance: {
-    fontSize: typography.body,
-    fontWeight: '700',
-    letterSpacing: -0.3,
+    ...rowValue,
+    letterSpacing: -0.45,
+    textAlign: 'right',
   },
   loanCardBalanceLabel: {
     fontSize: typography.micro,

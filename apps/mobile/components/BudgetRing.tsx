@@ -1,7 +1,9 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { interBoldText, interExtraBoldText, interMediumText, typography } from '@/constants/theme';
+import { interBoldText, interMediumText, typography } from '@/constants/theme';
+import { portfolioNumericText } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 
 type Props = {
   remaining: number;
@@ -11,7 +13,7 @@ type Props = {
 };
 
 function formatMoney(value: number) {
-  return `${value.toLocaleString('fr-CA', { maximumFractionDigits: 0 })} $`;
+  return formatDisplayMoneyAbsolute(value);
 }
 
 export function BudgetRing({ remaining, spent, budget, size = 160 }: Props) {
@@ -74,7 +76,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   amount: {
-    ...interExtraBoldText,
+    ...portfolioNumericText,
     fontSize: typography.heroAmount,
   },
   sub: {

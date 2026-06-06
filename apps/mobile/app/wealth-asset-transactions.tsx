@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheet } from '@/components/BottomSheet';
 import { PageTransition } from '@/components/PageTransition';
-import { MerchantLogo } from '@/components/MerchantLogo';
+import { TransactionRow } from '@/components/TransactionRow';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import { ghostCardShadow } from '@/constants/ghostUi';
@@ -15,6 +15,7 @@ import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { getTransactionsForWealthAsset, getWealthAssetById, sortTransactionsNewestFirst } from '@/lib/db';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { wealthAssetHeroSubtitle } from '@/lib/wealthAssetPresentation';
 import type { Transaction, WealthAsset } from '@/types';
 
@@ -80,104 +81,6 @@ function getTransactionTitle(tx: Transaction, fallbackTitle: string) {
   return `${names.join(', ')}${suffix}`;
 }
 
-function WealthTransactionRow({
-  transaction: tx,
-  titleFallback,
-  onPress,
-  rowStyles,
-  colors,
-}: {
-  transaction: Transaction;
-  titleFallback: string;
-  onPress: () => void;
-  rowStyles: ReturnType<typeof createRowStyles>;
-  colors: Pick<AppColors, 'text' | 'textMuted' | 'success' | 'surfaceSolid' | 'surface' | 'border'>;
-}) {
-  const isIncome = tx.type === 'income';
-  const isTransfer = tx.type === 'transfer';
-  const amountColor = isIncome ? colors.success : isTransfer ? colors.textMuted : colors.text;
-  const hasReceipt = Boolean(tx.receiptUri || tx.receiptStatus);
-  const title = getTransactionTitle(tx, titleFallback);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Voir la transaction ${title}`}
-      style={({ pressed }) => [
-        rowStyles.transactionRow,
-        {
-          backgroundColor: pressed ? colors.surface : colors.surfaceSolid,
-          borderColor: colors.border,
-        },
-      ]}
-      onPress={onPress}
-    >
-      <MerchantLogo name={titleFallback} logoUrl={null} size={34} />
-      <View style={rowStyles.transactionBody}>
-        <View style={rowStyles.transactionTitleRow}>
-          <Text style={[rowStyles.transactionTitle, { color: colors.text }]} numberOfLines={2}>
-            {title}
-          </Text>
-          {hasReceipt ? (
-            <View style={[rowStyles.receiptBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Ionicons name="receipt-outline" size={13} color={colors.textMuted} />
-            </View>
-          ) : null}
-        </View>
-      </View>
-      <Text style={[rowStyles.transactionAmount, { color: amountColor }]} numberOfLines={1}>
-        {isTransfer ? '' : isIncome ? '+' : '−'}
-        {tx.amount.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $
-      </Text>
-    </Pressable>
-  );
-}
-
-function createRowStyles() {
-  return StyleSheet.create({
-    transactionRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-      borderRadius: radius.lg,
-      borderWidth: StyleSheet.hairlineWidth,
-      paddingVertical: spacing.sm + 3,
-      paddingHorizontal: spacing.md,
-    },
-    transactionBody: {
-      flex: 1,
-      minWidth: 0,
-    },
-    transactionTitleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs,
-      minWidth: 0,
-    },
-    transactionTitle: {
-      flexShrink: 1,
-      fontSize: typography.body,
-      fontWeight: '800',
-      lineHeight: typography.body + 3,
-    },
-    receiptBadge: {
-      width: 22,
-      height: 22,
-      borderRadius: 11,
-      borderWidth: StyleSheet.hairlineWidth,
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0,
-    },
-    transactionAmount: {
-      fontSize: typography.body,
-      fontWeight: '700',
-      flexShrink: 0,
-      textAlign: 'right',
-    },
-  });
-}
-
 export default function WealthAssetTransactionsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
@@ -187,11 +90,11 @@ export default function WealthAssetTransactionsScreen() {
 
   const [asset, setAsset] = useState<WealthAsset | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [simulatedAccounts, setSimulatedAccounts] = useState<SimulatedAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const rowStyles = useMemo(createRowStyles, []);
   const stylesMemo = useMemo(() => createShellStyles(colors), [colors]);
   const displayName = asset?.name ?? 'Patrimoine';
 
@@ -309,7 +212,7 @@ export default function WealthAssetTransactionsScreen() {
                   ghostCardShadow,
                   {
                     borderColor: colors.border,
-                    backgroundColor: isLight ? colors.surfaceSolid : '#050505',
+                    backgroundColor: isLight ? colors.surfaceSolid : colors.surfaceElevated,
                   },
                 ]}
               >
@@ -338,7 +241,7 @@ export default function WealthAssetTransactionsScreen() {
                 <View>
                   <Text style={[stylesMemo.summaryEyebrow, { color: colors.textMuted }]}>Dépenses</Text>
                   <Text style={[stylesMemo.summaryAmount, { color: colors.text }]}>
-                    {totalExpenses.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $
+                    {formatDisplayMoneyAbsolute(totalExpenses)}
                   </Text>
                 </View>
                 <View style={stylesMemo.summaryMeta}>
@@ -385,16 +288,16 @@ export default function WealthAssetTransactionsScreen() {
                 </Text>
                 <View style={stylesMemo.groupTransactions}>
                   {txs.map((tx) => (
-                    <WealthTransactionRow
+                    <TransactionRow
                       key={tx.id}
-                      transaction={tx}
-                      titleFallback={tx.categoryName?.trim() || displayName}
+                      transaction={{
+                        ...tx,
+                        label: getTransactionTitle(tx, tx.categoryName?.trim() || displayName),
+                      }}
                       onPress={() => {
                         tapHaptic();
                         setSelected(tx);
                       }}
-                      rowStyles={rowStyles}
-                      colors={colors}
                     />
                   ))}
                 </View>

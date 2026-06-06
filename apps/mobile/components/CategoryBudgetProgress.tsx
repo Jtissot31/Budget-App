@@ -4,6 +4,8 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { spacing, typography } from '@/constants/theme';
 import { categoryBudgetBarColor, getCategoryBudgetUsage } from '@/lib/categoryBudgetUsage';
 import { useAppTheme } from '@/lib/themeContext';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { portfolioNumericText } from '@/lib/textLayout';
 import type { CategoryBudget } from '@/types';
 
 type Props = {
@@ -13,7 +15,7 @@ type Props = {
 };
 
 function formatMoney(value: number) {
-  return value.toLocaleString('fr-CA', { maximumFractionDigits: 0 });
+  return formatDisplayMoneyAbsolute(value);
 }
 
 export function CategoryBudgetProgress({ budget, compactOverspendOnly = false }: Props) {
@@ -53,8 +55,8 @@ export function CategoryBudgetProgress({ budget, compactOverspendOnly = false }:
       <ProgressBar progress={usage.progress} color={barColor} />
       <Text style={[styles.meta, { color: colors.textMuted }]}>
         {usage.isZeroLimitOverspend
-          ? `${formatMoney(usage.spent)} $ dépensé · 0 $ alloué`
-          : `${formatMoney(usage.spent)} $ / ${formatMoney(usage.limit)} $`}
+          ? `${formatMoney(usage.spent)} dépensé · 0$ alloué`
+          : `${formatMoney(usage.spent)} / ${formatMoney(usage.limit)}`}
       </Text>
     </View>
   );
@@ -83,6 +85,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   meta: {
+    ...portfolioNumericText,
     fontSize: typography.micro,
     lineHeight: typography.micro + 3,
   },

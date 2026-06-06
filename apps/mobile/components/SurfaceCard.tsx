@@ -17,7 +17,7 @@ export function SurfaceCard({
   style,
   innerStyle,
   padding = spacing.lg,
-  borderRadius = radius.md,
+  borderRadius = radius.card,
   innerBackgroundColor,
 }: Props) {
   return (

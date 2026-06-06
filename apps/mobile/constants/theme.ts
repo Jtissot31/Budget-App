@@ -1,4 +1,21 @@
 import { Platform } from 'react-native';
+import {
+  fontFamilies,
+  interBoldText,
+  interExtraBoldText,
+  interMediumText,
+  interRegularText,
+  interSemiboldText,
+} from './interFonts';
+
+export {
+  fontFamilies,
+  interBoldText,
+  interExtraBoldText,
+  interMediumText,
+  interRegularText,
+  interSemiboldText,
+} from './interFonts';
 
 /** Light app canvas — single smooth diagonal warm-grey gradient */
 export const appBackgroundGradientLight = {
@@ -9,49 +26,78 @@ export const appBackgroundGradientLight = {
 } as const;
 
 /** Neutral charcoal app canvas — solid, no blue tint (not pitch black) */
-export const DARK_CANVAS = '#0A0A0A';
+export const DARK_CANVAS = '#0a0a0a';
 
 /** Screen-level charcoal canvas — same as DARK_CANVAS */
 export const CANVAS_CHARCOAL = DARK_CANVAS;
 
-/** GitHub-dark design tokens — single source of truth */
+/**
+ * Standard container fill for cards, list rows, sheets (dark #111111).
+ * Icon wells only: use `iconBox` / `surfaceElevated`.
+ */
+export const CONTAINER_SURFACE = '#111111';
+
+/** Dashboard dark palette — single source of truth for app-wide dark surfaces */
+export const dashboardPalette = {
+  bg: DARK_CANVAS,
+  card: CONTAINER_SURFACE,
+  iconBox: '#181818',
+  /** Portfolio scope segmented control track — distinct from card surfaces */
+  scopeTrack: '#1C2128',
+  /** Active pill on scope track — slightly elevated from track */
+  scopeActive: '#21262D',
+  border: '#1c1c1c',
+  green: '#00e664',
+  red: '#ff5555',
+  text: '#ffffff',
+  subtext: '#666666',
+  warning: '#e6a000',
+} as const;
+
+/** Dark theme tokens — derived from dashboard palette */
 export const darkColors = {
-  background: DARK_CANVAS,
-  /** Transparent screen root — gradient painted by AppBackgroundGradient */
-  screenCanvas: 'transparent',
-  surface: '#161B22',
-  surfaceSolid: '#161B22',
-  surfaceElevated: '#1C2128',
-  input: '#1C2128',
-  border: '#21262D',
-  borderStrong: '#30363D',
-  cardBorder: '#21262D',
-  text: '#FFFFFF',
-  textSecondary: '#8B949E',
-  textMuted: '#8B949E',
-  textDisabled: '#484F58',
-  primary: '#00E676',
-  primaryAlt: '#00E676',
-  success: '#00E676',
-  successMuted: 'rgba(0, 230, 118, 0.12)',
-  danger: '#F85149',
-  dangerMuted: 'rgba(248, 81, 73, 0.13)',
-  warning: '#FFB15C',
-  warningMuted: 'rgba(255, 177, 92, 0.14)',
+  background: dashboardPalette.bg,
+  /** Solid page canvas — matches AppBackgroundGradient dark fill */
+  screenCanvas: dashboardPalette.bg,
+  surface: dashboardPalette.card,
+  surfaceSolid: dashboardPalette.card,
+  cardBackground: dashboardPalette.card,
+  glassSolid: dashboardPalette.card,
+  surfaceElevated: dashboardPalette.iconBox,
+  input: dashboardPalette.iconBox,
+  border: dashboardPalette.border,
+  borderStrong: dashboardPalette.border,
+  cardBorder: dashboardPalette.border,
+  text: dashboardPalette.text,
+  textSecondary: dashboardPalette.subtext,
+  textMuted: dashboardPalette.subtext,
+  textDisabled: dashboardPalette.subtext,
+  primary: dashboardPalette.green,
+  primaryAlt: dashboardPalette.green,
+  success: dashboardPalette.green,
+  successMuted: 'rgba(0, 230, 100, 0.12)',
+  danger: dashboardPalette.red,
+  dangerMuted: 'rgba(255, 85, 85, 0.13)',
+  warning: dashboardPalette.warning,
+  warningMuted: 'rgba(230, 160, 0, 0.14)',
   purple: '#B48CFF',
   purpleMuted: 'rgba(180, 140, 255, 0.13)',
-  cyanMuted: 'rgba(56, 189, 248, 0.13)',
-  blueMuted: 'rgba(96, 165, 250, 0.13)',
+  /** Neutral chip/well tint — iconBox family (no blue chrome) */
+  cyanMuted: 'rgba(24, 24, 24, 0.92)',
+  /** Selection tint — scopeActive family (no blue chrome) */
+  blueMuted: 'rgba(33, 38, 45, 0.85)',
   /** Solid pill on charcoal canvas — no white rgba (Android dither grain) */
   navPill: DARK_CANVAS,
   /** Solid card fill on charcoal canvas — no white rgba tint */
-  glassBackground: '#161B22',
-  glassBorder: '#21262D',
+  glassBackground: dashboardPalette.card,
+  glassBorder: dashboardPalette.border,
   /** @deprecated Use glassBorder */
-  glassBorderTop: '#21262D',
+  glassBorderTop: dashboardPalette.border,
   /** @deprecated Use glassBorder */
-  glassBorderBottom: '#21262D',
+  glassBorderBottom: dashboardPalette.border,
   glassBlurIntensity: 0,
+  scopeTrack: dashboardPalette.scopeTrack,
+  scopeActive: dashboardPalette.scopeActive,
 } as const;
 
 export const lightColors = {
@@ -59,15 +105,17 @@ export const lightColors = {
   screenCanvas: 'transparent',
   surface: '#F6F8FA',
   surfaceSolid: '#FFFFFF',
+  cardBackground: '#FFFFFF',
+  glassSolid: '#FFFFFF',
   surfaceElevated: '#F6F8FA',
   input: '#F6F8FA',
   border: '#D0D7DE',
   borderStrong: '#AFB8C1',
   cardBorder: '#D0D7DE',
   text: '#0D1117',
-  textSecondary: '#57606A',
-  textMuted: '#57606A',
-  textDisabled: '#8C959F',
+  textSecondary: '#4B5563',
+  textMuted: '#52525B',
+  textDisabled: '#6B7280',
   primary: '#00A854',
   primaryAlt: '#00A854',
   success: '#00A854',
@@ -78,8 +126,8 @@ export const lightColors = {
   warningMuted: 'rgba(201, 111, 26, 0.12)',
   purple: '#6D5DF6',
   purpleMuted: 'rgba(109, 93, 246, 0.12)',
-  cyanMuted: 'rgba(2, 132, 199, 0.12)',
-  blueMuted: 'rgba(37, 99, 235, 0.12)',
+  cyanMuted: 'rgba(246, 248, 250, 1)',
+  blueMuted: 'rgba(0, 168, 84, 0.14)',
   navPill: 'rgba(255, 255, 255, 0.82)',
   /** Tinted glass fill over light gradient — no blur */
   glassBackground: 'rgba(255, 255, 255, 0.45)',
@@ -89,6 +137,8 @@ export const lightColors = {
   /** @deprecated Use glassBorder */
   glassBorderBottom: 'rgba(255, 255, 255, 0.06)',
   glassBlurIntensity: 0,
+  scopeTrack: 'rgba(10, 10, 10, 0.06)',
+  scopeActive: 'rgba(0, 168, 84, 0.14)',
 } as const;
 
 export type AppColors = typeof darkColors;
@@ -118,35 +168,17 @@ export const radius = {
   sm: 8,
   md: 12,
   lg: 16,
-  /** @deprecated Cards use radius.md (12px) */
-  xl: 12,
-  /** @deprecated Cards use radius.md (12px) */
-  xxl: 12,
+  /** Standard card corner radius (dashboard) */
+  card: 18,
+  /** @deprecated Cards use radius.card (18px) */
+  xl: 18,
+  /** @deprecated Cards use radius.card (18px) */
+  xxl: 18,
   pill: 999,
 } as const;
 
 /** Standard progress bar track height */
 export const PROGRESS_BAR_TRACK_HEIGHT = 8;
-
-export const fontFamilies = {
-  regular: 'Inter_400Regular',
-  medium: 'Inter_500Medium',
-  semibold: 'Inter_600SemiBold',
-  bold: 'Inter_700Bold',
-  extrabold: 'Inter_800ExtraBold',
-  /** @deprecated Use fontFamilies.regular */
-  rounded: Platform.select({
-    ios: 'Inter_400Regular',
-    android: 'Inter_400Regular',
-    default: 'Inter_400Regular',
-  }),
-  /** @deprecated Use fontFamilies.bold */
-  roundedHeavy: Platform.select({
-    ios: 'Inter_700Bold',
-    android: 'Inter_700Bold',
-    default: 'Inter_700Bold',
-  }),
-} as const;
 
 export const typography = {
   fontFamily: fontFamilies.regular,
@@ -166,31 +198,11 @@ export const typography = {
   displayAmount: 38,
 } as const;
 
-/** Inter presets — fontWeight: 'normal' so named font files render correctly */
-export const interRegularText = {
-  fontFamily: fontFamilies.regular,
-  fontWeight: 'normal' as const,
-};
+/** Space between stacked blocks inside a Portefeuille tab section */
+export const PORTFOLIO_SECTION_GAP = spacing.lg;
 
-export const interMediumText = {
-  fontFamily: fontFamilies.medium,
-  fontWeight: 'normal' as const,
-};
-
-export const interSemiboldText = {
-  fontFamily: fontFamilies.semibold,
-  fontWeight: 'normal' as const,
-};
-
-export const interBoldText = {
-  fontFamily: fontFamilies.bold,
-  fontWeight: 'normal' as const,
-};
-
-export const interExtraBoldText = {
-  fontFamily: fontFamilies.extrabold,
-  fontWeight: 'normal' as const,
-};
+/** Space before the next subsection title (end of cards → next header) */
+export const PORTFOLIO_SECTION_BREAK = spacing.xxl;
 
 /** Small uppercase labels */
 export const labelText = {
@@ -207,6 +219,15 @@ export const manropeExtraBoldText = interExtraBoldText;
 
 export const FLOATING_TABBAR_ANDROID_BOTTOM_EXTRA = spacing.sm;
 
+/** Bottom inset for tab icons — clears Android system nav without stacking extra offset. */
+export function getFloatingTabBarBottomInset(safeBottom: number): number {
+  if (Platform.OS === 'android') {
+    if (safeBottom > 0) return safeBottom;
+    return spacing.lg;
+  }
+  return Math.max(safeBottom, spacing.sm);
+}
+
 const FLOATING_NAV_BASE_PADDING = 112;
 
 export const FLOATING_NAV_CONTENT_PADDING =
@@ -214,8 +235,6 @@ export const FLOATING_NAV_CONTENT_PADDING =
   (Platform.OS === 'android' ? FLOATING_TABBAR_ANDROID_BOTTOM_EXTRA : 0);
 
 export const PAGE_TITLE_CONTENT_GAP = spacing.xl;
-
-export const PORTFOLIO_SECTION_GAP = spacing.lg;
 
 /** Chart accent colors aligned with design system */
 export const chartTokens = {
@@ -239,7 +258,7 @@ export const portfolioLight = {
   card: '#FFFFFF',
   deltaBg: 'rgba(0, 168, 84, 0.15)',
   deltaBorder: 'rgba(0, 168, 84, 0.28)',
-  scopeTrack: 'rgba(15, 23, 42, 0.06)',
+  scopeTrack: 'rgba(10, 10, 10, 0.06)',
   scopeActive: 'rgba(0, 168, 84, 0.14)',
   iconButton: '#F6F8FA',
   border: '#D0D7DE',
@@ -247,17 +266,23 @@ export const portfolioLight = {
 
 /** Portefeuille dark-theme palette */
 export const portfolioDark = {
-  background: DARK_CANVAS,
-  card: '#161B22',
-  text: '#FFFFFF',
-  textMuted: '#8B949E',
-  textTertiary: '#484F58',
+  background: dashboardPalette.bg,
+  card: dashboardPalette.card,
+  text: dashboardPalette.text,
+  textMuted: dashboardPalette.subtext,
+  textTertiary: dashboardPalette.subtext,
   chartCurve: chartTokens.line,
   chartFillTop: chartTokens.fillTop,
   chartFillBottom: chartTokens.fillBottom,
   periodActiveBg: chartTokens.periodActiveBg,
-  scopeTrack: '#1C2128',
-  scopeActive: '#21262D',
-  iconButton: '#1C2128',
-  border: '#21262D',
+  scopeTrack: dashboardPalette.scopeTrack,
+  scopeActive: dashboardPalette.scopeActive,
+  iconButton: dashboardPalette.iconBox,
+  border: dashboardPalette.border,
 } as const;
+
+export {
+  typographyKit,
+  PAGE_TITLE_STYLE,
+  SECTION_TITLE_STYLE,
+} from './typographyKit';

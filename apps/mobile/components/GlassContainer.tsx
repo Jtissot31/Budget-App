@@ -8,25 +8,25 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   padding?: number;
   borderRadius?: number;
-  /** Optional fill override — defaults to theme glass background */
+  /** Optional fill override — defaults to theme card surface */
   innerBackgroundColor?: string;
   innerStyle?: StyleProp<ViewStyle>;
   /** Kept for API compatibility — ignored */
   outlineColors?: readonly string[];
 };
 
-/** Tinted glass card — transparent fill + 1px border, no blur, no overflow clip. */
+/** Solid card surface — flat fill, no border, no shadow. */
 export function GlassContainer({
   children,
   style,
   padding = 16,
-  borderRadius = themeRadius.md,
+  borderRadius = themeRadius.card,
   innerBackgroundColor,
   innerStyle,
 }: Props) {
   const { colors, isLight } = useAppTheme();
   const fillColor =
-    innerBackgroundColor ?? (isLight ? colors.glassBackground : colors.surfaceSolid);
+    innerBackgroundColor ?? (isLight ? colors.cardBackground : colors.cardBackground);
 
   return (
     <View
@@ -34,14 +34,11 @@ export function GlassContainer({
         {
           borderRadius,
           backgroundColor: fillColor,
-          borderWidth: 1,
-          borderColor: colors.glassBorder,
           padding,
         },
         innerStyle,
         style,
       ]}
-      pointerEvents="box-none"
     >
       {children}
     </View>

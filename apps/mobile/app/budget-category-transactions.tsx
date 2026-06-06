@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheet } from '@/components/BottomSheet';
 import { PageTransition } from '@/components/PageTransition';
 import { SurfaceCard } from '@/components/SurfaceCard';
-import { TransactionAvatar } from '@/components/TransactionAvatar';
+import { TransactionRow } from '@/components/TransactionRow';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import { ghostCardShadow } from '@/constants/ghostUi';
 import { radius, spacing, typography, type AppColors } from '@/constants/theme';
@@ -15,7 +15,9 @@ import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { getCategoryBudgets, getTransactionsForBudgetCategory, sortTransactionsNewestFirst } from '@/lib/db';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
-import type { CategoryBudget, Transaction } from '@/types';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { heroStatAmount } from '@/lib/textLayout';
+import type { CategoryBudget, SimulatedAccount, Transaction } from '@/types';
 
 const DETAIL_SHEET_TOP_RADIUS = 22;
 
@@ -46,7 +48,7 @@ function formatDateRange(transactions: Transaction[]) {
 }
 
 function formatMoney(value: number) {
-  return `${Math.abs(value).toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
+  return formatDisplayMoneyAbsolute(value);
 }
 
 function getReadableIconColor(backgroundColor: string): '#000000' | '#FFFFFF' {
@@ -106,98 +108,6 @@ function getTransactionTitle(tx: Transaction) {
   return `${names.join(', ')}${suffix}`;
 }
 
-function BudgetCategoryTransactionRow({
-  transaction: tx,
-  onPress,
-  rowStyles,
-  colors,
-}: {
-  transaction: Transaction;
-  onPress: () => void;
-  rowStyles: ReturnType<typeof createRowStyles>;
-  colors: Pick<AppColors, 'text' | 'textMuted' | 'surfaceSolid' | 'surface' | 'border'>;
-}) {
-  const title = getTransactionTitle(tx);
-  const hasReceipt = Boolean(tx.receiptUri || tx.receiptStatus);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Voir la transaction ${title}`}
-      style={({ pressed }) => [
-        rowStyles.transactionRow,
-        {
-          backgroundColor: pressed ? colors.surface : colors.surfaceSolid,
-          borderColor: colors.border,
-        },
-      ]}
-      onPress={onPress}
-    >
-      <TransactionAvatar transaction={tx} size={34} />
-      <View style={rowStyles.transactionBody}>
-        <View style={rowStyles.transactionTitleRow}>
-          <Text style={[rowStyles.transactionTitle, { color: colors.text }]} numberOfLines={2}>
-            {title}
-          </Text>
-          {hasReceipt ? (
-            <View style={[rowStyles.receiptBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Ionicons name="receipt-outline" size={13} color={colors.textMuted} />
-            </View>
-          ) : null}
-        </View>
-      </View>
-      <Text style={[rowStyles.transactionAmount, { color: colors.text }]} numberOfLines={1}>
-        −{formatMoney(tx.amount)}
-      </Text>
-    </Pressable>
-  );
-}
-
-function createRowStyles() {
-  return StyleSheet.create({
-    transactionRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-      borderRadius: radius.lg,
-      borderWidth: StyleSheet.hairlineWidth,
-      paddingVertical: spacing.sm + 3,
-      paddingHorizontal: spacing.md,
-    },
-    transactionBody: {
-      flex: 1,
-      minWidth: 0,
-    },
-    transactionTitleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs,
-      minWidth: 0,
-    },
-    transactionTitle: {
-      flexShrink: 1,
-      fontSize: typography.body,
-      fontWeight: '800',
-      lineHeight: typography.body + 3,
-    },
-    receiptBadge: {
-      width: 22,
-      height: 22,
-      borderRadius: 11,
-      borderWidth: StyleSheet.hairlineWidth,
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0,
-    },
-    transactionAmount: {
-      fontSize: typography.body,
-      fontWeight: '700',
-      flexShrink: 0,
-      textAlign: 'right',
-    },
-  });
-}
-
 export default function BudgetCategoryTransactionsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; name?: string }>();
@@ -212,7 +122,6 @@ export default function BudgetCategoryTransactionsScreen() {
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const rowStyles = useMemo(createRowStyles, []);
   const stylesMemo = useMemo(() => createShellStyles(colors), [colors]);
 
   const load = useCallback(async () => {
@@ -320,7 +229,7 @@ export default function BudgetCategoryTransactionsScreen() {
                   ghostCardShadow,
                   {
                     borderColor: colors.border,
-                    backgroundColor: isLight ? colors.surfaceSolid : '#050505',
+                    backgroundColor: isLight ? colors.surfaceSolid : colors.surfaceElevated,
                   },
                 ]}
               >
@@ -390,15 +299,13 @@ export default function BudgetCategoryTransactionsScreen() {
                 </Text>
                 <View style={stylesMemo.groupTransactions}>
                   {txs.map((tx) => (
-                    <BudgetCategoryTransactionRow
+                    <TransactionRow
                       key={tx.id}
-                      transaction={tx}
+                      transaction={{ ...tx, label: getTransactionTitle(tx) }}
                       onPress={() => {
                         tapHaptic();
                         setSelected(tx);
                       }}
-                      rowStyles={rowStyles}
-                      colors={colors}
                     />
                   ))}
                 </View>
@@ -475,8 +382,7 @@ function createShellStyles(colors: AppColors) {
       textTransform: 'uppercase',
     },
     summaryAmount: {
-      fontSize: typography.heroStat,
-      fontWeight: '800',
+      ...heroStatAmount,
       marginTop: 4,
     },
     summaryMeta: {

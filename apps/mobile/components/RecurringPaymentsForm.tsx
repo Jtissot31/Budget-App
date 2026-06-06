@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -13,39 +13,36 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MotiView } from 'moti';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CategoryBudgetProgress } from '@/components/CategoryBudgetProgress';
-import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
-import { GlassContainer } from '@/components/GlassContainer';
-import { PageTransition } from '@/components/PageTransition';
+import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import { GhostNumpad } from '@/components/GhostNumpad';
 import { DatePickerField } from '@/components/MinimalDatePicker';
+import { getCategoryIconName, MANUAL_ICON_PICKER_OPTIONS } from '@/constants/categoryOptions';
 import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
+import { ghost, ghostCardShadow } from '@/constants/ghostUi';
 import {
-  FLOATING_FAB_ICON_SIZE,
-  FLOATING_FAB_SIZE,
-  FLOATING_SCROLL_SIZE,
-  floatingGlassButtonPressed,
-  floatingGlassFabSurface,
-} from '@/constants/floatingGlassButton';
-import { SCREEN_TOP_GUTTER, ghost, ghostCardShadow } from '@/constants/ghostUi';
-import { FLOATING_NAV_CONTENT_PADDING, PAGE_TITLE_CONTENT_GAP, colors, radius, spacing, typography } from '@/constants/theme';
+  colors,
+  interBoldText,
+  interExtraBoldText,
+  interMediumText,
+  radius,
+  spacing,
+  typography,
+} from '@/constants/theme';
 import {
-  deleteRecurringPayment,
-  getCategoryBudgets,
   getCategories,
-  getRecurringPayments,
+  getCategoryBudgets,
   getSimulatedAccounts,
   upsertRecurringPayment,
 } from '@/lib/db';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { getMerchantLogoUrl, RECURRING_SERVICE_LOGO_OPTIONS } from '@/lib/merchantLogo';
 import { useAppTheme } from '@/lib/themeContext';
+import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
 import type { Category, CategoryBudget, RecurringPayment, RecurringPaymentFrequency, RecurringPaymentKind, SimulatedAccount } from '@/types';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -90,9 +87,8 @@ const FREQUENCIES: Array<{ id: RecurringPaymentFrequency; label: string }> = [
   { id: 'monthly', label: 'Mensuel' },
   { id: 'yearly', label: 'Annuel' },
 ];
-const DEFAULT_COLOR = '#60A5FA';
+const DEFAULT_COLOR = '#00A854';
 const DEFAULT_ICON: IconName = 'repeat-outline';
-const DETAIL_SHEET_TOP_RADIUS = 22;
 const COMPACT_CATEGORY_LIMIT = 5;
 
 const INCOME_CATEGORY_TERMS = ['revenu', 'revenus', 'salaire', 'paie', 'paye', 'payroll', 'income'];
@@ -185,307 +181,36 @@ const RECURRING_FALLBACK_CATEGORY_TERMS = [
   'divers',
 ];
 
-const MANUAL_RECURRING_ICON_OPTIONS: Array<{ id: string; label: string; icon: IconName; color: string }> = [
-  { id: 'rent', label: 'Loyer', icon: 'home-outline', color: '#A78BFA' },
-  { id: 'bill', label: 'Facture', icon: 'receipt-outline', color: '#60A5FA' },
-  { id: 'internet', label: 'Internet', icon: 'wifi-outline', color: '#38BDF8' },
-  { id: 'phone', label: 'Téléphone', icon: 'call-outline', color: '#22C55E' },
-  { id: 'power', label: 'Électricité', icon: 'flash-outline', color: '#FACC15' },
-  { id: 'insurance', label: 'Assurance', icon: 'shield-checkmark-outline', color: '#F97316' },
-  { id: 'car', label: 'Auto', icon: 'car-outline', color: '#FB7185' },
-  { id: 'subscription', label: 'Abonnement', icon: 'play-circle-outline', color: '#F43F5E' },
-  { id: 'gym', label: 'Gym', icon: 'fitness-outline', color: '#34D399' },
-  { id: 'groceries', label: 'Épicerie', icon: 'basket-outline', color: '#84CC16' },
-  { id: 'pay', label: 'Paie', icon: 'briefcase-outline', color: ghost.mint },
-  { id: 'income', label: 'Revenu', icon: 'cash-outline', color: ghost.mint },
-];
-
 function amountFontSize(raw: string) {
   const len = (raw || '0').replace(/[^0-9]/g, '').length;
   return Math.max(36, 64 - Math.min(len, 12) * 2.2);
 }
 
-export default function RecurringPaymentsScreen() {
-  const router = useRouter();
-  const params = useLocalSearchParams<{ new?: string; editId?: string }>();
-  const insets = useSafeAreaInsets();
-  const { colors: themeColors, ghostCardShadow: themedGhostCardShadow, isLight } = useAppTheme();
-  const recurringFabSurface = floatingGlassFabSurface(themeColors, isLight);
-  const openedInitialForm = useRef(false);
-  const openedInitialEditId = useRef<string | null>(null);
-  const [payments, setPayments] = useState<RecurringPayment[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudget[]>([]);
-  const [accounts, setAccounts] = useState<AccountOption[]>(manualAccountOptions());
-  const [form, setForm] = useState<PaymentForm | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [confirmRemoveVisible, setConfirmRemoveVisible] = useState(false);
-  const [pendingRemovePayment, setPendingRemovePayment] = useState<RecurringPayment | null>(null);
-  const [confirmFormDeleteVisible, setConfirmFormDeleteVisible] = useState(false);
-  const [pendingFormDeleteId, setPendingFormDeleteId] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    const [nextPayments, nextCategories, nextCategoryBudgets, simulatedAccounts] = await Promise.all([
-      getRecurringPayments(),
-      getCategories(),
-      getCategoryBudgets(),
-      getSimulatedAccounts(),
-    ]);
-    const accountOptions = toAccountOptions(simulatedAccounts);
-    setPayments(nextPayments);
-    setCategories(nextCategories);
-    setCategoryBudgets(nextCategoryBudgets);
-    setAccounts(accountOptions.length ? accountOptions : manualAccountOptions());
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const totals = useMemo(
-    () => payments.reduce((sum, payment) => sum + (payment.active && payment.kind !== 'income' ? monthlyEquivalent(payment) : 0), 0),
-    [payments],
-  );
-
-  const openNew = useCallback(() => {
-    tapHaptic();
-    const account = accounts[0] ?? manualAccountOptions()[0];
-    setForm({
-      id: createLocalId(),
-      name: '',
-      amount: '',
-      kind: 'payment',
-      accountId: account.id,
-      accountLabel: account.label,
-      categoryId: getDefaultCategoryId(categories, 'payment'),
-      frequency: 'monthly',
-      dueDay: '',
-      nextDate: new Date().toISOString().slice(0, 10),
-      endDate: '',
-      active: true,
-      icon: DEFAULT_ICON,
-      color: DEFAULT_COLOR,
-      logoUrl: null,
-      logoMode: 'auto',
-      createdAt: new Date().toISOString(),
-    });
-  }, [accounts, categories]);
-
-  useEffect(() => {
-    if (params.new !== '1' || openedInitialForm.current || accounts.length === 0 || categories.length === 0) return;
-    openedInitialForm.current = true;
-    openNew();
-  }, [accounts.length, categories.length, openNew, params.new]);
-
-  const openEdit = useCallback((payment: RecurringPayment) => {
-    tapHaptic();
-    setForm(recurringPaymentToForm(payment));
-  }, []);
-
-  useEffect(() => {
-    const editId = typeof params.editId === 'string' ? params.editId : '';
-    if (!editId || openedInitialEditId.current === editId || payments.length === 0 || accounts.length === 0) return;
-    const payment = payments.find((item) => item.id === editId);
-    if (!payment) return;
-    openedInitialEditId.current = editId;
-    openEdit(payment);
-  }, [accounts.length, openEdit, params.editId, payments]);
-
-  const save = async () => {
-    if (!form) return;
-    setSaving(true);
-    const ok = await saveRecurringPaymentForm(form, accounts);
-    setSaving(false);
-    if (!ok) return;
-    await load();
-    setForm(null);
-    router.replace({ pathname: '/(tabs)/transactions', params: { view: 'agenda' } });
+export function createNewRecurringPaymentForm(
+  accounts: AccountOption[],
+  categories: Category[],
+  kind: RecurringPaymentKind = 'payment',
+): PaymentForm {
+  const account = accounts[0] ?? manualAccountOptions()[0];
+  return {
+    id: createLocalId(),
+    name: '',
+    amount: '',
+    kind,
+    accountId: account.id,
+    accountLabel: account.label,
+    categoryId: getDefaultCategoryId(categories, kind),
+    frequency: 'monthly',
+    dueDay: '',
+    nextDate: new Date().toISOString().slice(0, 10),
+    endDate: '',
+    active: true,
+    icon: kind === 'income' ? 'cash-outline' : DEFAULT_ICON,
+    color: kind === 'income' ? ghost.mint : DEFAULT_COLOR,
+    logoUrl: null,
+    logoMode: 'auto',
+    createdAt: new Date().toISOString(),
   };
-
-  const remove = (payment: RecurringPayment) => {
-    setPendingRemovePayment(payment);
-    setConfirmRemoveVisible(true);
-  };
-
-  const removeForm = (current: PaymentForm) => {
-    setPendingFormDeleteId(current.id);
-    setConfirmFormDeleteVisible(true);
-  };
-  const canDeleteForm = form ? payments.some((payment) => payment.id === form.id) : false;
-
-  return (
-    <PageTransition>
-    <View style={styles.screen}>
-      <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
-        <Pressable
-          onPress={() => {
-            tapHaptic();
-            router.back();
-          }}
-          hitSlop={12}
-          style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-        >
-          <Ionicons name="chevron-back" size={26} color={themeColors.textSecondary} />
-        </Pressable>
-        <Text style={[styles.topTitle, { color: themeColors.text }]} numberOfLines={2}>
-          Paiements et revenus récurrents
-        </Text>
-        <View style={styles.iconBtn} />
-      </View>
-
-      <ScrollView
-        style={styles.scroller}
-        contentContainerStyle={[
-          styles.content,
-          {
-            paddingTop: spacing.sm,
-            paddingBottom: FLOATING_NAV_CONTENT_PADDING + Math.max(insets.bottom, 16),
-          },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        <GlassContainer style={themedGhostCardShadow} innerStyle={styles.summaryCardInner} padding={spacing.lg} borderRadius={radius.xxl}>
-          <Text style={[styles.eyebrow, { color: themeColors.textMuted }]}>Engagements mensuels</Text>
-          <Text style={[styles.total, { color: themeColors.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78}>
-            {formatMoney(totals)} $
-          </Text>
-          <Text style={[styles.helper, { color: themeColors.textMuted }]}>
-            Suis tes paiements et revenus fixes au même endroit.
-          </Text>
-        </GlassContainer>
-
-        <View style={styles.list}>
-          {payments.map((payment) => {
-            const tint = normalizeColor(payment.color);
-            return (
-              <Pressable
-                key={payment.id}
-                android_ripple={null}
-                onPress={() => openEdit(payment)}
-                onLongPress={() => remove(payment)}
-                style={[themedGhostCardShadow, !payment.active && styles.inactiveCard]}
-              >
-                <GlassContainer innerStyle={styles.cardInner} padding={spacing.md} borderRadius={radius.xxl}>
-                <RecurringPaymentAvatar payment={payment} tint={tint} size={46} />
-                <View style={styles.cardBody}>
-                  <View style={styles.rowBetween}>
-                    <View style={styles.cardTitleRow}>
-                      <Text style={[styles.cardTitle, { color: themeColors.text }]} numberOfLines={1}>
-                        {payment.name}
-                      </Text>
-                      {payment.kind === 'income' ? (
-                        <Text style={[styles.kindBadge, { backgroundColor: themeColors.successMuted, color: themeColors.success }]} numberOfLines={1}>
-                          Revenu
-                        </Text>
-                      ) : null}
-                    </View>
-                    <Text
-                      style={[styles.amount, { color: themeColors.text }, payment.kind === 'income' && { color: themeColors.success }]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.78}
-                    >
-                      {payment.kind === 'income' ? '+' : '-'}{formatMoney(payment.amount)} $
-                    </Text>
-                  </View>
-                  <Text style={[styles.meta, { color: themeColors.textMuted }]} numberOfLines={1}>
-                    {frequencyLabel(payment.frequency)} · {payment.accountLabel}
-                  </Text>
-                  <Text style={[styles.meta, { color: themeColors.textMuted }]} numberOfLines={1}>
-                    {payment.nextDate ? `Prochain: ${payment.nextDate}` : payment.dueDay ? `Jour ${payment.dueDay}` : 'Date à préciser'}
-                    {payment.endDate ? ` · fin: ${payment.endDate}` : ''}
-                    {payment.active ? '' : ' · inactif'}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={themeColors.textMuted} />
-                </GlassContainer>
-              </Pressable>
-            );
-          })}
-
-          {payments.length === 0 ? (
-            <GlassContainer style={[styles.emptyCard, themedGhostCardShadow]} padding={spacing.lg} borderRadius={radius.xxl}>
-              <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Aucun paiement ou revenu récurrent</Text>
-              <Text style={[styles.helper, { color: themeColors.textMuted }]}>Ajoute tes montants fixes pour les suivre ici.</Text>
-            </GlassContainer>
-          ) : null}
-        </View>
-      </ScrollView>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Ajouter un paiement ou revenu récurrent"
-        onPress={openNew}
-        style={({ pressed }) => [
-          styles.recurringFab,
-          recurringFabSurface,
-          {
-            bottom:
-              FLOATING_NAV_CONTENT_PADDING +
-              Math.max(insets.bottom, 16) -
-              10 -
-              (FLOATING_FAB_SIZE - FLOATING_SCROLL_SIZE),
-          },
-          themedGhostCardShadow,
-          pressed && floatingGlassButtonPressed,
-        ]}
-      >
-        <MotiView animate={{ rotate: '180deg' }} transition={{ type: 'timing', duration: 260 }} style={styles.recurringFabIconWrap}>
-          <Ionicons name="repeat-outline" size={FLOATING_FAB_ICON_SIZE} color={themeColors.text} />
-        </MotiView>
-      </Pressable>
-
-      <PaymentFormModal
-        visible={form != null}
-        form={form}
-        accounts={accounts}
-        categories={categories}
-        categoryBudgets={categoryBudgets}
-        saving={saving}
-        bottomInset={insets.bottom}
-        onClose={() => setForm(null)}
-        onChange={setForm}
-        onSave={() => void save()}
-        onDelete={canDeleteForm && form ? () => removeForm(form) : undefined}
-      />
-      <ConfirmDeleteModal
-        visible={confirmRemoveVisible}
-        title={pendingRemovePayment?.kind === 'income' ? 'Supprimer ce revenu ?' : 'Supprimer ce paiement ?'}
-        message={pendingRemovePayment ? `${pendingRemovePayment.name} sera retiré des récurrents.` : undefined}
-        onConfirm={async () => {
-          if (!pendingRemovePayment) return;
-          setConfirmRemoveVisible(false);
-          await deleteRecurringPayment(pendingRemovePayment.id);
-          await load();
-          setPendingRemovePayment(null);
-          successHaptic();
-        }}
-        onCancel={() => {
-          setConfirmRemoveVisible(false);
-          setPendingRemovePayment(null);
-        }}
-      />
-      <ConfirmDeleteModal
-        visible={confirmFormDeleteVisible}
-        title={payments.find((p) => p.id === pendingFormDeleteId)?.kind === 'income' ? 'Supprimer ce revenu ?' : 'Supprimer ce paiement ?'}
-        message="Cette action est irréversible."
-        onConfirm={async () => {
-          if (!pendingFormDeleteId) return;
-          setConfirmFormDeleteVisible(false);
-          await deleteRecurringPayment(pendingFormDeleteId);
-          await load();
-          setForm(null);
-          setPendingFormDeleteId(null);
-          successHaptic();
-        }}
-        onCancel={() => {
-          setConfirmFormDeleteVisible(false);
-          setPendingFormDeleteId(null);
-        }}
-      />
-    </View>
-    </PageTransition>
-  );
 }
 
 function PaymentFormModal({
@@ -513,7 +238,7 @@ function PaymentFormModal({
   onSave: () => void;
   onDelete?: () => void;
 }) {
-  const { colors: themeColors, ghost: themeGhost, isLight } = useAppTheme();
+  const { colors: themeColors, isLight } = useAppTheme();
   const [showLogoPicker, setShowLogoPicker] = useState(false);
   const [showAllCategories, setShowAllCategories] = useState(false);
 
@@ -531,21 +256,40 @@ function PaymentFormModal({
   const themed = useMemo(
     () => ({
       modalBackdrop: { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' },
-      sheet: { backgroundColor: isLight ? themeColors.surfaceSolid : '#131313', borderColor: themeColors.border },
+      sheet: { backgroundColor: themeColors.cardBackground, borderColor: themeColors.border },
       handle: { backgroundColor: themeColors.borderStrong },
-      closeButton: { backgroundColor: themeGhost.obsidianSoft, borderColor: themeColors.borderStrong },
-      control: { backgroundColor: themeGhost.obsidianSoft, borderColor: themeColors.border },
-      controlStrong: { backgroundColor: themeGhost.obsidianSoft, borderColor: themeColors.borderStrong },
-      logoPanel: { backgroundColor: themeGhost.obsidianSoft, borderColor: themeColors.border },
+      closeButton: {
+        backgroundColor: themeColors.surfaceElevated,
+        borderColor: themeColors.border,
+        borderWidth: StyleSheet.hairlineWidth,
+      },
+      control: {
+        backgroundColor: themeColors.surfaceElevated,
+        borderColor: themeColors.border,
+        borderWidth: StyleSheet.hairlineWidth,
+      },
+      controlStrong: {
+        backgroundColor: themeColors.input,
+        borderColor: themeColors.border,
+        borderWidth: StyleSheet.hairlineWidth,
+      },
+      logoPanel: {
+        backgroundColor: themeColors.surfaceElevated,
+        borderColor: themeColors.border,
+        borderWidth: StyleSheet.hairlineWidth,
+      },
       logoFallback: { backgroundColor: themeColors.surface, borderColor: themeColors.border },
-      selected: { backgroundColor: themeColors.text, borderColor: themeColors.text },
-      selectedText: { color: themeGhost.void },
+      selected: {
+        backgroundColor: themeColors.successMuted,
+        borderColor: themeColors.primary,
+        borderWidth: 1.5,
+      },
+      selectedText: { color: themeColors.primary },
       text: { color: themeColors.text },
       textSecondary: { color: themeColors.textSecondary },
       textMuted: { color: themeColors.textMuted },
-      submitDisabled: { backgroundColor: themeGhost.obsidianSoft, borderColor: themeColors.border },
     }),
-    [isLight, themeColors, themeGhost],
+    [isLight, themeColors],
   );
 
   if (!form) return null;
@@ -559,7 +303,7 @@ function PaymentFormModal({
   const autoLogoUrl = getMerchantLogoUrl(form.name.trim());
   const previewLogoUrl = form.logoMode === 'logo' ? form.logoUrl : form.logoMode === 'auto' ? autoLogoUrl : null;
   const previewIcon = form.logoMode === 'icon' ? form.icon : form.kind === 'income' ? 'cash-outline' : DEFAULT_ICON;
-  const previewTint = form.logoMode === 'icon' ? form.color : form.kind === 'income' ? themeGhost.mint : DEFAULT_COLOR;
+  const previewTint = form.logoMode === 'icon' ? form.color : form.kind === 'income' ? themeColors.primary : DEFAULT_COLOR;
   const impactSummary = getRecurringImpactSummary(form, categoryBudgets);
   const selectedCategoryBudget =
     form.kind === 'payment' && form.categoryId
@@ -586,19 +330,15 @@ function PaymentFormModal({
                   accessibilityRole="button"
                   accessibilityLabel="Fermer le paiement récurrent"
                   onPress={onClose}
-                  hitSlop={10}
-                  style={({ pressed }) => [
-                    styles.sheetClose,
-                    themed.closeButton,
-                    pressed && styles.pressed,
-                  ]}
+                  hitSlop={12}
+                  style={[styles.sheetClose, themed.closeButton]}
                 >
-                  <Ionicons name="close" size={18} color={themeColors.textMuted} />
+                  <Ionicons name="close" size={19} color={themeColors.textMuted} />
                 </Pressable>
               </View>
 
             <View style={styles.section}>
-              <Text style={[styles.fieldEyebrow, themed.textSecondary]}>Type</Text>
+              <DashboardSectionLabel>Type</DashboardSectionLabel>
               <View style={styles.wrapRow}>
                 {(['payment', 'income'] as const).map((kind) => {
                   const on = form.kind === kind;
@@ -631,7 +371,7 @@ function PaymentFormModal({
             </View>
 
             <View style={styles.section}>
-              <Text style={[styles.fieldEyebrow, themed.textSecondary]}>{form.kind === 'income' ? 'Source du revenu' : 'Marchand / paiement'}</Text>
+              <DashboardSectionLabel>{form.kind === 'income' ? 'Source du revenu' : 'Marchand / paiement'}</DashboardSectionLabel>
               <TextInput
                 style={[styles.input, themed.controlStrong, themed.text]}
                 placeholder={form.kind === 'income' ? 'Ex. Paie, pension, allocation...' : 'Ex. Loyer, Netflix, Hydro...'}
@@ -661,7 +401,7 @@ function PaymentFormModal({
                   </IconFrame>
                 )}
                 <View style={styles.logoCopy}>
-                  <Text style={[styles.fieldEyebrow, themed.textSecondary]}>Logo</Text>
+                  <DashboardSectionLabel>Logo</DashboardSectionLabel>
                   <Text style={[styles.logoHint, themed.textMuted]}>
                     {form.logoMode === 'auto'
                       ? autoLogoUrl
@@ -750,7 +490,7 @@ function PaymentFormModal({
 
                   <Text style={[styles.logoPickerHint, themed.textMuted]}>Icônes</Text>
                   <View style={styles.logoOptionRow}>
-                    {MANUAL_RECURRING_ICON_OPTIONS.map((option) => (
+                    {MANUAL_ICON_PICKER_OPTIONS.map((option) => (
                       <RecurringLogoOption
                         key={option.id}
                         label={option.label}
@@ -795,17 +535,14 @@ function PaymentFormModal({
             </MotiView>
 
             <View style={[styles.impactCard, themed.logoPanel]}>
-              <View style={styles.impactHeader}>
-                <Text style={[styles.impactEyebrow, themed.textSecondary]}>
-                  {form.kind === 'income' ? 'Projection revenu' : 'Impact budget'}
-                </Text>
-                <Text style={[styles.impactFrequency, themed.textMuted]}>{frequencyLabel(form.frequency)}</Text>
-              </View>
+              <DashboardSectionLabel>
+                {form.kind === 'income' ? 'Projection revenu' : 'Impact budget'}
+              </DashboardSectionLabel>
               <Text
                 style={[
                   styles.impactValue,
                   themed.text,
-                  form.kind === 'income' && { color: themeGhost.mint },
+                  form.kind === 'income' && { color: themeColors.primary },
                 ]}
                 numberOfLines={1}
                 adjustsFontSizeToFit
@@ -823,7 +560,7 @@ function PaymentFormModal({
             </View>
 
             <View style={styles.section}>
-              <Text style={[styles.fieldEyebrow, themed.textSecondary]}>Fréquence</Text>
+              <DashboardSectionLabel>Fréquence</DashboardSectionLabel>
               <View style={styles.wrapRow}>
                 {FREQUENCIES.map((frequency) => {
                   const on = form.frequency === frequency.id;
@@ -863,7 +600,7 @@ function PaymentFormModal({
             />
 
             <View style={styles.section}>
-              <Text style={[styles.fieldEyebrow, themed.textSecondary]}>{form.kind === 'income' ? 'Compte de dépôt' : 'Compte utilisé comme paiement'}</Text>
+              <DashboardSectionLabel>{form.kind === 'income' ? 'Compte de dépôt' : 'Compte utilisé comme paiement'}</DashboardSectionLabel>
               <View style={styles.accountRow}>
                 {accounts.map((account) => {
                   const on = form.accountId === account.id;
@@ -893,7 +630,7 @@ function PaymentFormModal({
 
             {visibleCategories.length ? (
               <View style={styles.section}>
-                <Text style={[styles.fieldEyebrow, themed.textSecondary]}>Catégorie</Text>
+                <DashboardSectionLabel>Catégorie</DashboardSectionLabel>
                 <View style={styles.wrapRow}>
                   {categoriesToShow.map((category) => {
                     const on = form.categoryId === category.id;
@@ -904,9 +641,20 @@ function PaymentFormModal({
                           tapHaptic();
                           onChange((current) => (current ? { ...current, categoryId: on ? null : category.id } : current));
                         }}
-                        style={[styles.chip, themed.control, on && themed.selected]}
+                        style={[styles.categoryChip, themed.control, on && themed.selected]}
                       >
-                        <Text style={[styles.chipText, themed.text, on && themed.selectedText]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.82}>
+                        <Ionicons
+                          name={getCategoryIconName(category)}
+                          size={14}
+                          color={on ? themeColors.primary : themeColors.textSecondary}
+                          style={styles.categoryChipIcon}
+                        />
+                        <Text
+                          style={[styles.categoryChipText, themed.text, on && themed.selectedText]}
+                          numberOfLines={2}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.82}
+                        >
                           {category.name}
                         </Text>
                       </Pressable>
@@ -929,17 +677,6 @@ function PaymentFormModal({
               </View>
             ) : null}
 
-            <Pressable
-              onPress={() => {
-                tapHaptic();
-                onChange((current) => (current ? { ...current, active: !current.active } : current));
-              }}
-              style={[styles.activeRow, themed.controlStrong]}
-            >
-              <Text style={[styles.fieldEyebrow, themed.textSecondary]}>Actif</Text>
-              <Ionicons name={form.active ? 'toggle' : 'toggle-outline'} size={34} color={form.active ? themeGhost.mint : themeColors.textMuted} />
-            </Pressable>
-
             <PrimarySaveButton
               label={saving ? 'Enregistrement...' : 'Enregistrer'}
               onPress={onSave}
@@ -948,7 +685,7 @@ function PaymentFormModal({
             {onDelete ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={form.kind === 'income' ? 'Supprimer le revenu récurrent' : 'Supprimer le paiement récurrent'}
+                accessibilityLabel="Supprimer"
                 onPress={onDelete}
                 style={({ pressed }) => [
                   styles.deleteFormButton,
@@ -957,9 +694,7 @@ function PaymentFormModal({
                 ]}
               >
                 <Ionicons name="trash-outline" size={16} color={themeColors.danger} />
-                <Text style={[styles.deleteFormText, { color: themeColors.danger }]}>
-                  {form.kind === 'income' ? 'Supprimer le revenu récurrent' : 'Supprimer le paiement récurrent'}
-                </Text>
+                <Text style={[styles.deleteFormText, { color: themeColors.danger }]}>Supprimer</Text>
               </Pressable>
             ) : null}
             </ScrollView>
@@ -1008,7 +743,7 @@ function RecurringLogoOption({
       style={[
         styles.logoOption,
         {
-          backgroundColor: selected ? colors.blueMuted : colors.surfaceSolid,
+          backgroundColor: selected ? colors.scopeActive : colors.surfaceSolid,
           borderColor: selected ? colors.primary : colors.border,
         },
       ]}
@@ -1049,14 +784,24 @@ function annualMultiplier(frequency: RecurringPaymentFrequency) {
   return 12;
 }
 
-function getRecurringImpactSummary(form: PaymentForm, categoryBudgets: CategoryBudget[]) {
+export function getRecurringImpactSummary(form: PaymentForm, categoryBudgets: CategoryBudget[]) {
+  if (!form.active) {
+    return {
+      primary: 'Inactif',
+      secondary:
+        form.kind === 'income'
+          ? "Ce revenu récurrent n'est pas compté dans les projections."
+          : "Ce paiement n'est pas compté dans les dépenses du mois.",
+    };
+  }
+
   const amount = Number.isFinite(parseAmount(form.amount)) ? parseAmount(form.amount) : 0;
   const annualAmount = amount * annualMultiplier(form.frequency);
   const monthlyAmount = annualAmount / 12;
 
   if (form.kind === 'income') {
     return {
-      primary: `+${formatMoney(annualAmount)} $ / an`,
+      primary: `${formatSignedDisplayMoney(annualAmount, { leadingPlusWhenPositive: true })} / an`,
       secondary: 'Revenu total projeté après 1 an.',
     };
   }
@@ -1064,15 +809,15 @@ function getRecurringImpactSummary(form: PaymentForm, categoryBudgets: CategoryB
   const categoryBudget = categoryBudgets.find((budget) => budget.categoryId === form.categoryId);
   if (!categoryBudget?.limitAmount) {
     return {
-      primary: `${formatMoney(annualAmount)} $ / an`,
+      primary: `${formatDisplayMoneyAbsolute(annualAmount)} / an`,
       secondary: 'Coût annuel estimé. Aucune limite liée.',
     };
   }
 
   const percent = categoryBudget.limitAmount > 0 ? (monthlyAmount / categoryBudget.limitAmount) * 100 : 0;
   return {
-    primary: `${formatMoney(annualAmount)} $ / an`,
-    secondary: `${formatMoney(monthlyAmount)} $ / mois, soit ${formatPercent(percent)} de ${categoryBudget.categoryName}.`,
+    primary: `${formatDisplayMoneyAbsolute(annualAmount)} / an`,
+    secondary: `${formatDisplayMoneyAbsolute(monthlyAmount)} / mois, soit ${formatPercent(percent)} de ${categoryBudget.categoryName}.`,
   };
 }
 
@@ -1086,7 +831,7 @@ function stripDiacritics(input: string): string {
 
 function normalizeSearch(input: string): string {
   return stripDiacritics(input.trim().toLowerCase())
-    .replace(/[’']/g, '')
+    .replace(/['']/g, '')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -1330,10 +1075,6 @@ function parseAmount(value: string) {
   return Number.parseFloat(sanitizeAmount(value));
 }
 
-function formatMoney(value: number) {
-  return value.toFixed(value % 1 === 0 ? 0 : 2);
-}
-
 function formatPercent(value: number) {
   if (!Number.isFinite(value)) return '0 %';
   return `${value.toFixed(value >= 10 ? 0 : 1)} %`;
@@ -1355,7 +1096,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingBottom: PAGE_TITLE_CONTENT_GAP,
+    paddingBottom: spacing.sm,
   },
   iconBtn: {
     width: 40,
@@ -1429,10 +1170,9 @@ const styles = StyleSheet.create({
   meta: { minWidth: 0, color: colors.textMuted, fontSize: typography.micro, fontWeight: '700', lineHeight: 16 },
   emptyCard: {
     backgroundColor: colors.surfaceSolid,
-    borderRadius: radius.xxl,
+    borderRadius: radius.card,
     padding: spacing.lg,
     gap: spacing.sm,
-    ...ghostCardShadow,
   },
   emptyTitle: { color: colors.text, fontSize: typography.body, fontWeight: '800' },
   recurringFab: {
@@ -1452,16 +1192,16 @@ const styles = StyleSheet.create({
   sheet: {
     marginTop: 88,
     maxHeight: '92%',
-    borderTopLeftRadius: DETAIL_SHEET_TOP_RADIUS,
-    borderTopRightRadius: DETAIL_SHEET_TOP_RADIUS,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
   sheetScroller: { maxHeight: '100%' },
   sheetContent: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    gap: 14,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    gap: spacing.md,
   },
   handle: {
     alignSelf: 'center',
@@ -1478,15 +1218,14 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     flex: 1,
-    fontSize: 22,
-    fontWeight: '800',
+    ...interExtraBoldText,
+    fontSize: typography.title,
     letterSpacing: -0.4,
   },
   sheetClose: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.pill,
-    borderWidth: 1,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1496,30 +1235,25 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
   },
   amountText: {
-    fontWeight: '900',
+    ...interExtraBoldText,
     letterSpacing: -2,
     fontVariant: ['tabular-nums'],
   },
-  section: { gap: 8 },
-  fieldEyebrow: {
-    fontSize: 16,
-    fontWeight: '800',
-    lineHeight: 21,
-  },
+  section: { gap: spacing.sm },
   input: {
     minHeight: 50,
-    borderRadius: 13,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 18,
-    fontWeight: '700',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    ...interBoldText,
+    fontSize: typography.body,
   },
   logoSection: {
-    borderRadius: 14,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: 12,
-    gap: 12,
+    padding: spacing.md,
+    gap: spacing.md,
   },
   logoHeader: {
     minWidth: 0,
@@ -1540,7 +1274,11 @@ const styles = StyleSheet.create({
   },
   logoPreviewImage: { width: 32, height: 32 },
   logoCopy: { flex: 1, minWidth: 0, gap: 2 },
-  logoHint: { fontSize: typography.micro, fontWeight: '700', lineHeight: 15 },
+  logoHint: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    lineHeight: 15,
+  },
   logoEditButton: {
     width: 34,
     height: 34,
@@ -1559,19 +1297,19 @@ const styles = StyleSheet.create({
   logoPickerHint: {
     flexShrink: 1,
     maxWidth: '50%',
+    ...interExtraBoldText,
     fontSize: typography.micro,
-    fontWeight: '800',
     letterSpacing: 0.2,
   },
-  logoOptionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  logoOptionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   logoOption: {
     width: 54,
     minHeight: 54,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 13,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: 8,
+    padding: spacing.sm,
   },
   logoOptionIcon: {
     width: 34,
@@ -1585,67 +1323,70 @@ const styles = StyleSheet.create({
   },
   logoOptionImage: { width: 24, height: 24 },
   impactCard: {
-    borderRadius: 14,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: 14,
-    gap: 7,
-  },
-  impactHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
+    padding: spacing.md,
+    gap: spacing.sm,
   },
   impactEyebrow: {
     flex: 1,
     minWidth: 0,
-    fontSize: typography.micro,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  impactFrequency: {
-    flexShrink: 0,
-    fontSize: typography.micro,
-    fontWeight: '800',
   },
   impactValue: {
+    ...interExtraBoldText,
     fontSize: 24,
-    fontWeight: '900',
     letterSpacing: -0.5,
     fontVariant: ['tabular-nums'],
   },
   impactHint: {
+    ...interMediumText,
     fontSize: typography.meta,
-    fontWeight: '700',
     lineHeight: 17,
   },
   impactBudgetProgress: {
     marginTop: spacing.sm,
     alignSelf: 'stretch',
   },
-  wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
+    flex: 1,
     minWidth: 0,
-    flexShrink: 1,
     maxWidth: '100%',
-    borderRadius: 9,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 13,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
     paddingVertical: 10,
+    alignItems: 'center',
   },
   chipText: {
     maxWidth: '100%',
     flexShrink: 1,
-    fontSize: 16,
-    fontWeight: '800',
+    ...interBoldText,
+    fontSize: typography.caption,
     lineHeight: 20,
     textAlign: 'center',
+  },
+  categoryChip: {
+    maxWidth: '100%',
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  categoryChipIcon: {
+    marginRight: 5,
+  },
+  categoryChipText: {
+    ...interBoldText,
+    fontSize: typography.meta,
+    lineHeight: 16,
+    flexShrink: 1,
   },
   categoryMoreChip: {
     width: 44,
     minHeight: 42,
-    borderRadius: 9,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1664,20 +1405,19 @@ const styles = StyleSheet.create({
     minWidth: 94,
     maxWidth: '100%',
     minHeight: 66,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 6,
-    paddingVertical: 10,
+    paddingVertical: spacing.sm,
   },
   accountChipOn: { backgroundColor: ghost.text },
   accountText: {
     width: '100%',
     minWidth: 0,
     textAlign: 'center',
-    fontSize: 12,
-    fontWeight: '800',
+    ...interBoldText,
+    fontSize: typography.micro,
     lineHeight: 15,
     flexShrink: 1,
   },
@@ -1685,22 +1425,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: 13,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
     paddingVertical: 10,
   },
-  submit: {
-    alignItems: 'center',
-    borderRadius: 14,
-    paddingVertical: 17,
-    borderWidth: StyleSheet.hairlineWidth,
-    marginTop: 2,
-  },
-  submitText: { fontSize: 18, fontWeight: '800' },
   deleteFormButton: {
     minHeight: 48,
-    borderRadius: 14,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1708,7 +1440,10 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingVertical: 15,
   },
-  deleteFormText: { fontSize: typography.body, fontWeight: '900' },
+  deleteFormText: {
+    ...interExtraBoldText,
+    fontSize: typography.body,
+  },
 });
 
 export { PaymentFormModal as RecurringPaymentFormModal };

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Budget Tracker",
     "slug": "budget-tracker",
-    "version": "1.0.0",
+    "version": "1.0.1-BOOT",
     "orientation": "portrait",
     "scheme": "budgettracker",
     "userInterfaceStyle": "dark",

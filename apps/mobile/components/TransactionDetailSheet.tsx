@@ -10,10 +10,11 @@ import { SurfaceCard } from '@/components/SurfaceCard';
 import { TransactionAvatar } from '@/components/TransactionAvatar';
 import type { IconName } from '@/constants/categoryOptions';
 import { radius, spacing, typography, type AppColors } from '@/constants/theme';
-import { rowTitleTextProps, singleLineAmountProps } from '@/lib/textLayout';
+import { detailHeroAmount, rowTitleTextProps, rowValue, singleLineAmountProps } from '@/lib/textLayout';
 import { deleteTransactionById } from '@/lib/db';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import type { Transaction } from '@/types';
 
 type Props = {
@@ -149,7 +150,7 @@ export function TransactionDetailSheet({ transaction: tx, onClose, onDeleted }: 
 
       <Text style={[styles.amount, isIncome && styles.amountIncome]} {...singleLineAmountProps}>
         {isIncome ? '+' : '−'}
-        {tx.amount.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $
+        {formatDisplayMoneyAbsolute(tx.amount)}
       </Text>
 
       <View style={styles.detailGrid}>
@@ -200,7 +201,7 @@ export function TransactionDetailSheet({ transaction: tx, onClose, onDeleted }: 
                 {item.categoryName ? <Text style={styles.itemCategory} numberOfLines={2}>{item.categoryName}</Text> : null}
               </View>
               <Text style={styles.itemPrice}>
-                {item.price.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $
+                {formatDisplayMoneyAbsolute(item.price)}
               </Text>
             </View>
           ))}
@@ -312,10 +313,8 @@ function createStyles(colors: AppColors) {
       opacity: 0.72,
     },
     amount: {
+      ...detailHeroAmount,
       color: colors.text,
-      fontSize: 36,
-      fontWeight: '800',
-      textAlign: 'center',
       marginBottom: spacing.lg,
     },
     amountIncome: { color: colors.success },
@@ -342,7 +341,7 @@ function createStyles(colors: AppColors) {
     itemCopy: { flex: 1, minWidth: 0 },
     itemName: { color: colors.text, fontSize: typography.caption, fontWeight: '800' },
     itemCategory: { color: colors.textMuted, fontSize: typography.micro, marginTop: 2 },
-    itemPrice: { flexShrink: 0, color: colors.text, fontSize: typography.caption, fontWeight: '800' },
+    itemPrice: { ...rowValue, flexShrink: 0, color: colors.text },
     receiptCardShell: { marginBottom: spacing.md },
     receiptCardInner: { gap: spacing.sm },
     receiptHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },

@@ -16,17 +16,40 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AgendaView, type AgendaViewRef } from '@/components/AgendaView';
+import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
 import { MerchantLogo } from '@/components/MerchantLogo';
+import { DashboardCard } from '@/components/DashboardCard';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
+import {
+  createNewRecurringPaymentForm,
+  RecurringPaymentFormModal,
+  manualAccountOptions,
+  saveRecurringPaymentForm,
+  toAccountOptions,
+  type PaymentForm,
+} from '@/lib/recurringPaymentsForm';
 import { PageTransition } from '@/components/PageTransition';
 import { GlassContainer } from '@/components/GlassContainer';
 import { TransactionRow } from '@/components/TransactionRow';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
-import { colors, FLOATING_NAV_CONTENT_PADDING, PAGE_TITLE_CONTENT_GAP, radius, spacing, typography } from '@/constants/theme';
-import { getMerchantOverrides, getTransactions, sortTransactionsNewestFirst, upsertMerchantOverride } from '@/lib/db';
-import { dataEvents } from '@/lib/events';
+import {
+  colors,
+  FLOATING_NAV_CONTENT_PADDING,
+  PAGE_PADDING_HORIZONTAL,
+  PAGE_TITLE_CONTENT_GAP,
+  PAGE_TITLE_STYLE,
+  SECTION_TITLE_STYLE,
+  PORTFOLIO_SECTION_GAP,
+  radius,
+  spacing,
+  typography,
+} from '@/constants/theme';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { listDayTotal, rowLabel, rowTitleTextProps, singleLineAmountProps } from '@/lib/textLayout';
+import { getMerchantOverrides, getTransactions, sortTransactionsNewestFirst, upsertMerchantOverride, getCategories, getCategoryBudgets, getSimulatedAccounts } from '@/lib/db';
+import { dataEvents, uiEvents } from '@/lib/events';
 import { getMerchantLogoUrl, POPULAR_MERCHANT_LOGO_OPTIONS } from '@/lib/merchantLogo';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import {
@@ -38,9 +61,10 @@ import {
 } from '@/lib/uniformGroupStyles';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
-import type { MerchantOverride, Transaction } from '@/types';
+import type { Category, CategoryBudget, MerchantOverride, Transaction } from '@/types';
 
 type ViewTab = 'history' | 'agenda' | 'merchants';
+type HistoryTypeFilter = 'all' | 'expense' | 'income';
 
 type MerchantRow = {
   originalName: string;
@@ -66,11 +90,46 @@ function getRequestedView(view?: string): ViewTab | null {
   return null;
 }
 
+function getCurrentMonthKey() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+function isCurrentMonth(isoDate: string) {
+  return getLocalDayKey(isoDate).slice(0, 7) === getCurrentMonthKey();
+}
+
+function computeMonthStats(transactions: Transaction[]): MonthStats {
+  const monthTxs = transactions.filter((tx) => isCurrentMonth(tx.date));
+  let expenses = 0;
+  let income = 0;
+  for (const tx of monthTxs) {
+    if (tx.type === 'expense') expenses += tx.amount;
+    else if (tx.type === 'income') income += tx.amount;
+  }
+  return {
+    count: monthTxs.length,
+    expenses,
+    income,
+    net: income - expenses,
+  };
+}
+
+
+const HISTORY_FILTER_OPTIONS: { id: HistoryTypeFilter; label: string }[] = [
+  { id: 'all', label: 'Tous' },
+  { id: 'expense', label: 'Dépenses' },
+  { id: 'income', label: 'Revenus' },
+];
+
 export default function TransactionsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ view?: string }>();
   const insets = useSafeAreaInsets();
   const { colors } = useAppTheme();
+  const contentCanvas = colors.background;
   const historyListRef = useRef<FlatList<[string, Transaction[]]>>(null);
   const merchantsListRef = useRef<FlatList<MerchantRow>>(null);
   const agendaRef = useRef<AgendaViewRef>(null);
@@ -78,6 +137,7 @@ export default function TransactionsScreen() {
   const [items, setItems] = useState<Transaction[]>([]);
   const [merchantOverrides, setMerchantOverrides] = useState<MerchantOverride[]>([]);
   const [search, setSearch] = useState('');
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<HistoryTypeFilter>('all');
   const [refreshing, setRefreshing] = useState(false);
   const [activeView, setActiveView] = useState<ViewTab>(params.view === 'agenda' ? 'agenda' : params.view === 'merchants' ? 'merchants' : 'history');
   const [selected, setSelected] = useState<Transaction | null>(null);
@@ -87,6 +147,11 @@ export default function TransactionsScreen() {
   const [selectedMerchantLogoUrl, setSelectedMerchantLogoUrl] = useState<string | null>(null);
   const [showMerchantLogoPicker, setShowMerchantLogoPicker] = useState(false);
   const [showMerchantDeleteConfirm, setShowMerchantDeleteConfirm] = useState(false);
+  const [recurringForm, setRecurringForm] = useState<PaymentForm | null>(null);
+  const [recurringAccounts, setRecurringAccounts] = useState(manualAccountOptions());
+  const [recurringCategories, setRecurringCategories] = useState<Category[]>([]);
+  const [recurringCategoryBudgets, setRecurringCategoryBudgets] = useState<CategoryBudget[]>([]);
+  const [recurringSaving, setRecurringSaving] = useState(false);
   const requestedView = getRequestedView(params.view);
 
   const setCurrentView = useCallback(
@@ -121,12 +186,43 @@ export default function TransactionsScreen() {
 
   useEffect(() => dataEvents.subscribe(load), [load]);
 
+  const openNewRecurringPayment = useCallback(async () => {
+    tapHaptic();
+    const [categories, categoryBudgets, simulatedAccounts] = await Promise.all([
+      getCategories(),
+      getCategoryBudgets(),
+      getSimulatedAccounts(),
+    ]);
+    const accounts = toAccountOptions(simulatedAccounts);
+    const accountOptions = accounts.length ? accounts : manualAccountOptions();
+    setRecurringAccounts(accountOptions);
+    setRecurringCategories(categories);
+    setRecurringCategoryBudgets(categoryBudgets);
+    setRecurringForm(createNewRecurringPaymentForm(accountOptions, categories));
+  }, []);
+
+  useEffect(() => uiEvents.subscribeNewRecurringPayment(() => {
+    if (activeView !== 'agenda') return;
+    void openNewRecurringPayment();
+  }), [activeView, openNewRecurringPayment]);
+
+  const saveRecurringPayment = async () => {
+    if (!recurringForm) return;
+    setRecurringSaving(true);
+    const ok = await saveRecurringPaymentForm(recurringForm, recurringAccounts);
+    setRecurringSaving(false);
+    if (!ok) return;
+    setRecurringForm(null);
+    dataEvents.emit();
+    successHaptic();
+  };
+
   useRefreshOnFocus(load);
   useEffect(() => {
-    if (requestedView && requestedView !== activeView) {
+    if (requestedView) {
       setActiveView(requestedView);
     }
-  }, [activeView, requestedView]);
+  }, [requestedView]);
 
   useFocusEffect(
     useCallback(() => {
@@ -161,13 +257,14 @@ export default function TransactionsScreen() {
   const merchants = useMemo(() => {
     const map = new Map<string, { name: string; count: number; total: number }>();
     items.forEach((tx) => {
+      if (tx.type === 'transfer' || tx.type === 'income') return;
       const cur = map.get(tx.label) ?? {
         name: tx.label,
         count: 0,
         total: 0,
       };
       cur.count += 1;
-      cur.total += tx.type === 'expense' ? tx.amount : 0;
+      cur.total += tx.amount;
       map.set(tx.label, cur);
     });
     return [...map.values()]
@@ -241,9 +338,14 @@ export default function TransactionsScreen() {
     await load();
   };
 
+  const historyFilteredItems = useMemo(() => {
+    if (historyTypeFilter === 'all') return items;
+    return items.filter((tx) => tx.type === historyTypeFilter);
+  }, [historyTypeFilter, items]);
+
   const grouped = useMemo(() => {
     const g: Record<string, Transaction[]> = {};
-    items.forEach((tx) => {
+    historyFilteredItems.forEach((tx) => {
       const key = getLocalDayKey(tx.date);
       if (!g[key]) g[key] = [];
       g[key].push(tx);
@@ -251,18 +353,18 @@ export default function TransactionsScreen() {
     return Object.entries(g)
       .map(([day, txs]) => [day, sortTransactionsNewestFirst(txs)] as [string, Transaction[]])
       .sort(([a], [b]) => b.localeCompare(a));
-  }, [items]);
+  }, [historyFilteredItems]);
 
-  return (
-    <PageTransition>
-    <View style={styles.screen}>
-      <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
+  const historyHasActiveFilters = search.trim().length > 0 || historyTypeFilter !== 'all';
+
+  const pageHeader = (
+    <View style={{ paddingTop: insets.top + SCREEN_TOP_GUTTER }}>
+      <View style={styles.topBar}>
         <Text style={[styles.title, { color: colors.text }]}>Transactions</Text>
         <Pressable onPress={() => router.push('/scan')} hitSlop={12} style={styles.scanIcon}>
           <Ionicons name="scan-outline" size={22} color={colors.textMuted} />
         </Pressable>
       </View>
-
       <View style={styles.tabsWrap}>
         <SegmentedTabs
           tabs={[
@@ -273,119 +375,192 @@ export default function TransactionsScreen() {
           active={activeView}
           onChange={setCurrentView}
           showDivider={false}
+          trackBgColor="#161616"
+          activeBgColor="#2c2c2c"
+          activeLabelColor="#ffffff"
+          inactiveLabelColor="rgba(255,255,255,0.38)"
         />
       </View>
+    </View>
+  );
+
+  return (
+    <PageTransition>
+    <View style={[styles.screen, { backgroundColor: contentCanvas }]}>
+      {pageHeader}
 
       {activeView === 'history' ? (
-        <View style={styles.flex} collapsable={false}>
-          <View style={[styles.searchRow, { backgroundColor: colors.surfaceSolid, borderColor: colors.border }]}>
-            <Ionicons name="search-outline" size={18} color={colors.textMuted} />
-      <TextInput
-              style={[styles.search, { color: colors.text }]}
-              placeholder="Rechercher"
-        placeholderTextColor={colors.textMuted}
-        value={search}
-        onChangeText={setSearch}
-        onSubmitEditing={() => void load()}
-      />
-          </View>
-      <FlatList
+        <View style={[styles.flex, { backgroundColor: contentCanvas }]} collapsable={false}>
+          <FlatList
             ref={historyListRef}
-            style={styles.listViewport}
+            style={[styles.listViewport, { backgroundColor: contentCanvas }]}
             data={grouped}
             keyExtractor={([date]) => date}
             removeClippedSubviews
-        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING }]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={async () => {
-              setRefreshing(true);
-              await load();
-              setRefreshing(false);
-            }}
-            tintColor={colors.primary}
-          />
-        }
-            ListEmptyComponent={
-              <View style={styles.emptyWrap}>
-                <Text style={[styles.empty, { color: colors.textMuted }]}>Aucune transaction</Text>
-              </View>
-            }
-            renderItem={({ item: [date, txs] }) => (
-              <View style={styles.group}>
-                <Text style={[styles.groupLabel, { color: colors.textMuted }]}>
-                  {new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
-                </Text>
-                <View style={styles.groupTransactions}>
-                  {txs.map((tx) => (
-                    <TransactionRow
-                      key={tx.id}
-                      transaction={tx}
-                      onPress={() => setSelected(tx)}
-                    />
-                  ))}
+            ListHeaderComponent={
+              <View>
+                <View style={[styles.searchRow, { backgroundColor: colors.cardBackground }]}>
+                  <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+                  <TextInput
+                    style={[styles.search, { color: colors.text }]}
+                    placeholder="Rechercher"
+                    placeholderTextColor={colors.textMuted}
+                    value={search}
+                    onChangeText={setSearch}
+                    onSubmitEditing={() => void load()}
+                  />
+                </View>
+                <View style={styles.historyFilterWrap}>
+                  <SegmentedTabs
+                    tabs={HISTORY_FILTER_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
+                    active={historyTypeFilter}
+                    onChange={(id) => {
+                      tapHaptic();
+                      setHistoryTypeFilter(id);
+                    }}
+                    showDivider={false}
+                    trackBgColor="transparent"
+                    activeBgColor="rgba(255,255,255,0.07)"
+                    activeLabelColor="rgba(255,255,255,0.85)"
+                    inactiveLabelColor="rgba(255,255,255,0.28)"
+                  />
                 </View>
               </View>
-            )}
+            }
+            contentContainerStyle={[
+              styles.list,
+              { backgroundColor: contentCanvas, paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING },
+            ]}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={async () => {
+                  setRefreshing(true);
+                  await load();
+                  setRefreshing(false);
+                }}
+                tintColor={colors.primary}
+              />
+            }
+            ListEmptyComponent={
+              <DashboardCard padding={spacing.lg} innerStyle={styles.historyEmptyInner}>
+                <View style={[styles.historyEmptyIcon, { backgroundColor: colors.surfaceElevated }]}>
+                  <Ionicons name="receipt-outline" size={22} color={colors.textMuted} />
+                </View>
+                <Text style={[styles.historyEmptyTitle, { color: colors.text }]}>
+                  {historyHasActiveFilters ? 'Aucun résultat' : 'Aucune transaction'}
+                </Text>
+                <Text style={[styles.historyEmptyHint, { color: colors.textMuted }]}>
+                  {historyHasActiveFilters
+                    ? 'Essaie un autre filtre ou une autre recherche.'
+                    : 'Scanne un reçu pour ajouter ta première transaction.'}
+                </Text>
+                {!historyHasActiveFilters ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => {
+                      tapHaptic();
+                      router.push('/scan');
+                    }}
+                    style={({ pressed }) => [
+                      styles.historyEmptyCta,
+                      { backgroundColor: colors.text, borderColor: colors.text },
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Ionicons name="scan-outline" size={16} color={colors.background} />
+                    <Text style={[styles.historyEmptyCtaText, { color: colors.background }]}>Scanner un reçu</Text>
+                  </Pressable>
+                ) : null}
+              </DashboardCard>
+            }
+            renderItem={({ item: [date, txs] }) => {
+              return (
+                <View style={styles.group}>
+                  <View style={styles.groupHeaderRow}>
+                    <Text style={[styles.groupLabel, { color: colors.textMuted }]}>
+                      {new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
+                    </Text>
+                  </View>
+                  <View style={styles.groupTransactions}>
+                    {txs.map((tx) => (
+                      <TransactionRow
+                        key={tx.id}
+                        transaction={tx}
+                        onPress={() => setSelected(tx)}
+                      />
+                    ))}
+                  </View>
+                </View>
+              );
+            }}
           />
         </View>
       ) : null}
 
       {activeView === 'agenda' ? (
-        <View style={styles.agendaWrap}>
+        <View style={[styles.agendaWrap, { backgroundColor: contentCanvas }]}>
           <AgendaView ref={agendaRef} />
         </View>
       ) : null}
 
       {activeView === 'merchants' ? (
-        <View style={styles.flex} collapsable={false}>
-          <View style={styles.merchantToolbar}>
-            <Text style={[styles.merchantToolbarHint, { color: colors.textMuted }]} numberOfLines={2}>
-              {isEditingMerchants ? 'Touchez un marchand pour le modifier ou le retirer.' : `${merchants.length} marchand${merchants.length > 1 ? 's' : ''}`}
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={isEditingMerchants ? "Terminer l'édition des marchands" : 'Modifier les marchands'}
-              style={({ pressed }) => [
-                styles.merchantEditModeButton,
-                {
-                  backgroundColor: isEditingMerchants ? colors.text : colors.surfaceSolid,
-                  borderColor: isEditingMerchants ? colors.text : colors.borderStrong,
-                },
-                pressed && styles.pressed,
-              ]}
-              onPress={() => {
-                tapHaptic();
-                setIsEditingMerchants((editing) => !editing);
-              }}
-            >
-              <Ionicons
-                name={isEditingMerchants ? 'checkmark-outline' : 'pencil-outline'}
-                size={14}
-                color={isEditingMerchants ? colors.background : colors.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.merchantEditModeText,
-                  { color: isEditingMerchants ? colors.background : colors.textSecondary },
-                ]}
-                numberOfLines={1}
-              >
-                {isEditingMerchants ? 'Terminer' : 'Modifier'}
-              </Text>
-            </Pressable>
-          </View>
+        <View style={[styles.flex, { backgroundColor: contentCanvas }]} collapsable={false}>
           <FlatList
             ref={merchantsListRef}
-            style={styles.listViewport}
+            style={[styles.listViewport, { backgroundColor: contentCanvas }]}
             data={merchants}
             keyExtractor={(m) => m.originalName}
             removeClippedSubviews
-            contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING }]}
-            ItemSeparatorComponent={() => <View style={styles.merchantListSeparator} />}
+            ListHeaderComponent={
+              <View>
+                <View style={styles.merchantToolbar}>
+                  <Text style={[styles.merchantToolbarHint, { color: colors.textMuted }]} numberOfLines={2}>
+                    {isEditingMerchants ? 'Touchez un marchand pour le modifier ou le retirer.' : `${merchants.length} marchand${merchants.length > 1 ? 's' : ''}`}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={isEditingMerchants ? "Terminer l'édition des marchands" : 'Modifier les marchands'}
+                    style={({ pressed }) => [
+                      styles.merchantEditModeButton,
+                      {
+                        backgroundColor: isEditingMerchants ? colors.text : colors.surfaceSolid,
+                        borderColor: isEditingMerchants ? colors.text : colors.borderStrong,
+                      },
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() => {
+                      tapHaptic();
+                      setIsEditingMerchants((editing) => !editing);
+                    }}
+                  >
+                    <Ionicons
+                      name={isEditingMerchants ? 'checkmark-outline' : 'pencil-outline'}
+                      size={14}
+                      color={isEditingMerchants ? colors.background : colors.textSecondary}
+                    />
+                    <Text
+                      style={[
+                        styles.merchantEditModeText,
+                        { color: isEditingMerchants ? colors.background : colors.textSecondary },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {isEditingMerchants ? 'Terminer' : 'Modifier'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            }
+            contentContainerStyle={[
+              styles.list,
+              { backgroundColor: contentCanvas, paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING },
+            ]}
+            ItemSeparatorComponent={() => (
+              <View style={[styles.merchantListSeparator, { backgroundColor: contentCanvas }]} />
+            )}
             ListEmptyComponent={
-              <View style={styles.emptyWrap}>
+              <View style={[styles.emptyWrap, { backgroundColor: contentCanvas }]}>
                 <Text style={[styles.empty, { color: colors.textMuted }]}>Aucun marchand</Text>
               </View>
             }
@@ -410,7 +585,7 @@ export default function TransactionsScreen() {
                 }}
               >
                 <GlassContainer
-                  borderRadius={radius.lg}
+                  borderRadius={radius.card}
                   padding={spacing.md}
                   innerStyle={[styles.merchantRowInner, isEditingMerchants && styles.merchantRowEditing]}
                   outlineColors={isEditingMerchants ? editOutline : undefined}
@@ -419,7 +594,7 @@ export default function TransactionsScreen() {
                   <MerchantLogo name={item.name} logoUrl={item.logoUrl} />
                 </View>
                 <View style={styles.merchantLeft}>
-                  <Text style={[styles.merchantName, { color: colors.text }]} numberOfLines={2} ellipsizeMode="tail">
+                  <Text style={[styles.merchantName, { color: colors.text }]} {...rowTitleTextProps}>
                     {item.name}
                   </Text>
                   {isEditingMerchants ? (
@@ -623,7 +798,7 @@ export default function TransactionsScreen() {
                 style={StyleSheet.absoluteFill}
                 onPress={() => setShowMerchantDeleteConfirm(false)}
               />
-              <GlassContainer style={styles.confirmCard} padding={spacing.lg} borderRadius={28} innerStyle={styles.confirmCardInner}>
+              <GlassContainer style={styles.confirmCard} padding={spacing.lg} borderRadius={radius.card} innerStyle={styles.confirmCardInner}>
                 <View style={[styles.confirmIcon, { backgroundColor: colors.dangerMuted }]}>
                   <Ionicons name="trash-outline" size={20} color={colors.danger} />
                 </View>
@@ -661,78 +836,144 @@ export default function TransactionsScreen() {
         </View>
       </Modal>
       <TransactionDetailSheet transaction={selected} onClose={() => setSelected(null)} onDeleted={() => { void load(); }} />
+      <RecurringPaymentFormModal
+        visible={recurringForm != null}
+        form={recurringForm}
+        accounts={recurringAccounts}
+        categories={recurringCategories}
+        categoryBudgets={recurringCategoryBudgets}
+        saving={recurringSaving}
+        bottomInset={insets.bottom}
+        onClose={() => setRecurringForm(null)}
+        onChange={setRecurringForm}
+        onSave={() => void saveRecurringPayment()}
+      />
     </View>
     </PageTransition>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+  screen: { flex: 1 },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: PAGE_TITLE_CONTENT_GAP,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xl,
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
   title: {
-    color: colors.text,
-    fontSize: typography.screenTitle,
-    fontWeight: '600',
-    letterSpacing: -0.5,
+    ...PAGE_TITLE_STYLE,
+    flex: 1,
   },
   scanIcon: { padding: 4 },
   tabsWrap: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     marginBottom: PAGE_TITLE_CONTENT_GAP,
   },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xl,
     paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: colors.surfaceSolid,
+    paddingVertical: spacing.md,
+    minHeight: 44,
+    borderRadius: radius.card,
+    backgroundColor: colors.cardBackground,
   },
   search: { flex: 1, color: colors.text, fontSize: typography.body, padding: 0 },
-  list: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: FLOATING_NAV_CONTENT_PADDING,
-    backgroundColor: colors.background,
+  historyFilterWrap: {
+    marginBottom: spacing.xl,
   },
-  listViewport: { flex: 1, backgroundColor: colors.background },
-  emptyWrap: { backgroundColor: colors.background },
+  historyEmptyInner: {
+    alignItems: 'center',
+    gap: spacing.md,
+    marginTop: spacing.xxl,
+    paddingVertical: spacing.lg,
+  },
+  historyEmptyIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  historyEmptyTitle: {
+    fontSize: typography.body,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  historyEmptyHint: {
+    fontSize: typography.caption,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  historyEmptyCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
+    minHeight: UNIFORM_ACTION_BUTTON_MIN_HEIGHT,
+  },
+  historyEmptyCtaText: {
+    fontSize: typography.body,
+    fontWeight: '800',
+  },
+  list: {
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+    paddingTop: spacing.md,
+    paddingBottom: FLOATING_NAV_CONTENT_PADDING,
+  },
+  listViewport: { flex: 1 },
+  emptyWrap: {
+    paddingTop: spacing.xxl,
+    paddingBottom: spacing.xl,
+  },
   agendaWrap: {
     flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: FLOATING_NAV_CONTENT_PADDING,
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
   group: {
-    marginBottom: spacing.xl,
+    marginBottom: spacing.xxl,
+  },
+  groupHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    minHeight: UNIFORM_SECTION_HEADER_MIN_HEIGHT,
+    marginBottom: spacing.md,
   },
   groupLabel: {
     color: colors.textMuted,
     fontSize: typography.caption,
-    minHeight: UNIFORM_SECTION_HEADER_MIN_HEIGHT,
-    marginBottom: spacing.sm,
     textTransform: 'capitalize',
+    flex: 1,
+    minWidth: 0,
+  },
+  groupDayTotal: {
+    ...listDayTotal,
   },
   groupTransactions: {
-    gap: spacing.md,
+    gap: spacing.lg,
   },
-  empty: { color: colors.textMuted, textAlign: 'center', marginTop: 48, fontSize: typography.caption },
+  empty: { color: colors.textMuted, textAlign: 'center', fontSize: typography.caption },
   merchantToolbar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+    paddingTop: spacing.sm,
+    marginBottom: spacing.xl,
   },
   merchantToolbarHint: {
     flex: 1,
@@ -756,8 +997,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   merchantListSeparator: {
-    height: spacing.md,
-    backgroundColor: colors.background,
+    height: PORTFOLIO_SECTION_GAP,
   },
   merchantRowInner: {
     flexDirection: 'row',
@@ -783,10 +1023,8 @@ const styles = StyleSheet.create({
     paddingRight: spacing.sm,
   },
   merchantName: {
-    color: colors.text,
-    fontSize: typography.body,
-    fontWeight: '500',
-    flexShrink: 1,
+    ...rowLabel,
+    fontWeight: '800',
   },
   merchantMeta: {
     color: colors.textMuted,
@@ -907,7 +1145,7 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   logoOptionActive: {
-    backgroundColor: colors.cyanMuted,
+    backgroundColor: colors.scopeActive,
   },
   logoOptionIcon: {
     width: 34,
@@ -967,11 +1205,6 @@ const styles = StyleSheet.create({
   },
   confirmCard: {
     width: '100%',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.34,
-    shadowRadius: 24,
-    elevation: 12,
   },
   confirmCardInner: {
     alignItems: 'center',
@@ -985,10 +1218,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   confirmTitle: {
+    ...SECTION_TITLE_STYLE,
     color: colors.text,
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.2,
     textAlign: 'center',
   },
   confirmMessage: {
@@ -1031,5 +1262,5 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     fontWeight: '800',
   },
-  flex: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
 });

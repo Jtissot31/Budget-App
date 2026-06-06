@@ -1,0 +1,92 @@
+Budget Tracker — build verification
+Generated: 2026-05-29 (agent disk audit)
+Project root (Expo app): C:\Users\emime\projects\BudgetTracker\apps\mobile
+
+================================================================================
+GIT STATUS (run locally — agent shell returned no output this session)
+================================================================================
+Repo root: C:\Users\emime\projects\BudgetTracker  (branch: master per .git/HEAD)
+
+Run from repo root:
+  cd C:\Users\emime\projects\BudgetTracker
+  git status
+  git diff --stat HEAD
+  git diff --stat HEAD -- "apps/mobile/app/(tabs)/transactions.tsx" "apps/mobile/app/(tabs)/accounts.tsx" "apps/mobile/constants/theme.ts"
+
+================================================================================
+KEY FILE CONTENT ON DISK (verified by reading files)
+================================================================================
+
+constants/theme.ts
+  DARK_CANVAS = '#0A0A0A'
+  PAGE_TITLE_STYLE = { interExtraBoldText, fontSize: 32, letterSpacing: -0.8 }
+  PAGE_TITLE_CONTENT_GAP = spacing.xl (24)
+
+app/(tabs)/transactions.tsx — title style (first 3 lines of styles.title):
+  title: {
+    ...PAGE_TITLE_STYLE,
+    flex: 1,
+
+  Uses PAGE_TITLE_CONTENT_GAP on tabsWrap (marginBottom).
+  Historique tab HAS month summary ("Ce mois" + Dépenses/Revenus/Net pills),
+  filter chips (Tous/Dépenses/Revenus), empty state CTA, footer transaction count.
+  NO fontSize: 22 or typography.screenTitle in this file.
+
+app/(tabs)/accounts.tsx — Portefeuille title:
+  pageTitle: { ...interExtraBoldText, fontSize: 32, letterSpacing: -0.8 }
+  Renders: <Text ...>Portefeuille</Text>
+
+app/_layout.tsx — Expo root layout (fonts, ThemeProvider, Stack with (tabs)).
+app.json — name: "Budget Tracker", slug: "budget-tracker", main via package.json: expo-router/entry
+
+package.json — name: "budget-tracker-mobile", scripts.start: "expo start"
+
+================================================================================
+LAST MODIFIED DATES
+================================================================================
+Agent could not read filesystem timestamps (shell unavailable). Run locally:
+
+  Get-Item "C:\Users\emime\projects\BudgetTracker\apps\mobile\app\(tabs)\transactions.tsx","C:\Users\emime\projects\BudgetTracker\apps\mobile\app\(tabs)\accounts.tsx","C:\Users\emime\projects\BudgetTracker\apps\mobile\constants\theme.ts","C:\Users\emime\projects\BudgetTracker\apps\mobile\app\_layout.tsx","C:\Users\emime\projects\BudgetTracker\apps\mobile\app.json" | Select-Object Name, LastWriteTime, Length
+
+================================================================================
+AGENT FINDING: SOURCE IS CORRECT — LIKELY RUN/CACHE ISSUE
+================================================================================
+All requested UI changes ARE already saved on disk. No code edits were needed this run.
+
+If you see NO changes in the app, the usual causes are:
+
+1. WRONG DIRECTORY — Expo must run from apps/mobile, NOT repo root or another clone.
+2. STALE METRO CACHE — bundler serving old JS bundle.
+3. WRONG TAB — Historique enhancements only show on Transactions > "Historique"
+   (not Agenda or Marchands). Portefeuille title is on the Accounts tab.
+4. WRONG PROJECT — only one transactions.tsx found under C:\Users\emime\projects.
+
+================================================================================
+CORRECT STEPS TO RUN (copy/paste in PowerShell)
+================================================================================
+
+  cd C:\Users\emime\projects\BudgetTracker\apps\mobile
+  npm install
+  npx expo start --clear
+
+Then:
+  - Press "r" in the Expo terminal to reload, OR shake device → Reload
+  - Confirm Expo Go shows app name "Budget Tracker" (not another project)
+  - Open Transactions tab → select "Historique" sub-tab
+  - Open Accounts tab → title should read "Portefeuille" at 32px
+
+To fully reset cache if still stale:
+
+  cd C:\Users\emime\projects\BudgetTracker\apps\mobile
+  Remove-Item -Recurse -Force .expo -ErrorAction SilentlyContinue
+  npx expo start --clear
+
+================================================================================
+WHAT TO LOOK FOR (sanity check)
+================================================================================
+  Transactions screen: large "Transactions" title (32px, not 22px)
+  Historique: glass card "Ce mois" with three stat pills above the list
+  Portefeuille (Accounts): large "Portefeuille" title matching Transactions size
+  Background: charcoal #0A0A0A (not blue-tinted black)
+
+No dev marker added — root cause is run path/cache, not missing source edits.

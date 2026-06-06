@@ -12,11 +12,17 @@ import {
   PAGE_PADDING_HORIZONTAL,
   portfolioDark,
   portfolioLight,
+  chartTokens,
   radius,
   spacing,
-  typography,
 } from '@/constants/theme';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { chartMetricAmount } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
+
+const ASSETS_PILL_COLOR = chartTokens.line;
+const DEBTS_PILL_COLOR = chartTokens.negative;
+const PILL_BORDER_RADIUS = 24;
 
 export type NetWorthTrendPoint = {
   label: string;
@@ -57,6 +63,8 @@ function sliceNetWorthPointsForPeriod(points: NetWorthTrendPoint[], period: NetW
   return points.slice(points.length - count);
 }
 
+const CHART_CURVE_TENSION = 14;
+
 function buildSmoothLinePath(points: Array<{ x: number; y: number }>) {
   if (points.length === 0) return '';
   if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
@@ -70,10 +78,10 @@ function buildSmoothLinePath(points: Array<{ x: number; y: number }>) {
     const current = points[index];
     const next = points[index + 1];
     const after = points[Math.min(index + 2, points.length - 1)];
-    const control1X = current.x + (next.x - previous.x) / 6;
-    const control1Y = current.y + (next.y - previous.y) / 6;
-    const control2X = next.x - (after.x - current.x) / 6;
-    const control2Y = next.y - (after.y - current.y) / 6;
+    const control1X = current.x + (next.x - previous.x) / CHART_CURVE_TENSION;
+    const control1Y = current.y + (next.y - previous.y) / CHART_CURVE_TENSION;
+    const control2X = next.x - (after.x - current.x) / CHART_CURVE_TENSION;
+    const control2Y = next.y - (after.y - current.y) / CHART_CURVE_TENSION;
     path += ` C ${control1X} ${control1Y} ${control2X} ${control2Y} ${next.x} ${next.y}`;
   }
   return path;
@@ -137,7 +145,48 @@ function PeriodSelector({
   );
 }
 
-export function PortfolioChartCard({ points }: { points: NetWorthTrendPoint[] }) {
+function formatScopePillAmount(amount: number, mode: 'asset' | 'debt') {
+  const abs = Math.abs(amount);
+  if (mode === 'debt') {
+    return abs === 0 ? formatDisplayMoneyAbsolute(0) : `−${formatDisplayMoneyAbsolute(abs)}`;
+  }
+  return formatDisplayMoneyAbsolute(abs);
+}
+
+function ScopeMetricPill({
+  label,
+  amount,
+  amountColor,
+  backgroundColor,
+  labelColor,
+  amountMode = 'asset',
+}: {
+  label: string;
+  amount: number;
+  amountColor: string;
+  backgroundColor: string;
+  labelColor: string;
+  amountMode?: 'asset' | 'debt';
+}) {
+  return (
+    <View style={[styles.metricPill, { backgroundColor }]}>
+      <Text style={[styles.metricPillLabel, { color: labelColor }]}>{label}</Text>
+      <Text style={[styles.metricPillAmount, { color: amountColor }]} numberOfLines={1}>
+        {formatScopePillAmount(amount, amountMode)}
+      </Text>
+    </View>
+  );
+}
+
+export function PortfolioChartCard({
+  points,
+  totalAssets,
+  totalDebts,
+}: {
+  points: NetWorthTrendPoint[];
+  totalAssets: number;
+  totalDebts: number;
+}) {
   const { colors, isLight } = useAppTheme();
   const [chartPeriod, setChartPeriod] = useState<NetWorthChartPeriod>('6M');
   const screenWidth = Dimensions.get('window').width;
@@ -163,12 +212,14 @@ export function PortfolioChartCard({ points }: { points: NetWorthTrendPoint[] })
   const gradientTop = isLight ? portfolioLight.chartCurve : portfolioDark.chartCurve;
   const gradientBottom = isLight ? 'rgba(14, 168, 94, 0)' : portfolioDark.chartFillBottom;
   const monthLabelColor = isLight ? colors.textMuted : portfolioDark.textTertiary;
+  const pillBackground = isLight ? portfolioLight.chartFill : portfolioDark.card;
+  const pillLabelColor = isLight ? colors.textMuted : portfolioDark.textMuted;
 
   return (
     <View style={styles.wrapper}>
       <GlassContainer
         style={{ width: chartCardWidth }}
-        borderRadius={radius.lg}
+        borderRadius={radius.card}
         padding={CHART_CARD_PADDING}
       >
         <PeriodSelector active={chartPeriod} onChange={setChartPeriod} />
@@ -232,6 +283,23 @@ export function PortfolioChartCard({ points }: { points: NetWorthTrendPoint[] })
             </Text>
           ))}
         </View>
+        <View style={styles.metricPillsRow}>
+          <ScopeMetricPill
+            label="Actifs"
+            amount={totalAssets}
+            amountColor={ASSETS_PILL_COLOR}
+            backgroundColor={pillBackground}
+            labelColor={pillLabelColor}
+          />
+          <ScopeMetricPill
+            label="Dettes"
+            amount={totalDebts}
+            amountColor={DEBTS_PILL_COLOR}
+            backgroundColor={pillBackground}
+            labelColor={pillLabelColor}
+            amountMode="debt"
+          />
+        </View>
       </GlassContainer>
     </View>
   );
@@ -289,5 +357,28 @@ const styles = StyleSheet.create({
   },
   monthLabelEnd: {
     textAlign: 'right',
+  },
+  metricPillsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+    marginTop: spacing.md,
+  },
+  metricPill: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: PILL_BORDER_RADIUS,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+  },
+  metricPillLabel: {
+    ...interBoldText,
+    fontSize: 11,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  metricPillAmount: {
+    ...chartMetricAmount,
+    marginTop: 4,
   },
 });

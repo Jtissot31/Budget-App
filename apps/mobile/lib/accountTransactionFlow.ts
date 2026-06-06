@@ -1,4 +1,5 @@
-import type { Transaction } from '@/types';
+import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
+import type { SimulatedAccount, Transaction } from '@/types';
 
 export type AccountMoneyFlow = {
   moneyIn: number;
@@ -8,6 +9,29 @@ export type AccountMoneyFlow = {
 export function parseAccountIdFromNote(note?: string): string | null {
   const line = note?.split('\n').find((part) => part.startsWith('compte:'));
   return line?.slice('compte:'.length).trim() || null;
+}
+
+export function resolveTransactionAccountLabel(
+  tx: Pick<Transaction, 'type' | 'note'>,
+  accounts: readonly SimulatedAccount[] = [],
+): string | null {
+  if (tx.type !== 'expense') return null;
+
+  const accountId = parseAccountIdFromNote(tx.note);
+  if (!accountId) return null;
+
+  const simulated =
+    accounts.find((account) => account.id === accountId) ??
+    accounts.find((account) => account.name.trim().toLowerCase() === accountId.toLowerCase());
+  if (simulated) {
+    const name = simulated.name.trim();
+    return simulated.last4 ? `${name} • ${simulated.last4}` : name;
+  }
+
+  const manual = MANUAL_ENTRY_ACCOUNTS.find((account) => account.id === accountId);
+  if (manual) return manual.label;
+
+  return accountId;
 }
 
 export function parseTransferAccountsFromNote(note?: string): { sourceId: string | null; destinationId: string | null } {

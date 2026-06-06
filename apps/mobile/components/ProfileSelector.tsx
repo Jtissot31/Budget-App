@@ -30,7 +30,7 @@ export function ProfileSelector({ selected, onChange }: Props) {
               style={[
                 styles.chip,
                 { borderColor: active ? colors.primary : colors.border },
-                active && { backgroundColor: colors.cyanMuted },
+                active && { backgroundColor: colors.scopeActive },
               ]}
             >
               <Text style={[styles.chipText, { color: active ? colors.primary : colors.textMuted }, active && styles.chipTextActive]}>
@@ -49,11 +49,13 @@ const styles = StyleSheet.create({
   heading: { fontSize: typography.caption, fontWeight: '700', letterSpacing: 0.5 },
   row: { gap: spacing.sm, paddingVertical: 2 },
   chip: {
+    minHeight: 44,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: 999,
     borderWidth: 1,
     backgroundColor: 'transparent',
+    justifyContent: 'center',
   },
   chipText: { fontSize: typography.caption, fontWeight: '700' },
   chipTextActive: { fontWeight: '800' },

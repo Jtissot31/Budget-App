@@ -2,8 +2,8 @@ import type { AppColors } from '@/constants/theme';
 import { darkColors, radius } from '@/constants/theme';
 import type { ViewStyle } from 'react-native';
 
-/** Charcoal icon well — same as dark theme surface (#101014). */
-export const USER_PICKED_ICON_WELL_BG_DARK = darkColors.surfaceSolid;
+/** Charcoal icon well — same as dark theme icon wells (#181818). */
+export const USER_PICKED_ICON_WELL_BG_DARK = darkColors.surfaceElevated;
 
 /** Light theme icon well background (user-picked glyphs). */
 export const USER_PICKED_ICON_WELL_BG_LIGHT = '#F2F3F4';

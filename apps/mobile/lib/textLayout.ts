@@ -1,4 +1,25 @@
-import { typography } from '@/constants/theme';
+import { typographyKit } from '@/constants/typographyKit';
+
+/**
+ * Numeric & list layout helpers — built on `typographyKit` (Portefeuille reference).
+ */
+export const portfolioNumericText = {
+  ...typographyKit.cardMetric,
+  fontSize: typographyKit.rowAmount.fontSize,
+  letterSpacing: typographyKit.rowAmount.letterSpacing,
+} as const;
+
+export const chartMetricAmount = typographyKit.cardMetric;
+
+export const dashboardPaymentAmount = typographyKit.paymentAmount;
+
+export const heroStatAmount = typographyKit.heroStat;
+
+export const detailHeroAmount = typographyKit.detailHero;
+
+export const percentStat = typographyKit.percent;
+
+export const netWorthHeroAmount = typographyKit.netWorthHero;
 
 /** Max width for right-column amounts in row layouts */
 export const ROW_VALUE_MAX_WIDTH = '40%' as const;
@@ -23,16 +44,26 @@ export const rowValueContainer = {
 /** Row title / merchant / category label typography */
 export const rowLabel = {
   ...flexText,
-  fontSize: typography.caption,
-  fontWeight: '700' as const,
-  lineHeight: typography.caption + 4,
+  ...typographyKit.rowTitle,
 } as const;
 
-/** Row amount typography */
+/** List row title — Historique, Portefeuille lists */
+export const listRowTitle = {
+  ...rowLabel,
+} as const;
+
+/**
+ * Standard list amount (14px ExtraBold tabular).
+ * Use with rowValueContainer + singleLineAmountProps on the Text.
+ */
 export const rowValue = {
-  fontSize: typography.caption,
-  fontWeight: '700' as const,
-  fontVariant: ['tabular-nums'] as const,
+  ...typographyKit.rowAmount,
+} as const;
+
+/** Day-group subtotal in transaction lists */
+export const listDayTotal = {
+  ...rowValue,
+  flexShrink: 0,
 } as const;
 
 /** Props for amounts that must stay on one line */

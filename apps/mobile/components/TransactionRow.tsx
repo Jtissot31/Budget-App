@@ -1,21 +1,35 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GlassContainer } from '@/components/GlassContainer';
 import { TransactionAvatar } from '@/components/TransactionAvatar';
-import type { Transaction } from '@/types';
-import { radius, spacing } from '@/constants/theme';
-import { rowLabel, rowTitleTextProps, rowValue, rowValueContainer, singleLineAmountProps } from '@/lib/textLayout';
+import type { SimulatedAccount, Transaction } from '@/types';
+import { interMediumText, radius, spacing, typography } from '@/constants/theme';
+import { listRowTitle, rowTitleTextProps, rowValue, rowValueContainer, singleLineAmountProps } from '@/lib/textLayout';
+import { useSimulatedAccounts } from '@/hooks/useSimulatedAccounts';
+import { resolveTransactionAccountLabel } from '@/lib/accountTransactionFlow';
 import { UNIFORM_ROW_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { useAppTheme } from '@/lib/themeContext';
 
-type Props = { transaction: Transaction; onPress?: () => void };
+type Props = {
+  transaction: Transaction;
+  accounts?: readonly SimulatedAccount[];
+  onPress?: () => void;
+};
 
-export function TransactionRow({ transaction: tx, onPress }: Props) {
+export function TransactionRow({ transaction: tx, accounts, onPress }: Props) {
   const { colors } = useAppTheme();
+  const storeAccounts = useSimulatedAccounts();
+  const resolvedAccounts = accounts && accounts.length > 0 ? accounts : storeAccounts;
   const isIncome = tx.type === 'income';
   const isTransfer = tx.type === 'transfer';
   const amountColor = isIncome ? colors.success : isTransfer ? colors.textMuted : colors.text;
   const hasReceipt = Boolean(tx.receiptUri || tx.receiptStatus);
+  const accountLabel = useMemo(
+    () => resolveTransactionAccountLabel(tx, resolvedAccounts),
+    [resolvedAccounts, tx],
+  );
 
   return (
     <Pressable android_ripple={null} onPress={onPress}>
@@ -36,11 +50,19 @@ export function TransactionRow({ transaction: tx, onPress }: Props) {
                 </View>
               ) : null}
             </View>
+            {accountLabel ? (
+              <View style={[styles.accountPill, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="card-outline" size={11} color={colors.textMuted} />
+                <Text style={[styles.accountPillText, { color: colors.textMuted }]} numberOfLines={1}>
+                  {accountLabel}
+                </Text>
+              </View>
+            ) : null}
           </View>
           <View style={styles.right}>
             <Text style={[styles.amount, { color: amountColor }]} {...singleLineAmountProps}>
               {isTransfer ? '' : isIncome ? '+' : '−'}
-              {tx.amount.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $
+              {formatDisplayMoneyAbsolute(tx.amount)}
             </Text>
           </View>
       </GlassContainer>
@@ -58,8 +80,24 @@ const styles = StyleSheet.create({
   body: { flex: 1, minWidth: 0 },
   labelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minWidth: 0 },
   label: {
-    ...rowLabel,
-    fontWeight: '800',
+    ...listRowTitle,
+  },
+  accountPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+    maxWidth: '100%',
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  accountPillText: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    flexShrink: 1,
   },
   receiptBadge: {
     width: 22,
@@ -76,5 +114,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minWidth: 88,
   },
-  amount: { ...rowValue, fontWeight: '700' },
+  amount: { ...rowValue },
 });

@@ -77,7 +77,7 @@ function ContentBlock({ content, isUser }: { content: MessageContent; isUser: bo
         <Text
           style={[
             styles.plainText,
-            { color: isUser ? (isLight ? '#FFFFFF' : '#0D1117') : colors.text },
+            { color: isUser ? (isLight ? '#FFFFFF' : '#111111') : colors.text },
             interRegularText,
           ]}
         >

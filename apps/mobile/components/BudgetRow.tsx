@@ -5,7 +5,7 @@ import { GlassContainer } from '@/components/GlassContainer';
 import { ProgressBar } from './ProgressBar';
 import { radius, spacing, typography } from '@/constants/theme';
 import { categoryBudgetBarColor, getCategoryBudgetUsage } from '@/lib/categoryBudgetUsage';
-import { rowLabel, rowTitleTextProps, rowValueContainer, singleLineAmountProps } from '@/lib/textLayout';
+import { rowLabel, rowTitleTextProps, rowValue, rowValueContainer, singleLineAmountProps } from '@/lib/textLayout';
 import { UNIFORM_ROW_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   icon: { fontSize: 18 },
   name: { ...rowLabel, fontWeight: '800' },
-  remaining: { ...rowValueContainer, fontSize: typography.caption, fontWeight: '700', textAlign: 'right' },
+  remaining: { ...rowValue, ...rowValueContainer, textAlign: 'right' },
   footer: { gap: 2 },
   meta: { fontSize: typography.micro },
 });

@@ -11,8 +11,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheet } from '@/components/BottomSheet';
+import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
+import { DashboardCard } from '@/components/DashboardCard';
+import { DashboardProgressBar } from '@/components/DashboardProgressBar';
+import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { PageTransition } from '@/components/PageTransition';
-import { GlassContainer } from '@/components/GlassContainer';
 import { NetWorthAmountRow } from '@/components/NetWorthAmountRow';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import { GoalSparkChart, buildGoalSparklineSeries } from '@/components/GoalSparkChart';
@@ -28,8 +31,8 @@ import {
   LINEAR_CHART_STROKE_MAIN,
 } from '@/constants/linearChart';
 import {
+  dashboardPalette,
   FLOATING_NAV_CONTENT_PADDING,
-  colors,
   interBoldText,
   interExtraBoldText,
   PAGE_PADDING_HORIZONTAL,
@@ -37,19 +40,23 @@ import {
   portfolioLight,
   PORTFOLIO_SECTION_GAP,
   PROGRESS_BAR_TRACK_HEIGHT,
+  SECTION_TITLE_STYLE,
   radius,
   spacing,
   typography,
 } from '@/constants/theme';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
-import { getCategoryBudgets, getDashboard, getRecurringPayments, getSavingsGoals } from '@/lib/db';
-import { dataEvents } from '@/lib/events';
 import {
-  COMPACT_GAIN_DOLLARS_THRESHOLD,
-  formatCompactMoneyMagnitude,
-} from '@/lib/formatCompactGainDollars';
+  deleteSavingsGoal,
+  getCategoryBudgets,
+  getDashboard,
+  getRecurringPayments,
+  getSavingsGoals,
+} from '@/lib/db';
+import { dataEvents } from '@/lib/events';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { savingsGoalIncrementalProgress } from '@/lib/savingsGoalProgress';
-import { rowTitleTextProps, singleLineAmountProps } from '@/lib/textLayout';
+import { portfolioNumericText, rowLabel, rowTitleTextProps, rowValue, singleLineAmountProps } from '@/lib/textLayout';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 import type { CategoryBudget, DashboardSummary, RecurringPayment, SavingsGoal } from '@/types';
@@ -57,13 +64,13 @@ import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 import {
   SavingsGoalFormModal,
   createGoalEditForm,
+  createNewGoalForm,
   saveSavingsGoalForm,
   type GoalForm,
-} from '../savings-goals';
+} from '@/lib/savingsGoalsForm';
 
 const LIGHT_ACCENT = portfolioLight.chartCurve;
 const DARK_ACCENT = portfolioDark.chartCurve;
-const LIGHT_PORTFOLIO_TEXT = portfolioLight.text;
 const DELTA_MINT = portfolioDark.chartCurve;
 const LIGHT_DELTA_MINT = portfolioLight.chartCurve;
 const DELTA_MINT_BG = portfolioLight.deltaBg;
@@ -80,8 +87,8 @@ const OVERVIEW_PAD_X = 12;
 const OVERVIEW_PAD_Y = 12;
 const GOAL_ICON_WELL_SIZE = 40;
 const GOAL_ICON_SIZE = 22;
-const LIGHT_GOAL_LINE_COLORS = ['#00A854', '#2563EB', '#D97706', '#7C3AED', '#CF222E', '#0891B2'];
-const DARK_GOAL_LINE_COLORS = ['#00E676', '#60A5FA', '#FBBF24', '#C084FC', '#F85149', '#22D3EE'];
+const LIGHT_GOAL_LINE_COLORS = ['#00A854', '#D97706', '#7C3AED', '#CF222E', '#EA580C', '#F97316'];
+const DARK_GOAL_LINE_COLORS = [dashboardPalette.green, '#FBBF24', '#C084FC', dashboardPalette.red, '#E6A000', '#F97316'];
 
 type GoalProjection = {
   progress: number;
@@ -97,14 +104,7 @@ type GoalProjection = {
 };
 
 function formatMoney(value: number) {
-  const abs = Math.abs(value);
-  if (abs >= COMPACT_GAIN_DOLLARS_THRESHOLD) {
-    return formatCompactMoneyMagnitude(abs);
-  }
-  return `${abs.toLocaleString('fr-CA', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })} $`;
+  return formatDisplayMoneyAbsolute(value);
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -172,31 +172,27 @@ function projectedCompletionLabel(goal: SavingsGoal): string | null {
 }
 
 function GoalsHeaderRow({ onAdd, onManage }: { onAdd: () => void; onManage: () => void }) {
-  const { isLight } = useAppTheme();
-  const titleColor = isLight ? LIGHT_PORTFOLIO_TEXT : portfolioDark.text;
-  const iconBg = isLight ? portfolioLight.iconButton : portfolioDark.iconButton;
-  const iconBorder = isLight ? portfolioLight.border : portfolioDark.border;
-  const iconColor = isLight ? LIGHT_PORTFOLIO_TEXT : portfolioDark.text;
+  const { colors: themeColors } = useAppTheme();
 
   return (
     <View style={styles.goalsHeaderRow}>
-      <Text style={[styles.pageTitle, styles.pageTitleInHeader, { color: titleColor }]}>Objectifs</Text>
+      <Text style={[styles.pageTitle, styles.pageTitleInHeader, { color: themeColors.text }]}>Objectifs</Text>
       <View style={styles.goalsHeaderActions}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Gérer les objectifs"
           onPress={onManage}
-          style={[styles.goalsHeaderIconButton, { backgroundColor: iconBg, borderColor: iconBorder }]}
+          style={[styles.goalsHeaderIconButton, { backgroundColor: themeColors.surfaceElevated }]}
         >
-          <Ionicons name="list-outline" size={20} color={iconColor} />
+          <Ionicons name="list-outline" size={20} color={themeColors.text} />
         </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Ajouter un objectif"
           onPress={onAdd}
-          style={[styles.goalsHeaderIconButton, { backgroundColor: iconBg, borderColor: iconBorder }]}
+          style={[styles.goalsHeaderIconButton, { backgroundColor: themeColors.surfaceElevated }]}
         >
-          <Ionicons name="add-outline" size={20} color={iconColor} />
+          <Ionicons name="add-outline" size={20} color={themeColors.text} />
         </Pressable>
       </View>
     </View>
@@ -228,8 +224,9 @@ function GoalsProgressBadge({ progress, targetAmount }: { progress: number; targ
 export default function GoalsHubScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { colors: themeColors, ghost, ghostCardShadow: themeShadow, isLight } = useAppTheme();
+  const { colors: themeColors, ghost, isLight } = useAppTheme();
   const scrollRef = useRef<ScrollView>(null);
+  const goalsListYRef = useRef(0);
   const skipScrollOnceRef = useRef(false);
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
@@ -240,6 +237,7 @@ export default function GoalsHubScreen() {
   const [editForm, setEditForm] = useState<GoalForm | null>(null);
   const [iconPickerExpanded, setIconPickerExpanded] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
 
   const load = useCallback(async () => {
     const [nextGoals, nextDashboard, nextCategoryBudgets, nextRecurringPayments] = await Promise.all([
@@ -279,27 +277,21 @@ export default function GoalsHubScreen() {
   const headerProgress = totals.target > 0 ? totals.current / totals.target : 0;
   const accent = isLight ? LIGHT_ACCENT : DARK_ACCENT;
   const gridTone = isLight ? 'rgba(15,23,42,0.2)' : 'rgba(255,255,255,0.14)';
-  const heroEyebrowColor = isLight ? themeColors.textMuted : portfolioDark.textTertiary;
-  const sectionCardSurface = isLight ? portfolioLight.card : portfolioDark.card;
-  const textColor = isLight ? LIGHT_PORTFOLIO_TEXT : portfolioDark.text;
-  const mutedTextColor = isLight ? themeColors.textMuted : portfolioDark.textMuted;
+  const textColor = themeColors.text;
+  const mutedTextColor = isLight ? themeColors.textMuted : '#909090';
+  const handleOpenNewGoal = useCallback(() => {
+    skipScrollOnceRef.current = true;
+    tapHaptic();
+    setIconPickerExpanded(false);
+    setEditForm(createNewGoalForm());
+  }, []);
 
-  const openSavingsGoals = useCallback(
-    (params?: { newGoal?: boolean; goalId?: string }) => {
-      skipScrollOnceRef.current = true;
-      tapHaptic();
-      if (params?.newGoal) {
-        router.push({ pathname: '/savings-goals', params: { new: '1' } });
-        return;
-      }
-      if (params?.goalId) {
-        router.push({ pathname: '/savings-goals', params: { goalId: params.goalId } });
-        return;
-      }
-      router.push('/savings-goals');
-    },
-    [router],
-  );
+  const handleManageGoals = useCallback(() => {
+    tapHaptic();
+    if (goals.length > 0) {
+      scrollRef.current?.scrollTo({ y: goalsListYRef.current, animated: true });
+    }
+  }, [goals.length]);
 
   const handleOpenDetail = useCallback((goalId: string) => {
     tapHaptic();
@@ -338,6 +330,20 @@ export default function GoalsHubScreen() {
     }
   }, [editForm, load]);
 
+  const handleDeleteGoal = useCallback(() => {
+    tapHaptic();
+    setConfirmDeleteVisible(true);
+  }, []);
+
+  const handleConfirmDeleteGoal = useCallback(async () => {
+    if (!selectedGoalId) return;
+    setConfirmDeleteVisible(false);
+    await deleteSavingsGoal(selectedGoalId);
+    setSelectedGoalId(null);
+    await load();
+    successHaptic();
+  }, [load, selectedGoalId]);
+
   const selectedGoal = useMemo(
     () => goals.find((g) => g.id === selectedGoalId) ?? null,
     [goals, selectedGoalId],
@@ -356,10 +362,10 @@ export default function GoalsHubScreen() {
 
   return (
     <PageTransition>
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: themeColors.background }]}>
       <ScrollView
         ref={scrollRef}
-        style={styles.screen}
+        style={[styles.screen, { backgroundColor: themeColors.background }]}
         contentContainerStyle={[
           styles.content,
           {
@@ -383,10 +389,10 @@ export default function GoalsHubScreen() {
       >
         <View style={styles.goalsHeroBlock}>
           <GoalsHeaderRow
-            onAdd={() => openSavingsGoals({ newGoal: true })}
-            onManage={() => openSavingsGoals()}
+            onAdd={handleOpenNewGoal}
+            onManage={handleManageGoals}
           />
-          <Text style={[styles.heroEyebrow, { color: heroEyebrowColor }]}>ÉPARGNE CUMULÉE</Text>
+          <DashboardSectionLabel style={styles.heroEyebrow}>ÉPARGNE CUMULÉE</DashboardSectionLabel>
           <NetWorthAmountRow totalBalance={totals.current} />
           {totals.target > 0 ? (
             <GoalsProgressBadge progress={headerProgress} targetAmount={totals.target} />
@@ -395,20 +401,14 @@ export default function GoalsHubScreen() {
 
         {goals.length === 0 ? (
               <View style={styles.goalsEmptySection}>
-                <GlassContainer
-                  style={themeShadow}
-                  innerStyle={styles.emptyCardInner}
-                  padding={spacing.lg}
-                  borderRadius={radius.lg}
-                  innerBackgroundColor={sectionCardSurface}
-                >
+                <DashboardCard innerStyle={styles.emptyCardInner} padding={spacing.lg}>
                 <Ionicons name="flag-outline" size={32} color={mutedTextColor} />
                 <Text style={[styles.emptyTitle, { color: textColor }]}>Aucun objectif</Text>
                 <Text style={[styles.emptyHint, { color: mutedTextColor }]}>
                   Crée un objectif pour voir graphiques et projections ici.
                 </Text>
                 <Pressable
-                  onPress={() => openSavingsGoals({ newGoal: true })}
+                  onPress={handleOpenNewGoal}
                   style={({ pressed }) => [
                     styles.emptyCta,
                     { backgroundColor: themeColors.text },
@@ -417,7 +417,7 @@ export default function GoalsHubScreen() {
                 >
                   <Text style={[styles.emptyCtaText, { color: ghost.void }]}>Ajouter un objectif</Text>
                 </Pressable>
-                </GlassContainer>
+                </DashboardCard>
               </View>
             ) : (
               <View style={styles.goalCardList}>
@@ -427,25 +427,20 @@ export default function GoalsHubScreen() {
                   gridColor={gridTone}
                   labelColor={mutedTextColor}
                   titleColor={textColor}
-                  cardSurface={sectionCardSurface}
                 />
 
-                <View style={styles.goalsListSection}>
+                <View
+                  style={styles.goalsListSection}
+                  onLayout={(event) => {
+                    goalsListYRef.current = event.nativeEvent.layout.y;
+                  }}
+                >
                   <View style={styles.goalsListHeader}>
                     <View style={styles.goalsListTitleGroup}>
-                      <Text style={[styles.goalsListEyebrow, { color: mutedTextColor }]}>Progression</Text>
+                      <DashboardSectionLabel style={styles.goalsListEyebrow}>Progression</DashboardSectionLabel>
                       <Text style={[styles.goalsListTitle, { color: textColor }]}>Mes objectifs</Text>
                     </View>
-                    <View
-                      style={[
-                        styles.goalsCountBadge,
-                        {
-                          backgroundColor: isLight
-                            ? 'rgba(15, 23, 42, 0.07)'
-                            : 'rgba(255, 255, 255, 0.10)',
-                        },
-                      ]}
-                    >
+                    <View style={[styles.goalsCountBadge, { backgroundColor: themeColors.surfaceElevated }]}>
                       <Text style={[styles.goalsCountBadgeLabel, { color: mutedTextColor }]}>
                         {goals.length}
                       </Text>
@@ -469,14 +464,8 @@ export default function GoalsHubScreen() {
                       key={goal.id}
                       android_ripple={null}
                       onPress={() => handleOpenDetail(goal.id)}
-                      style={themeShadow}
                     >
-                      <GlassContainer
-                        innerStyle={styles.goalCardInner}
-                        padding={0}
-                        borderRadius={radius.lg}
-                        innerBackgroundColor={sectionCardSurface}
-                      >
+                      <DashboardCard innerStyle={styles.goalCardInner} padding={0}>
                       <View style={styles.goalCardMain}>
                         <View style={styles.goalIdentity}>
                           <UserPickedIconBadge
@@ -513,10 +502,8 @@ export default function GoalsHubScreen() {
                         </View>
                       </View>
 
-                      <View style={[styles.inlineBar, { backgroundColor: isLight ? 'rgba(15,23,42,0.07)' : 'rgba(255,255,255,0.08)' }]}>
-                        <View style={[styles.inlineBarFill, { width: `${Math.min(100, pct)}%`, backgroundColor: goalAccent }]} />
-                      </View>
-                      </GlassContainer>
+                      <DashboardProgressBar pct={Math.min(100, pct)} color={goalAccent} marginTop={0} />
+                      </DashboardCard>
                     </Pressable>
                   );
                 })}
@@ -525,13 +512,10 @@ export default function GoalsHubScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Ajouter un objectif"
-                  onPress={() => openSavingsGoals({ newGoal: true })}
+                  onPress={handleOpenNewGoal}
                   style={({ pressed }) => [
                     styles.premiumAddCta,
-                    {
-                      backgroundColor: isLight ? portfolioLight.iconButton : portfolioDark.iconButton,
-                      borderColor: isLight ? portfolioLight.border : portfolioDark.border,
-                    },
+                    { backgroundColor: themeColors.surfaceElevated },
                     pressed && floatingGlassButtonPressed,
                   ]}
                 >
@@ -546,7 +530,10 @@ export default function GoalsHubScreen() {
       <BottomSheet
         visible={selectedGoalId !== null}
         onClose={handleCloseDetail}
-        sheetStyle={styles.detailSheet}
+        sheetStyle={[
+          styles.detailSheet,
+          { backgroundColor: themeColors.cardBackground, borderTopWidth: 0 },
+        ]}
       >
         {selectedGoal && selectedGoalDetails ? (
           <>
@@ -559,7 +546,7 @@ export default function GoalsHubScreen() {
                 accessibilityLabel="Modifier l'objectif"
                 hitSlop={10}
                 onPress={handleModify}
-                style={({ pressed }) => [styles.detailActionBtn, { backgroundColor: themeColors.surfaceSolid, borderColor: themeColors.borderStrong }, pressed && styles.detailBtnPressed]}
+                style={({ pressed }) => [styles.detailActionBtn, { backgroundColor: themeColors.surfaceElevated }, pressed && styles.detailBtnPressed]}
               >
                 <Ionicons name="pencil-outline" size={15} color={themeColors.text} />
                 <Text style={[styles.modifierLabel, { color: themeColors.text }]}>Modifier</Text>
@@ -569,21 +556,13 @@ export default function GoalsHubScreen() {
                 accessibilityLabel="Fermer"
                 hitSlop={10}
                 onPress={handleCloseDetail}
-                style={({ pressed }) => [styles.detailCloseBtn, { backgroundColor: themeColors.surfaceSolid, borderColor: themeColors.borderStrong }, pressed && styles.detailBtnPressed]}
+                style={({ pressed }) => [styles.detailCloseBtn, { backgroundColor: themeColors.surfaceElevated }, pressed && styles.detailBtnPressed]}
               >
                 <Ionicons name="close" size={18} color={themeColors.text} />
               </Pressable>
             </View>
 
-            <View
-              style={[
-                styles.detailHero,
-                {
-                  backgroundColor: isLight ? 'rgba(15,23,42,0.03)' : 'rgba(255,255,255,0.04)',
-                  borderColor: themeColors.border,
-                },
-              ]}
-            >
+            <View style={[styles.detailHero, { backgroundColor: themeColors.cardBackground }]}>
               <Text style={[styles.detailHeroEyebrow, { color: themeColors.textMuted }]}>Progression</Text>
               <Text
                 style={[styles.detailAmount, { color: themeColors.text }]}
@@ -599,12 +578,7 @@ export default function GoalsHubScreen() {
                   styles.detailHeroProgressRow,
                 ]}
               >
-                <View
-                  style={[
-                    styles.detailProgressTrack,
-                    { backgroundColor: isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.08)' },
-                  ]}
-                >
+                <View style={[styles.detailProgressTrack, { backgroundColor: themeColors.surfaceElevated }]}>
                   <View
                     style={[
                       styles.detailProgressFill,
@@ -636,10 +610,7 @@ export default function GoalsHubScreen() {
               hitSlop={12}
               style={({ pressed }) => [
                 styles.historyWide,
-                {
-                  backgroundColor: isLight ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.08)',
-                  borderColor: themeColors.border,
-                },
+                { backgroundColor: themeColors.cardBackground },
                 pressed && styles.pressed,
               ]}
               onPress={() => {
@@ -653,15 +624,7 @@ export default function GoalsHubScreen() {
               </Text>
             </Pressable>
 
-            <View
-              style={[
-                styles.detailMetaGrid,
-                {
-                  backgroundColor: isLight ? 'rgba(15,23,42,0.03)' : 'rgba(255,255,255,0.04)',
-                  borderColor: themeColors.border,
-                },
-              ]}
-            >
+            <View style={[styles.detailMetaGrid, { backgroundColor: themeColors.cardBackground }]}>
               <DetailMetaCell label="Cible" value={formatMoney(selectedGoal.targetAmount)} />
               <DetailMetaCell label="Épargné" value={formatMoney(selectedGoal.currentAmount)} />
               <DetailMetaCell label="Reste" value={formatMoney(selectedGoalDetails.remaining)} />
@@ -680,15 +643,7 @@ export default function GoalsHubScreen() {
               />
             </View>
 
-            <View
-              style={[
-                styles.detailProjectionPanel,
-                {
-                  backgroundColor: isLight ? 'rgba(15,23,42,0.03)' : 'rgba(255,255,255,0.04)',
-                  borderColor: themeColors.border,
-                },
-              ]}
-            >
+            <View style={[styles.detailProjectionPanel, { backgroundColor: themeColors.cardBackground }]}>
               <Text style={[styles.detailProjectionTitle, { color: themeColors.text }]}>Projection</Text>
               {selectedGoalDetails.projection ? (
                 <>
@@ -741,9 +696,35 @@ export default function GoalsHubScreen() {
                 </Text>
               )}
             </View>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Supprimer l'objectif"
+              style={({ pressed }) => [
+                styles.deleteButton,
+                { backgroundColor: themeColors.dangerMuted, borderColor: themeColors.danger },
+                pressed && styles.deleteButtonPressed,
+              ]}
+              onPress={handleDeleteGoal}
+            >
+              <Ionicons name="trash-outline" size={16} color={themeColors.danger} />
+              <Text style={[styles.deleteText, { color: themeColors.danger }]}>Supprimer l'objectif</Text>
+            </Pressable>
           </>
         ) : null}
       </BottomSheet>
+
+      <ConfirmDeleteModal
+        visible={confirmDeleteVisible}
+        title="Supprimer l'objectif ?"
+        message={
+          selectedGoal
+            ? `Supprimer ${selectedGoal.name} ? Les transactions existantes restent dans l'historique général.`
+            : 'Cette action est irréversible.'
+        }
+        onConfirm={() => void handleConfirmDeleteGoal()}
+        onCancel={() => setConfirmDeleteVisible(false)}
+      />
 
       <SavingsGoalFormModal
         form={editForm}
@@ -793,14 +774,12 @@ function GoalsOverviewChart({
   gridColor,
   labelColor,
   titleColor,
-  cardSurface,
 }: {
   goals: SavingsGoal[];
   isLight: boolean;
   gridColor: string;
   labelColor: string;
   titleColor: string;
-  cardSurface: string;
 }) {
   const lineColors = isLight ? LIGHT_GOAL_LINE_COLORS : DARK_GOAL_LINE_COLORS;
   const chart = useMemo(() => {
@@ -846,14 +825,10 @@ function GoalsOverviewChart({
 
   return (
     <View style={styles.overviewChartWrapper}>
-      <GlassContainer
-        borderRadius={radius.lg}
-        padding={GOALS_PAGE_PADDING}
-        innerBackgroundColor={cardSurface}
-      >
+      <DashboardCard padding={GOALS_PAGE_PADDING}>
         <View style={styles.overviewChartBlock}>
           <View style={styles.overviewHeader}>
-            <Text style={[styles.overviewEyebrow, { color: labelColor }]}>Vue d'ensemble</Text>
+            <DashboardSectionLabel>Vue d'ensemble</DashboardSectionLabel>
             <Text style={[styles.overviewTitle, { color: titleColor }]}>Progression des objectifs</Text>
           </View>
           <Svg width="100%" height={OVERVIEW_TOTAL_H} viewBox={`0 0 ${OVERVIEW_CHART_W} ${OVERVIEW_TOTAL_H}`}>
@@ -951,7 +926,7 @@ function GoalsOverviewChart({
         ) : null}
       </View>
         </View>
-      </GlassContainer>
+      </DashboardCard>
     </View>
   );
 }
@@ -1101,13 +1076,14 @@ function formatPercent(value: number) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+  screen: { flex: 1 },
   content: {
     flexGrow: 1,
     paddingHorizontal: 0,
     gap: PORTFOLIO_SECTION_GAP,
   },
   goalsHeroBlock: {
+    alignItems: 'flex-start',
     gap: 0,
     paddingHorizontal: GOALS_PAGE_PADDING,
   },
@@ -1124,10 +1100,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   goalsHeaderIconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    borderWidth: 1,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1143,10 +1118,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
   },
   heroEyebrow: {
-    ...interBoldText,
-    fontSize: 10,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
     marginBottom: 6,
   },
   progressBadge: {
@@ -1174,8 +1145,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.card,
   },
   premiumAddCtaLabel: {
     ...interBoldText,
@@ -1191,16 +1161,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     marginBottom: spacing.xs,
   },
-  overviewEyebrow: {
-    ...interBoldText,
-    fontSize: typography.micro,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
   overviewTitle: {
-    ...interExtraBoldText,
-    fontSize: 20,
-    letterSpacing: -0.3,
+    ...SECTION_TITLE_STYLE,
   },
   overviewLegend: {
     flexDirection: 'row',
@@ -1244,15 +1206,10 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   goalsListEyebrow: {
-    ...interBoldText,
-    fontSize: typography.micro,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+    marginBottom: spacing.xs,
   },
   goalsListTitle: {
-    ...interExtraBoldText,
-    fontSize: 20,
-    letterSpacing: -0.3,
+    ...SECTION_TITLE_STYLE,
   },
   goalsCountBadge: {
     minWidth: 28,
@@ -1294,21 +1251,19 @@ const styles = StyleSheet.create({
     minWidth: GOAL_ICON_WELL_SIZE,
     minHeight: GOAL_ICON_WELL_SIZE,
     flexShrink: 0,
-    borderRadius: radius.md,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   goalCardHeadText: { flex: 1, minWidth: 0, gap: 5 },
   goalName: {
-    flex: 1,
-    minWidth: 0,
-    ...interBoldText,
-    fontSize: typography.body,
-    lineHeight: typography.body + 4,
+    ...rowLabel,
+    ...interExtraBoldText,
   },
   goalMeta: {
     ...interBoldText,
     fontSize: typography.micro,
+    lineHeight: typography.micro + 4,
   },
   goalAmountBlock: {
     flexShrink: 0,
@@ -1323,28 +1278,17 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   goalPct: {
-    ...interExtraBoldText,
+    ...portfolioNumericText,
     fontSize: typography.micro,
   },
   savedHero: {
     maxWidth: '100%',
-    ...interExtraBoldText,
-    fontSize: 16,
-    letterSpacing: -0.25,
+    ...rowValue,
     textAlign: 'right',
   },
   savedTarget: {
-    ...interBoldText,
-    fontSize: 12,
-  },
-  inlineBar: {
-    height: PROGRESS_BAR_TRACK_HEIGHT,
-    borderRadius: radius.pill,
-    overflow: 'hidden',
-  },
-  inlineBarFill: {
-    height: '100%',
-    borderRadius: radius.pill,
+    ...rowValue,
+    textAlign: 'right',
   },
   emptyCardInner: {
     padding: spacing.xl,
@@ -1396,8 +1340,7 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingHorizontal: spacing.sm,
     height: 36,
-    borderRadius: radius.pill,
-    borderWidth: 1,
+    borderRadius: 14,
   },
   modifierLabel: {
     fontSize: typography.micro,
@@ -1409,23 +1352,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 36,
     height: 36,
-    borderRadius: radius.pill,
-    borderWidth: 1,
+    borderRadius: 14,
   },
   detailBtnPressed: { opacity: 0.72 },
   detailAmount: {
+    ...portfolioNumericText,
     fontSize: 32,
-    fontWeight: '800',
     letterSpacing: -0.6,
     marginTop: 2,
   },
   detailAmountOf: {
+    ...portfolioNumericText,
     fontSize: 22,
-    fontWeight: '700',
+    letterSpacing: -0.4,
   },
   detailHero: {
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.card,
     padding: spacing.md,
     gap: spacing.sm,
     marginBottom: spacing.md,
@@ -1453,8 +1395,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   detailPct: {
+    ...portfolioNumericText,
     fontSize: typography.meta,
-    fontWeight: '800',
     minWidth: 44,
     textAlign: 'right',
   },
@@ -1468,8 +1410,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
     minHeight: 52,
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.card,
     marginBottom: spacing.md,
   },
   historyWideText: {
@@ -1485,8 +1426,7 @@ const styles = StyleSheet.create({
   detailMetaGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.card,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     marginBottom: spacing.md,
@@ -1500,10 +1440,9 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   detailInfoLabel: { fontSize: typography.micro, fontWeight: '600', marginBottom: 2 },
-  detailInfoValue: { fontSize: typography.meta, fontWeight: '700' },
+  detailInfoValue: { ...rowValue, fontSize: typography.meta },
   detailProjectionPanel: {
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.card,
     padding: spacing.md,
     gap: spacing.sm,
   },
@@ -1523,12 +1462,27 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   detailProjectionValue: {
-    fontSize: typography.caption,
-    fontWeight: '800',
+    ...rowValue,
     textAlign: 'right',
   },
   detailProjectionHint: {
     fontSize: typography.caption,
     lineHeight: 20,
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginTop: spacing.lg,
+  },
+  deleteButtonPressed: { opacity: 0.72 },
+  deleteText: {
+    fontSize: typography.meta,
+    fontWeight: '800',
   },
 });

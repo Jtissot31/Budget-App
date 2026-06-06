@@ -1,15 +1,17 @@
-/** Design tokens aligned with GitHub-dark theme — no box shadows */
+import { dashboardPalette } from '@/constants/theme';
+
+/** Design tokens aligned with dashboard dark palette — no box shadows */
 export const darkGhost = {
-  void: '#0D1117',
-  obsidian: '#161B22',
-  obsidianSoft: '#1C2128',
-  mint: '#00E676',
-  kingdom: '#00E676',
-  blaze: '#F85149',
-  text: '#FFFFFF',
-  muted: '#8B949E',
-  mutedSoft: '#484F58',
-  hairline: '#21262D',
+  void: dashboardPalette.bg,
+  obsidian: dashboardPalette.card,
+  obsidianSoft: dashboardPalette.iconBox,
+  mint: dashboardPalette.green,
+  kingdom: dashboardPalette.green,
+  blaze: dashboardPalette.red,
+  text: dashboardPalette.text,
+  muted: dashboardPalette.subtext,
+  mutedSoft: dashboardPalette.subtext,
+  hairline: dashboardPalette.border,
 } as const;
 
 export const lightGhost = {
@@ -20,8 +22,8 @@ export const lightGhost = {
   kingdom: '#00A854',
   blaze: '#CF222E',
   text: '#0D1117',
-  muted: '#57606A',
-  mutedSoft: '#8C959F',
+  muted: '#4B5563',
+  mutedSoft: '#6B7280',
   hairline: '#D0D7DE',
 } as const;
 

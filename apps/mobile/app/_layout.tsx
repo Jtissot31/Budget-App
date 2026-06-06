@@ -1,8 +1,9 @@
 import 'react-native-gesture-handler';
 import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
@@ -16,12 +17,14 @@ import {
 import { AppBackgroundGradient } from '@/components/AppBackgroundGradient';
 import { ensureDbReady } from '@/lib/init';
 import { ThemeProvider, useAppTheme } from '@/lib/themeContext';
-import { configureTypographyDefaults } from '@/lib/typographyDefaults';
+import { configureSystemTypographyDefaults, configureTypographyDefaults } from '@/lib/typographyDefaults';
 import { fontFamilies } from '@/constants/theme';
 
-const STARTUP_TIMEOUT_MS = 3500;
+/** Safety cap only — Stack renders immediately; fonts/DB run in the background. */
+const BOOTSTRAP_MAX_MS = 0;
 
 configureTypographyDefaults();
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   return (
@@ -44,9 +47,9 @@ function ThemedRootShell() {
 }
 
 function RootLayoutContent() {
-  const [ready, setReady] = useState(false);
   const { colors, statusBarStyle } = useAppTheme();
-  const [fontsLoaded] = useFonts({
+  const [ready, setReady] = useState(true);
+  const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
@@ -55,31 +58,37 @@ function RootLayoutContent() {
   });
 
   useEffect(() => {
-    let mounted = true;
-    const timeout = setTimeout(() => {
-      if (mounted) setReady(true);
-    }, STARTUP_TIMEOUT_MS);
-
-    ensureDbReady()
-      .catch((error) => {
-        console.warn('Database initialization failed', error);
-      })
-      .finally(() => {
-        clearTimeout(timeout);
-        if (mounted) setReady(true);
-      });
-
-    return () => {
-      mounted = false;
-      clearTimeout(timeout);
-    };
+    console.log('[Boot] layout mount — Stack visible immediately');
+    SplashScreen.hideAsync().catch(() => {});
+    void (async () => {
+      try {
+        await ensureDbReady();
+        console.log('[Boot] database ready');
+      } catch (error) {
+        console.warn('[Boot] database init failed', error);
+      }
+    })();
+    const timer = setTimeout(() => {
+      console.log('[Boot] bootstrap safety tick');
+      setReady(true);
+    }, BOOTSTRAP_MAX_MS);
+    return () => clearTimeout(timer);
   }, []);
 
-  if (!ready || !fontsLoaded) {
+  useEffect(() => {
+    if (fontsLoaded) {
+      configureTypographyDefaults();
+      return;
+    }
+    if (fontError) {
+      configureSystemTypographyDefaults();
+    }
+  }, [fontsLoaded, fontError]);
+
+  if (!ready) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         <AppBackgroundGradient />
-        <ActivityIndicator size="large" color={colors.primary} />
         <StatusBar style={statusBarStyle} backgroundColor={colors.background} />
       </View>
     );
@@ -118,15 +127,12 @@ function RootLayoutContent() {
                 contentStyle: { backgroundColor: 'transparent' },
               }}
             />
-            <Stack.Screen name="budget-categories" options={{ headerShown: false }} />
             <Stack.Screen name="account-detail" options={{ headerShown: false }} />
             <Stack.Screen name="merchant-detail" options={{ headerShown: false }} />
             <Stack.Screen name="wealth-asset-detail" options={{ headerShown: false }} />
             <Stack.Screen name="wealth-asset-transactions" options={{ headerShown: false }} />
             <Stack.Screen name="savings-goal-transactions" options={{ headerShown: false }} />
             <Stack.Screen name="budget-category-transactions" options={{ headerShown: false }} />
-            <Stack.Screen name="recurring-payments" options={{ headerShown: false }} />
-            <Stack.Screen name="savings-goals" options={{ headerShown: false }} />
             <Stack.Screen name="scan" options={{ title: 'Scanner', presentation: 'modal' }} />
             <Stack.Screen
               name="ai-chat"

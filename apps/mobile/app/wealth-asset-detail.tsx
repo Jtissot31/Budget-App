@@ -17,6 +17,7 @@ import { dataEvents } from '@/lib/events';
 import { formatCompactGainDollars } from '@/lib/formatCompactGainDollars';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import {
   getWealthValuationAsOfDisplay,
   valuationSourceLabel,
@@ -28,7 +29,7 @@ import type { WealthAsset } from '@/types';
 const DETAIL_SHEET_TOP_RADIUS = 22;
 
 function formatMoney(value: number) {
-  return `${Math.abs(value).toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
+  return formatDisplayMoneyAbsolute(value);
 }
 
 function formatShortDate(value: string) {
@@ -179,7 +180,7 @@ export default function WealthAssetDetailScreen() {
                   ghostCardShadow,
                   {
                     borderColor: colors.border,
-                    backgroundColor: isLight ? colors.surfaceSolid : '#050505',
+                    backgroundColor: isLight ? colors.surfaceSolid : colors.surfaceElevated,
                   },
                 ]}
               >

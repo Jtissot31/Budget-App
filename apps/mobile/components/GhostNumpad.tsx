@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { interExtraBoldText, radius } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'] as const;
@@ -33,7 +34,7 @@ export function GhostNumpad({ value, onChange }: Props) {
 
 function AnimatedKey({ label, onPress }: { label: string; onPress: () => void }) {
   const scale = useRef(new Animated.Value(1)).current;
-  const { colors, ghost } = useAppTheme();
+  const { colors } = useAppTheme();
 
   const animateTo = (value: number) => {
     Animated.spring(scale, {
@@ -54,7 +55,11 @@ function AnimatedKey({ label, onPress }: { label: string; onPress: () => void })
       <Animated.View
         style={[
           styles.key,
-          { backgroundColor: ghost.obsidianSoft, borderColor: colors.border, transform: [{ scale }] },
+          {
+            backgroundColor: colors.surfaceElevated,
+            borderColor: colors.border,
+            transform: [{ scale }],
+          },
         ]}
       >
         <Text style={[styles.keyText, { color: colors.text }]}>{label}</Text>
@@ -80,8 +85,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 16,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  keyText: { fontSize: 23, fontWeight: '800' },
+  keyText: {
+    ...interExtraBoldText,
+    fontSize: 23,
+  },
 });

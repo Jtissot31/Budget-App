@@ -5,16 +5,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  createNewRecurringPaymentForm,
+  getRecurringImpactSummary,
   RecurringPaymentFormModal,
   manualAccountOptions,
   recurringPaymentToForm,
   saveRecurringPaymentForm,
   toAccountOptions,
   type PaymentForm,
-} from '@/app/recurring-payments';
+} from '@/lib/recurringPaymentsForm';
 import { BottomSheet } from '@/components/BottomSheet';
 import { CategoryBudgetProgress } from '@/components/CategoryBudgetProgress';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
+import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import { radius, spacing, typography, type AppColors } from '@/constants/theme';
@@ -25,11 +28,13 @@ import {
   getCategoryBudgets,
   getRecurringPayments,
   getSimulatedAccounts,
+  upsertRecurringPayment,
 } from '@/lib/db';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
-import { singleLineAmountProps } from '@/lib/textLayout';
+import { detailHeroAmount, singleLineAmountProps } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
-import type { Category, CategoryBudget, SimulatedAccount } from '@/types';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import type { Category, CategoryBudget, RecurringPaymentFrequency, SimulatedAccount } from '@/types';
 
 export type PaymentDetailPayload = {
   name: string;
@@ -47,6 +52,8 @@ export type PaymentDetailPayload = {
   icon?: string | null;
   color?: string | null;
   frequencyLabel?: string | null;
+  frequency?: RecurringPaymentFrequency;
+  active?: boolean;
   categoryName?: string | null;
   categoryId?: string | null;
 };
@@ -78,9 +85,12 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
   const [detailCategoryBudgets, setDetailCategoryBudgets] = useState<CategoryBudget[]>([]);
   const [recurringSaving, setRecurringSaving] = useState(false);
   const [recurringEditLoading, setRecurringEditLoading] = useState(false);
+  const [activeOverride, setActiveOverride] = useState<boolean | null>(null);
+  const [togglingActive, setTogglingActive] = useState(false);
 
   useEffect(() => {
     setDeleting(false);
+    setActiveOverride(null);
   }, [detail?.sourceId]);
 
   useEffect(() => {
@@ -177,6 +187,32 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
     onClose();
   };
 
+  const isRecurringActive = activeOverride ?? detail?.active ?? true;
+  const impactForm = useMemo<PaymentForm | null>(() => {
+    if (!detail || !recurringEditId) return null;
+    return {
+      id: recurringEditId,
+      name: detail.name,
+      amount: String(detail.amount || ''),
+      kind: detail.kind === 'income' ? 'income' : 'payment',
+      accountId: '',
+      accountLabel: detail.account?.trim() || '',
+      categoryId: detail.categoryId ?? null,
+      frequency: detail.frequency ?? 'monthly',
+      dueDay: '',
+      nextDate: '',
+      endDate: '',
+      active: isRecurringActive,
+      icon: 'repeat-outline',
+      color: detail.color?.trim() || '#00A854',
+      logoUrl: detail.logoUrl ?? null,
+      logoMode: 'auto',
+      createdAt: new Date().toISOString(),
+    };
+  }, [detail, isRecurringActive, recurringEditId]);
+
+  const impactSummary = impactForm ? getRecurringImpactSummary(impactForm, detailCategoryBudgets) : null;
+
   if (!detail) return null;
 
   const detailCategoryBudget =
@@ -211,8 +247,23 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
       return;
     }
     if (isEstimatedPayRow) {
-      onClose();
-      router.push({ pathname: '/recurring-payments', params: { new: '1' } });
+      void (async () => {
+        try {
+          const [categories, categoryBudgets, simulatedAccounts] = await Promise.all([
+            getCategories(),
+            getCategoryBudgets(),
+            getSimulatedAccounts(),
+          ]);
+          const accounts = persistAccounts(simulatedAccounts);
+          setRecurringAccounts(accounts);
+          setRecurringCategories(categories);
+          setRecurringCategoryBudgets(categoryBudgets);
+          setRecurringForm(createNewRecurringPaymentForm(accounts, categories, 'income'));
+          setRecurringEditorOpen(true);
+        } catch {
+          Alert.alert('Chargement impossible', "Impossible d'ouvrir le formulaire pour le moment.");
+        }
+      })();
     }
   };
 
@@ -258,6 +309,30 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
     setRecurringEditorOpen(false);
     setRecurringForm(null);
     await onDeleted?.();
+  };
+
+  const onToggleActive = async () => {
+    if (!recurringEditId || togglingActive) return;
+    tapHaptic();
+    setTogglingActive(true);
+    try {
+      const payments = await getRecurringPayments();
+      const payment = payments.find((item) => item.id === recurringEditId);
+      if (!payment) {
+        Alert.alert('Introuvable', 'Ce paiement récurrent a peut-être été supprimé.');
+        return;
+      }
+      const nextActive = !isRecurringActive;
+      setActiveOverride(nextActive);
+      await upsertRecurringPayment({ ...payment, active: nextActive });
+      successHaptic();
+      await onDeleted?.();
+    } catch {
+      setActiveOverride(null);
+      Alert.alert('Erreur', "Impossible de mettre à jour l'état actif pour le moment.");
+    } finally {
+      setTogglingActive(false);
+    }
   };
 
   const onDeleteRecurringForm =
@@ -316,11 +391,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
 
         <Text style={[styles.amount, { color: amountTint }]} {...singleLineAmountProps}>
           {amountPrefix}
-        {detail.amount.toLocaleString('fr-CA', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}{' '}
-        $
+        {formatDisplayMoneyAbsolute(detail.amount)}
       </Text>
 
         {isEstimatedPayRow ? (
@@ -393,8 +464,57 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
           )}
       </View>
 
+        {recurringEditId && impactSummary ? (
+          <SurfaceCard style={styles.budgetCardShell} innerStyle={styles.budgetCardInner} padding={spacing.md}>
+            <DashboardSectionLabel style={styles.budgetCardEyebrow}>
+              {detail.kind === 'income' ? 'Projection revenu' : 'Impact budget'}
+            </DashboardSectionLabel>
+            <Text
+              style={[
+                styles.impactValue,
+                detail.kind === 'income' && { color: colors.success },
+                !isRecurringActive && { color: colors.textMuted },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.72}
+            >
+              {impactSummary.primary}
+            </Text>
+            <Text style={styles.impactHint}>{impactSummary.secondary}</Text>
+            {isRecurringActive &&
+            detailCategoryBudget &&
+            (detailCategoryBudget.limitAmount > 0 || detailCategoryBudget.spent > 0) ? (
+              <CategoryBudgetProgress budget={detailCategoryBudget} />
+            ) : null}
+          </SurfaceCard>
+        ) : null}
+
+        {recurringEditId ? (
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityState={{ checked: isRecurringActive, disabled: togglingActive }}
+            accessibilityLabel={isRecurringActive ? 'Paiement actif' : 'Paiement inactif'}
+            disabled={togglingActive}
+            onPress={() => void onToggleActive()}
+            style={({ pressed }) => [
+              styles.activeRow,
+              pressed && styles.pressed,
+              togglingActive && styles.disabled,
+            ]}
+          >
+            <DashboardSectionLabel>Actif</DashboardSectionLabel>
+            <Ionicons
+              name={isRecurringActive ? 'toggle' : 'toggle-outline'}
+              size={34}
+              color={isRecurringActive ? colors.primary : colors.textMuted}
+            />
+          </Pressable>
+        ) : null}
+
         {detailCategoryBudget &&
-        (detailCategoryBudget.limitAmount > 0 || detailCategoryBudget.spent > 0) ? (
+        (detailCategoryBudget.limitAmount > 0 || detailCategoryBudget.spent > 0) &&
+        !recurringEditId ? (
           <SurfaceCard style={styles.budgetCardShell} innerStyle={styles.budgetCardInner} padding={spacing.md}>
             <Text style={styles.budgetCardEyebrow}>Budget de catégorie</Text>
             <CategoryBudgetProgress budget={detailCategoryBudget} />
@@ -613,10 +733,7 @@ function createStyles(colors: AppColors) {
       flexShrink: 1,
     },
     amount: {
-      fontSize: 36,
-      fontWeight: '800',
-      textAlign: 'center',
-      letterSpacing: -0.5,
+      ...detailHeroAmount,
       marginBottom: spacing.lg,
     },
     detailGrid: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
@@ -635,11 +752,32 @@ function createStyles(colors: AppColors) {
     budgetCardShell: { marginBottom: spacing.md },
     budgetCardInner: { gap: spacing.sm },
     budgetCardEyebrow: {
+      marginBottom: spacing.xs,
+    },
+    impactValue: {
+      color: colors.text,
+      fontSize: 24,
+      fontWeight: '800',
+      letterSpacing: -0.5,
+      fontVariant: ['tabular-nums'],
+    },
+    impactHint: {
       color: colors.textMuted,
-      fontSize: typography.micro,
-      fontWeight: '700',
-      textTransform: 'uppercase',
-      letterSpacing: 0.45,
+      fontSize: typography.meta,
+      lineHeight: 17,
+      marginTop: spacing.xs,
+    },
+    activeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderRadius: radius.lg,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceElevated,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: 10,
+      marginBottom: spacing.md,
     },
     deleteButtonWide: {
       alignSelf: 'stretch',

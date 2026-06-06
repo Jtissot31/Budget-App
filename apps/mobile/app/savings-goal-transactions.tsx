@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheet } from '@/components/BottomSheet';
 import { PageTransition } from '@/components/PageTransition';
 import { SurfaceCard } from '@/components/SurfaceCard';
-import { TransactionAvatar } from '@/components/TransactionAvatar';
+import { TransactionRow } from '@/components/TransactionRow';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import { ghostCardShadow } from '@/constants/ghostUi';
 import { radius, spacing, typography, type AppColors } from '@/constants/theme';
@@ -15,6 +15,7 @@ import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { getSavingsGoals, getTransactionsForSavingsGoal, sortTransactionsNewestFirst } from '@/lib/db';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import type { SavingsGoal, Transaction } from '@/types';
 
 const DETAIL_SHEET_TOP_RADIUS = 22;
@@ -80,104 +81,6 @@ function getTransactionTitle(tx: Transaction, fallbackTitle: string) {
   return `${names.join(', ')}${suffix}`;
 }
 
-function GoalTransactionRow({
-  transaction: tx,
-  titleFallback,
-  onPress,
-  rowStyles,
-  colors,
-}: {
-  transaction: Transaction;
-  titleFallback: string;
-  onPress: () => void;
-  rowStyles: ReturnType<typeof createRowStyles>;
-  colors: Pick<AppColors, 'text' | 'textMuted' | 'success' | 'surfaceSolid' | 'surface' | 'border'>;
-}) {
-  const isIncome = tx.type === 'income';
-  const isTransfer = tx.type === 'transfer';
-  const amountColor = isIncome ? colors.success : isTransfer ? colors.textMuted : colors.text;
-  const hasReceipt = Boolean(tx.receiptUri || tx.receiptStatus);
-  const title = getTransactionTitle(tx, titleFallback);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Voir la transaction ${title}`}
-      style={({ pressed }) => [
-        rowStyles.transactionRow,
-        {
-          backgroundColor: pressed ? colors.surface : colors.surfaceSolid,
-          borderColor: colors.border,
-        },
-      ]}
-      onPress={onPress}
-    >
-      <TransactionAvatar transaction={tx} size={34} />
-      <View style={rowStyles.transactionBody}>
-        <View style={rowStyles.transactionTitleRow}>
-          <Text style={[rowStyles.transactionTitle, { color: colors.text }]} numberOfLines={2}>
-            {title}
-          </Text>
-          {hasReceipt ? (
-            <View style={[rowStyles.receiptBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Ionicons name="receipt-outline" size={13} color={colors.textMuted} />
-            </View>
-          ) : null}
-        </View>
-      </View>
-      <Text style={[rowStyles.transactionAmount, { color: amountColor }]} numberOfLines={1}>
-        {isTransfer ? '' : isIncome ? '+' : '−'}
-        {tx.amount.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $
-      </Text>
-    </Pressable>
-  );
-}
-
-function createRowStyles() {
-  return StyleSheet.create({
-    transactionRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-      borderRadius: radius.lg,
-      borderWidth: StyleSheet.hairlineWidth,
-      paddingVertical: spacing.sm + 3,
-      paddingHorizontal: spacing.md,
-    },
-    transactionBody: {
-      flex: 1,
-      minWidth: 0,
-    },
-    transactionTitleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs,
-      minWidth: 0,
-    },
-    transactionTitle: {
-      flexShrink: 1,
-      fontSize: typography.body,
-      fontWeight: '800',
-      lineHeight: typography.body + 3,
-    },
-    receiptBadge: {
-      width: 22,
-      height: 22,
-      borderRadius: 11,
-      borderWidth: StyleSheet.hairlineWidth,
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0,
-    },
-    transactionAmount: {
-      fontSize: typography.body,
-      fontWeight: '700',
-      flexShrink: 0,
-      textAlign: 'right',
-    },
-  });
-}
-
 export default function SavingsGoalTransactionsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
@@ -191,7 +94,6 @@ export default function SavingsGoalTransactionsScreen() {
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const rowStyles = useMemo(createRowStyles, []);
   const stylesMemo = useMemo(() => createShellStyles(colors), [colors]);
 
   const load = useCallback(async () => {
@@ -297,7 +199,7 @@ export default function SavingsGoalTransactionsScreen() {
                   ghostCardShadow,
                   {
                     borderColor: colors.border,
-                    backgroundColor: isLight ? colors.surfaceSolid : '#050505',
+                    backgroundColor: isLight ? colors.surfaceSolid : colors.surfaceElevated,
                   },
                 ]}
               >
@@ -365,16 +267,16 @@ export default function SavingsGoalTransactionsScreen() {
                 </Text>
                 <View style={stylesMemo.groupTransactions}>
                   {txs.map((tx) => (
-                    <GoalTransactionRow
+                    <TransactionRow
                       key={tx.id}
-                      transaction={tx}
-                      titleFallback={tx.categoryName?.trim() || tx.label || displayName}
+                      transaction={{
+                        ...tx,
+                        label: getTransactionTitle(tx, tx.categoryName?.trim() || tx.label || displayName),
+                      }}
                       onPress={() => {
                         tapHaptic();
                         setSelected(tx);
                       }}
-                      rowStyles={rowStyles}
-                      colors={colors}
                     />
                   ))}
                 </View>
