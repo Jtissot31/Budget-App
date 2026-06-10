@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Dimensions, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,16 +7,23 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { usePathname, useRouter } from 'expo-router';
-import { uiEvents } from '@/lib/events';
 import {
   FLOATING_FAB_ICON_SIZE,
   FLOATING_FAB_RADIUS,
   FLOATING_FAB_SIZE,
-  FLOATING_FAB_VISUAL_SCALE,
   floatingGlassButtonPressed,
-  floatingGlassFabSurface,
 } from '@/constants/floatingGlassButton';
-import { getFloatingTabBarBottomInset, lightColors, radius, spacing } from '@/constants/theme';
+import {
+  getFloatingTabBarBottomInset,
+  lightColors,
+  radius,
+  spacing,
+  typographyKit,
+} from '@/constants/theme';
+import { tapHaptic } from '@/lib/haptics';
+import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsForm';
+import { uiEvents } from '@/lib/events';
+import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
 import { UNIFORM_CHIP_FONT_SIZE } from '@/lib/uniformGroupStyles';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -46,8 +53,6 @@ const AI_CHAT_FAB_GRADIENT_DARK = ['#003d1a', '#007a3d', '#00e664'] as const;
 const AI_CHAT_FAB_GRADIENT_LIGHT = [lightColors.primary, '#00a854', '#007a3d'] as const;
 const AI_CHAT_FAB_GRADIENT_LOCATIONS = [0, 0.5, 1] as const;
 
-const aiGraphic = (base: number) => Math.round(base * FLOATING_FAB_VISUAL_SCALE);
-
 /** `Plus` from src/icons — React Native SVG. */
 function PlusFabIcon({ size, color }: { size: number; color: string }) {
   return (
@@ -55,18 +60,6 @@ function PlusFabIcon({ size, color }: { size: number; color: string }) {
       <Path
         fill={color}
         d="M19 11h-6V5a1 1 0 0 0-2 0v6H5a1 1 0 0 0 0 2h6v6a1 1 0 0 0 2 0v-6h6a1 1 0 0 0 0-2Z"
-      />
-    </Svg>
-  );
-}
-
-/** `RecurringEvent` from src/icons — React Native SVG. */
-function RecurringEventFabIcon({ size, color }: { size: number; color: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 2048 2048" fill="none">
-      <Path
-        fill={color}
-        d="M256 1536h768v128H128V128h256V0h128v128h896V0h128v128h256v896h-128V640H256v896zm0-1280v256h1408V256h-128v128h-128V256H512v128H384V256H256zm1792 896v384h-384v-128h190q-45-60-112-94t-142-34q-59 0-111 20t-95 55t-70 85t-38 107l-127-22q14-81 54-149t98-118t133-78t156-28q91 0 174 35t146 102v-137h128zm-448 768q58 0 111-20t95-55t70-85t38-107l127 22q-14 81-54 149t-98 118t-133 78t-156 28q-91 0-174-35t-146-102v137h-128v-384h384v128h-190q45 60 112 94t142 34z"
       />
     </Svg>
   );
@@ -84,17 +77,109 @@ function DashboardChatIcon({ size, color }: { size: number; color: string }) {
   );
 }
 
-/** Vertical stack above tab bar: add (lowest) → scan when Historique FAB expanded. */
+type HistoryAddTransactionType = 'expense' | 'income' | 'transfer';
+
+const HISTORY_FAB_OPTION_ICON_COLOR = '#FFFFFF';
+
+const HISTORY_FAB_ADD_ACTIONS: {
+  type: HistoryAddTransactionType;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  accessibilityLabel: string;
+}[] = [
+  {
+    type: 'transfer',
+    label: 'Transfert',
+    icon: 'swap-horizontal-outline',
+    accessibilityLabel: 'Ajouter un transfert',
+  },
+  {
+    type: 'expense',
+    label: 'Dépense',
+    icon: 'arrow-down-circle-outline',
+    accessibilityLabel: 'Ajouter une dépense',
+  },
+  {
+    type: 'income',
+    label: 'Revenu',
+    icon: 'cash-outline',
+    accessibilityLabel: 'Ajouter un revenu',
+  },
+];
+
+/** Vertical stack above tab bar: add (lowest) → type options when Historique FAB expanded. */
 const FAB_STACK_OFFSET_ADD = 104;
-const FAB_STACK_OFFSET_SCAN = 188;
+const HISTORY_FAB_MAIN_SIZE = 54;
+const HISTORY_FAB_OPTION_ROW_HEIGHT = 44;
+/** Arc speed-dial: radius and angles (°) from FAB center — 180° = left, 90° = up. */
+const HISTORY_FAB_ARC_RADIUS = 125;
+// 158° → 163°: equalises visual pill gap (y-gap = R·Δsin θ − pillH).
+// Equal Δθ ≠ equal Δy because sin is nonlinear; 163° centres Revenu at
+// the midpoint of sin(195°)…sin(121°), giving ~25 px gap on both sides.
+const HISTORY_FAB_ARC_ANGLES_DEG = [195, 163, 121] as const;
+const HISTORY_FAB_OPTION_PILL_WIDTH = 132;
+const HISTORY_FAB_ARC_STAGGER_MS = 55;
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+
+const AGENDA_FAB_OPTION_PILL_WIDTH = 132;
+
+const AGENDA_FAB_ADD_ACTIONS: {
+  variant: RecurringPaymentAddVariant;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  accessibilityLabel: string;
+}[] = [
+  {
+    variant: 'subscription',
+    label: 'Abonnement',
+    icon: 'repeat-outline',
+    accessibilityLabel: 'Ajouter un abonnement',
+  },
+  {
+    variant: 'bill',
+    label: 'Paiements',
+    icon: 'document-text-outline',
+    accessibilityLabel: 'Ajouter un paiement récurrent',
+  },
+  {
+    variant: 'income',
+    label: 'Revenus',
+    icon: 'trending-up-outline',
+    accessibilityLabel: 'Ajouter un revenu récurrent',
+  },
+];
+
+function getHistoryFabArcOffsets(angleDeg: number, radius: number) {
+  const rad = (angleDeg * Math.PI) / 180;
+  return {
+    right: -radius * Math.cos(rad) - HISTORY_FAB_OPTION_PILL_WIDTH / 2,
+    bottom: radius * Math.sin(rad) - HISTORY_FAB_OPTION_ROW_HEIGHT / 2,
+  };
+}
+
+function getAgendaFabArcOffsets(angleDeg: number, r: number) {
+  const rad = (angleDeg * Math.PI) / 180;
+  return {
+    right: -r * Math.cos(rad) - AGENDA_FAB_OPTION_PILL_WIDTH / 2,
+    bottom: r * Math.sin(rad) - HISTORY_FAB_OPTION_ROW_HEIGHT / 2,
+  };
+}
 
 export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const [isHistoryFabExpanded, setIsHistoryFabExpanded] = useState(false);
+  const [isAgendaFabExpanded, setIsAgendaFabExpanded] = useState(false);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
   const { colors, isLight } = useAppTheme();
-  const fabSurface = floatingGlassFabSurface(colors, isLight);
+  const historyFabOptionsSurface = useMemo(
+    () => ({
+      backgroundColor: isLight ? 'rgba(18, 18, 18, 0.90)' : 'rgba(22, 22, 22, 0.94)',
+      borderColor: 'rgba(255, 255, 255, 0.12)',
+      borderWidth: 1,
+    }),
+    [isLight],
+  );
   const bottom = getFloatingTabBarBottomInset(insets.bottom);
   const isAndroid = Platform.OS === 'android';
   const activeRouteName = state.routes[state.index]?.name;
@@ -102,6 +187,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const transactionsView = activeRouteName === 'transactions' ? (activeRouteParams?.view ?? 'history') : undefined;
   const isDashboard = activeRouteName === 'index';
   const isTransactionsHistoryView = transactionsView === 'history';
+  const isTransactionsAgendaView = transactionsView === 'agenda';
   const isTransactionsMerchantsView = transactionsView === 'merchants';
   const showDashboardAiChatFab = isDashboard;
   const showAddButton =
@@ -111,25 +197,43 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     activeRouteName !== 'settings' &&
     !isDashboard &&
     !isTransactionsMerchantsView;
-  const showHistoryScanFab = isTransactionsHistoryView && isHistoryFabExpanded;
-  const shouldAddRecurringPayment = transactionsView === 'agenda';
-  const fabIconColor = colors.text;
-  const fabBadgeContentColor = isLight ? '#FFFFFF' : '#111111';
+  const showHistoryFabOptions = isTransactionsHistoryView && isHistoryFabExpanded;
+  const showAgendaFabOptions = isTransactionsAgendaView && isAgendaFabExpanded;
   const rightThumbFabBottom = bottom + FLOATING_FAB_SIZE;
 
   useEffect(() => {
     setIsHistoryFabExpanded(false);
+    setIsAgendaFabExpanded(false);
   }, [activeRouteName, pathname, transactionsView]);
 
-  const openManualTransaction = () => {
+  const collapseHistoryFab = useCallback(() => {
     setIsHistoryFabExpanded(false);
-    router.push('/add-transaction');
-  };
+  }, []);
 
-  const openAiScan = () => {
-    setIsHistoryFabExpanded(false);
-    router.push('/scan');
-  };
+  const collapseAgendaFab = useCallback(() => {
+    setIsAgendaFabExpanded(false);
+  }, []);
+
+  const openAgendaAddRecurring = useCallback(
+    (variant: RecurringPaymentAddVariant) => {
+      tapHaptic();
+      collapseAgendaFab();
+      uiEvents.requestNewRecurringPayment(variant);
+    },
+    [collapseAgendaFab],
+  );
+
+  const openHistoryAddTransaction = useCallback(
+    (type: HistoryAddTransactionType) => {
+      tapHaptic();
+      collapseHistoryFab();
+      router.push({
+        pathname: '/add-transaction',
+        params: { type },
+      });
+    },
+    [collapseHistoryFab, router],
+  );
 
   const openAiChat = () => {
     router.push('/ai-chat');
@@ -137,26 +241,189 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
 
   const handleAddPress = () => {
     if (isTransactionsHistoryView) {
-      if (isHistoryFabExpanded) {
-        openManualTransaction();
-      } else {
-        setIsHistoryFabExpanded(true);
-      }
+      tapHaptic();
+      setIsHistoryFabExpanded((expanded) => !expanded);
       return;
     }
 
-    if (shouldAddRecurringPayment) {
-      uiEvents.requestNewRecurringPayment();
+    if (isTransactionsAgendaView) {
+      tapHaptic();
+      setIsAgendaFabExpanded((expanded) => !expanded);
       return;
     }
 
+    tapHaptic();
     router.push('/add-transaction');
   };
 
-  const navShellBg = colors.cardBackground;
+  const navShellBg = colors.containerBackground;
 
   return (
     <View style={styles.wrap} pointerEvents="box-none">
+      {showHistoryFabOptions ? (
+        <Pressable
+          style={[
+            styles.historyFabBackdrop,
+            {
+              height: SCREEN_HEIGHT,
+              backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.52)',
+            },
+          ]}
+          onPress={() => {
+            tapHaptic();
+            collapseHistoryFab();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Fermer le menu d'ajout"
+        />
+      ) : null}
+      {showHistoryFabOptions ? (
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.historyFabArcAnchor,
+            {
+              right: spacing.lg + HISTORY_FAB_MAIN_SIZE / 2,
+              bottom: rightThumbFabBottom + FAB_STACK_OFFSET_ADD + HISTORY_FAB_MAIN_SIZE / 2,
+            },
+          ]}
+        >
+          {HISTORY_FAB_ADD_ACTIONS.map(({ type, label, icon, accessibilityLabel }, index) => {
+            const arcOffsets = getHistoryFabArcOffsets(
+              HISTORY_FAB_ARC_ANGLES_DEG[index],
+              HISTORY_FAB_ARC_RADIUS,
+            );
+            const fabCenterOffsets = {
+              right: -HISTORY_FAB_OPTION_PILL_WIDTH / 2,
+              bottom: -HISTORY_FAB_OPTION_ROW_HEIGHT / 2,
+            };
+
+            return (
+              <MotiView
+                key={type}
+                from={{ opacity: 0, ...fabCenterOffsets }}
+                animate={{ opacity: 1, ...arcOffsets }}
+                exit={{ opacity: 0, ...fabCenterOffsets }}
+                transition={{
+                  type: 'timing',
+                  duration: 220,
+                  delay: index * HISTORY_FAB_ARC_STAGGER_MS,
+                }}
+                style={styles.historyFabArcOption}
+              >
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={accessibilityLabel}
+                  onPress={() => openHistoryAddTransaction(type)}
+                  style={({ pressed }) => [
+                    styles.historyFabOptionCard,
+                    historyFabOptionsSurface,
+                    { borderRadius: radius.pill },
+                    pressed && [
+                      floatingGlassButtonPressed,
+                      { backgroundColor: 'rgba(255, 255, 255, 0.08)' },
+                    ],
+                  ]}
+                >
+                  <Ionicons name={icon} size={16} color={HISTORY_FAB_OPTION_ICON_COLOR} />
+                  <Text
+                    style={[
+                      styles.historyFabOptionLabel,
+                      singleLineLabelStyle,
+                      { color: HISTORY_FAB_OPTION_ICON_COLOR },
+                    ]}
+                    {...chipLabelTextProps()}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              </MotiView>
+            );
+          })}
+        </View>
+      ) : null}
+      {showAgendaFabOptions ? (
+        <Pressable
+          style={[
+            styles.historyFabBackdrop,
+            {
+              height: SCREEN_HEIGHT,
+              backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.52)',
+            },
+          ]}
+          onPress={() => {
+            tapHaptic();
+            collapseAgendaFab();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Fermer le menu d'ajout"
+        />
+      ) : null}
+      {showAgendaFabOptions ? (
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.historyFabArcAnchor,
+            {
+              right: spacing.lg + HISTORY_FAB_MAIN_SIZE / 2,
+              bottom: rightThumbFabBottom + FAB_STACK_OFFSET_ADD + HISTORY_FAB_MAIN_SIZE / 2,
+            },
+          ]}
+        >
+          {AGENDA_FAB_ADD_ACTIONS.map(({ variant, label, icon, accessibilityLabel }, index) => {
+            const arcOffsets = getAgendaFabArcOffsets(
+              HISTORY_FAB_ARC_ANGLES_DEG[index],
+              HISTORY_FAB_ARC_RADIUS,
+            );
+            const fabCenterOffsets = {
+              right: -AGENDA_FAB_OPTION_PILL_WIDTH / 2,
+              bottom: -HISTORY_FAB_OPTION_ROW_HEIGHT / 2,
+            };
+
+            return (
+              <MotiView
+                key={variant}
+                from={{ opacity: 0, ...fabCenterOffsets }}
+                animate={{ opacity: 1, ...arcOffsets }}
+                exit={{ opacity: 0, ...fabCenterOffsets }}
+                transition={{
+                  type: 'timing',
+                  duration: 220,
+                  delay: index * HISTORY_FAB_ARC_STAGGER_MS,
+                }}
+                style={[styles.historyFabArcOption, { width: AGENDA_FAB_OPTION_PILL_WIDTH }]}
+              >
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={accessibilityLabel}
+                  onPress={() => openAgendaAddRecurring(variant)}
+                  style={({ pressed }) => [
+                    styles.historyFabOptionCard,
+                    historyFabOptionsSurface,
+                    { borderRadius: radius.pill },
+                    pressed && [
+                      floatingGlassButtonPressed,
+                      { backgroundColor: 'rgba(255, 255, 255, 0.08)' },
+                    ],
+                  ]}
+                >
+                  <Ionicons name={icon} size={16} color={HISTORY_FAB_OPTION_ICON_COLOR} />
+                  <Text
+                    style={[
+                      styles.historyFabOptionLabel,
+                      singleLineLabelStyle,
+                      { color: HISTORY_FAB_OPTION_ICON_COLOR },
+                    ]}
+                    {...chipLabelTextProps()}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              </MotiView>
+            );
+          })}
+        </View>
+      ) : null}
       {showDashboardAiChatFab ? (
         <Pressable
           style={({ pressed }) => [
@@ -180,44 +447,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           </View>
         </Pressable>
       ) : null}
-      {showHistoryScanFab ? (
-        <Pressable
-          style={({ pressed }) => [
-            styles.aiScanOuter,
-            fabSurface,
-            { bottom: rightThumbFabBottom + FAB_STACK_OFFSET_SCAN },
-            pressed && floatingGlassButtonPressed,
-          ]}
-          onPress={openAiScan}
-          accessibilityRole="button"
-          accessibilityLabel="Scanner une facture avec l'IA"
-        >
-          <View style={styles.aiScanIconWrap}>
-            <View style={styles.aiScanFrame}>
-              <View style={[styles.aiScanCorner, styles.aiScanCornerTopLeft, { borderColor: fabIconColor }]} />
-              <View style={[styles.aiScanCorner, styles.aiScanCornerTopRight, { borderColor: fabIconColor }]} />
-              <View style={[styles.aiScanCorner, styles.aiScanCornerBottomLeft, { borderColor: fabIconColor }]} />
-              <View style={[styles.aiScanCorner, styles.aiScanCornerBottomRight, { borderColor: fabIconColor }]} />
-              <View style={styles.aiScanLines}>
-                <View style={[styles.aiScanLine, { backgroundColor: fabIconColor }]} />
-                <View style={[styles.aiScanLine, styles.aiScanLineShort, { backgroundColor: fabIconColor }]} />
-                <View style={[styles.aiScanLine, { backgroundColor: fabIconColor }]} />
-              </View>
-            </View>
-            <View
-              style={[
-                styles.aiScanBadge,
-                {
-                  backgroundColor: fabIconColor,
-                  borderColor: colors.borderStrong,
-                },
-              ]}
-            >
-              <Text style={[styles.aiScanBadgeText, { color: fabBadgeContentColor }]}>AI</Text>
-            </View>
-          </View>
-        </Pressable>
-      ) : null}
       {showAddButton ? (
         <Pressable
           style={({ pressed }) => [
@@ -233,17 +462,32 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           onPress={handleAddPress}
           accessibilityRole="button"
           accessibilityState={
-            isTransactionsHistoryView ? { expanded: isHistoryFabExpanded } : undefined
+            isTransactionsHistoryView
+              ? { expanded: isHistoryFabExpanded }
+              : isTransactionsAgendaView
+                ? { expanded: isAgendaFabExpanded }
+                : undefined
           }
-          accessibilityLabel={shouldAddRecurringPayment ? 'Nouveau paiement récurrent' : 'Nouvelle transaction'}
+          accessibilityLabel={
+            (isTransactionsHistoryView && isHistoryFabExpanded) ||
+            (isTransactionsAgendaView && isAgendaFabExpanded)
+              ? 'Fermer le menu d\'ajout'
+              : 'Nouvelle transaction'
+          }
         >
-          <View style={styles.addIconWrap}>
-            {shouldAddRecurringPayment ? (
-              <RecurringEventFabIcon size={28} color="#000000" />
-            ) : (
-              <PlusFabIcon size={24} color="#000000" />
-            )}
-          </View>
+          <MotiView
+            animate={{
+              rotate:
+                (isTransactionsHistoryView && isHistoryFabExpanded) ||
+                (isTransactionsAgendaView && isAgendaFabExpanded)
+                  ? '45deg'
+                  : '0deg',
+            }}
+            transition={{ type: 'timing', duration: 180 }}
+            style={styles.addIconWrap}
+          >
+            <PlusFabIcon size={24} color="#000000" />
+          </MotiView>
         </Pressable>
       ) : null}
 
@@ -338,6 +582,38 @@ const styles = StyleSheet.create({
     width: '100%',
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+  historyFabBackdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 8,
+  },
+  historyFabArcAnchor: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
+    zIndex: 11,
+  },
+  historyFabArcOption: {
+    position: 'absolute',
+    width: HISTORY_FAB_OPTION_PILL_WIDTH,
+  },
+  historyFabOptionCard: {
+    minHeight: HISTORY_FAB_OPTION_ROW_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    overflow: 'hidden',
+  },
+  historyFabOptionLabel: {
+    ...typographyKit.meta,
+    textAlign: 'center',
+    maxWidth: '100%',
+    letterSpacing: 0.1,
+  },
   fabPosition: {
     position: 'absolute',
     right: spacing.lg,
@@ -371,88 +647,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1,
-  },
-  aiScanOuter: {
-    position: 'absolute',
-    right: spacing.lg,
-    zIndex: 11,
-  },
-  aiScanIconWrap: {
-    width: aiGraphic(28),
-    height: aiGraphic(28),
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-  },
-  aiScanFrame: {
-    width: aiGraphic(22),
-    height: aiGraphic(22),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  aiScanCorner: {
-    position: 'absolute',
-    width: aiGraphic(6),
-    height: aiGraphic(6),
-  },
-  aiScanCornerTopLeft: {
-    left: 0,
-    top: 0,
-    borderTopWidth: aiGraphic(1.5),
-    borderLeftWidth: aiGraphic(1.5),
-    borderTopLeftRadius: aiGraphic(2),
-  },
-  aiScanCornerTopRight: {
-    right: 0,
-    top: 0,
-    borderTopWidth: aiGraphic(1.5),
-    borderRightWidth: aiGraphic(1.5),
-    borderTopRightRadius: aiGraphic(2),
-  },
-  aiScanCornerBottomLeft: {
-    left: 0,
-    bottom: 0,
-    borderBottomWidth: aiGraphic(1.5),
-    borderLeftWidth: aiGraphic(1.5),
-    borderBottomLeftRadius: aiGraphic(2),
-  },
-  aiScanCornerBottomRight: {
-    right: 0,
-    bottom: 0,
-    borderBottomWidth: aiGraphic(1.5),
-    borderRightWidth: aiGraphic(1.5),
-    borderBottomRightRadius: aiGraphic(2),
-  },
-  aiScanLines: {
-    width: aiGraphic(11),
-    gap: aiGraphic(2),
-  },
-  aiScanLine: {
-    width: aiGraphic(11),
-    height: aiGraphic(1.5),
-    borderRadius: aiGraphic(1),
-    opacity: 0.76,
-  },
-  aiScanLineShort: {
-    width: aiGraphic(8),
-  },
-  aiScanBadge: {
-    position: 'absolute',
-    right: aiGraphic(-3),
-    bottom: aiGraphic(-1),
-    minWidth: aiGraphic(18),
-    height: aiGraphic(13),
-    borderRadius: aiGraphic(6),
-    borderWidth: aiGraphic(1.5),
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: aiGraphic(3),
-  },
-  aiScanBadgeText: {
-    fontSize: aiGraphic(7),
-    lineHeight: aiGraphic(9),
-    fontWeight: '900',
-    letterSpacing: -0.2,
   },
   addIconWrap: {
     alignItems: 'center',

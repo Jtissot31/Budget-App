@@ -82,8 +82,8 @@ export function IconPickerSheet({
             style={[
               styles.sheet,
               {
-                backgroundColor: colors.cardBackground,
-                borderColor: colors.border,
+                backgroundColor: colors.containerBackground,
+                borderColor: colors.containerBorder,
                 paddingBottom: Math.max(insets.bottom, spacing.md),
               },
             ]}

@@ -11,12 +11,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BankAccountCard } from '@/components/BankAccountCard';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
-import { GlassContainer } from '@/components/GlassContainer';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import { formValidationError, type FormFeedback } from '@/lib/formFeedback';
@@ -25,25 +24,47 @@ import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { EXPENSE_DEFAULT_ICON } from '@/lib/expenseIcon';
 import { getMerchantLogoUrl } from '@/lib/merchantLogo';
-import { MerchantLogo } from '@/components/MerchantLogo';
+import { SegmentedTabs } from '@/components/SegmentedTabs';
+import { TransactionRow } from '@/components/TransactionRow';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
-import { PaymentDetailSheet, type PaymentDetailPayload } from '@/components/PaymentDetailSheet';
-import { frequencyLabel } from '@/lib/recurringPaymentsForm';
-import { SCREEN_TOP_GUTTER, ghostCardShadow } from '@/constants/ghostUi';
+import {
+  frequencyLabel,
+  manualAccountOptions,
+  RecurringPaymentFormModal,
+  recurringPaymentToForm,
+  saveRecurringPaymentForm,
+  toAccountOptions,
+  type PaymentForm,
+} from '@/lib/recurringPaymentsForm';
+import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   colors,
   ICON_WELL_SIZE,
+  accountDetailHeroActionLinkStyle,
+  accountDetailHeroActionMutedTextStyle,
+  accountDetailHeroActionSeparatorStyle,
+  accountDetailHeroActionsStyle,
+  accountDetailHeroBlockStyle,
+  accountDetailRecurringHeaderStyle,
+  accountDetailSectionDividerStyle,
+  accountDetailStatementStatColStyle,
+  accountDetailStatementStatLabelStyle,
+  accountDetailStatementStatsRowStyle,
+  accountDetailStatementStatValueStyle,
+  destructiveIconColor,
+  destructiveTextActionStyle,
   interBoldText,
   interExtraBoldText,
   interMediumText,
   radius,
-  SECTION_TITLE_STYLE,
   spacing,
+  subtleDeleteButtonStyle,
   typography,
 } from '@/constants/theme';
 import {
   deleteSimulatedAccount,
-  getMerchantOverrides,
+  getCategories,
+  getCategoryBudgets,
   getRecurringPayments,
   getSavingsGoals,
   getSimulatedAccounts,
@@ -54,17 +75,25 @@ import {
 import { dataEvents } from '@/lib/events';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
 import { getAccountLogoUrl } from '@/lib/merchantLogo';
-import { userPickedIconWellStyle } from '@/lib/userPickedIcon';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
 import {
-  creditLimitUtilizationBarColor,
   creditLimitUtilizationPercent,
   creditUsedFromBalance,
+  utilizationPercentColor,
 } from '@/lib/creditLimitUtilization';
+import { parseIsoDay } from '@/lib/estimatedPaycheck';
 import { formatDisplayMoneyAbsolute, formatRecurringPaymentAmount, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
-import { listRowTitle, rowTitleTextProps, rowValue, rowValueContainer, singleLineAmountProps } from '@/lib/textLayout';
-import type { AccountKind, Category, CategoryBudget, MerchantOverride, RecurringPayment, SavingsGoal, SimulatedAccount, Transaction } from '@/types';
+import { UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
+import {
+  filterTransactionsByType,
+  formatTransactionGroupDateLabel,
+  groupTransactionsByDay,
+  HISTORY_FILTER_OPTIONS,
+  type HistoryTypeFilter,
+  transactionMatchesSearch,
+} from '@/lib/transactionListUtils';
+import type { AccountKind, Category, CategoryBudget, RecurringPayment, SavingsGoal, SimulatedAccount, Transaction } from '@/types';
 
 const ACCOUNT_TYPES: Array<{
   id: AccountKind;
@@ -107,108 +136,181 @@ function formatSignedMoney(value: number) {
   return formatSignedDisplayMoney(value);
 }
 
-function formatAgendaUpcomingDate(dateKey: string) {
-  return new Date(`${dateKey}T12:00:00`).toLocaleDateString('fr-FR', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'long',
-  });
+const SUBSCRIPTION_CATEGORY_PATTERN = /abonnement|subscription|loisir|divertissement|streaming/;
+
+function recurringPaymentTypeLabel(payment: RecurringPayment) {
+  if ((payment.kind ?? 'payment') === 'income') return 'Revenu récurrent';
+  if (payment.categoryId === 'cat-fun') return 'Abonnement';
+  if (SUBSCRIPTION_CATEGORY_PATTERN.test((payment.categoryName ?? '').trim().toLowerCase())) return 'Abonnement';
+  return 'Facture';
 }
 
-function getLocalDayKey(isoDate: string) {
-  const date = new Date(isoDate);
-  if (Number.isNaN(date.getTime())) return isoDate.slice(0, 10);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
 }
 
-type ItemizedNote = {
-  name: string;
-};
+function addMonthsClamped(date: Date, months: number) {
+  const day = date.getDate();
+  const next = new Date(date.getFullYear(), date.getMonth() + months, 1);
+  const dim = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+  next.setDate(Math.min(day, dim));
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
 
-function parseItemizedNote(note?: string): ItemizedNote[] {
-  const line = note?.split('\n').find((part) => part.startsWith('articles:'));
-  if (!line) return [];
+function occurrenceDateAt(firstDate: Date, frequency: RecurringPayment['frequency'], index: number) {
+  if (frequency === 'weekly') return addDays(firstDate, index * 7);
+  if (frequency === 'biweekly') return addDays(firstDate, index * 14);
+  if (frequency === 'yearly') return addMonthsClamped(firstDate, index * 12);
+  return addMonthsClamped(firstDate, index);
+}
 
-  try {
-    const parsed = JSON.parse(line.slice('articles:'.length));
-    if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((item): ItemizedNote[] => {
-      if (!item || typeof item !== 'object') return [];
-      const name =
-        typeof (item as Record<string, unknown>).name === 'string'
-          ? (item as Record<string, unknown>).name.trim()
-          : '';
-      return name ? [{ name }] : [];
-    });
-  } catch {
-    return [];
+function nextRecurringOccurrence(payment: RecurringPayment, from: Date) {
+  const firstDate = parseIsoDay(payment.nextDate);
+  if (!firstDate) return null;
+
+  const endDate = parseIsoDay(payment.endDate);
+  let index = 0;
+  let occurrence = occurrenceDateAt(firstDate, payment.frequency, index);
+  while (occurrence < from && index < 1200) {
+    index += 1;
+    occurrence = occurrenceDateAt(firstDate, payment.frequency, index);
   }
+  if (occurrence < from) return null;
+  if (endDate && occurrence > endDate) return null;
+  return occurrence;
 }
 
-function firstItemName(tx: Transaction) {
-  return parseItemizedNote(tx.note)[0]?.name ?? null;
+function formatRecurringNextDate(date: Date) {
+  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
 }
 
-function AccountTransactionRow({
-  transaction: tx,
-  merchantName,
-  logoUrl,
-  onPress,
+function recurringPaymentDefinitionMeta(payment: RecurringPayment, from: Date) {
+  const parts = [recurringPaymentTypeLabel(payment)];
+  if (!payment.active) parts.push('Inactif');
+  parts.push(frequencyLabel(payment.frequency));
+  const next = payment.active ? nextRecurringOccurrence(payment, from) : null;
+  if (next) parts.push(formatRecurringNextDate(next));
+  return parts.join(' · ');
+}
+
+function DetailRow({
+  label,
+  value,
+  valueColor,
+  isLast,
 }: {
-  transaction: Transaction;
-  merchantName: string;
-  logoUrl?: string | null;
-  onPress: () => void;
+  label: string;
+  value: string;
+  valueColor?: string;
+  isLast?: boolean;
 }) {
   const { colors } = useAppTheme();
-  const isIncome = tx.type === 'income';
-  const isTransfer = tx.type === 'transfer';
-  const amountColor = isIncome ? colors.success : isTransfer ? colors.textMuted : colors.text;
-  const hasReceipt = Boolean(tx.receiptUri || tx.receiptStatus);
-  const itemName = firstItemName(tx);
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Voir la transaction ${merchantName}`}
-      android_ripple={null}
-      onPress={onPress}
-    >
-      <GlassContainer
-        borderRadius={radius.lg}
-        padding={spacing.sm + 3}
-        innerStyle={styles.transactionRowInner}
-      >
-          <MerchantLogo name={merchantName} logoUrl={logoUrl} size={ICON_WELL_SIZE} />
-          <View style={styles.transactionBody}>
-            <View style={styles.transactionTitleRow}>
-              <Text style={[styles.transactionTitle, { color: colors.text }]} {...rowTitleTextProps}>
-                {merchantName}
-              </Text>
-              {hasReceipt ? (
-                <View style={[styles.receiptBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <Ionicons name="receipt-outline" size={13} color={colors.textMuted} />
-                </View>
-              ) : null}
-            </View>
-            {itemName ? (
-              <Text style={[styles.transactionSubtitle, { color: colors.textMuted }]} numberOfLines={1}>
-                {itemName}
-              </Text>
-            ) : null}
-          </View>
-          <View style={styles.transactionAmountCol}>
-            <Text style={[styles.transactionAmount, { color: amountColor }]} {...singleLineAmountProps}>
-              {isTransfer ? '' : isIncome ? '+' : '−'}
-              {formatDisplayMoneyAbsolute(tx.amount)}
-            </Text>
-          </View>
-      </GlassContainer>
-    </Pressable>
+    <View style={[styles.detailRow, !isLast && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
+      <Text style={[styles.detailLabel, { color: colors.textMuted }]}>{label}</Text>
+      <Text style={[styles.detailValue, { color: valueColor ?? colors.text }]} numberOfLines={1}>
+        {value}
+      </Text>
+    </View>
   );
+}
+
+function StatementStatColumn({
+  label,
+  value,
+  valueColor,
+  align = 'center',
+  prominent,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+  align?: 'left' | 'center' | 'right';
+  prominent?: boolean;
+}) {
+  const { colors } = useAppTheme();
+  const textAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
+
+  return (
+    <View style={accountDetailStatementStatColStyle({ align, prominent })}>
+      <Text
+        style={[
+          accountDetailStatementStatValueStyle(prominent),
+          { color: valueColor ?? colors.text, textAlign },
+        ]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >
+        {value}
+      </Text>
+      <Text
+        style={[
+          accountDetailStatementStatLabelStyle(),
+          { color: colors.textMuted, textAlign },
+        ]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function CheckingMonthlyStatsRow({
+  revenues,
+  expenses,
+  net,
+}: {
+  revenues: number;
+  expenses: number;
+  net: number;
+}) {
+  const { colors } = useAppTheme();
+
+  return (
+    <View style={accountDetailStatementStatsRowStyle()}>
+      <StatementStatColumn
+        label="Revenus"
+        value={`+${formatMoney(revenues)}`}
+        align="left"
+      />
+      <StatementStatColumn
+        label="Net ce mois"
+        value={formatSignedMoney(net)}
+        valueColor={net >= 0 ? colors.success : colors.danger}
+        align="center"
+        prominent
+      />
+      <StatementStatColumn
+        label="Dépenses"
+        value={`−${formatMoney(expenses)}`}
+        align="right"
+      />
+    </View>
+  );
+}
+
+function StatementStatsRow({
+  stats,
+}: {
+  stats: Array<{ label: string; value: string; valueColor?: string }>;
+}) {
+  return (
+    <View style={accountDetailStatementStatsRowStyle()}>
+      {stats.map((stat) => (
+        <StatementStatColumn key={stat.label} label={stat.label} value={stat.value} valueColor={stat.valueColor} />
+      ))}
+    </View>
+  );
+}
+
+function FlowDivider() {
+  const { isLight } = useAppTheme();
+  return <View style={accountDetailSectionDividerStyle(isLight)} />;
 }
 
 export default function AccountDetailScreen() {
@@ -221,8 +323,10 @@ export default function AccountDetailScreen() {
   const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [merchantOverrides, setMerchantOverrides] = useState<MerchantOverride[]>([]);
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
+  const [search, setSearch] = useState('');
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<HistoryTypeFilter>('all');
+  const [historyFiltersExpanded, setHistoryFiltersExpanded] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showRecurringPayments, setShowRecurringPayments] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -240,21 +344,24 @@ export default function AccountDetailScreen() {
   const [showLogoPicker, setShowLogoPicker] = useState(false);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
   const [pendingDeleteAccount, setPendingDeleteAccount] = useState<SimulatedAccount | null>(null);
-  const [selectedPayment, setSelectedPayment] = useState<PaymentDetailPayload | null>(null);
+  const [recurringForm, setRecurringForm] = useState<PaymentForm | null>(null);
+  const [recurringAccounts, setRecurringAccounts] = useState<ReturnType<typeof manualAccountOptions>>([]);
+  const [recurringCategories, setRecurringCategories] = useState<Category[]>([]);
+  const [recurringCategoryBudgets, setRecurringCategoryBudgets] = useState<CategoryBudget[]>([]);
+  const [recurringSaving, setRecurringSaving] = useState(false);
+  const [recurringFeedback, setRecurringFeedback] = useState<FormFeedback | null>(null);
 
   const load = useCallback(async () => {
-    const [nextAccounts, nextSavingsGoals, nextTransactions, nextRecurringPayments, nextMerchantOverrides] = await Promise.all([
+    const [nextAccounts, nextSavingsGoals, nextTransactions, nextRecurringPayments] = await Promise.all([
       getSimulatedAccounts(),
       getSavingsGoals(),
       getTransactions(),
       getRecurringPayments(),
-      getMerchantOverrides(),
     ]);
     setAccounts(nextAccounts);
     setSavingsGoals(nextSavingsGoals);
     setTransactions(nextTransactions);
     setRecurringPayments(nextRecurringPayments);
-    setMerchantOverrides(nextMerchantOverrides);
   }, []);
 
   useEffect(() => {
@@ -274,30 +381,28 @@ export default function AccountDetailScreen() {
     if (!account) return [];
     return sortTransactionsNewestFirst(transactions.filter((tx) => transactionBelongsToAccount(tx, account)));
   }, [account, transactions]);
-  const groupedAccountTransactions = useMemo(() => {
-    const groups: Record<string, Transaction[]> = {};
-    accountTransactions.forEach((tx) => {
-      const key = getLocalDayKey(tx.date);
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(tx);
-    });
-    return Object.entries(groups)
-      .map(([day, txs]) => [day, sortTransactionsNewestFirst(txs)] as [string, Transaction[]])
-      .sort(([a], [b]) => b.localeCompare(a));
-  }, [accountTransactions]);
+  const filteredAccountTransactions = useMemo(() => {
+    const searched = search.trim()
+      ? accountTransactions.filter((tx) => transactionMatchesSearch(tx, search))
+      : accountTransactions;
+    return filterTransactionsByType(searched, historyTypeFilter);
+  }, [accountTransactions, historyTypeFilter, search]);
+  const groupedAccountTransactions = useMemo(
+    () => groupTransactionsByDay(filteredAccountTransactions),
+    [filteredAccountTransactions],
+  );
+  const historyHasActiveFilters = search.trim().length > 0 || historyTypeFilter !== 'all';
+  const today = useMemo(() => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }, []);
   const accountRecurringPayments = useMemo(() => {
     if (!account) return [];
-    return recurringPayments.filter((payment) => payment.accountId === account.id);
+    return recurringPayments
+      .filter((payment) => payment.accountId === account.id)
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   }, [account, recurringPayments]);
-  const groupedAccountRecurringPayments = useMemo(() => {
-    const groups: Record<string, RecurringPayment[]> = {};
-    accountRecurringPayments.forEach((payment) => {
-      const key = payment.nextDate ?? '__no_date__';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(payment);
-    });
-    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
-  }, [accountRecurringPayments]);
   const checkingMonthlyStats = useMemo(() => {
     if (!account || account.kind !== 'checking') return null;
     const now = new Date();
@@ -408,6 +513,36 @@ export default function AccountDetailScreen() {
     setConfirmDeleteVisible(true);
   };
 
+  const openEditRecurringPayment = useCallback(async (payment: RecurringPayment) => {
+    tapHaptic();
+    const [categories, categoryBudgets, simulatedAccounts] = await Promise.all([
+      getCategories(),
+      getCategoryBudgets(),
+      getSimulatedAccounts(),
+    ]);
+    const accounts = toAccountOptions(simulatedAccounts);
+    setRecurringAccounts(accounts.length ? accounts : manualAccountOptions());
+    setRecurringCategories(categories);
+    setRecurringCategoryBudgets(categoryBudgets);
+    setRecurringForm(recurringPaymentToForm(payment));
+    setRecurringFeedback(null);
+  }, []);
+
+  const saveRecurringPayment = async () => {
+    if (!recurringForm) return;
+    setRecurringSaving(true);
+    const result = await saveRecurringPaymentForm(recurringForm, recurringAccounts);
+    setRecurringSaving(false);
+    if (result !== true) {
+      setRecurringFeedback(result);
+      return;
+    }
+    setRecurringFeedback(null);
+    setRecurringForm(null);
+    successHaptic();
+    await load();
+  };
+
   return (
     <PageTransition>
     <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
@@ -418,28 +553,17 @@ export default function AccountDetailScreen() {
           hitSlop={12}
           style={({ pressed }) => [
             styles.backButton,
-            { backgroundColor: colors.surfaceSolid, borderColor: colors.border },
+            { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
             pressed && styles.pressed,
           ]}
           onPress={() => router.back()}
         >
           <Ionicons name="chevron-back" size={22} color={colors.text} />
         </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Compte</Text>
-        {account ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Modifier le compte"
-            hitSlop={12}
-            style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}
-            onPress={() => openEditAccountForm(account)}
-          >
-            <Ionicons name="create-outline" size={18} color={colors.text} />
-            <Text style={[styles.headerActionText, { color: colors.text }]}>Modifier</Text>
-          </Pressable>
-        ) : (
-          <View style={styles.topBarSpacer} />
-        )}
+        <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+          {account?.name ?? 'Compte'}
+        </Text>
+        <View style={styles.topBarSpacer} />
       </View>
 
       <ScrollView
@@ -460,326 +584,307 @@ export default function AccountDetailScreen() {
       >
         {account ? (
           <>
-            <GlassContainer
-              style={ghostCardShadow}
-              innerStyle={styles.identityCardInner}
-              padding={spacing.md}
-              borderRadius={radius.xl}
-            >
-              {getSimulatedAccountLogoUrl(account) ? (
-                <LogoIconFrame uri={getSimulatedAccountLogoUrl(account)!} size={52} />
-              ) : (
-                <View style={userPickedIconWellStyle(52, isLight)}>
-                  <Ionicons name={iconForKind(account.kind)} size={22} color={colors.primary} />
-                </View>
-              )}
-              <View style={styles.identityCopy}>
-                <Text style={[styles.accountName, { color: colors.text }]} numberOfLines={1}>
-                  {account.name}
-                </Text>
-                <Text style={[styles.accountMeta, { color: colors.textMuted }]} numberOfLines={1}>
-                  {linkedSavingsGoal
-                    ? `Objectif · ${linkedSavingsGoal.name}`
-                    : account.institution?.trim() || accountKindLabel(account.kind)}
-                </Text>
-              </View>
-            </GlassContainer>
-
-            <GlassContainer
-              style={styles.summaryCardShell}
-              innerStyle={styles.summaryCardInner}
-              padding={spacing.md}
-              borderRadius={radius.lg}
-            >
-              <View>
-                <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Solde actuel</Text>
-                <Text
-                  style={[
-                    styles.summaryAmount,
-                    {
-                      color:
-                        account.balance < 0
-                          ? colors.danger
-                          : account.kind === 'credit' && account.balance > 0
-                            ? colors.success
-                            : colors.text,
-                    },
-                  ]}
+            <View style={accountDetailHeroBlockStyle()}>
+              <View style={accountDetailHeroActionsStyle()}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Modifier le compte"
+                  style={({ pressed }) => [accountDetailHeroActionLinkStyle(), pressed && styles.pressed]}
+                  onPress={() => openEditAccountForm(account)}
                 >
-                  {formatSignedDisplayMoney(account.balance, {
-                    leadingPlusWhenPositive: account.kind === 'credit' && account.balance > 0,
-                  })}
-                </Text>
+                  <Text style={accountDetailHeroActionMutedTextStyle(isLight)}>Modifier</Text>
+                </Pressable>
+                <Text style={accountDetailHeroActionSeparatorStyle(isLight)}>·</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Supprimer le compte"
+                  style={({ pressed }) => [accountDetailHeroActionLinkStyle(), pressed && styles.pressed]}
+                  onPress={() => confirmDeleteAccount(account)}
+                >
+                  <Text style={destructiveTextActionStyle(isLight)}>Supprimer</Text>
+                </Pressable>
               </View>
-              <Text style={[styles.summaryMeta, { color: colors.textMuted }]}>
-                {accountTransactions.length} transaction{accountTransactions.length > 1 ? 's' : ''}
-              </Text>
-            </GlassContainer>
+              <View style={ghostCardShadow}>
+                <BankAccountCard
+                  account={account}
+                  logoUrl={getSimulatedAccountLogoUrl(account)}
+                />
+              </View>
+            </View>
 
             {creditInfo ? (
-              <GlassContainer
-                style={styles.creditInfoCardShell}
-                innerStyle={styles.creditInfoCardInner}
-                padding={spacing.md}
-                borderRadius={radius.lg}
-              >
-                <Text style={[styles.creditSectionLabel, { color: colors.textMuted }]}>
-                  SANTÉ DU CRÉDIT
-                </Text>
-
-                {typeof creditInfo.available === 'number' ? (
-                  <View style={styles.creditHeroBlock}>
-                    <Text style={[styles.creditHeroAmount, { color: colors.success }]}>
-                      {formatMoney(creditInfo.available)}
-                    </Text>
-                    <Text style={[styles.creditHeroLabel, { color: colors.textMuted }]}>
-                      disponible
-                    </Text>
-                  </View>
-                ) : null}
-
-                {typeof creditInfo.utilPct === 'number' ? (
-                  <View style={styles.creditBarRow}>
-                    <View style={[styles.creditBarTrack, { backgroundColor: colors.surfaceElevated }]}>
-                      <View
-                        style={[
-                          styles.creditBarFill,
-                          {
-                            width: `${Math.min(Math.max(creditInfo.utilPct, 1), 100)}%` as `${number}%`,
-                            backgroundColor: creditLimitUtilizationBarColor(creditInfo.utilPct, colors, isLight),
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text
-                      style={[
-                        styles.creditBarPct,
-                        { color: creditLimitUtilizationBarColor(creditInfo.utilPct, colors, isLight) },
-                      ]}
-                    >
-                      {`${Math.round(creditInfo.utilPct)} %`}
-                    </Text>
-                  </View>
-                ) : null}
-
-                <View style={styles.creditChipRow}>
-                  {typeof creditInfo.creditLimit === 'number' ? (
-                    <View style={[styles.creditChip, { backgroundColor: colors.surfaceElevated }]}>
-                      <Text style={[styles.creditChipLabel, { color: colors.textMuted }]}>LIMITE</Text>
-                      <Text style={[styles.creditChipAmount, { color: colors.text }]}>
-                        {formatMoney(creditInfo.creditLimit)}
-                      </Text>
-                    </View>
-                  ) : null}
-                  <View
-                    style={[
-                      styles.creditChip,
-                      {
-                        backgroundColor:
-                          typeof creditInfo.utilPct === 'number'
-                            ? creditInfo.utilPct >= 85
-                              ? colors.dangerMuted
-                              : creditInfo.utilPct >= 65
-                                ? colors.warningMuted
-                                : colors.successMuted
-                            : colors.surfaceElevated,
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.creditChipLabel, { color: colors.textMuted }]}>UTILISÉ</Text>
-                    <Text
-                      style={[
-                        styles.creditChipAmount,
-                        {
-                          color:
-                            typeof creditInfo.utilPct === 'number'
-                              ? creditLimitUtilizationBarColor(creditInfo.utilPct, colors, isLight)
-                              : colors.text,
-                        },
-                      ]}
-                    >
-                      {formatMoney(creditInfo.creditUsed)}
-                    </Text>
-                  </View>
-                </View>
-              </GlassContainer>
+              <StatementStatsRow
+                stats={[
+                  {
+                    label: 'Solde dû',
+                    value: formatSignedDisplayMoney(-creditInfo.creditUsed),
+                    valueColor: colors.danger,
+                  },
+                  ...(typeof creditInfo.available === 'number'
+                    ? [{ label: 'Disponible', value: formatMoney(creditInfo.available) }]
+                    : []),
+                  ...(typeof creditInfo.utilPct === 'number'
+                    ? [{
+                        label: '% utilisé',
+                        value: `${Math.round(creditInfo.utilPct)} %`,
+                        valueColor: utilizationPercentColor(creditInfo.utilPct, colors),
+                      }]
+                    : []),
+                ]}
+              />
             ) : null}
 
             {checkingMonthlyStats ? (
-              <GlassContainer
-                style={styles.creditInfoCardShell}
-                innerStyle={styles.creditInfoCardInner}
-                padding={spacing.md}
-                borderRadius={radius.lg}
-              >
-                <Text style={[styles.creditSectionLabel, { color: colors.textMuted }]}>
-                  CE MOIS-CI
-                </Text>
+              <CheckingMonthlyStatsRow
+                revenues={checkingMonthlyStats.revenues}
+                expenses={checkingMonthlyStats.expenses}
+                net={checkingMonthlyStats.net}
+              />
+            ) : null}
 
-                <View style={styles.creditHeroBlock}>
-                  <Text
-                    style={[
-                      styles.creditHeroAmount,
-                      { color: checkingMonthlyStats.net >= 0 ? colors.success : colors.danger },
-                    ]}
-                  >
-                    {formatSignedMoney(checkingMonthlyStats.net)}
-                  </Text>
-                  <Text style={[styles.creditHeroLabel, { color: colors.textMuted }]}>
-                    net ce mois
-                  </Text>
-                </View>
+            {account.kind === 'savings' && linkedSavingsGoal ? (
+              <StatementStatsRow
+                stats={[
+                  { label: 'Épargné', value: formatMoney(linkedSavingsGoal.currentAmount) },
+                  { label: 'Objectif', value: formatMoney(linkedSavingsGoal.targetAmount) },
+                  {
+                    label: 'Atteint',
+                    value: `${Math.round(
+                      linkedSavingsGoal.targetAmount > 0
+                        ? (linkedSavingsGoal.currentAmount / linkedSavingsGoal.targetAmount) * 100
+                        : 0,
+                    )} %`,
+                    valueColor: colors.primary,
+                  },
+                ]}
+              />
+            ) : null}
 
-                <View style={styles.creditChipRow}>
-                  <View style={[styles.creditChip, { backgroundColor: colors.successMuted }]}>
-                    <Text style={[styles.creditChipLabel, { color: colors.textMuted }]}>REVENUS</Text>
-                    <Text style={[styles.creditChipAmount, { color: colors.success }]}>
-                      {formatMoney(checkingMonthlyStats.revenues)}
-                    </Text>
-                  </View>
-                  <View style={[styles.creditChip, { backgroundColor: colors.surfaceElevated }]}>
-                    <Text style={[styles.creditChipLabel, { color: colors.textMuted }]}>DÉPENSES</Text>
-                    <Text style={[styles.creditChipAmount, { color: colors.text }]}>
-                      {formatMoney(checkingMonthlyStats.expenses)}
-                    </Text>
+            {creditInfo &&
+            (typeof creditInfo.creditLimit === 'number' ||
+              typeof account.dueDay === 'number' ||
+              typeof account.interestRate === 'number') ? (
+              <>
+                <FlowDivider />
+                {typeof creditInfo.creditLimit === 'number' ? (
+                  <DetailRow
+                    label="Limite"
+                    value={formatMoney(creditInfo.creditLimit)}
+                    isLast={
+                      typeof account.dueDay !== 'number' && typeof account.interestRate !== 'number'
+                    }
+                  />
+                ) : null}
+                {typeof account.dueDay === 'number' ? (
+                  <DetailRow
+                    label="Échéance"
+                    value={`Jour ${account.dueDay}`}
+                    isLast={typeof account.interestRate !== 'number'}
+                  />
+                ) : null}
+                {typeof account.interestRate === 'number' ? (
+                  <DetailRow label="Taux d'intérêt" value={`${account.interestRate} %`} isLast />
+                ) : null}
+              </>
+            ) : null}
+
+            {account.kind === 'savings' && linkedSavingsGoal ? (
+              <>
+                <FlowDivider />
+                <DetailRow label="Objectif" value={linkedSavingsGoal.name} isLast />
+                <View style={styles.savingsProgressBlock}>
+                  <View style={[styles.savingsProgressTrack, { backgroundColor: colors.border }]}>
+                    <View
+                      style={[
+                        styles.savingsProgressFill,
+                        {
+                          backgroundColor: colors.primary,
+                          width: `${Math.min(
+                            100,
+                            linkedSavingsGoal.targetAmount > 0
+                              ? (linkedSavingsGoal.currentAmount / linkedSavingsGoal.targetAmount) * 100
+                              : 0,
+                          )}%`,
+                        },
+                      ]}
+                    />
                   </View>
                 </View>
-              </GlassContainer>
+              </>
             ) : null}
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Afficher les paiements récurrents"
+              accessibilityLabel="Paiements récurrents de ce compte"
+              accessibilityState={{ expanded: showRecurringPayments }}
               android_ripple={null}
+              style={({ pressed }) => [
+                accountDetailRecurringHeaderStyle(isLight),
+                pressed && styles.pressed,
+              ]}
               onPress={() => {
                 tapHaptic();
                 setShowRecurringPayments((visible) => !visible);
               }}
             >
-              <GlassContainer
-                borderRadius={radius.lg}
-                padding={spacing.md}
-                innerStyle={styles.recurringToggleInner}
-              >
-                  <View>
-                    <Text style={[styles.sectionTitle, { color: colors.text }]}>Paiements récurrents</Text>
-                    <Text style={[styles.sectionMeta, { color: colors.textMuted }]}>
-                      {accountRecurringPayments.length} lié{accountRecurringPayments.length > 1 ? 's' : ''} à ce compte
-                    </Text>
-                  </View>
-                  <Ionicons name={showRecurringPayments ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textMuted} />
-              </GlassContainer>
+              <View style={styles.recurringSectionTitleRow}>
+                <Ionicons name="repeat" size={18} color={colors.primary} />
+                <Text style={[styles.recurringSectionTitle, { color: colors.text }]}>
+                  Paiements récurrents de ce compte
+                </Text>
+              </View>
+              <View style={styles.recurringSectionMeta}>
+                <View style={[styles.recurringCountBadge, { backgroundColor: colors.blueMuted }]}>
+                  <Text style={[styles.recurringCountBadgeText, { color: colors.primary }]}>
+                    {accountRecurringPayments.length}
+                  </Text>
+                </View>
+                <Ionicons
+                  name={showRecurringPayments ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={colors.textMuted}
+                />
+              </View>
             </Pressable>
 
             {showRecurringPayments ? (
               <View style={styles.recurringList}>
-                {groupedAccountRecurringPayments.length > 0 ? (
-                  groupedAccountRecurringPayments.map(([dateKey, payments]) => (
-                    <View key={dateKey} style={styles.recurringGroup}>
-                      <View style={styles.recurringGroupHeader}>
-                        <Text style={styles.recurringGroupDate}>
-                          {dateKey !== '__no_date__' ? formatAgendaUpcomingDate(dateKey) : 'Date inconnue'}
+                {accountRecurringPayments.length > 0 ? (
+                  accountRecurringPayments.map((payment, paymentIndex) => (
+                    <Pressable
+                      key={payment.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Modifier ${payment.name}`}
+                      android_ripple={null}
+                      style={[
+                        styles.recurringPaymentRow,
+                        paymentIndex < accountRecurringPayments.length - 1 && {
+                          borderBottomColor: colors.border,
+                          borderBottomWidth: StyleSheet.hairlineWidth,
+                        },
+                      ]}
+                      onPress={() => void openEditRecurringPayment(payment)}
+                    >
+                      <UserPickedIconWell
+                        icon={
+                          payment.icon && payment.icon !== 'repeat-outline'
+                            ? payment.icon
+                            : payment.kind === 'income'
+                              ? 'AttachMoney'
+                              : EXPENSE_DEFAULT_ICON
+                        }
+                        color={payment.color}
+                        size={48}
+                        wellGlyphWhite
+                        logoUrl={payment.logoUrl?.trim() || getMerchantLogoUrl(payment.name) || null}
+                      />
+                      <View style={styles.recurringPaymentCopy}>
+                        <Text style={[styles.recurringPaymentName, { color: colors.text }]} numberOfLines={1}>
+                          {payment.name}
+                        </Text>
+                        <Text style={[styles.recurringPaymentMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                          {recurringPaymentDefinitionMeta(payment, today)}
                         </Text>
                       </View>
-                      <View style={styles.recurringGroupItems}>
-                        {payments.map((payment) => (
-                          <Pressable
-                            key={payment.id}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Voir les détails du paiement récurrent ${payment.name}`}
-                            android_ripple={null}
-                            onPress={() => {
-                              tapHaptic();
-                              setSelectedPayment({
-                                name: payment.name,
-                                amount: payment.amount,
-                                sourceId: payment.id,
-                                recurring: true,
-                                kind: payment.kind === 'income' ? 'income' : 'payment',
-                                account: payment.accountLabel ?? null,
-                                logoUrl: payment.logoUrl ?? null,
-                                icon: payment.icon ?? null,
-                                color: payment.color ?? null,
-                                frequencyLabel: frequencyLabel(payment.frequency),
-                                frequency: payment.frequency,
-                                active: payment.active,
-                                categoryName: payment.categoryName ?? null,
-                                categoryId: payment.categoryId ?? null,
-                              });
-                            }}
-                          >
-                            <GlassContainer borderRadius={radius.lg} padding={spacing.sm + 2} innerStyle={styles.recurringPaymentRowInner}>
-                              <UserPickedIconWell
-                                icon={
-                                  payment.icon && payment.icon !== 'repeat-outline'
-                                    ? payment.icon
-                                    : payment.kind === 'income'
-                                      ? 'AttachMoney'
-                                      : EXPENSE_DEFAULT_ICON
-                                }
-                                color={payment.color}
-                                size={48}
-                                wellGlyphWhite
-                                logoUrl={payment.logoUrl?.trim() || getMerchantLogoUrl(payment.name) || null}
-                              />
-                              <View style={styles.recurringPaymentCopy}>
-                                <Text style={[styles.recurringPaymentName, { color: colors.text }]} numberOfLines={1}>
-                                  {payment.name}
-                                </Text>
-                                <Text style={[styles.recurringPaymentMeta, { color: colors.textMuted }]} numberOfLines={1}>
-                                  {frequencyLabel(payment.frequency)}
-                                  {payment.active ? '' : ' · inactif'}
-                                </Text>
-                              </View>
-                              <Text style={[styles.recurringPaymentAmount, { color: payment.kind === 'income' ? colors.success : colors.text }]}>
-                                {formatRecurringPaymentAmount(payment.amount, payment.kind ?? 'payment')}
-                              </Text>
-                            </GlassContainer>
-                          </Pressable>
-                        ))}
-                      </View>
-                    </View>
+                      <Text style={[styles.recurringPaymentAmount, { color: payment.kind === 'income' ? colors.success : colors.text }]}>
+                        {formatRecurringPaymentAmount(payment.amount, payment.kind ?? 'payment')}
+                      </Text>
+                    </Pressable>
                   ))
                 ) : (
-                  <Text style={[styles.empty, { color: colors.textMuted }]}>Aucun paiement récurrent pour ce compte.</Text>
+                  <Text style={[styles.emptyInline, { color: colors.textMuted }]}>Aucun paiement récurrent pour ce compte.</Text>
                 )}
               </View>
             ) : null}
 
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Historique</Text>
-              <Text style={[styles.sectionMeta, { color: colors.textMuted }]}>Toucher pour les détails</Text>
-            </View>
+            <FlowDivider />
+
             <View style={styles.transactionList}>
-              {accountTransactions.length > 0 ? (
+              <View style={[styles.searchRow, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
+                <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+                <TextInput
+                  style={[styles.searchInput, { color: colors.text }]}
+                  placeholder="Rechercher"
+                  placeholderTextColor={colors.textMuted}
+                  value={search}
+                  onChangeText={setSearch}
+                />
+                {search.trim().length > 0 ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Effacer la recherche"
+                    hitSlop={8}
+                    onPress={() => setSearch('')}
+                    style={styles.clearSearchBtn}
+                  >
+                    <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Filtres"
+                  accessibilityState={{ expanded: historyFiltersExpanded }}
+                  hitSlop={8}
+                  onPress={() => {
+                    tapHaptic();
+                    setHistoryFiltersExpanded((expanded) => !expanded);
+                  }}
+                  style={styles.filterIconBtn}
+                >
+                  <Ionicons
+                    name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
+                    size={20}
+                    color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
+                  />
+                </Pressable>
+              </View>
+              {historyFiltersExpanded ? (
+                <View style={styles.historyFilterWrap}>
+                  <SegmentedTabs
+                    tabs={HISTORY_FILTER_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
+                    active={historyTypeFilter}
+                    onChange={(id) => {
+                      tapHaptic();
+                      setHistoryTypeFilter(id);
+                    }}
+                    showDivider={false}
+                    trackBgColor="transparent"
+                    activeBgColor="rgba(255,255,255,0.07)"
+                    activeLabelColor="rgba(255,255,255,0.85)"
+                    inactiveLabelColor="rgba(255,255,255,0.28)"
+                  />
+                </View>
+              ) : null}
+
+              {groupedAccountTransactions.length > 0 ? (
                 groupedAccountTransactions.map(([date, txs]) => (
                   <View key={date} style={styles.transactionGroup}>
-                    <Text style={[styles.transactionGroupLabel, { color: colors.textMuted }]}>
-                      {new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
-                    </Text>
+                    <View style={styles.groupHeaderRow}>
+                      <Text style={[styles.transactionGroupLabel, { color: colors.textMuted }]}>
+                        {formatTransactionGroupDateLabel(date)}
+                      </Text>
+                    </View>
                     <View style={styles.groupTransactions}>
-                      {txs.map((tx) => {
-                        const override = merchantOverrides.find((item) => item.originalName === tx.label);
-                        const merchantName = override?.displayName?.trim() || tx.label;
-
-                        return (
-                          <AccountTransactionRow
-                            key={tx.id}
-                            transaction={tx}
-                            merchantName={merchantName}
-                            logoUrl={override?.logoUrl ?? null}
-                            onPress={() => {
-                              tapHaptic();
-                              setSelectedTransaction(tx);
-                            }}
-                          />
-                        );
-                      })}
+                      {txs.map((tx) => (
+                        <TransactionRow
+                          key={tx.id}
+                          transaction={tx}
+                          accounts={accounts}
+                          onPress={() => {
+                            tapHaptic();
+                            setSelectedTransaction(tx);
+                          }}
+                        />
+                      ))}
                     </View>
                   </View>
                 ))
               ) : (
-                <Text style={[styles.empty, { color: colors.textMuted }]}>Aucune transaction trouvée pour ce compte.</Text>
+                <Text style={[styles.emptyInline, { color: colors.textMuted }]}>
+                  {historyHasActiveFilters
+                    ? 'Aucun résultat. Essaie un autre filtre ou une autre recherche.'
+                    : 'Aucune transaction trouvée pour ce compte.'}
+                </Text>
               )}
             </View>
 
@@ -975,14 +1080,13 @@ export default function AccountDetailScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="Supprimer le compte"
                   style={({ pressed }) => [
-                    styles.deleteButton,
-                    { backgroundColor: colors.dangerMuted, borderColor: colors.danger },
-                    pressed && styles.pressed,
+                    subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
+                    pressed && { opacity: 0.72 },
                   ]}
                   onPress={() => editingAccount && confirmDeleteAccount(editingAccount)}
                 >
-                  <Ionicons name="trash-outline" size={16} color={colors.danger} />
-                  <Text style={[styles.deleteText, { color: colors.danger }]}>Supprimer le compte</Text>
+                  <Ionicons name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
+                  <Text style={destructiveTextActionStyle(isLight)}>Supprimer le compte</Text>
                 </Pressable>
               </View>
               </ScrollView>
@@ -992,10 +1096,21 @@ export default function AccountDetailScreen() {
       </Modal>
 
       <TransactionDetailSheet transaction={selectedTransaction} onClose={() => setSelectedTransaction(null)} onDeleted={() => { void load(); }} />
-      <PaymentDetailSheet
-        detail={selectedPayment}
-        onClose={() => setSelectedPayment(null)}
-        onDeleted={() => { void load(); }}
+      <RecurringPaymentFormModal
+        visible={recurringForm != null}
+        form={recurringForm}
+        accounts={recurringAccounts}
+        categories={recurringCategories}
+        categoryBudgets={recurringCategoryBudgets}
+        saving={recurringSaving}
+        bottomInset={insets.bottom}
+        onClose={() => {
+          setRecurringForm(null);
+          setRecurringFeedback(null);
+        }}
+        onChange={setRecurringForm}
+        onSave={() => void saveRecurringPayment()}
+        feedback={recurringFeedback}
       />
       <ConfirmDeleteModal
         visible={confirmDeleteVisible}
@@ -1024,8 +1139,8 @@ function usePortfolioFormTheme() {
     () => ({
       modalBackdrop: { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' },
       sheet: {
-        backgroundColor: colors.surfaceSolid,
-        borderColor: colors.border,
+        backgroundColor: colors.containerBackground,
+        borderColor: colors.containerBorder,
         borderWidth: StyleSheet.hairlineWidth,
       },
       handle: { backgroundColor: colors.borderStrong },
@@ -1130,18 +1245,6 @@ function parseOptionalInt(value: string) {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
-function iconForKind(kind: AccountKind): keyof typeof Ionicons.glyphMap {
-  if (kind === 'credit') return 'card-outline';
-  if (kind === 'savings') return 'cash-outline';
-  return 'wallet-outline';
-}
-
-function accountKindLabel(kind: AccountKind) {
-  if (kind === 'credit') return 'Crédit';
-  if (kind === 'savings') return 'Épargne';
-  return 'Chèque';
-}
-
 function getSimulatedAccountLogoUrl(account: SimulatedAccount) {
   return account.logoUrl ?? getAccountLogoUrl(account.institution?.trim() || account.name) ?? getAccountLogoUrl(account.name);
 }
@@ -1173,10 +1276,6 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function isIconName(value: string): value is keyof typeof Ionicons.glyphMap {
-  return value in Ionicons.glyphMap;
-}
-
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
   topBar: {
@@ -1195,157 +1294,51 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
-    color: colors.text,
-    fontSize: typography.screenTitle,
-    fontWeight: '700',
-    letterSpacing: -0.4,
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: spacing.sm,
+    ...interExtraBoldText,
+    fontSize: typography.caption,
+    letterSpacing: -0.2,
   },
   topBarSpacer: { width: 38 },
-  headerAction: {
-    minWidth: 78,
-    minHeight: 38,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 5,
-  },
-  headerActionText: {
-    fontSize: typography.meta,
-    fontWeight: '800',
-  },
   content: {
     paddingHorizontal: spacing.lg,
     gap: spacing.lg,
   },
-  identityCardInner: {
+  detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-  },
-  accountIcon: {
-    width: 52,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  accountIconFallback: {
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-  },
-  accountLogoImage: { width: 40, height: 40 },
-  identityCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 3,
-  },
-  accountName: {
-    color: colors.text,
-    fontSize: typography.dashboardGreeting,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  accountMeta: {
-    color: colors.textMuted,
-    fontSize: typography.meta,
-    fontWeight: '700',
-  },
-  summaryCardShell: {
-    borderRadius: radius.lg,
-  },
-  summaryCardInner: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
     justifyContent: 'space-between',
     gap: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    minHeight: 44,
   },
-  summaryLabel: {
-    color: colors.textMuted,
-    fontSize: typography.micro,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  summaryAmount: {
-    color: colors.text,
-    fontSize: typography.heroStat,
-    fontWeight: '800',
-    letterSpacing: -0.4,
-    marginTop: 2,
-  },
-  summaryMeta: {
-    color: colors.textMuted,
-    fontSize: typography.micro,
-    fontWeight: '800',
-    paddingBottom: 4,
-  },
-  creditInfoCardShell: {
-    borderRadius: radius.lg,
-  },
-  creditInfoCardInner: {
-    gap: spacing.md,
-  },
-  creditSectionLabel: {
-    ...interBoldText,
-    fontSize: typography.micro,
+  detailLabel: {
+    ...interMediumText,
+    fontSize: 10,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
+    flexShrink: 0,
   },
-  creditHeroBlock: {
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    gap: 3,
-  },
-  creditHeroAmount: {
+  detailValue: {
     ...interExtraBoldText,
-    fontSize: typography.displayAmount,
-    letterSpacing: -1,
-  },
-  creditHeroLabel: {
-    ...interMediumText,
     fontSize: typography.meta,
-  },
-  creditBarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  creditBarTrack: {
+    fontVariant: ['tabular-nums'],
     flex: 1,
-    height: 10,
+    textAlign: 'right',
+  },
+  savingsProgressBlock: {
+    paddingBottom: spacing.xs,
+  },
+  savingsProgressTrack: {
+    height: 3,
     borderRadius: radius.pill,
     overflow: 'hidden',
   },
-  creditBarFill: {
-    height: 10,
+  savingsProgressFill: {
+    height: '100%',
     borderRadius: radius.pill,
-  },
-  creditBarPct: {
-    ...interBoldText,
-    fontSize: typography.meta,
-    minWidth: 42,
-    textAlign: 'right',
-  },
-  creditChipRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  creditChip: {
-    flex: 1,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.md,
-    gap: 4,
-  },
-  creditChipLabel: {
-    ...interBoldText,
-    fontSize: typography.micro,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
-  creditChipAmount: {
-    ...interBoldText,
-    fontSize: typography.caption,
   },
   deleteSection: {
     gap: spacing.md,
@@ -1354,52 +1347,48 @@ const styles = StyleSheet.create({
   deleteDivider: {
     height: StyleSheet.hairlineWidth,
   },
-  deleteButton: {
+  recurringSectionTitleRow: {
+    flex: 1,
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minWidth: 0,
+  },
+  recurringSectionTitle: {
+    ...interExtraBoldText,
+    fontSize: typography.body,
+    letterSpacing: -0.2,
+    flexShrink: 1,
+  },
+  recurringSectionMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexShrink: 0,
+  },
+  recurringCountBadge: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    paddingHorizontal: spacing.xs,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
   },
-  deleteText: {
+  recurringCountBadgeText: {
+    ...interExtraBoldText,
     fontSize: typography.meta,
-    fontWeight: '800',
-  },
-  recurringToggleInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
+    fontVariant: ['tabular-nums'],
   },
   recurringList: {
-    gap: spacing.md,
-    marginTop: -spacing.xs,
+    gap: 0,
+    paddingTop: spacing.xs,
   },
-  recurringGroup: {
-    gap: spacing.sm,
-  },
-  recurringGroupHeader: {
-    paddingBottom: spacing.xs,
-    paddingHorizontal: 2,
-  },
-  recurringGroupDate: {
-    color: colors.textMuted,
-    fontSize: typography.caption,
-    fontWeight: '700',
-    textTransform: 'capitalize',
-    letterSpacing: 0.2,
-  },
-  recurringGroupItems: {
-    gap: spacing.xs,
-  },
-  recurringPaymentRowInner: {
+  recurringPaymentRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    minHeight: 56,
   },
   recurringPaymentIcon: {
     width: ICON_WELL_SIZE,
@@ -1434,82 +1423,53 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     flexShrink: 0,
   },
-  sectionHeader: {
+  transactionList: {
+    gap: spacing.md,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    minHeight: 44,
+    borderRadius: radius.card,
+    borderWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: typography.body,
+    padding: 0,
+  },
+  clearSearchBtn: {
+    padding: 4,
+  },
+  filterIconBtn: {
+    padding: 4,
+    marginLeft: spacing.xs,
+  },
+  historyFilterWrap: {
+    marginBottom: spacing.sm,
+  },
+  transactionGroup: {
+    marginBottom: spacing.xxl,
+  },
+  groupHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: typography.caption,
-    fontWeight: '800',
-  },
-  sectionMeta: {
-    color: colors.textMuted,
-    fontSize: typography.micro,
-    fontWeight: '700',
-  },
-  transactionList: {
-    gap: spacing.lg,
-  },
-  transactionGroup: {
-    gap: spacing.xs,
+    gap: spacing.sm,
+    minHeight: UNIFORM_SECTION_HEADER_MIN_HEIGHT,
+    marginBottom: spacing.md,
   },
   transactionGroupLabel: {
-    color: colors.textMuted,
     fontSize: typography.caption,
     textTransform: 'capitalize',
-  },
-  groupTransactions: {
-    gap: spacing.xs,
-  },
-  transactionRowInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-  },
-  transactionBody: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
   },
-  transactionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    minWidth: 0,
-  },
-  transactionTitle: {
-    ...listRowTitle,
-    color: colors.text,
-  },
-  transactionSubtitle: {
-    color: colors.textMuted,
-    fontSize: typography.micro,
-    fontWeight: '700',
-    lineHeight: typography.micro + 3,
-  },
-  receiptBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  transactionAmountCol: {
-    ...rowValueContainer,
-    alignSelf: 'stretch',
-    justifyContent: 'center',
-    minWidth: 88,
-  },
-  transactionAmount: {
-    ...rowValue,
-    color: colors.text,
-    textAlign: 'right',
+  groupTransactions: {
+    gap: spacing.lg,
   },
   empty: {
     color: colors.textMuted,
@@ -1517,6 +1477,11 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
     paddingVertical: spacing.lg,
+  },
+  emptyInline: {
+    fontSize: typography.caption,
+    lineHeight: 20,
+    paddingVertical: spacing.sm,
   },
   modalBackdrop: {
     flex: 1,

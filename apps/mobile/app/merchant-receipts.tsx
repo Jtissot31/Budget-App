@@ -123,7 +123,7 @@ export default function MerchantReceiptsScreen() {
             hitSlop={12}
             style={({ pressed }) => [
               styles.backButton,
-              { backgroundColor: colors.surfaceSolid, borderColor: colors.border },
+              { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
               pressed && styles.pressed,
             ]}
             onPress={() => router.back()}
@@ -140,7 +140,7 @@ export default function MerchantReceiptsScreen() {
           {merchantName}
         </Text>
 
-        <View style={[styles.searchRow, { backgroundColor: colors.cardBackground }]}>
+        <View style={[styles.searchRow, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder, borderWidth: 1 }]}>
           <Ionicons name="search-outline" size={18} color={colors.textMuted} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}

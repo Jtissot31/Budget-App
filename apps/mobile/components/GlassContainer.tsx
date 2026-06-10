@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleProp, View, ViewStyle } from 'react-native';
-import { radius as themeRadius } from '@/constants/theme';
+import { containerSurfaceStyle, radius as themeRadius } from '@/constants/theme';
 import { useAppTheme } from '../lib/themeContext';
 
 type Props = {
@@ -8,14 +8,14 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   padding?: number;
   borderRadius?: number;
-  /** Optional fill override — defaults to theme card surface */
+  /** Optional fill override — defaults to theme container surface */
   innerBackgroundColor?: string;
   innerStyle?: StyleProp<ViewStyle>;
   /** Kept for API compatibility — ignored */
   outlineColors?: readonly string[];
 };
 
-/** Solid card surface — flat fill, no border, no shadow. */
+/** Solid card surface — low-fund alert shell (fill + 1px outline). */
 export function GlassContainer({
   children,
   style,
@@ -24,9 +24,9 @@ export function GlassContainer({
   innerBackgroundColor,
   innerStyle,
 }: Props) {
-  const { colors, isLight } = useAppTheme();
-  const fillColor =
-    innerBackgroundColor ?? (isLight ? colors.cardBackground : colors.cardBackground);
+  const { isLight } = useAppTheme();
+  const surface = containerSurfaceStyle(isLight);
+  const fillColor = innerBackgroundColor ?? surface.backgroundColor;
 
   return (
     <View
@@ -34,6 +34,8 @@ export function GlassContainer({
         {
           borderRadius,
           backgroundColor: fillColor,
+          borderWidth: surface.borderWidth,
+          borderColor: surface.borderColor,
           padding,
         },
         innerStyle,

@@ -5,10 +5,12 @@ import {
   type AccountMoneyFlow,
 } from '@/lib/accountTransactionFlow';
 import { dataEvents } from '@/lib/events';
+import { normalizeSearch } from '@/lib/categoryInference';
 import { DEPRECATED_BUDGET_CATEGORY_IDS } from '@/constants/categoryOptions';
 import type {
   Category,
   CategoryBudget,
+  Contact,
   DashboardSummary,
   Loan,
   MonthlyBudgetSummary,
@@ -206,6 +208,7 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
       await ensureLoanColumns(db);
       await ensureWealthAssetColumns(db);
       await ensureMerchantOverrideColumns(db);
+      await ensureContactsTable(db);
       await removeDeprecatedBudgetCategories(db);
       return db;
     })(),
@@ -313,6 +316,12 @@ async function ensureLoanColumns(db: SQLite.SQLiteDatabase): Promise<void> {
   await addColumn('next_payment_date', 'next_payment_date TEXT NOT NULL DEFAULT ""');
   await addColumn('recurring_payment_id', 'recurring_payment_id TEXT');
   await addColumn('icon', 'icon TEXT');
+  await addColumn('address', 'address TEXT');
+  await addColumn('down_payment', 'down_payment REAL');
+  await addColumn('purchase_price', 'purchase_price REAL');
+  await addColumn('current_property_value', 'current_property_value REAL');
+  await addColumn('wealth_asset_id', 'wealth_asset_id TEXT');
+  await addColumn('reason', 'reason TEXT');
 }
 
 async function ensureWealthAssetColumns(db: SQLite.SQLiteDatabase): Promise<void> {
@@ -334,6 +343,8 @@ async function ensureWealthAssetColumns(db: SQLite.SQLiteDatabase): Promise<void
   await addColumn('property_type', 'property_type TEXT');
   await addColumn('address', 'address TEXT');
   await addColumn('notes', 'notes TEXT');
+  await addColumn('photo_uri', 'photo_uri TEXT');
+  await addColumn('linked_loan_id', 'linked_loan_id TEXT');
 }
 
 async function ensureMerchantOverrideColumns(db: SQLite.SQLiteDatabase): Promise<void> {
@@ -343,6 +354,24 @@ async function ensureMerchantOverrideColumns(db: SQLite.SQLiteDatabase): Promise
   }
   if (!columns.some((column) => column.name === 'use_auto_logo')) {
     await db.execAsync('ALTER TABLE merchant_overrides ADD COLUMN use_auto_logo INTEGER NOT NULL DEFAULT 1');
+  }
+}
+
+async function ensureContactsTable(db: SQLite.SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS contacts (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      normalized_name TEXT NOT NULL UNIQUE,
+      is_employer INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_contacts_normalized_name ON contacts(normalized_name);
+  `);
+
+  const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(contacts)');
+  if (!columns.some((column) => column.name === 'is_employer')) {
+    await db.execAsync('ALTER TABLE contacts ADD COLUMN is_employer INTEGER NOT NULL DEFAULT 0');
   }
 }
 
@@ -519,6 +548,8 @@ export async function getWealthAssets(): Promise<WealthAsset[]> {
        valuation_source AS valuationSource,
        property_type AS propertyType,
        address,
+       photo_uri AS photoUri,
+       linked_loan_id AS linkedLoanId,
        notes,
        created_at AS createdAt
      FROM wealth_assets
@@ -532,8 +563,8 @@ export async function upsertWealthAsset(asset: WealthAsset): Promise<void> {
     `INSERT OR REPLACE INTO wealth_assets (
        id, type, name, material, weight, weight_unit, karats, purity,
        purchase_cost, purchase_date, current_value, last_valuation_at,
-       valuation_source, property_type, address, notes, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       valuation_source, property_type, address, photo_uri, linked_loan_id, notes, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       asset.id,
       asset.type,
@@ -550,6 +581,8 @@ export async function upsertWealthAsset(asset: WealthAsset): Promise<void> {
       asset.valuationSource,
       asset.propertyType ?? null,
       asset.address ?? null,
+      asset.photoUri ?? null,
+      asset.linkedLoanId ?? null,
       asset.notes ?? null,
       asset.createdAt,
     ],
@@ -563,13 +596,11 @@ export async function deleteWealthAsset(id: string): Promise<void> {
   dataEvents.emit();
 }
 
-export async function getLoans(): Promise<Loan[]> {
-  const db = await getDb();
-  return db.getAllAsync<Loan>(
-    `SELECT
+const LOAN_SELECT_COLUMNS = `
        id,
        COALESCE(type, 'personal_loan') AS type,
        name,
+       reason,
        lender,
        principal,
        balance_remaining AS balanceRemaining,
@@ -584,7 +615,31 @@ export async function getLoans(): Promise<Loan[]> {
        COALESCE(next_payment_date, '') AS nextPaymentDate,
        recurring_payment_id AS recurringPaymentId,
        icon,
-       created_at AS createdAt
+       address,
+       down_payment AS downPayment,
+       purchase_price AS purchasePrice,
+       current_property_value AS currentPropertyValue,
+       wealth_asset_id AS wealthAssetId,
+       created_at AS createdAt`;
+
+export async function getLoanById(id: string): Promise<Loan | null> {
+  const trimmed = id.trim();
+  if (!trimmed) return null;
+  const db = await getDb();
+  const row = await db.getFirstAsync<Loan>(
+    `SELECT ${LOAN_SELECT_COLUMNS}
+     FROM loans
+     WHERE id = ?
+     LIMIT 1`,
+    [trimmed],
+  );
+  return row ?? null;
+}
+
+export async function getLoans(): Promise<Loan[]> {
+  const db = await getDb();
+  return db.getAllAsync<Loan>(
+    `SELECT ${LOAN_SELECT_COLUMNS}
      FROM loans
      ORDER BY created_at DESC`,
   );
@@ -594,14 +649,16 @@ export async function upsertLoan(loan: Loan): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `INSERT OR REPLACE INTO loans (
-       id, type, name, lender, principal, balance_remaining, interest_rate,
+       id, type, name, reason, lender, principal, balance_remaining, interest_rate,
        monthly_payment, start_date, end_date, duration_amount, duration_unit,
-       payment_frequency, payment_account_id, next_payment_date, recurring_payment_id, icon, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       payment_frequency, payment_account_id, next_payment_date, recurring_payment_id,
+       icon, address, down_payment, purchase_price, current_property_value, wealth_asset_id, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       loan.id,
       loan.type,
       loan.name,
+      loan.reason ?? null,
       loan.lender,
       loan.principal,
       loan.balanceRemaining,
@@ -616,6 +673,11 @@ export async function upsertLoan(loan: Loan): Promise<void> {
       loan.nextPaymentDate,
       loan.recurringPaymentId ?? null,
       loan.icon ?? null,
+      loan.address ?? null,
+      loan.downPayment ?? null,
+      loan.purchasePrice ?? null,
+      loan.currentPropertyValue ?? null,
+      loan.wealthAssetId ?? null,
       loan.createdAt,
     ],
   );
@@ -626,14 +688,138 @@ export async function deleteLoan(id: string): Promise<void> {
   const trimmed = id.trim();
   if (!trimmed) return;
   const db = await getDb();
-  const row = await db.getFirstAsync<{ recurringPaymentId?: string | null }>(
-    'SELECT recurring_payment_id AS recurringPaymentId FROM loans WHERE id = ? LIMIT 1',
+  const row = await db.getFirstAsync<{ recurringPaymentId?: string | null; wealthAssetId?: string | null }>(
+    'SELECT recurring_payment_id AS recurringPaymentId, wealth_asset_id AS wealthAssetId FROM loans WHERE id = ? LIMIT 1',
     [trimmed],
   );
+  if (row?.wealthAssetId) {
+    const asset = await getWealthAssetById(row.wealthAssetId);
+    if (asset) {
+      await db.runAsync('UPDATE wealth_assets SET linked_loan_id = NULL WHERE id = ?', [row.wealthAssetId]);
+    }
+  }
   await db.runAsync('DELETE FROM loans WHERE id = ?', [trimmed]);
   if (row?.recurringPaymentId) {
     await db.runAsync('DELETE FROM recurring_payments WHERE id = ?', [row.recurringPaymentId]);
   }
+  dataEvents.emit();
+}
+
+function mapContactRow(row: {
+  id: string;
+  name: string;
+  normalizedName: string;
+  isEmployer?: number | null;
+  createdAt: string;
+}): Contact {
+  return {
+    id: row.id,
+    name: row.name,
+    normalizedName: row.normalizedName,
+    isEmployer: row.isEmployer === 1,
+    createdAt: row.createdAt,
+  };
+}
+
+export async function getContacts(): Promise<Contact[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{
+    id: string;
+    name: string;
+    normalizedName: string;
+    isEmployer: number;
+    createdAt: string;
+  }>(
+    `SELECT id, name, normalized_name AS normalizedName, COALESCE(is_employer, 0) AS isEmployer, created_at AS createdAt
+     FROM contacts
+     ORDER BY name COLLATE NOCASE ASC`,
+  );
+  return rows.map(mapContactRow);
+}
+
+export async function getContactByNormalizedName(normalizedName: string): Promise<Contact | null> {
+  const trimmed = normalizedName.trim();
+  if (!trimmed) return null;
+  const db = await getDb();
+  const row = await db.getFirstAsync<{
+    id: string;
+    name: string;
+    normalizedName: string;
+    isEmployer: number;
+    createdAt: string;
+  }>(
+    `SELECT id, name, normalized_name AS normalizedName, COALESCE(is_employer, 0) AS isEmployer, created_at AS createdAt
+     FROM contacts
+     WHERE normalized_name = ?
+     LIMIT 1`,
+    [trimmed],
+  );
+  return row ? mapContactRow(row) : null;
+}
+
+export async function upsertContactByName(
+  name: string,
+  options?: { isEmployer?: boolean },
+): Promise<Contact> {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error('Contact name is required');
+  }
+
+  const normalizedName = normalizeSearch(trimmed);
+  const db = await getDb();
+  const existing = await db.getFirstAsync<{
+    id: string;
+    name: string;
+    normalizedName: string;
+    isEmployer: number;
+    createdAt: string;
+  }>(
+    `SELECT id, name, normalized_name AS normalizedName, COALESCE(is_employer, 0) AS isEmployer, created_at AS createdAt
+     FROM contacts
+     WHERE normalized_name = ?
+     LIMIT 1`,
+    [normalizedName],
+  );
+  if (existing) {
+    const nextIsEmployer = options?.isEmployer ?? existing.isEmployer === 1;
+    if (existing.name !== trimmed || nextIsEmployer !== (existing.isEmployer === 1)) {
+      await db.runAsync('UPDATE contacts SET name = ?, is_employer = ? WHERE id = ?', [
+        trimmed,
+        nextIsEmployer ? 1 : 0,
+        existing.id,
+      ]);
+      dataEvents.emit();
+      return mapContactRow({
+        ...existing,
+        name: trimmed,
+        isEmployer: nextIsEmployer ? 1 : 0,
+      });
+    }
+    return mapContactRow(existing);
+  }
+
+  const isEmployer = options?.isEmployer ?? false;
+  const contact: Contact = {
+    id: `contact-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    name: trimmed,
+    normalizedName,
+    isEmployer,
+    createdAt: new Date().toISOString(),
+  };
+  await db.runAsync(
+    'INSERT INTO contacts (id, name, normalized_name, is_employer, created_at) VALUES (?, ?, ?, ?, ?)',
+    [contact.id, contact.name, contact.normalizedName, isEmployer ? 1 : 0, contact.createdAt],
+  );
+  dataEvents.emit();
+  return contact;
+}
+
+export async function updateContactEmployer(contactId: string, isEmployer: boolean): Promise<void> {
+  const trimmed = contactId.trim();
+  if (!trimmed) return;
+  const db = await getDb();
+  await db.runAsync('UPDATE contacts SET is_employer = ? WHERE id = ?', [isEmployer ? 1 : 0, trimmed]);
   dataEvents.emit();
 }
 
@@ -937,6 +1123,8 @@ export async function getWealthAssetById(id: string): Promise<WealthAsset | null
        valuation_source AS valuationSource,
        property_type AS propertyType,
        address,
+       photo_uri AS photoUri,
+       linked_loan_id AS linkedLoanId,
        notes,
        created_at AS createdAt
      FROM wealth_assets
@@ -1128,6 +1316,17 @@ export async function getRecentIncomeTransactions(limit = 12): Promise<Transacti
      LIMIT ?`,
     [limit],
   );
+}
+
+/** Matches Budget page → Categories: limit set or spending this month. */
+export function isActiveCategoryBudget(
+  budget: Pick<CategoryBudget, 'limitAmount' | 'spent'>,
+): boolean {
+  return budget.limitAmount > 0 || budget.spent > 0;
+}
+
+export function filterActiveCategoryBudgets(budgets: CategoryBudget[]): CategoryBudget[] {
+  return budgets.filter(isActiveCategoryBudget);
 }
 
 export async function getCategoryBudgets(): Promise<CategoryBudget[]> {

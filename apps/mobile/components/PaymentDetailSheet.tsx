@@ -24,7 +24,15 @@ import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import { EXPENSE_DEFAULT_ICON } from '@/lib/expenseIcon';
-import { radius, spacing, typography, type AppColors } from '@/constants/theme';
+import {
+  destructiveIconColor,
+  destructiveTextActionStyle,
+  radius,
+  spacing,
+  subtleDeleteButtonStyle,
+  typography,
+  type AppColors,
+} from '@/constants/theme';
 import {
   deleteRecurringPayment,
   deleteTransactionById,
@@ -74,7 +82,7 @@ type IconName = keyof typeof Ionicons.glyphMap;
 
 export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
   const router = useRouter();
-  const { colors } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [deleting, setDeleting] = useState(false);
@@ -546,13 +554,15 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
             disabled={deleting}
             onPress={onPressDeleteFooter}
             style={({ pressed }) => [
-              styles.deleteButtonWide,
-              pressed && styles.pressed,
+              subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
+              pressed && { opacity: 0.72 },
               deleting && styles.disabled,
             ]}
           >
-            <Ionicons name="trash-outline" size={18} color={colors.background} />
-            <Text style={styles.deleteWideText}>{deleting ? 'Suppression…' : deleteFooterLabel}</Text>
+            <Ionicons name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
+            <Text style={destructiveTextActionStyle(isLight)}>
+              {deleting ? 'Suppression…' : deleteFooterLabel}
+            </Text>
           </Pressable>
         ) : null}
     </BottomSheet>
@@ -687,7 +697,7 @@ function PaymentAvatar({ detail, size }: { detail: PaymentDetailPayload; size: n
 function createStyles(colors: AppColors) {
   return StyleSheet.create({
     sheet: {
-      backgroundColor: colors.surfaceSolid,
+      backgroundColor: colors.containerBackground,
       borderTopLeftRadius: DETAIL_SHEET_TOP_RADIUS,
       borderTopRightRadius: DETAIL_SHEET_TOP_RADIUS,
     },
@@ -815,23 +825,6 @@ function createStyles(colors: AppColors) {
       paddingHorizontal: spacing.lg,
       paddingVertical: 10,
       marginBottom: spacing.md,
-    },
-    deleteButtonWide: {
-      alignSelf: 'stretch',
-      minHeight: 52,
-      marginTop: spacing.lg,
-      borderRadius: radius.lg,
-      backgroundColor: colors.danger,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.sm,
-      paddingHorizontal: spacing.md,
-    },
-    deleteWideText: {
-      color: colors.background,
-      fontSize: typography.body,
-      fontWeight: '900',
     },
     disabled: {
       opacity: 0.58,

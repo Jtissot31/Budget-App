@@ -28,6 +28,10 @@ import { EXPENSE_MDI_ICON, type MdiIconName } from '@/lib/mdiIconCatalog';
 import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
 import { ghost, ghostCardShadow } from '@/constants/ghostUi';
 import {
+  destructiveIconColor,
+  destructiveTextActionStyle,
+  CHIP_BORDER_WIDTH,
+  CHIP_PADDING_HORIZONTAL,
   colors,
   ICON_WELL_SIZE,
   interBoldText,
@@ -35,8 +39,10 @@ import {
   interMediumText,
   radius,
   spacing,
+  subtleDeleteButtonStyle,
   typography,
 } from '@/constants/theme';
+import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
 import {
   getCategories,
   getCategoryBudgets,
@@ -265,12 +271,13 @@ function PaymentFormModal({
 
   useEffect(() => {
     setShowAllCategories(false);
+    setShowLogoPicker(false);
   }, [form?.id, form?.kind]);
 
   const themed = useMemo(
     () => ({
       modalBackdrop: { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' },
-      sheet: { backgroundColor: themeColors.cardBackground, borderColor: themeColors.border },
+      sheet: { backgroundColor: themeColors.containerBackground, borderColor: themeColors.containerBorder },
       handle: { backgroundColor: themeColors.borderStrong },
       closeButton: {
         backgroundColor: themeColors.surfaceElevated,
@@ -296,7 +303,6 @@ function PaymentFormModal({
       selected: {
         backgroundColor: themeColors.successMuted,
         borderColor: themeColors.primary,
-        borderWidth: 1.5,
       },
       selectedText: { color: themeColors.primary },
       text: { color: themeColors.text },
@@ -372,9 +378,12 @@ function PaymentFormModal({
                             : current,
                         );
                       }}
-                      style={[styles.chip, themed.control, on && themed.selected]}
+                      style={[styles.chip, themed.control, styles.chipShell, on && themed.selected]}
                     >
-                      <Text style={[styles.chipText, themed.text, on && themed.selectedText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                      <Text
+                        style={[styles.chipText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
+                        {...chipLabelTextProps()}
+                      >
                         {kind === 'income' ? 'Revenu' : 'Paiement'}
                       </Text>
                     </Pressable>
@@ -568,9 +577,12 @@ function PaymentFormModal({
                         tapHaptic();
                         onChange((current) => (current ? { ...current, frequency: frequency.id } : current));
                       }}
-                      style={[styles.chip, themed.control, on && themed.selected]}
+                      style={[styles.chip, themed.control, styles.chipShell, on && themed.selected]}
                     >
-                      <Text style={[styles.chipText, themed.text, on && themed.selectedText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                      <Text
+                        style={[styles.chipText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
+                        {...chipLabelTextProps()}
+                      >
                         {frequency.label}
                       </Text>
                     </Pressable>
@@ -608,10 +620,10 @@ function PaymentFormModal({
                         tapHaptic();
                         onChange((current) => (current ? { ...current, accountId: account.id, accountLabel: account.label } : current));
                       }}
-                      style={[styles.accountChip, themed.control, on && themed.selected]}
+                      style={[styles.accountChip, themed.control, styles.chipShell, on && themed.selected]}
                     >
                       <Text
-                        style={[styles.accountText, themed.text, on && themed.selectedText]}
+                        style={[styles.accountText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
                         numberOfLines={2}
                         ellipsizeMode="tail"
                         adjustsFontSizeToFit
@@ -638,7 +650,7 @@ function PaymentFormModal({
                           tapHaptic();
                           onChange((current) => (current ? { ...current, categoryId: on ? null : category.id } : current));
                         }}
-                        style={[styles.categoryChip, themed.control, on && themed.selected]}
+                        style={[styles.categoryChip, themed.control, styles.chipShell, on && themed.selected]}
                       >
                         <Ionicons
                           name={getCategoryIconName(category)}
@@ -647,8 +659,9 @@ function PaymentFormModal({
                           style={styles.categoryChipIcon}
                         />
                         <Text
-                          style={[styles.categoryChipText, themed.text, on && themed.selectedText]}
+                          style={[styles.categoryChipText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
                           numberOfLines={2}
+                          ellipsizeMode="tail"
                           adjustsFontSizeToFit
                           minimumFontScale={0.82}
                         >
@@ -693,13 +706,12 @@ function PaymentFormModal({
                 accessibilityLabel="Supprimer"
                 onPress={onDelete}
                 style={({ pressed }) => [
-                  styles.deleteFormButton,
-                  { backgroundColor: themeColors.dangerMuted, borderColor: themeColors.danger },
-                  pressed && styles.pressed,
+                  subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
+                  pressed && { opacity: 0.72 },
                 ]}
               >
-                <Ionicons name="trash-outline" size={16} color={themeColors.danger} />
-                <Text style={[styles.deleteFormText, { color: themeColors.danger }]}>Supprimer</Text>
+                <Ionicons name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
+                <Text style={destructiveTextActionStyle(isLight)}>Supprimer</Text>
               </Pressable>
             ) : null}
             </ScrollView>
@@ -1188,7 +1200,9 @@ const styles = StyleSheet.create({
   incomeAmount: { color: ghost.mint },
   meta: { minWidth: 0, color: colors.textMuted, fontSize: typography.micro, fontWeight: '700', lineHeight: 16 },
   emptyCard: {
-    backgroundColor: colors.surfaceSolid,
+    backgroundColor: colors.containerBackground,
+    borderColor: colors.containerBorder,
+    borderWidth: 1,
     borderRadius: radius.card,
     padding: spacing.lg,
     gap: spacing.sm,
@@ -1367,18 +1381,23 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  chipShell: {
+    borderWidth: CHIP_BORDER_WIDTH,
+  },
   chip: {
-    flex: 1,
-    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 96,
     maxWidth: '100%',
     borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: CHIP_PADDING_HORIZONTAL,
     paddingVertical: 10,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   chipText: {
     maxWidth: '100%',
-    flexShrink: 1,
     ...interBoldText,
     fontSize: typography.caption,
     lineHeight: 20,
@@ -1448,20 +1467,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.lg,
     paddingVertical: 10,
-  },
-  deleteFormButton: {
-    minHeight: 48,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    paddingVertical: 15,
-  },
-  deleteFormText: {
-    ...interExtraBoldText,
-    fontSize: typography.body,
   },
 });
 

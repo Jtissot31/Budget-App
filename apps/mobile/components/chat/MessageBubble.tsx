@@ -115,7 +115,7 @@ export function MessageBubble({ message }: Props) {
   const isUser = message.role === 'user';
 
   const userBubbleColor = isLight ? 'rgba(0, 168, 84, 0.92)' : 'rgba(0, 230, 118, 0.18)';
-  const assistantBubbleColor = colors.surfaceSolid;
+  const assistantBubbleColor = colors.containerBackground;
 
   return (
     <View style={[styles.row, isUser ? styles.rowUser : styles.rowAssistant]}>
@@ -157,7 +157,7 @@ export function MessageBubble({ message }: Props) {
                   styles.assistantBubble,
                   {
                     backgroundColor: assistantBubbleColor,
-                    borderColor: isLight ? colors.border : colors.glassBorder,
+                    borderColor: colors.containerBorder,
                   },
                 ]}
               >

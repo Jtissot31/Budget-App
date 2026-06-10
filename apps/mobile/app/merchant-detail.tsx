@@ -1,17 +1,41 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
-import { GlassContainer } from '@/components/GlassContainer';
 import { MerchantEditModal, type MerchantEditTarget } from '@/components/MerchantEditModal';
 import { MerchantLogo } from '@/components/MerchantLogo';
+import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionRow } from '@/components/TransactionRow';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import { PageTransition } from '@/components/PageTransition';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
-import { colors, radius, spacing, typography } from '@/constants/theme';
+import {
+  accountDetailHeroActionLinkStyle,
+  accountDetailHeroActionMutedTextStyle,
+  accountDetailHeroActionsStyle,
+  accountDetailHeroBlockStyle,
+  accountDetailRecurringHeaderStyle,
+  accountDetailSectionDividerStyle,
+  accountDetailStatementStatColStyle,
+  accountDetailStatementStatLabelStyle,
+  accountDetailStatementStatsRowStyle,
+  accountDetailStatementStatValueStyle,
+  interExtraBoldText,
+  MERCHANT_LOGO_SIZE,
+  radius,
+  spacing,
+  typography,
+} from '@/constants/theme';
 import { getMerchantOverrides, getTransactions, sortTransactionsNewestFirst } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
@@ -19,33 +43,30 @@ import { parseItemizedNote } from '@/lib/itemizedNote';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
-import { heroStatAmount } from '@/lib/textLayout';
+import { UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
+import {
+  filterTransactionsByType,
+  formatTransactionGroupDateLabel,
+  groupTransactionsByDay,
+  HISTORY_FILTER_OPTIONS,
+  type HistoryTypeFilter,
+  transactionMatchesSearch,
+} from '@/lib/transactionListUtils';
 import type { MerchantOverride, Transaction } from '@/types';
 
-function getLocalDayKey(isoDate: string) {
-  const date = new Date(isoDate);
-  if (Number.isNaN(date.getTime())) return isoDate.slice(0, 10);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+type ReceiptPreview = {
+  id: string;
+  articleName: string;
+  receiptUri?: string | null;
+  transaction: Transaction;
+};
+
+function formatMoney(value: number) {
+  return formatDisplayMoneyAbsolute(value);
 }
 
-function formatDate(isoDay: string) {
-  return new Date(`${isoDay}T12:00:00`).toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
-function formatDateRange(transactions: Transaction[]) {
-  const days = transactions.map((tx) => getLocalDayKey(tx.date)).sort();
-  const first = days[0];
-  const last = days[days.length - 1];
-  if (!first || !last) return 'Aucune date';
-  if (first === last) return formatDate(first);
-  return `${formatDate(first)} - ${formatDate(last)}`;
+function isPreviewableReceipt(uri?: string | null) {
+  return Boolean(uri && !uri.startsWith('scan://'));
 }
 
 function getTransactionTitle(tx: Transaction, fallbackTitle: string) {
@@ -57,17 +78,88 @@ function getTransactionTitle(tx: Transaction, fallbackTitle: string) {
   return `${names.join(', ')}${suffix}`;
 }
 
+function buildReceiptPreviews(transactions: Transaction[]): ReceiptPreview[] {
+  return transactions.flatMap((tx): ReceiptPreview[] => {
+    const articles = parseItemizedNote(tx.note);
+    if (articles.length === 0) {
+      if (!tx.receiptUri && !tx.receiptStatus) return [];
+      return [{
+        id: `${tx.id}-receipt`,
+        articleName: tx.label,
+        receiptUri: tx.receiptUri,
+        transaction: tx,
+      }];
+    }
+
+    return articles.map((article, index) => ({
+      id: `${tx.id}-${index}-${article.name}`,
+      articleName: article.name,
+      receiptUri: tx.receiptUri,
+      transaction: tx,
+    }));
+  });
+}
+
+function StatementStatColumn({
+  label,
+  value,
+  valueColor,
+  align = 'center',
+  prominent,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+  align?: 'left' | 'center' | 'right';
+  prominent?: boolean;
+}) {
+  const { colors } = useAppTheme();
+  const textAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
+
+  return (
+    <View style={accountDetailStatementStatColStyle({ align, prominent })}>
+      <Text
+        style={[
+          accountDetailStatementStatValueStyle(prominent),
+          { color: valueColor ?? colors.text, textAlign },
+        ]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >
+        {value}
+      </Text>
+      <Text
+        style={[
+          accountDetailStatementStatLabelStyle(),
+          { color: colors.textMuted, textAlign },
+        ]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function FlowDivider() {
+  const { isLight } = useAppTheme();
+  return <View style={accountDetailSectionDividerStyle(isLight)} />;
+}
+
 export default function MerchantDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ merchant?: string }>();
   const insets = useSafeAreaInsets();
-  const { colors } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
   const merchantKey = typeof params.merchant === 'string' ? params.merchant : '';
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [overrides, setOverrides] = useState<MerchantOverride[]>([]);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [editTarget, setEditTarget] = useState<MerchantEditTarget | null>(null);
+  const [search, setSearch] = useState('');
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<HistoryTypeFilter>('all');
+  const [historyFiltersExpanded, setHistoryFiltersExpanded] = useState(false);
 
   const load = useCallback(async () => {
     const [nextTransactions, nextOverrides] = await Promise.all([getTransactions(), getMerchantOverrides()]);
@@ -92,29 +184,53 @@ export default function MerchantDetailScreen() {
     if (!merchantKey || override?.hidden) return [];
     return sortTransactionsNewestFirst(transactions.filter((tx) => tx.label === merchantKey));
   }, [merchantKey, override?.hidden, transactions]);
-  const total = useMemo(
-    () => visibleTransactions.reduce((sum, tx) => sum + (tx.type === 'expense' ? tx.amount : 0), 0),
+
+  const expenseTransactions = useMemo(
+    () => visibleTransactions.filter((tx) => tx.type === 'expense'),
     [visibleTransactions],
   );
-  const dateRange = useMemo(() => formatDateRange(visibleTransactions), [visibleTransactions]);
-  const receiptCount = useMemo(() => {
-    return visibleTransactions.reduce((count, tx) => {
-      const hasArticles = parseItemizedNote(tx.note).length > 0;
-      const hasReceipt = Boolean(tx.receiptUri || tx.receiptStatus);
-      return count + (hasArticles || hasReceipt ? 1 : 0);
-    }, 0);
-  }, [visibleTransactions]);
-  const groupedTransactions = useMemo(() => {
-    const groups: Record<string, Transaction[]> = {};
+  const totalSpent = useMemo(
+    () => expenseTransactions.reduce((sum, tx) => sum + tx.amount, 0),
+    [expenseTransactions],
+  );
+  const averageBasket = useMemo(() => {
+    if (expenseTransactions.length === 0) return null;
+    return totalSpent / expenseTransactions.length;
+  }, [expenseTransactions.length, totalSpent]);
+
+  const dominantCategory = useMemo(() => {
+    const counts = new Map<string, number>();
     visibleTransactions.forEach((tx) => {
-      const key = getLocalDayKey(tx.date);
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(tx);
+      const name = tx.categoryName?.trim();
+      if (!name) return;
+      counts.set(name, (counts.get(name) ?? 0) + 1);
     });
-    return Object.entries(groups)
-      .map(([day, txs]) => [day, sortTransactionsNewestFirst(txs)] as [string, Transaction[]])
-      .sort(([a], [b]) => b.localeCompare(a));
+    let best = '';
+    let bestCount = 0;
+    counts.forEach((count, name) => {
+      if (count > bestCount) {
+        bestCount = count;
+        best = name;
+      }
+    });
+    return best || null;
   }, [visibleTransactions]);
+
+  const receiptPreviews = useMemo(
+    () => buildReceiptPreviews(visibleTransactions),
+    [visibleTransactions],
+  );
+  const receiptCount = receiptPreviews.length;
+
+  const filteredTransactions = useMemo(() => {
+    const searched = visibleTransactions.filter((tx) => transactionMatchesSearch(tx, search));
+    return filterTransactionsByType(searched, historyTypeFilter);
+  }, [historyTypeFilter, search, visibleTransactions]);
+  const groupedTransactions = useMemo(
+    () => groupTransactionsByDay(filteredTransactions),
+    [filteredTransactions],
+  );
+  const historyHasActiveFilters = search.trim().length > 0 || historyTypeFilter !== 'all';
 
   const openEditor = () => {
     if (!merchantKey) return;
@@ -128,163 +244,273 @@ export default function MerchantDetailScreen() {
 
   return (
     <PageTransition>
-    <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
-      <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Retour"
-          hitSlop={12}
-          style={({ pressed }) => [
-            styles.backButton,
-            { backgroundColor: colors.surfaceSolid, borderColor: colors.border },
-            pressed && styles.pressed,
-          ]}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="chevron-back" size={22} color={colors.text} />
-        </Pressable>
-        <Text style={[styles.title, { color: colors.text }]}>Historique</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Modifier le marchand"
-          hitSlop={12}
-          style={({ pressed }) => [
-            styles.editButton,
-            { backgroundColor: colors.surfaceSolid, borderColor: colors.borderStrong },
-            pressed && styles.pressed,
-          ]}
-          onPress={openEditor}
-        >
-          <Ionicons name="pencil-outline" size={14} color={colors.textSecondary} />
-          <Text style={[styles.editButtonText, { color: colors.textSecondary }]}>Modifier</Text>
-        </Pressable>
-      </View>
-
-      <GlassContainer
-        style={styles.identityCardWrap}
-        innerStyle={styles.identityCard}
-        padding={spacing.md}
-        borderRadius={radius.xl}
-      >
-        <MerchantLogo
-          name={merchantName}
-          logoUrl={override?.logoUrl}
-          icon={override?.icon}
-          useAutoLogo={override?.useAutoLogo !== false}
-          size={52}
-        />
-        <Text style={[styles.merchantName, { color: colors.text }]} numberOfLines={2}>
-          {merchantName}
-        </Text>
-      </GlassContainer>
-
-      <GlassContainer
-        style={styles.summaryCardWrap}
-        innerStyle={styles.summaryCard}
-        padding={spacing.md}
-        borderRadius={radius.lg}
-      >
-        <View>
-          <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Total</Text>
-          <Text style={[styles.summaryAmount, { color: colors.text }]}>
-            {formatDisplayMoneyAbsolute(total)}
+      <View style={styles.screen}>
+        <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Retour"
+            hitSlop={12}
+            style={({ pressed }) => [
+              styles.backButton,
+              { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
+              pressed && styles.pressed,
+            ]}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="chevron-back" size={22} color={colors.text} />
+          </Pressable>
+          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+            {merchantName}
           </Text>
+          <View style={styles.topBarSpacer} />
         </View>
-        <View style={styles.summaryMeta}>
-          <Text style={[styles.summaryCount, { color: colors.text }]}>
-            {visibleTransactions.length} transaction{visibleTransactions.length > 1 ? 's' : ''}
-          </Text>
-          <Text style={[styles.summaryDates, { color: colors.textMuted }]} numberOfLines={1}>
-            {dateRange}
-          </Text>
-        </View>
-      </GlassContainer>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Ouvrir la bibliothèque de reçus"
-        onPress={() => {
-          tapHaptic();
-          router.push({ pathname: '/merchant-receipts', params: { merchant: merchantKey } });
-        }}
-        style={({ pressed }) => [styles.receiptSectionWrap, pressed && styles.pressed]}
-      >
-        <GlassContainer
-          padding={spacing.md}
-          borderRadius={radius.lg}
-          innerStyle={styles.receiptSectionInner}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: Math.max(insets.bottom + spacing.xl, 56) },
+          ]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={async () => {
+                setRefreshing(true);
+                await load();
+                setRefreshing(false);
+              }}
+              tintColor={colors.primary}
+            />
+          }
         >
-          <View style={styles.receiptSectionCopy}>
-            <DashboardSectionLabel>Bibliothèque de reçus</DashboardSectionLabel>
-            <Text style={[styles.receiptSectionHint, { color: colors.textMuted }]}>
-              {receiptCount > 0
-                ? `${receiptCount} reçu${receiptCount > 1 ? 's' : ''} ou article${receiptCount > 1 ? 's' : ''}`
-                : 'Articles et reçus de ce marchand'}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-        </GlassContainer>
-      </Pressable>
+          <View style={accountDetailHeroBlockStyle()}>
+            <View style={accountDetailHeroActionsStyle()}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Modifier le marchand"
+                style={({ pressed }) => [accountDetailHeroActionLinkStyle(), pressed && styles.pressed]}
+                onPress={openEditor}
+              >
+                <Text style={accountDetailHeroActionMutedTextStyle(isLight)}>Modifier</Text>
+              </Pressable>
+            </View>
 
-      <FlatList
-        style={styles.listFlex}
-        data={groupedTransactions}
-        keyExtractor={([date]) => date}
-        removeClippedSubviews
-        contentContainerStyle={[styles.list, { paddingBottom: Math.max(insets.bottom + spacing.lg, spacing.xl) }]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={async () => {
-              setRefreshing(true);
-              await load();
-              setRefreshing(false);
-            }}
-            tintColor={colors.primary}
-          />
-        }
-        ListEmptyComponent={
-          <Text style={[styles.empty, { color: colors.textMuted }]}>
-            {override?.hidden ? 'Ce marchand est masqué.' : 'Aucune transaction'}
-          </Text>
-        }
-        renderItem={({ item: [date, txs] }) => (
-          <View style={styles.group}>
-            <Text style={[styles.groupLabel, { color: colors.textMuted }]}>
-              {new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
-            </Text>
-            <View style={styles.groupTransactions}>
-              {txs.map((tx) => (
-                <TransactionRow
-                  key={tx.id}
-                  transaction={{ ...tx, label: getTransactionTitle(tx, merchantName) }}
-                  onPress={() => {
-                    tapHaptic();
-                    setSelected(tx);
-                  }}
-                />
-              ))}
+            <View style={styles.heroIdentityRow}>
+              <MerchantLogo
+                name={merchantName}
+                logoUrl={override?.logoUrl}
+                icon={override?.icon}
+                useAutoLogo={override?.useAutoLogo !== false}
+                size={MERCHANT_LOGO_SIZE}
+              />
+              <View style={styles.heroIdentityCopy}>
+                <Text style={[styles.heroMerchantName, { color: colors.text }]} numberOfLines={2}>
+                  {merchantName}
+                </Text>
+                {dominantCategory ? (
+                  <Text style={[styles.heroCategory, { color: colors.textMuted }]} numberOfLines={1}>
+                    {dominantCategory}
+                  </Text>
+                ) : null}
+              </View>
             </View>
           </View>
-        )}
-      />
 
-      <TransactionDetailSheet transaction={selected} onClose={() => setSelected(null)} onDeleted={() => { void load(); }} />
-      <MerchantEditModal
-        visible={Boolean(editTarget)}
-        merchant={editTarget}
-        showDelete={false}
-        onClose={() => setEditTarget(null)}
-        onSaved={load}
-      />
-    </View>
+          <View style={accountDetailStatementStatsRowStyle()}>
+            <StatementStatColumn
+              label="Total dépensé"
+              value={formatMoney(totalSpent)}
+              align="left"
+            />
+            <StatementStatColumn
+              label="Transactions"
+              value={String(visibleTransactions.length)}
+              align="center"
+              prominent
+            />
+            <StatementStatColumn
+              label="Panier moyen"
+              value={averageBasket != null ? formatMoney(averageBasket) : '—'}
+              align="right"
+            />
+          </View>
+
+          <FlowDivider />
+
+          <View style={styles.receiptSection}>
+            <View style={accountDetailRecurringHeaderStyle(isLight)}>
+              <View style={styles.receiptSectionTitleRow}>
+                <Ionicons name="receipt-outline" size={18} color={colors.primary} />
+                <Text style={[styles.receiptSectionTitle, { color: colors.text }]}>
+                  Bibliothèque de reçus
+                </Text>
+              </View>
+              <View style={styles.receiptSectionMeta}>
+                <View style={[styles.receiptCountBadge, { backgroundColor: colors.blueMuted }]}>
+                  <Text style={[styles.receiptCountBadgeText, { color: colors.primary }]}>
+                    {receiptCount}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {receiptPreviews.length > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.receiptThumbnailRow}
+              >
+                {receiptPreviews.slice(0, 12).map((entry, index) => (
+                  <Pressable
+                    key={entry.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Voir ${entry.articleName}`}
+                    onPress={() => {
+                      tapHaptic();
+                      setSelected(entry.transaction);
+                    }}
+                    style={({ pressed }) => [
+                      styles.receiptThumbnailWrap,
+                      index > 0 && [
+                        styles.receiptThumbnailDivider,
+                        { borderLeftColor: colors.border },
+                      ],
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    {isPreviewableReceipt(entry.receiptUri) ? (
+                      <Image
+                        source={{ uri: entry.receiptUri ?? '' }}
+                        style={styles.receiptThumbnail}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View style={[styles.receiptThumbnailFallback, { backgroundColor: colors.surfaceElevated }]}>
+                        <Ionicons name="receipt-outline" size={20} color={colors.textMuted} />
+                      </View>
+                    )}
+                    <Text style={[styles.receiptThumbnailLabel, { color: colors.textMuted }]} numberOfLines={1}>
+                      {entry.articleName}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : (
+              <Text style={[styles.receiptEmptyHint, { color: colors.textMuted }]}>
+                Aucun reçu ou article enregistré pour ce marchand.
+              </Text>
+            )}
+          </View>
+
+          <FlowDivider />
+
+          <View style={styles.transactionList}>
+            <View style={[styles.searchRow, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
+              <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder="Rechercher"
+                placeholderTextColor={colors.textMuted}
+                value={search}
+                onChangeText={setSearch}
+              />
+              {search.trim().length > 0 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Effacer la recherche"
+                  hitSlop={8}
+                  onPress={() => setSearch('')}
+                  style={styles.clearSearchBtn}
+                >
+                  <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                </Pressable>
+              ) : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Filtres"
+                accessibilityState={{ expanded: historyFiltersExpanded }}
+                hitSlop={8}
+                onPress={() => {
+                  tapHaptic();
+                  setHistoryFiltersExpanded((expanded) => !expanded);
+                }}
+                style={styles.filterIconBtn}
+              >
+                <Ionicons
+                  name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
+                  size={20}
+                  color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
+                />
+              </Pressable>
+            </View>
+
+            {historyFiltersExpanded ? (
+              <View style={styles.historyFilterWrap}>
+                <SegmentedTabs
+                  tabs={HISTORY_FILTER_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
+                  active={historyTypeFilter}
+                  onChange={(id) => {
+                    tapHaptic();
+                    setHistoryTypeFilter(id);
+                  }}
+                  showDivider={false}
+                  trackBgColor="transparent"
+                  activeBgColor="rgba(255,255,255,0.07)"
+                  activeLabelColor="rgba(255,255,255,0.85)"
+                  inactiveLabelColor="rgba(255,255,255,0.28)"
+                />
+              </View>
+            ) : null}
+
+            {groupedTransactions.length > 0 ? (
+              groupedTransactions.map(([date, txs]) => (
+                <View key={date} style={styles.transactionGroup}>
+                  <View style={styles.groupHeaderRow}>
+                    <Text style={[styles.transactionGroupLabel, { color: colors.textMuted }]}>
+                      {formatTransactionGroupDateLabel(date)}
+                    </Text>
+                  </View>
+                  <View style={styles.groupTransactions}>
+                    {txs.map((tx) => (
+                      <TransactionRow
+                        key={tx.id}
+                        transaction={{ ...tx, label: getTransactionTitle(tx, merchantName) }}
+                        onPress={() => {
+                          tapHaptic();
+                          setSelected(tx);
+                        }}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ))
+            ) : (
+              <Text style={[styles.emptyInline, { color: colors.textMuted }]}>
+                {override?.hidden
+                  ? 'Ce marchand est masqué.'
+                  : historyHasActiveFilters
+                    ? 'Aucun résultat. Essaie un autre filtre ou une autre recherche.'
+                    : 'Aucune transaction'}
+              </Text>
+            )}
+          </View>
+        </ScrollView>
+
+        <TransactionDetailSheet transaction={selected} onClose={() => setSelected(null)} onDeleted={() => { void load(); }} />
+        <MerchantEditModal
+          visible={Boolean(editTarget)}
+          merchant={editTarget}
+          showDelete={false}
+          onClose={() => setEditTarget(null)}
+          onSaved={load}
+        />
+      </View>
     </PageTransition>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
-  listFlex: { flex: 1, backgroundColor: 'transparent' },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -300,114 +526,161 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  editButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    minHeight: 38,
-  },
-  editButtonText: {
-    fontSize: typography.meta,
-    fontWeight: '800',
-  },
   title: {
-    color: colors.text,
-    fontSize: typography.screenTitle,
-    fontWeight: '700',
-    letterSpacing: -0.4,
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: spacing.sm,
+    ...interExtraBoldText,
+    fontSize: typography.caption,
+    letterSpacing: -0.2,
   },
-  identityCardWrap: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
+  topBarSpacer: { width: 38 },
+  content: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.lg,
   },
-  identityCard: {
+  heroIdentityRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
   },
-  merchantName: {
+  heroIdentityCopy: {
     flex: 1,
-    color: colors.text,
+    minWidth: 0,
+    gap: 4,
+  },
+  heroMerchantName: {
+    ...interExtraBoldText,
     fontSize: typography.dashboardGreeting,
-    fontWeight: '800',
+    letterSpacing: -0.4,
   },
-  summaryCardWrap: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
+  heroCategory: {
+    fontSize: typography.meta,
+    fontWeight: '700',
   },
-  summaryCard: {
+  receiptSection: {
+    gap: spacing.sm,
+  },
+  receiptSectionTitleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minWidth: 0,
+  },
+  receiptSectionTitle: {
+    ...interExtraBoldText,
+    fontSize: typography.body,
+    letterSpacing: -0.2,
+    flexShrink: 1,
+  },
+  receiptSectionMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexShrink: 0,
+  },
+  receiptCountBadge: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    paddingHorizontal: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  receiptCountBadgeText: {
+    ...interExtraBoldText,
+    fontSize: typography.meta,
+    fontVariant: ['tabular-nums'],
+  },
+  receiptThumbnailRow: {
+    paddingTop: spacing.xs,
+    gap: spacing.sm,
+  },
+  receiptThumbnailWrap: {
+    width: 88,
+    gap: spacing.xs,
+    paddingLeft: spacing.sm,
+  },
+  receiptThumbnailDivider: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    paddingLeft: spacing.sm,
+  },
+  receiptThumbnail: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.md,
+  },
+  receiptThumbnailFallback: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  receiptThumbnailLabel: {
+    fontSize: typography.micro,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  receiptEmptyHint: {
+    fontSize: typography.caption,
+    lineHeight: 20,
+    paddingTop: spacing.xs,
+  },
+  transactionList: {
+    gap: spacing.md,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    minHeight: 44,
+    borderRadius: radius.card,
+    borderWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: typography.body,
+    padding: 0,
+  },
+  clearSearchBtn: {
+    padding: 4,
+  },
+  filterIconBtn: {
+    padding: 4,
+    marginLeft: spacing.xs,
+  },
+  historyFilterWrap: {
+    marginBottom: spacing.sm,
+  },
+  transactionGroup: {
+    marginBottom: spacing.xxl,
+  },
+  groupHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.md,
+    gap: spacing.sm,
+    minHeight: UNIFORM_SECTION_HEADER_MIN_HEIGHT,
+    marginBottom: spacing.md,
   },
-  summaryLabel: {
-    color: colors.textMuted,
-    fontSize: typography.micro,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  summaryAmount: {
-    ...heroStatAmount,
-    color: colors.text,
-    marginTop: 2,
-  },
-  summaryMeta: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: 'flex-end',
-  },
-  summaryCount: {
-    color: colors.text,
+  transactionGroupLabel: {
     fontSize: typography.caption,
-    fontWeight: '800',
-  },
-  summaryDates: {
-    color: colors.textMuted,
-    fontSize: typography.meta,
-    marginTop: 2,
-  },
-  receiptSectionWrap: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
-  },
-  receiptSectionInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  receiptSectionCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 4,
-  },
-  receiptSectionHint: {
-    fontSize: typography.meta,
-  },
-  list: {
-    paddingHorizontal: spacing.lg,
-  },
-  group: {
-    marginBottom: spacing.xl,
-  },
-  groupLabel: {
-    color: colors.textMuted,
-    fontSize: typography.caption,
-    marginBottom: spacing.sm,
     textTransform: 'capitalize',
+    flex: 1,
+    minWidth: 0,
   },
   groupTransactions: {
-    gap: spacing.md,
+    gap: spacing.lg,
   },
-  empty: {
-    color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: 48,
+  emptyInline: {
     fontSize: typography.caption,
+    lineHeight: 20,
+    paddingVertical: spacing.sm,
   },
   pressed: { opacity: 0.78 },
 });

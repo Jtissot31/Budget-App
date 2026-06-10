@@ -6,8 +6,9 @@ import { TransactionAvatar } from '@/components/TransactionAvatar';
 import type { SimulatedAccount, Transaction } from '@/types';
 import { interMediumText, radius, spacing, typography } from '@/constants/theme';
 import { listRowTitle, rowTitleTextProps, rowValue, rowValueContainer, singleLineAmountProps } from '@/lib/textLayout';
+import { useSavingsGoals } from '@/hooks/useSavingsGoals';
 import { useSimulatedAccounts } from '@/hooks/useSimulatedAccounts';
-import { resolveTransactionAccountLabel } from '@/lib/accountTransactionFlow';
+import { resolveTransactionPaymentMethodLabel } from '@/lib/accountTransactionFlow';
 import { UNIFORM_ROW_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { useAppTheme } from '@/lib/themeContext';
@@ -21,15 +22,17 @@ type Props = {
 export function TransactionRow({ transaction: tx, accounts, onPress }: Props) {
   const { colors } = useAppTheme();
   const storeAccounts = useSimulatedAccounts();
+  const savingsGoals = useSavingsGoals();
   const resolvedAccounts = accounts && accounts.length > 0 ? accounts : storeAccounts;
   const isIncome = tx.type === 'income';
   const isTransfer = tx.type === 'transfer';
   const amountColor = isIncome ? colors.success : isTransfer ? colors.textMuted : colors.text;
   const hasReceipt = Boolean(tx.receiptUri || tx.receiptStatus);
-  const accountLabel = useMemo(
-    () => resolveTransactionAccountLabel(tx, resolvedAccounts),
-    [resolvedAccounts, tx],
+  const paymentMethodLabel = useMemo(
+    () => resolveTransactionPaymentMethodLabel(tx, { accounts: resolvedAccounts, savingsGoals }),
+    [resolvedAccounts, savingsGoals, tx],
   );
+  const paymentMethodIcon = isTransfer ? 'swap-horizontal-outline' : isIncome ? 'wallet-outline' : 'card-outline';
 
   return (
     <Pressable android_ripple={null} onPress={onPress}>
@@ -50,11 +53,11 @@ export function TransactionRow({ transaction: tx, accounts, onPress }: Props) {
                 </View>
               ) : null}
             </View>
-            {accountLabel ? (
+            {paymentMethodLabel ? (
               <View style={[styles.accountPill, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Ionicons name="card-outline" size={11} color={colors.textMuted} />
+                <Ionicons name={paymentMethodIcon} size={11} color={colors.textMuted} />
                 <Text style={[styles.accountPillText, { color: colors.textMuted }]} numberOfLines={1}>
-                  {accountLabel}
+                  {paymentMethodLabel}
                 </Text>
               </View>
             ) : null}

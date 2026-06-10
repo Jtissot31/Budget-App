@@ -28,7 +28,9 @@ export function ConfirmDeleteModal({
           style={[
             styles.card,
             {
-              backgroundColor: colors.cardBackground,
+              backgroundColor: colors.containerBackground,
+              borderColor: colors.containerBorder,
+              borderWidth: 1,
             },
           ]}
         >

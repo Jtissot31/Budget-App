@@ -22,7 +22,6 @@ import {
   dashboardPalette,
   dashboardPaletteForTheme,
   FLOATING_NAV_CONTENT_PADDING,
-  ICON_WELL_SIZE,
   PAGE_PADDING_HORIZONTAL,
   PAGE_TITLE_CONTENT_GAP,
   PAGE_TITLE_STYLE,
@@ -66,7 +65,6 @@ import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
 import { formatDisplayMoneyAbsolute, formatRecurringPaymentAmount, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
 import { formatUpcomingStatusBadge } from '@/lib/paymentStatusBadge';
 import {
-  dashboardPaymentAmount,
   heroStatAmount,
   percentStat,
   rowLabel,
@@ -274,6 +272,12 @@ function formatAccountMeta(account: BalanceCompareAccount) {
   if (account.institution && account.last4) return `${account.institution} · ${account.last4}`;
   if (account.last4) return `****${account.last4}`;
   return account.institution ?? 'Compte disponible';
+}
+
+function iconForKind(kind: SimulatedAccount['kind']): keyof typeof Ionicons.glyphMap {
+  if (kind === 'credit') return 'card-outline';
+  if (kind === 'savings') return 'cash-outline';
+  return 'wallet-outline';
 }
 
 function formatUpcomingDate(isoDate: string) {
@@ -746,7 +750,7 @@ function AlertCard({
   }
 
   return (
-    <View style={aStyles.card}>
+    <View style={[aStyles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
 
       {/* ── Header : titre + actions ── */}
       <View style={aStyles.cardHeaderRow}>
@@ -948,10 +952,8 @@ const aStyles = StyleSheet.create({
     padding: 4,
   },
   card: {
-    backgroundColor: C.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: C.border,
     padding: 18,
     gap: 14,
   },
@@ -1674,7 +1676,7 @@ export default function HomeScreen() {
               accessibilityLabel="Ouvrir les réglages"
               style={({ pressed }) => [
                 styles.headerIconButton,
-                { backgroundColor: colors.surface, borderColor: colors.border },
+                { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
                 pressed && styles.pressed,
               ]}
             >
@@ -1792,19 +1794,11 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        <DashboardCard style={dashStyles.accountsCard}>
-          {balanceCompareAccounts.map((account, index) => {
+        <View style={dashStyles.accountsList}>
+          {balanceCompareAccounts.map((account) => {
             const creditUtilPct =
               account.kind === 'credit'
                 ? creditLimitUtilizationPercent(account.balance, account.creditLimit)
-                : undefined;
-            const creditUtilColor =
-              typeof creditUtilPct === 'number'
-                ? creditUtilPct >= 95
-                  ? dashPalette.red
-                  : creditUtilPct >= 80
-                    ? dashPalette.warning
-                    : dashPalette.green
                 : undefined;
             const institution = account.institution?.trim() || formatAccountMeta(account);
             const logoUrl = getBalanceCompareAccountLogoUrl(account);
@@ -1825,34 +1819,30 @@ export default function HomeScreen() {
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Voir le détail de ${account.name}`}
-                style={({ pressed }) => [
-                  dashStyles.accountRow,
-                  index < balanceCompareAccounts.length - 1 && dashStyles.accountRowBorder,
-                  pressed && simulatedAccounts.length > 0 && styles.pressed,
-                ]}
+                style={({ pressed }) => [pressed && simulatedAccounts.length > 0 && styles.pressed]}
               >
-                <View style={dashStyles.accountRowTop}>
-                  <View style={dashStyles.accountIdentity}>
-                    {logoUrl ? (
-                      <LogoIconFrame uri={logoUrl} size={ICON_WELL_SIZE} />
-                    ) : (
-                      <View style={userPickedIconWellStyle(ICON_WELL_SIZE, isLight)}>
-                        <Ionicons
-                          name={iconForKind(account.kind)}
-                          size={userPickedIconGlyphSize(ICON_WELL_SIZE)}
-                          color={logoTone}
-                        />
-                      </View>
-                    )}
-                    <View>
-                      <Text style={[dashStyles.accountName, { color: dashPalette.text }]}>{account.name}</Text>
-                      <Text style={[dashStyles.accountSub, { color: dashMuted }]}>{institution}</Text>
+                <DashboardCard style={dashStyles.paymentCard}>
+                  {logoUrl ? (
+                    <LogoIconFrame uri={logoUrl} size={48} />
+                  ) : (
+                    <View style={userPickedIconWellStyle(48, isLight)}>
+                      <Ionicons
+                        name={iconForKind(account.kind)}
+                        size={userPickedIconGlyphSize(48)}
+                        color={logoTone}
+                      />
                     </View>
+                  )}
+                  <View style={dashStyles.paymentCopy}>
+                    <Text style={[dashStyles.paymentTitle, { color: dashPalette.text }]}>{account.name}</Text>
+                    <Text style={[dashStyles.paymentMeta, { color: dashMuted, marginTop: spacing.xs }]}>
+                      {institution}
+                    </Text>
                   </View>
-                  <View style={dashStyles.accountAmountBlock}>
+                  <View style={dashStyles.paymentAmountBlock}>
                     <Text
                       style={[
-                        dashStyles.accountAmount,
+                        dashStyles.paymentAmount,
                         account.balance < 0
                           ? { color: dashPalette.red }
                           : account.kind === 'credit' && account.balance > 0
@@ -1865,16 +1855,16 @@ export default function HomeScreen() {
                       })}
                     </Text>
                     {typeof creditUtilPct === 'number' ? (
-                      <Text style={[dashStyles.accountUsed, { color: creditUtilColor }]}>
+                      <Text style={[dashStyles.accountUsed, { color: '#FFFFFF' }]}>
                         {`${Math.round(creditUtilPct)}% utilisé`}
                       </Text>
                     ) : null}
                   </View>
-                </View>
+                </DashboardCard>
               </Pressable>
             );
           })}
-        </DashboardCard>
+        </View>
       </View>
 
       <View style={[dashStyles.section, { borderTopColor: dashPalette.border }]}>
@@ -1888,10 +1878,10 @@ export default function HomeScreen() {
             logoUrl={nextPayment.logoUrl}
           />
           <View style={dashStyles.paymentCopy}>
-            <Text style={[dashStyles.paymentTitle, { color: dashPalette.text }]}>{nextPayment.name}</Text>
+            <Text style={[dashStyles.paymentTitle, { color: dashPalette.text }]} numberOfLines={2} ellipsizeMode="tail">{nextPayment.name}</Text>
             <View style={dashStyles.paymentMetaRow}>
               <PaymentCheckIcon />
-              <Text style={[dashStyles.paymentMeta, { color: dashMuted }]}>{nextPaymentAccountName}</Text>
+              <Text style={[dashStyles.paymentMeta, { color: dashMuted }]} numberOfLines={1} ellipsizeMode="tail">{nextPaymentAccountName}</Text>
             </View>
           </View>
           <View style={dashStyles.paymentAmountBlock}>
@@ -1932,8 +1922,8 @@ export default function HomeScreen() {
             style={[
               styles.selectorSheet,
               {
-                backgroundColor: colors.surfaceSolid,
-                borderColor: colors.border,
+                backgroundColor: colors.containerBackground,
+                borderColor: colors.containerBorder,
                 maxHeight: balanceSelectorMaxHeight,
               },
             ]}
@@ -1955,7 +1945,7 @@ export default function HomeScreen() {
                 accessibilityLabel="Fermer la sélection"
                 style={({ pressed }) => [
                   styles.selectorClose,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
+                  { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
                   pressed && styles.pressed,
                 ]}
               >
@@ -2997,52 +2987,8 @@ const dashStyles = StyleSheet.create({
     fontSize: typography.micro,
     color: 'rgba(245,245,245,0.84)',
   },
-  accountsCard: {
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-    overflow: 'hidden',
-  },
-  accountRow: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
-  },
-  accountRowBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: C.border,
-  },
-  accountRowTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  accountIdentity: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  accountsList: {
     gap: spacing.md,
-    flex: 1,
-    minWidth: 0,
-  },
-  accountName: {
-    ...interBoldText,
-    fontSize: typography.meta,
-    color: C.text,
-    letterSpacing: -0.2,
-    lineHeight: typography.meta + 5,
-  },
-  accountSub: {
-    ...interBoldText,
-    fontSize: typography.micro,
-    color: 'rgba(245,245,245,0.84)',
-    marginTop: 1,
-    letterSpacing: 0.2,
-  },
-  accountAmountBlock: {
-    alignItems: 'flex-end',
-  },
-  accountAmount: {
-    ...dashboardPaymentAmount,
-    color: C.text,
-    lineHeight: typography.dashboardGreeting + 4,
   },
   accountUsed: {
     ...interSemiboldText,
@@ -3082,31 +3028,34 @@ const dashStyles = StyleSheet.create({
   paymentCopy: {
     flex: 1,
     minWidth: 0,
+    gap: spacing.xs,
   },
   paymentTitle: {
     ...interBoldText,
     fontSize: typography.meta,
     color: C.text,
-    letterSpacing: -0.2,
+    letterSpacing: -0.1,
   },
   paymentMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginTop: spacing.xs,
+    minWidth: 0,
   },
   paymentMeta: {
-    ...interBoldText,
+    ...interMediumText,
     fontSize: typography.micro,
+    flex: 1,
+    minWidth: 0,
     color: 'rgba(245,245,245,0.84)',
-    flexShrink: 1,
-    letterSpacing: 0.2,
   },
   paymentAmountBlock: {
     alignItems: 'flex-end',
+    flexShrink: 0,
   },
   paymentAmount: {
-    ...dashboardPaymentAmount,
+    ...rowValue,
+    textAlign: 'right',
   },
   paymentAmountExpense: {
     color: C.red,
@@ -3116,9 +3065,9 @@ const dashStyles = StyleSheet.create({
   },
   paymentBadge: {
     marginBottom: spacing.xs,
-    borderRadius: 6,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   paymentBadgeExpense: {
     backgroundColor: 'rgba(230,160,0,0.14)',
@@ -3127,9 +3076,9 @@ const dashStyles = StyleSheet.create({
     backgroundColor: 'rgba(0,230,100,0.1)',
   },
   paymentBadgeText: {
-    ...interBoldText,
-    fontSize: typography.micro,
-    letterSpacing: 0.5,
+    ...interMediumText,
+    fontSize: 11,
+    letterSpacing: 0.3,
   },
   paymentBadgeTextExpense: {
     color: C.warning,

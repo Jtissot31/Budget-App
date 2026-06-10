@@ -25,6 +25,7 @@ import { typographyKit } from '@/constants/typographyKit';
 import { listRowTitle, portfolioNumericText, rowValue, singleLineAmountProps } from '@/lib/textLayout';
 import { UNIFORM_ACTION_BUTTON_MIN_HEIGHT, UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
+import { dataEvents } from '@/lib/events';
 import { getCategoryBudgets, getRecentIncomeTransactions, getRecurringPayments } from '@/lib/db';
 import {
   ESTIMATED_PAYCHECK_LABEL,
@@ -36,11 +37,10 @@ import { useAppTheme } from '@/lib/themeContext';
 import { formatDisplayMoneyAbsolute, formatRecurringPaymentAmount } from '@/lib/formatDisplayMoney';
 import { getMerchantLogoUrl } from '@/lib/merchantLogo';
 import { resolvePaymentStatusBadge } from '@/lib/paymentStatusBadge';
-import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsForm';
 import type { CategoryBudget, RecurringPayment, Transaction } from '@/types';
 
 type AgendaViewProps = {
-  onAddRecurring?: (variant: RecurringPaymentAddVariant) => void;
+  onEditRecurring?: (payment: RecurringPayment) => void;
 };
 
 export type AgendaBill = {
@@ -485,37 +485,50 @@ function calendarDayMarkers(dateKey: string, billsByDate: Record<string, AgendaB
   return { hasConfirmedPay, hasEstimatedPay, hasPayment };
 }
 
-const RECURRING_ADD_OPTIONS: Array<{
-  variant: RecurringPaymentAddVariant;
-  label: string;
-  description: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  iconColorKey: 'warning' | 'success';
-}> = [
-  {
-    variant: 'subscription',
-    label: 'Abonnement',
-    description: 'Netflix, Spotify, gym…',
-    icon: 'tv-outline',
-    iconColorKey: 'warning',
-  },
-  {
-    variant: 'bill',
-    label: 'Facture récurrente',
-    description: 'Loyer, hydro, assurance…',
-    icon: 'receipt-outline',
-    iconColorKey: 'warning',
-  },
-  {
-    variant: 'income',
-    label: 'Revenu récurrent',
-    description: 'Paie, pension, allocation…',
-    icon: 'wallet-outline',
-    iconColorKey: 'success',
-  },
-];
+const SUBSCRIPTION_CATEGORY_PATTERN = /abonnement|subscription|loisir|divertissement|streaming/;
 
-export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function AgendaView({ onAddRecurring }, ref) {
+/** Heuristique d’affichage : range les paiements de type loisir/abonnement sous « Abonnements ». */
+function isSubscriptionPayment(payment: RecurringPayment) {
+  if ((payment.kind ?? 'payment') === 'income') return false;
+  if (payment.categoryId === 'cat-fun') return true;
+  return SUBSCRIPTION_CATEGORY_PATTERN.test(normalizeText(payment.categoryName));
+}
+
+function nextRecurringOccurrence(payment: RecurringPayment, from: Date) {
+  const firstDate = parseIsoDay(payment.nextDate);
+  if (!firstDate) return null;
+
+  const endDate = parseIsoDay(payment.endDate);
+  let index = 0;
+  let occurrence = occurrenceDateAt(firstDate, payment.frequency, index);
+  while (occurrence < from && index < 1200) {
+    index += 1;
+    occurrence = occurrenceDateAt(firstDate, payment.frequency, index);
+  }
+  if (occurrence < from) return null;
+  if (endDate && occurrence > endDate) return null;
+  return occurrence;
+}
+
+function formatRecurringListDate(date: Date) {
+  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+}
+
+function recurringListMeta(payment: RecurringPayment, from: Date) {
+  const parts: string[] = [];
+  if (!payment.active) parts.push('Inactif');
+  parts.push(frequencyLabel(payment.frequency));
+  const next = payment.active ? nextRecurringOccurrence(payment, from) : null;
+  if (next) parts.push(formatRecurringListDate(next));
+  return parts.join(' · ');
+}
+
+function resolveRecurringListIcon(payment: RecurringPayment) {
+  if (payment.icon?.trim() && payment.icon !== 'repeat-outline') return payment.icon;
+  return (payment.kind ?? 'payment') === 'income' ? 'cash-outline' : EXPENSE_DEFAULT_ICON;
+}
+
+export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function AgendaView({ onEditRecurring }, ref) {
   const today = useMemo(() => startOfToday(), []);
   const { colors, isLight } = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -528,7 +541,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
   const [recentIncomeTransactions, setRecentIncomeTransactions] = useState<Transaction[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [paymentDetail, setPaymentDetail] = useState<PaymentDetailPayload | null>(null);
-  const [showAddPicker, setShowAddPicker] = useState(false);
+  const [showRecurringList, setShowRecurringList] = useState(false);
 
   const todayKey = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
 
@@ -551,6 +564,15 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
 
   useEffect(() => {
     void loadRecurringPayments();
+  }, [loadRecurringPayments]);
+
+  useEffect(() => {
+    const unsubscribe = dataEvents.subscribe(() => {
+      void loadRecurringPayments();
+    });
+    return () => {
+      unsubscribe();
+    };
   }, [loadRecurringPayments]);
 
   const resetToTop = useCallback(() => {
@@ -711,16 +733,41 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
     openBillDetail(b, dateKey);
   };
 
-  const handleAddPress = () => {
+  const handleOpenRecurringList = () => {
     tapHaptic();
-    setShowAddPicker(true);
+    setShowRecurringList(true);
   };
 
-  const handleRecurringVariantSelect = (variant: RecurringPaymentAddVariant) => {
+  const handleEditRecurring = (payment: RecurringPayment) => {
     tapHaptic();
-    setShowAddPicker(false);
-    onAddRecurring?.(variant);
+    setShowRecurringList(false);
+    onEditRecurring?.(payment);
   };
+
+  const recurringListSections = useMemo(() => {
+    const sortKey = (payment: RecurringPayment) => {
+      const next = nextRecurringOccurrence(payment, today);
+      return next ? dateKeyFromDate(next) : '9999-99-99';
+    };
+    const sorted = [...recurringPayments].sort(
+      (a, b) => sortKey(a).localeCompare(sortKey(b)) || a.name.localeCompare(b.name, 'fr'),
+    );
+    return [
+      { key: 'subscriptions', title: 'Abonnements', items: sorted.filter(isSubscriptionPayment) },
+      {
+        key: 'bills',
+        title: 'Factures et paiements récurrents',
+        items: sorted.filter(
+          (payment) => (payment.kind ?? 'payment') !== 'income' && !isSubscriptionPayment(payment),
+        ),
+      },
+      {
+        key: 'incomes',
+        title: 'Revenus récurrents',
+        items: sorted.filter((payment) => (payment.kind ?? 'payment') === 'income'),
+      },
+    ].filter((section) => section.items.length > 0);
+  }, [recurringPayments, today]);
 
   const renderAgendaPaymentCards = (
     items: { key: string; b: AgendaBill }[],
@@ -747,9 +794,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
     </View>
   );
 
-  const scrollBottomPadding = onAddRecurring
-    ? spacing.lg
-    : insets.bottom + FLOATING_NAV_CONTENT_PADDING;
+  const scrollBottomPadding = insets.bottom + FLOATING_NAV_CONTENT_PADDING;
 
   return (
     <>
@@ -842,8 +887,44 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
                 );
               })}
             </View>
+            <View style={styles.calendarLegend}>
+              <View style={styles.calendarLegendItem}>
+                <View style={[styles.markBar, styles.markBarPayment]} />
+                <Text style={styles.calendarLegendLabel}>Paiement</Text>
+              </View>
+              <View style={styles.calendarLegendItem}>
+                <View style={[styles.markBar, styles.markBarPay]} />
+                <Text style={styles.calendarLegendLabel}>Jour de paie estimé</Text>
+              </View>
+              <View style={styles.calendarLegendItem}>
+                <Text style={styles.calendarLegendPayMark}>$</Text>
+                <Text style={styles.calendarLegendLabel}>Dépôt de revenu confirmé</Text>
+              </View>
+            </View>
           </DashboardCard>
         </View>
+
+        {onEditRecurring ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Liste des paiements récurrents"
+            accessibilityHint="Affiche tous les abonnements, paiements et revenus récurrents pour les modifier"
+            onPress={handleOpenRecurringList}
+            style={({ pressed }) => [
+              styles.premiumAddCta,
+              {
+                backgroundColor: isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(18, 18, 18, 0.92)',
+                borderColor: colors.borderStrong,
+              },
+              pressed && floatingGlassButtonPressed,
+            ]}
+          >
+            <Ionicons name="repeat-outline" size={22} color={colors.textSecondary} />
+            <Text style={[styles.premiumAddCtaLabel, { color: colors.text }]}>
+              Liste des paiements récurrents
+            </Text>
+          </Pressable>
+        ) : null}
 
         {selBills && selBills.length > 0 ? (
           <View style={styles.section}>
@@ -929,90 +1010,127 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
         )}
 
       </ScrollView>
-
-      {onAddRecurring ? (
-        <View style={[styles.addFooter, { paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING }]}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Ajouter un abonnement, une facture ou un revenu récurrent"
-            onPress={handleAddPress}
-            style={({ pressed }) => [
-              styles.addButton,
-              {
-                backgroundColor: isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(18, 18, 18, 0.92)',
-                borderColor: colors.borderStrong,
-              },
-              pressed && floatingGlassButtonPressed,
-            ]}
-          >
-            <Ionicons name="add" size={18} color={colors.textSecondary} />
-            <Text style={[styles.addButtonLabel, { color: colors.text }]}>Ajouter</Text>
-          </Pressable>
-        </View>
-      ) : null}
       </View>
 
       <Modal
-        visible={showAddPicker}
+        visible={showRecurringList}
         animationType="slide"
         transparent
-        onRequestClose={() => setShowAddPicker(false)}
+        onRequestClose={() => setShowRecurringList(false)}
       >
         <View style={[styles.pickerBackdrop, { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' }]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowAddPicker(false)} />
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            accessibilityLabel="Fermer la liste des paiements récurrents"
+            onPress={() => setShowRecurringList(false)}
+          />
           <View
             style={[
               styles.pickerSheet,
+              styles.recurringListSheet,
               {
-                backgroundColor: colors.cardBackground,
-                borderColor: colors.border,
+                backgroundColor: colors.containerBackground,
+                borderColor: colors.containerBorder,
                 paddingBottom: Math.max(insets.bottom, spacing.md),
               },
             ]}
           >
             <View style={[styles.pickerHandle, { backgroundColor: colors.borderStrong }]} />
             <View style={styles.pickerHeader}>
-              <Text style={[styles.pickerTitle, { color: colors.text }]}>Ajouter</Text>
+              <Text style={[styles.pickerTitle, { color: colors.text }]}>Paiements récurrents</Text>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Fermer"
                 hitSlop={12}
-                onPress={() => setShowAddPicker(false)}
+                onPress={() => setShowRecurringList(false)}
                 style={[styles.pickerClose, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
               >
                 <Ionicons name="close" size={19} color={colors.textMuted} />
               </Pressable>
             </View>
             <Text style={[styles.pickerSubtitle, { color: colors.textMuted }]}>
-              Choisis le type d&apos;entrée récurrente à ajouter.
+              Touche un élément pour le modifier.
             </Text>
-            <View style={styles.pickerList}>
-              {RECURRING_ADD_OPTIONS.map((option) => (
-                <Pressable
-                  key={option.kind}
-                  accessibilityRole="button"
-                  accessibilityLabel={option.label}
-                  onPress={() => handleRecurringKindSelect(option.kind)}
-                  style={({ pressed }) => [
-                    styles.pickerRow,
-                    {
-                      backgroundColor: colors.surfaceElevated,
-                      borderColor: colors.border,
-                    },
-                    pressed && styles.pickerRowPressed,
-                  ]}
-                >
-                  <View style={[styles.pickerIconWell, { backgroundColor: colors.surface }]}>
-                    <Ionicons name={option.icon} size={22} color={colors[option.iconColorKey]} />
+            {recurringListSections.length ? (
+              <ScrollView
+                style={styles.recurringListScroll}
+                contentContainerStyle={styles.recurringListContent}
+                showsVerticalScrollIndicator={false}
+              >
+                {recurringListSections.map((section) => (
+                  <View key={section.key} style={styles.recurringListSection}>
+                    <DashboardSectionLabel>{section.title}</DashboardSectionLabel>
+                    <View style={styles.recurringListItems}>
+                      {section.items.map((payment) => {
+                        const isIncome = (payment.kind ?? 'payment') === 'income';
+                        return (
+                          <Pressable
+                            key={payment.id}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Modifier ${payment.name}`}
+                            onPress={() => handleEditRecurring(payment)}
+                            style={({ pressed }) => [
+                              styles.pickerRow,
+                              {
+                                backgroundColor: colors.surfaceElevated,
+                                borderColor: colors.border,
+                              },
+                              !payment.active && styles.recurringListRowInactive,
+                              pressed && styles.pickerRowPressed,
+                            ]}
+                          >
+                            <UserPickedIconWell
+                              icon={resolveRecurringListIcon(payment)}
+                              color={payment.color}
+                              size={44}
+                              logoUrl={payment.logoUrl?.trim() || getMerchantLogoUrl(payment.name)}
+                              wellGlyphWhite
+                            />
+                            <View style={styles.pickerCopy}>
+                              <Text
+                                style={[styles.pickerLabel, { color: colors.text }]}
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                              >
+                                {payment.name}
+                              </Text>
+                              <Text
+                                style={[styles.pickerDescription, { color: colors.textMuted }]}
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                              >
+                                {recurringListMeta(payment, today)}
+                              </Text>
+                            </View>
+                            <Text
+                              style={[
+                                styles.recurringListAmount,
+                                isIncome
+                                  ? styles.agendaPaymentAmountIncome
+                                  : styles.agendaPaymentAmountRecurring,
+                              ]}
+                              {...singleLineAmountProps}
+                            >
+                              {formatRecurringPaymentAmount(payment.amount, payment.kind ?? 'payment')}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
                   </View>
-                  <View style={styles.pickerCopy}>
-                    <Text style={[styles.pickerLabel, { color: colors.text }]}>{option.label}</Text>
-                    <Text style={[styles.pickerDescription, { color: colors.textMuted }]}>{option.description}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-                </Pressable>
-              ))}
-            </View>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={styles.recurringListEmpty}>
+                <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceElevated }]}>
+                  <Ionicons name="repeat-outline" size={22} color={colors.textMuted} />
+                </View>
+                <Text style={styles.emptyTitle}>Aucun élément récurrent</Text>
+                <Text style={styles.emptyHint}>
+                  Utilise le bouton + pour ajouter un abonnement, une facture ou un revenu récurrent.
+                </Text>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -1276,6 +1394,35 @@ function createStyles(colors: AppColors) {
     backgroundColor: colors.warning,
   },
   eventMarkSpacer: { height: 8, marginTop: 4 },
+  calendarLegend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: spacing.md,
+    rowGap: spacing.sm,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  calendarLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  calendarLegendLabel: {
+    ...typographyKit.metaMedium,
+    color: colors.textMuted,
+  },
+  calendarLegendPayMark: {
+    ...portfolioNumericText,
+    width: 16,
+    textAlign: 'center',
+    color: colors.success,
+    fontSize: typography.micro,
+    lineHeight: typography.micro + 1,
+    includeFontPadding: false,
+  },
   section: {
     gap: spacing.md,
     marginTop: spacing.xl,
@@ -1426,24 +1573,21 @@ function createStyles(colors: AppColors) {
     lineHeight: typography.caption + 6,
     textAlign: 'center',
   },
-  addFooter: {
-    paddingTop: spacing.sm,
-    backgroundColor: colors.background,
-  },
-  addButton: {
+  premiumAddCta: {
+    marginBottom: spacing.md,
     alignSelf: 'stretch',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
+    minHeight: UNIFORM_ACTION_BUTTON_MIN_HEIGHT,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  addButtonLabel: {
-    fontSize: typography.meta,
-    fontWeight: '700',
+  premiumAddCtaLabel: {
+    ...typographyKit.bodyBold,
     letterSpacing: 0.15,
   },
   pickerBackdrop: {
@@ -1490,9 +1634,34 @@ function createStyles(colors: AppColors) {
     fontSize: typography.meta,
     lineHeight: 17,
   },
-  pickerList: {
-    gap: spacing.sm,
+  recurringListSheet: {
+    maxHeight: '82%',
+  },
+  recurringListScroll: {
+    flexGrow: 0,
+  },
+  recurringListContent: {
+    gap: spacing.lg,
     paddingBottom: spacing.sm,
+  },
+  recurringListSection: {
+    gap: spacing.sm,
+  },
+  recurringListItems: {
+    gap: spacing.sm,
+  },
+  recurringListRowInactive: {
+    opacity: 0.58,
+  },
+  recurringListAmount: {
+    ...rowValue,
+    flexShrink: 0,
+    textAlign: 'right',
+  },
+  recurringListEmpty: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
   },
   pickerRow: {
     flexDirection: 'row',
@@ -1506,14 +1675,6 @@ function createStyles(colors: AppColors) {
   },
   pickerRowPressed: {
     opacity: 0.78,
-  },
-  pickerIconWell: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
   },
   pickerCopy: {
     flex: 1,

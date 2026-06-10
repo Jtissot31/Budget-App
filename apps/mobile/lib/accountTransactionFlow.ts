@@ -1,5 +1,20 @@
 import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
-import type { SavingsGoal, SimulatedAccount, Transaction, TransactionType } from '@/types';
+import type { ReceiptStatus, SavingsGoal, SimulatedAccount, Transaction, TransactionType } from '@/types';
+
+export function getTransactionTypeLabel(type: TransactionType): string {
+  if (type === 'income') return 'Revenu';
+  if (type === 'transfer') return 'Transfert';
+  return 'Dépense';
+}
+
+export function getReceiptStatusLabel(
+  status?: ReceiptStatus | null,
+  receiptUri?: string | null,
+): string | null {
+  if (status === 'scan_pending') return 'À scanner';
+  if (status === 'attached' || receiptUri) return 'Reçu joint';
+  return null;
+}
 
 export type AccountMoneyFlow = {
   moneyIn: number;
@@ -44,12 +59,9 @@ export function resolveTransactionAccountLabel(
   tx: Pick<Transaction, 'type' | 'note'>,
   accounts: readonly SimulatedAccount[] = [],
 ): string | null {
-  if (tx.type !== 'expense') return null;
+  if (tx.type !== 'expense' && tx.type !== 'income') return null;
 
-  const accountId = parseAccountIdFromNote(tx.note);
-  if (!accountId) return null;
-
-  return resolveAccountIdLabel(accountId, accounts);
+  return resolveTransactionPaymentMethodLabel(tx, { accounts });
 }
 
 export function getTransactionPaymentMethodFieldLabel(type: TransactionType): string {
@@ -91,6 +103,85 @@ export function parseTransferAccountsFromNote(note?: string): { sourceId: string
     sourceId: match?.[1]?.trim() || null,
     destinationId: match?.[2]?.trim() || null,
   };
+}
+
+export function parseDestinataireFromNote(note?: string): string | null {
+  const line = note?.split('\n').find((part) => part.startsWith('destinataire:'));
+  return line?.slice('destinataire:'.length).trim() || null;
+}
+
+export function parseExpediteurFromNote(note?: string): string | null {
+  const line = note?.split('\n').find((part) => part.startsWith('expediteur:'));
+  return line?.slice('expediteur:'.length).trim() || null;
+}
+
+export function parseContactIdFromNote(note?: string): string | null {
+  const line = note?.split('\n').find((part) => part.startsWith('contact:'));
+  return line?.slice('contact:'.length).trim() || null;
+}
+
+export function parseIncomeSourceFromNote(note?: string): string | null {
+  const line = note?.split('\n').find((part) => part.startsWith('source:'));
+  return line?.slice('source:'.length).trim() || null;
+}
+
+export function parseMotifFromNote(note?: string): string | null {
+  const line = note?.split('\n').find((part) => part.startsWith('motif:'));
+  return line?.slice('motif:'.length).trim() || null;
+}
+
+export function parseRaisonFromNote(note?: string): string | null {
+  const line = note?.split('\n').find((part) => part.startsWith('raison:'));
+  return line?.slice('raison:'.length).trim() || null;
+}
+
+export function isContactTransferTx(tx: Pick<Transaction, 'type' | 'note'>): boolean {
+  return tx.type === 'expense' && Boolean(parseDestinataireFromNote(tx.note));
+}
+
+export function isContactIncomeTx(tx: Pick<Transaction, 'type' | 'note'>): boolean {
+  if (tx.type !== 'income') return false;
+  return Boolean(
+    parseExpediteurFromNote(tx.note) ||
+      parseContactIdFromNote(tx.note) ||
+      parseIncomeSourceFromNote(tx.note),
+  );
+}
+
+export function isContactLinkedTx(tx: Pick<Transaction, 'type' | 'note'>): boolean {
+  return isContactTransferTx(tx) || isContactIncomeTx(tx);
+}
+
+export function resolveContactNameFromTransaction(tx: Pick<Transaction, 'label' | 'note'>): string | null {
+  return (
+    parseDestinataireFromNote(tx.note) ??
+    parseExpediteurFromNote(tx.note) ??
+    parseIncomeSourceFromNote(tx.note) ??
+    null
+  );
+}
+
+export function appendContactIdToNote(note: string, contactId: string): string {
+  const trimmedId = contactId.trim();
+  if (!trimmedId) return note;
+  const withoutExisting = note
+    .split('\n')
+    .filter((line) => !line.startsWith('contact:'))
+    .join('\n')
+    .trim();
+  return withoutExisting ? `${withoutExisting}\ncontact:${trimmedId}` : `contact:${trimmedId}`;
+}
+
+export function buildAutoTransferLabel(sourceLabel: string, destinationLabel: string): string {
+  return `Transfert ${sourceLabel} → ${destinationLabel}`;
+}
+
+export function isAutoTransferLabel(
+  label: string,
+  sourceLabel: string,
+  destinationLabel: string,
+): boolean {
+  return label.trim() === buildAutoTransferLabel(sourceLabel, destinationLabel);
 }
 
 /** Same balance semantics as `adjustSimulatedAccountBalance` / account detail: income +amount, expense −amount, transfers ±amount. */

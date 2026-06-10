@@ -168,7 +168,7 @@ export default function WealthAssetTransactionsScreen() {
         sheetStyle={[
           stylesMemo.sheetSurface,
           {
-            backgroundColor: colors.surfaceSolid,
+            backgroundColor: colors.containerBackground,
             borderTopLeftRadius: DETAIL_SHEET_TOP_RADIUS,
             borderTopRightRadius: DETAIL_SHEET_TOP_RADIUS,
           },

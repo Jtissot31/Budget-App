@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { MdiIconGlyph } from '@/components/MdiIconGlyph';
 import { getMerchantLogoUrls } from '@/lib/merchantLogo';
 import { EXPENSE_MDI_ICON, resolveMdiOrLegacyIcon } from '@/lib/mdiIconCatalog';
-import { ICON_WELL_SIZE } from '@/constants/theme';
+import { MERCHANT_LOGO_SIZE } from '@/constants/theme';
 import {
   logoIconWellStyle,
   userPickedIconGlyphSize,
@@ -27,7 +27,7 @@ export function MerchantLogo({
   logoUrl,
   icon,
   useAutoLogo = true,
-  size = ICON_WELL_SIZE,
+  size = MERCHANT_LOGO_SIZE,
 }: Props) {
   const { colors, isLight } = useAppTheme();
   const autoUrls = useMemo(() => getMerchantLogoUrls(name), [name]);

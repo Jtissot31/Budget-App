@@ -96,6 +96,10 @@ export interface WealthAsset {
   valuationSource: WealthValuationSource;
   propertyType?: string | null;
   address?: string | null;
+  /** Banner photo URI for detail view (real estate). */
+  photoUri?: string | null;
+  /** Linked mortgage loan id when synced from Dettes & Prêts. */
+  linkedLoanId?: string | null;
   notes?: string | null;
   createdAt: string;
 }
@@ -108,6 +112,14 @@ export interface MerchantOverride {
   useAutoLogo?: boolean;
   hidden: boolean;
   updatedAt: string;
+}
+
+export interface Contact {
+  id: string;
+  name: string;
+  normalizedName: string;
+  isEmployer?: boolean;
+  createdAt: string;
 }
 
 export interface SavingsGoal {
@@ -134,6 +146,8 @@ export interface Loan {
   type: LoanType;
   friendDebtMode?: FriendDebtMode | null;
   name: string;
+  /** Purpose label (e.g. Maison, Auto, Rénovation) — combined into display title. */
+  reason?: string | null;
   lender: string;
   principal: number;
   balanceRemaining: number;
@@ -148,6 +162,16 @@ export interface Loan {
   nextPaymentDate: string;
   recurringPaymentId?: string | null;
   icon?: string | null;
+  /** Mortgage property address (shown in loan detail, not as title). */
+  address?: string | null;
+  /** Mortgage down payment (mise de fonds). */
+  downPayment?: number | null;
+  /** Property purchase price at acquisition. */
+  purchasePrice?: number | null;
+  /** Current estimated property market value. */
+  currentPropertyValue?: number | null;
+  /** Linked Patrimoine real-estate asset id. */
+  wealthAssetId?: string | null;
   createdAt: string;
 }
 

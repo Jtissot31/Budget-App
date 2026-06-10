@@ -1,4 +1,5 @@
-import { Platform } from 'react-native';
+import { Platform, StyleSheet, type TextStyle, type ViewStyle } from 'react-native';
+import { typographyKit } from './typographyKit';
 import {
   fontFamilies,
   interBoldText,
@@ -37,6 +38,15 @@ export const CANVAS_CHARCOAL = DARK_CANVAS;
  */
 export const CONTAINER_SURFACE = '#111111';
 
+/**
+ * Standard container outline — matches dashboard « Fonds insuffisants » alert shell (`aStyles.card`).
+ * Use with {@link CONTAINER_SURFACE} / `containerBackground` and `borderWidth: 1`.
+ */
+export const CONTAINER_BORDER = '#1c1c1c';
+
+/** Light-theme container outline (same as `lightDashboardPalette.border`). */
+export const CONTAINER_BORDER_LIGHT = '#C0C0C8';
+
 /** Segmented tab bar — Transactions / Portefeuille scope tabs (dark) */
 export const segmentedTabBarDark = {
   track: '#1C1C1C',
@@ -62,7 +72,7 @@ export const dashboardPalette = {
   scopeTrack: segmentedTabBarDark.track,
   /** Active pill on scope track — slightly elevated from track */
   scopeActive: segmentedTabBarDark.activePill,
-  border: '#1c1c1c',
+  border: CONTAINER_BORDER,
   green: '#00e664',
   red: '#ff5555',
   text: '#ffffff',
@@ -77,6 +87,10 @@ export const darkColors = {
   screenCanvas: dashboardPalette.bg,
   surface: dashboardPalette.card,
   surfaceSolid: dashboardPalette.card,
+  /** Standard card/container fill — low-fund alert shell */
+  containerBackground: dashboardPalette.card,
+  /** Standard card/container outline — low-fund alert shell */
+  containerBorder: dashboardPalette.border,
   cardBackground: dashboardPalette.card,
   glassSolid: dashboardPalette.card,
   surfaceElevated: dashboardPalette.iconBox,
@@ -125,13 +139,17 @@ export const lightColors = {
   screenCanvas: 'transparent',
   surface: '#FFFFFF',
   surfaceSolid: '#FFFFFF',
+  /** Standard card/container fill — low-fund alert shell */
+  containerBackground: '#FFFFFF',
+  /** Standard card/container outline — low-fund alert shell */
+  containerBorder: CONTAINER_BORDER_LIGHT,
   cardBackground: '#FFFFFF',
   glassSolid: '#FFFFFF',
   surfaceElevated: '#E8E8ED',
   input: '#E8E8ED',
-  border: '#C0C0C8',
+  border: CONTAINER_BORDER_LIGHT,
   borderStrong: '#9090A0',
-  cardBorder: '#C0C0C8',
+  cardBorder: CONTAINER_BORDER_LIGHT,
   text: '#0D1117',
   textSecondary: '#4B5563',
   textMuted: '#52525B',
@@ -151,7 +169,7 @@ export const lightColors = {
   navPill: 'rgba(255, 255, 255, 0.82)',
   /** Tinted glass fill over light gradient — no blur */
   glassBackground: 'rgba(255, 255, 255, 0.45)',
-  glassBorder: 'rgba(255, 255, 255, 0.06)',
+  glassBorder: CONTAINER_BORDER_LIGHT,
   /** @deprecated Use glassBorder */
   glassBorderTop: 'rgba(255, 255, 255, 0.06)',
   /** @deprecated Use glassBorder */
@@ -178,6 +196,31 @@ export const colors = darkColors;
 /** Dashboard palette for the active theme (Comptes / alertes / styles statiques dashboard). */
 export function dashboardPaletteForTheme(isLight: boolean) {
   return isLight ? lightDashboardPalette : dashboardPalette;
+}
+
+/**
+ * Standard container shell colors — matches dashboard « Fonds insuffisants » alert (`aStyles.card`).
+ * Prefer {@link containerSurfaceStyle} when you also need `borderWidth: 1`.
+ */
+export function containerSurfaceColors(isLight: boolean) {
+  const palette = dashboardPaletteForTheme(isLight);
+  return {
+    backgroundColor: palette.card,
+    borderColor: palette.border,
+  } as const;
+}
+
+/**
+ * Standard container View style — fill + 1px outline from the low-fund alert reference.
+ * Shapes (borderRadius, padding, layout) stay with the caller.
+ */
+export function containerSurfaceStyle(isLight: boolean): Pick<ViewStyle, 'backgroundColor' | 'borderColor' | 'borderWidth'> {
+  const { backgroundColor, borderColor } = containerSurfaceColors(isLight);
+  return {
+    backgroundColor,
+    borderColor,
+    borderWidth: 1,
+  };
 }
 
 /** Dashboard palette shape derived from light tokens. */
@@ -221,6 +264,91 @@ export const radius = {
   pill: 999,
 } as const;
 
+/**
+ * Chip / pill / tab text layout rules (app-wide):
+ * - Never break a word mid-character: use `numberOfLines` + `ellipsizeMode="tail"`, or allow wrap at word boundaries.
+ * - Single-line chip labels need `CHIP_PADDING_HORIZONTAL` + `minWidth` so the label fits; use `chipLabelTextProps` from `lib/textLayout`.
+ * - Selected state must NOT change `borderWidth` without compensating padding — always use {@link CHIP_BORDER_WIDTH} on every chip state.
+ * - Prefer changing `borderColor` / background on selection; avoid outline width jumps that shrink the inner content box.
+ *
+ * Helpers: {@link chipShellBorderStyle}, {@link chipMinPaddingStyle}, {@link chipSelectableShellStyle},
+ * `lib/textLayout.ts` (`chipLabelTextProps`, `noMidWordClipTextProps`, `singleLineLabelStyle`).
+ */
+export const CHIP_BORDER_WIDTH = 1.5;
+
+/** Minimum horizontal padding inside selectable chips (type pills, category chips, etc.). */
+export const CHIP_PADDING_HORIZONTAL = spacing.md;
+
+/** Min inner width for transaction type pills — fits « Transfert » at caption size with chip padding + border. */
+export const TYPE_TRANSACTION_CHIP_MIN_WIDTH = 108;
+
+/** Constant border width for chip shells — selected and unselected share the same inner box. */
+export function chipShellBorderStyle(borderColor: string): Pick<ViewStyle, 'borderWidth' | 'borderColor'> {
+  return {
+    borderWidth: CHIP_BORDER_WIDTH,
+    borderColor,
+  };
+}
+
+/** Padding baseline for chips that must fit a single-line French label. */
+export function chipMinPaddingStyle(): Pick<ViewStyle, 'paddingHorizontal'> {
+  return {
+    paddingHorizontal: CHIP_PADDING_HORIZONTAL,
+  };
+}
+
+/** Shell style for selectable chips — constant border width in every state (selected included). */
+export function chipSelectableShellStyle(borderColor: string): Pick<ViewStyle, 'borderWidth' | 'borderColor' | 'paddingHorizontal'> {
+  return {
+    ...chipShellBorderStyle(borderColor),
+    ...chipMinPaddingStyle(),
+  };
+}
+
+/**
+ * Low-emphasis destructive label — use on « Supprimer » trigger affordances (not ConfirmDeleteModal).
+ * Prefer with {@link subtleDeleteButtonStyle} for the pressable shell.
+ */
+export function destructiveTextActionStyle(isLight: boolean): TextStyle {
+  const palette = dashboardPaletteForTheme(isLight);
+  return {
+    ...typographyKit.metaMedium,
+    color: palette.red,
+  };
+}
+
+/**
+ * Subtle delete trigger — muted outline or text-link row, danger tint without loud full-width red.
+ * Confirmation stays in ConfirmDeleteModal.
+ */
+export function subtleDeleteButtonStyle(
+  isLight: boolean,
+  options?: { alignSelf?: ViewStyle['alignSelf'] },
+): ViewStyle {
+  const palette = dashboardPaletteForTheme(isLight);
+  return {
+    alignSelf: options?.alignSelf ?? 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: isLight ? 'rgba(207, 34, 46, 0.22)' : 'rgba(255, 85, 85, 0.22)',
+    backgroundColor: isLight ? 'rgba(207, 34, 46, 0.05)' : 'rgba(255, 85, 85, 0.07)',
+  };
+}
+
+/** Danger icon tint for subtle delete triggers — matches {@link destructiveTextActionStyle}. */
+export function destructiveIconColor(isLight: boolean): string {
+  return dashboardPaletteForTheme(isLight).red;
+}
+
+/** Hairline border for non-chip controls (inputs, suggestion pills) — not for selectable chips. */
+export const CONTROL_HAIRLINE_BORDER_WIDTH = StyleSheet.hairlineWidth;
+
 /** Standard progress bar track height */
 export const PROGRESS_BAR_TRACK_HEIGHT = 8;
 
@@ -231,6 +359,14 @@ export const PROGRESS_BAR_TRACK_HEIGHT = 8;
  * Do NOT use for FAB buttons (FloatingTabBar) or tiny legend/calendar markers (12–16px).
  */
 export const ICON_WELL_SIZE = 34;
+
+/**
+ * Standard merchant / bank-account logo well size (px).
+ * Use for MerchantLogo, merchant directory rows, transaction rows (TransactionRow = 48),
+ * recurring-payment rows, account-card identity logos, and any context that shows a
+ * brand favicon / institution logo inline.
+ */
+export const MERCHANT_LOGO_SIZE = 48;
 
 /**
  * Full-bleed custom SVG glyph inside a standard well (e.g. DashboardHouseIcon).
@@ -405,6 +541,191 @@ export const portfolioDark = {
   iconButton: dashboardPalette.iconBox,
   border: dashboardPalette.border,
 } as const;
+
+/**
+ * Page détail compte (`app/account-detail.tsx`) — ordre vertical des blocs :
+ *
+ * 1. **Hero actions** (haut droite) — liens texte « Modifier · Supprimer »
+ *    ({@link accountDetailHeroActionsStyle}, {@link destructiveTextActionStyle} pour Supprimer)
+ * 2. **BankAccountCard** — carte hero dans `ghostCardShadow` (composant séparé, ne pas dupliquer)
+ * 3. **Ligne stats relevé** — 3 colonnes selon le type de compte :
+ *    - Chèque : Revenus · Net ce mois (prominent) · Dépenses ({@link ACCOUNT_DETAIL_STATEMENT_COLUMNS})
+ *    - Crédit : Solde dû · Disponible · % utilisé
+ *    - Épargne : Épargné · Objectif · Atteint
+ * 4. **DetailRows secondaires** — paires label/valeur avec hairline entre lignes (limite, échéance, objectif…)
+ * 5. **En-tête collapsible** paiements récurrents ({@link accountDetailRecurringHeaderStyle})
+ * 6. **Historique transactions** — barre recherche + filtres SegmentedTabs + groupes {@link TransactionRow}
+ *
+ * Règles couleur des valeurs stats :
+ * - **Compte chèque** : seul « Net ce mois » est coloré (vert si ≥ 0, rouge sinon) ;
+ *   « Revenus » et « Dépenses » restent en `colors.text` avec préfixe +/−.
+ * - **Crédit** : « Solde dû » en `colors.danger` avec montant signé − ;
+ *   « Disponible » en `colors.text` ; « % utilisé » via {@link utilizationPercentColor}
+ *   (`lib/creditLimitUtilization.ts` : &lt;50 % vert, 50–79 % orange, ≥80 % rouge).
+ * - **Carte crédit (BankAccountCard)** : affiche solde dû + disponible uniquement — pas de % sur la carte.
+ */
+export const ACCOUNT_DETAIL_STATEMENT_COLUMNS = {
+  rowGap: spacing.sm,
+  rowPaddingTop: spacing.xs,
+  colGap: 4,
+  colFlex: 1,
+  prominentColFlex: 1.15,
+  statValueSize: 28,
+  statValueProminentSize: 32,
+  statValueLetterSpacing: -0.5,
+  statValueProminentLetterSpacing: -0.6,
+  statLabelSize: 9,
+  statLabelLetterSpacing: 0.4,
+} as const;
+
+/** Row of top-right hero text actions (« Modifier · Supprimer »). */
+export function accountDetailHeroActionsStyle(): ViewStyle {
+  return {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  };
+}
+
+/** Pressable padding for a hero text action link. */
+export function accountDetailHeroActionLinkStyle(): ViewStyle {
+  return {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.xs,
+  };
+}
+
+/** Muted label for hero actions such as « Modifier ». */
+export function accountDetailHeroActionMutedTextStyle(isLight: boolean): TextStyle {
+  const theme = isLight ? lightColors : darkColors;
+  return {
+    ...interMediumText,
+    fontSize: typography.meta,
+    color: theme.textMuted,
+  };
+}
+
+/** Separator dot between hero actions (« · »). */
+export function accountDetailHeroActionSeparatorStyle(isLight: boolean): TextStyle {
+  const palette = dashboardPaletteForTheme(isLight);
+  return {
+    ...interMediumText,
+    fontSize: typography.meta,
+    color: palette.border,
+  };
+}
+
+/** Hero block wrapping actions + BankAccountCard. */
+export function accountDetailHeroBlockStyle(): ViewStyle {
+  return {
+    gap: spacing.sm,
+  };
+}
+
+/** 3-column statement stats row (Revenus · Net ce mois · Dépenses, etc.). */
+export function accountDetailStatementStatsRowStyle(): ViewStyle {
+  return {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: ACCOUNT_DETAIL_STATEMENT_COLUMNS.rowGap,
+    paddingTop: ACCOUNT_DETAIL_STATEMENT_COLUMNS.rowPaddingTop,
+  };
+}
+
+/** Single column in the statement stats row. */
+export function accountDetailStatementStatColStyle(options?: {
+  align?: 'left' | 'center' | 'right';
+  prominent?: boolean;
+}): ViewStyle {
+  const align = options?.align ?? 'center';
+  return {
+    flex: options?.prominent ? ACCOUNT_DETAIL_STATEMENT_COLUMNS.prominentColFlex : ACCOUNT_DETAIL_STATEMENT_COLUMNS.colFlex,
+    alignItems: align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center',
+    gap: ACCOUNT_DETAIL_STATEMENT_COLUMNS.colGap,
+    minWidth: 0,
+  };
+}
+
+/** Tabular hero stat value — 28px default, 32px when `prominent` (ex. « Net ce mois »). */
+export function accountDetailStatementStatValueStyle(prominent?: boolean): TextStyle {
+  return {
+    ...interExtraBoldText,
+    fontSize: prominent
+      ? ACCOUNT_DETAIL_STATEMENT_COLUMNS.statValueProminentSize
+      : ACCOUNT_DETAIL_STATEMENT_COLUMNS.statValueSize,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: prominent
+      ? ACCOUNT_DETAIL_STATEMENT_COLUMNS.statValueProminentLetterSpacing
+      : ACCOUNT_DETAIL_STATEMENT_COLUMNS.statValueLetterSpacing,
+    textAlign: 'center',
+  };
+}
+
+/** Muted label under a statement stat (ex. « Revenus », « Net ce mois »). */
+export function accountDetailStatementStatLabelStyle(): TextStyle {
+  return {
+    ...interMediumText,
+    fontSize: ACCOUNT_DETAIL_STATEMENT_COLUMNS.statLabelSize,
+    letterSpacing: ACCOUNT_DETAIL_STATEMENT_COLUMNS.statLabelLetterSpacing,
+    textAlign: 'center',
+  };
+}
+
+/** Hairline divider between account-detail blocks (stats → detail rows → recurring → history). */
+export function accountDetailSectionDividerStyle(isLight: boolean): ViewStyle {
+  const palette = dashboardPaletteForTheme(isLight);
+  return {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: palette.border,
+  };
+}
+
+/**
+ * Page détail marchand (`app/merchant-detail.tsx`) — réutilise le kit détail compte :
+ *
+ * 1. **Hero actions** — lien « Modifier » ({@link accountDetailHeroActionsStyle})
+ * 2. **Identité marchand** — logo 48px ({@link MERCHANT_LOGO_SIZE}) + nom + catégorie dominante
+ * 3. **Ligne stats** — Total dépensé · Transactions · Panier moyen
+ *    ({@link accountDetailStatementStatsRowStyle})
+ * 4. **Bibliothèque de reçus** — en-tête {@link accountDetailRecurringHeaderStyle} + aperçu horizontal
+ * 5. **Historique** — recherche + filtres SegmentedTabs + groupes {@link TransactionRow}
+ */
+
+/**
+ * Page détail contact (`app/contact-detail.tsx`) — kit détail compte adapté aux transferts :
+ *
+ * 1. **Barre supérieure** — retour + nom du contact centré
+ * 2. **Identité contact** — avatar 48px + nom + badge « Employeur » si applicable
+ *    ({@link accountDetailHeroBlockStyle})
+ * 3. **Ligne stats transfert** — Reçu (+) · Net (prominent, vert/rouge) · Envoyé (−)
+ *    ({@link accountDetailStatementStatsRowStyle}) ; net = total reçu − total envoyé
+ * 4. **DetailRows secondaires** — Opérations, Période (hairline entre lignes)
+ * 5. **Toggle employeur** — rangée ouverte avec Switch (si contact enregistré), sans GlassContainer
+ * 6. **Historique** — recherche + filtres SegmentedTabs (Tous · Envoyés · Reçus) + groupes {@link TransactionRow}
+ *
+ * Règles couleur des valeurs stats :
+ * - « Reçu » et « Envoyé » restent en `colors.text` avec préfixe +/− ;
+ * - seul « Net » est coloré (vert si ≥ 0, rouge sinon).
+ */
+
+/** Bordered collapsible header for « Paiements récurrents de ce compte ». */
+export function accountDetailRecurringHeaderStyle(isLight: boolean): ViewStyle {
+  const palette = dashboardPaletteForTheme(isLight);
+  return {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    minHeight: 48,
+    borderColor: palette.border,
+    backgroundColor: palette.card,
+  };
+}
 
 export {
   typographyKit,

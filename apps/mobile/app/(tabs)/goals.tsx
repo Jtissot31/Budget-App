@@ -33,6 +33,8 @@ import {
   LINEAR_CHART_STROKE_MAIN,
 } from '@/constants/linearChart';
 import {
+  destructiveIconColor,
+  destructiveTextActionStyle,
   FLOATING_NAV_CONTENT_PADDING,
   getGoalChartBaseGreen,
   getGoalChartDashPattern,
@@ -47,6 +49,7 @@ import {
   SECTION_TITLE_STYLE,
   radius,
   spacing,
+  subtleDeleteButtonStyle,
   typography,
 } from '@/constants/theme';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
@@ -86,7 +89,7 @@ const OVERVIEW_LABEL_H = 16;
 const OVERVIEW_TOTAL_H = OVERVIEW_CHART_H + OVERVIEW_LABEL_H;
 const OVERVIEW_PAD_X = 12;
 const OVERVIEW_PAD_Y = 12;
-const GOAL_ICON_WELL_SIZE = 40;
+const GOAL_ICON_WELL_SIZE = 48;
 const GOAL_ICON_SIZE = 22;
 
 type GoalProjection = {
@@ -230,7 +233,6 @@ export default function GoalsHubScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<GoalForm | null>(null);
-  const [iconPickerExpanded, setIconPickerExpanded] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editFormFeedback, setEditFormFeedback] = useState<FormFeedback | null>(null);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
@@ -278,7 +280,6 @@ export default function GoalsHubScreen() {
   const handleOpenNewGoal = useCallback(() => {
     skipScrollOnceRef.current = true;
     tapHaptic();
-    setIconPickerExpanded(false);
     setEditForm(createNewGoalForm());
   }, []);
 
@@ -302,14 +303,12 @@ export default function GoalsHubScreen() {
     const goal = goals.find((g) => g.id === selectedGoalId);
     if (!goal) return;
     tapHaptic();
-    setIconPickerExpanded(false);
     setEditForm(createGoalEditForm(goal));
   }, [goals, selectedGoalId]);
 
   const handleCloseEdit = useCallback(() => {
     setEditForm(null);
     setEditFormFeedback(null);
-    setIconPickerExpanded(false);
   }, []);
 
   const handleSaveEdit = useCallback(async () => {
@@ -324,7 +323,6 @@ export default function GoalsHubScreen() {
       setEditFormFeedback(null);
       await load();
       setEditForm(null);
-      setIconPickerExpanded(false);
       successHaptic();
     } finally {
       setSavingEdit(false);
@@ -535,7 +533,7 @@ export default function GoalsHubScreen() {
         onClose={handleCloseDetail}
         sheetStyle={[
           styles.detailSheet,
-          { backgroundColor: themeColors.cardBackground, borderTopWidth: 0 },
+          { backgroundColor: themeColors.containerBackground, borderTopWidth: 0 },
         ]}
       >
         {selectedGoal && selectedGoalDetails ? (
@@ -565,7 +563,7 @@ export default function GoalsHubScreen() {
               </Pressable>
             </View>
 
-            <View style={[styles.detailHero, { backgroundColor: themeColors.cardBackground }]}>
+            <View style={[styles.detailHero, { backgroundColor: themeColors.containerBackground, borderColor: themeColors.containerBorder, borderWidth: 1 }]}>
               <Text style={[styles.detailHeroEyebrow, { color: themeColors.textMuted }]}>Progression</Text>
               <Text
                 style={[styles.detailAmount, { color: themeColors.text }]}
@@ -613,7 +611,7 @@ export default function GoalsHubScreen() {
               hitSlop={12}
               style={({ pressed }) => [
                 styles.historyWide,
-                { backgroundColor: themeColors.cardBackground },
+                { backgroundColor: themeColors.containerBackground, borderColor: themeColors.containerBorder, borderWidth: 1 },
                 pressed && styles.pressed,
               ]}
               onPress={() => {
@@ -627,7 +625,7 @@ export default function GoalsHubScreen() {
               </Text>
             </Pressable>
 
-            <View style={[styles.detailMetaGrid, { backgroundColor: themeColors.cardBackground }]}>
+            <View style={[styles.detailMetaGrid, { backgroundColor: themeColors.containerBackground, borderColor: themeColors.containerBorder, borderWidth: 1 }]}>
               <DetailMetaCell label="Cible" value={formatMoney(selectedGoal.targetAmount)} />
               <DetailMetaCell label="Épargné" value={formatMoney(selectedGoal.currentAmount)} />
               <DetailMetaCell label="Reste" value={formatMoney(selectedGoalDetails.remaining)} />
@@ -646,7 +644,7 @@ export default function GoalsHubScreen() {
               />
             </View>
 
-            <View style={[styles.detailProjectionPanel, { backgroundColor: themeColors.cardBackground }]}>
+            <View style={[styles.detailProjectionPanel, { backgroundColor: themeColors.containerBackground, borderColor: themeColors.containerBorder, borderWidth: 1 }]}>
               <Text style={[styles.detailProjectionTitle, { color: themeColors.text }]}>Projection</Text>
               {selectedGoalDetails.projection ? (
                 <>
@@ -704,14 +702,13 @@ export default function GoalsHubScreen() {
               accessibilityRole="button"
               accessibilityLabel="Supprimer l'objectif"
               style={({ pressed }) => [
-                styles.deleteButton,
-                { backgroundColor: themeColors.dangerMuted, borderColor: themeColors.danger },
-                pressed && styles.deleteButtonPressed,
+                subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
+                pressed && { opacity: 0.72 },
               ]}
               onPress={handleDeleteGoal}
             >
-              <Ionicons name="trash-outline" size={16} color={themeColors.danger} />
-              <Text style={[styles.deleteText, { color: themeColors.danger }]}>Supprimer l'objectif</Text>
+              <Ionicons name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
+              <Text style={destructiveTextActionStyle(isLight)}>Supprimer l'objectif</Text>
             </Pressable>
           </>
         ) : null}
@@ -737,8 +734,6 @@ export default function GoalsHubScreen() {
         categoryBudgets={categoryBudgets}
         recurringPayments={recurringPayments}
         saving={savingEdit}
-        iconPickerExpanded={iconPickerExpanded}
-        setIconPickerExpanded={setIconPickerExpanded}
         onDismiss={handleCloseEdit}
         onSave={handleSaveEdit}
         feedback={editFormFeedback}
@@ -1262,7 +1257,7 @@ const styles = StyleSheet.create({
     minWidth: GOAL_ICON_WELL_SIZE,
     minHeight: GOAL_ICON_WELL_SIZE,
     flexShrink: 0,
-    borderRadius: 14,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1479,21 +1474,5 @@ const styles = StyleSheet.create({
   detailProjectionHint: {
     fontSize: typography.caption,
     lineHeight: 20,
-  },
-  deleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    marginTop: spacing.lg,
-  },
-  deleteButtonPressed: { opacity: 0.72 },
-  deleteText: {
-    fontSize: typography.meta,
-    fontWeight: '800',
   },
 });

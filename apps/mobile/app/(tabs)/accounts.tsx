@@ -22,6 +22,7 @@ import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { PageTransition } from '@/components/PageTransition';
+import { BankAccountCard } from '@/components/BankAccountCard';
 import { GlassContainer } from '@/components/GlassContainer';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
@@ -48,9 +49,11 @@ import {
   colors,
   FLOATING_NAV_CONTENT_PADDING,
   ICON_WELL_SIZE,
+  MERCHANT_LOGO_SIZE,
   interBoldText,
   interExtraBoldText,
   interMediumText,
+  interSemiboldText,
   portfolioDark,
   portfolioLight,
   PAGE_PADDING_HORIZONTAL,
@@ -74,7 +77,6 @@ import {
   insertSimulatedAccount,
   updateSimulatedAccountPreferences,
   upsertLoan,
-  upsertRecurringPayment,
   upsertWealthAsset,
 } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
@@ -84,12 +86,19 @@ import {
 } from '@/lib/creditLimitUtilization';
 import { estimateWealthAssetValue } from '@/lib/assetValuation';
 import {
+  capturePropertyPhoto,
+  pickPropertyPhotoFromGallery,
+  promptPropertyPhotoSource,
+} from '@/lib/propertyPhoto';
+import { computeMortgageEquity, MORTGAGE_DEFAULT_NAME, MORTGAGE_DEFAULT_REASON, syncMortgageWealthAsset } from '@/lib/mortgageWealthSync';
+import {
   formatCompactCurrency,
   formatCompactGainDollars,
   formatCompactMoneyMagnitude,
 } from '@/lib/formatCompactGainDollars';
 import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
-import { rowLabel, rowTitleTextProps, rowValue, singleLineAmountProps } from '@/lib/textLayout';
+import { formatFriendlyDateLabel } from '@/lib/formatFriendlyDateLabel';
+import { dashboardPaymentAmount, rowLabel, rowTitleTextProps, rowValue, singleLineAmountProps } from '@/lib/textLayout';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
 import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
 import { MdiIconPicker } from '@/components/MdiIconPicker';
@@ -97,7 +106,16 @@ import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { getAccountLogoUrl } from '@/lib/merchantLogo';
 import type { MdiIconName } from '@/lib/mdiIconCatalog';
 import { defaultLoanIcon, resolveLoanIcon } from '@/lib/loanIcons';
-import { userPickedIconWellStyle } from '@/lib/userPickedIcon';
+import {
+  computeLoanRepaymentProgress,
+  formatLoanDisplayTitle,
+  formatLoanPaymentObligation,
+  loanProgressLabel,
+  loanTypeBadgeLabel,
+  resolveLoanReason,
+} from '@/lib/loanPresentation';
+import { shouldLoanSyncRecurringPayment, syncLoanRecurringPayment } from '@/lib/syncLoanRecurringPayment';
+import { userPickedIconGlyphSize, userPickedIconWellStyle } from '@/lib/userPickedIcon';
 import {
   getNetWorthChartScope,
   setNetWorthChartScope,
@@ -174,10 +192,8 @@ const WEIGHT_UNIT_OPTIONS: Array<{ id: WealthWeightUnit; label: string }> = [
   { id: 'ct', label: 'carat' },
 ];
 
-const DEFAULT_RECURRING_ICON_COLOR = '#00A854';
-
 const LOAN_TYPE_OPTIONS: Array<{ id: LoanType; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
-  { id: 'friend_debt', label: 'Dette à un ami', icon: 'people-outline' },
+  { id: 'friend_debt', label: 'Dette à un particulier', icon: 'people-outline' },
   { id: 'personal_loan', label: 'Prêt personnel', icon: 'cash-outline' },
   { id: 'line_of_credit', label: 'Marge de crédit', icon: 'card-outline' },
   { id: 'mortgage', label: 'Hypothèque', icon: 'home-outline' },
@@ -197,15 +213,15 @@ const ACCOUNT_TYPE_PICKER_OPTIONS: PickerOption<AccountKind>[] = [
 ];
 
 const LOAN_TYPE_PICKER_OPTIONS: PickerOption<LoanType>[] = [
-  { id: 'friend_debt', label: 'Dette à un ami', description: 'Créancier, montant, échéance', icon: 'people-outline' },
-  { id: 'personal_loan', label: 'Prêt personnel', description: 'Prêteur, solde, taux, mensualité', icon: 'cash-outline' },
-  { id: 'line_of_credit', label: 'Marge de crédit', description: 'Institution, limite, solde utilisé', icon: 'card-outline' },
-  { id: 'mortgage', label: 'Hypothèque', description: 'Propriété, valeur, amortissement', icon: 'home-outline' },
+  { id: 'friend_debt', label: 'Dette à un particulier', description: 'Créancier, raison, montant, échéance', icon: 'people-outline' },
+  { id: 'personal_loan', label: 'Prêt personnel', description: 'Raison, prêteur, solde, taux, mensualité', icon: 'cash-outline' },
+  { id: 'line_of_credit', label: 'Marge de crédit', description: 'Raison, institution, limite, solde utilisé', icon: 'card-outline' },
+  { id: 'mortgage', label: 'Hypothèque', description: 'Raison, propriété, valeur, amortissement', icon: 'home-outline' },
 ];
 
 const WEALTH_TYPE_PICKER_OPTIONS: PickerOption<WealthAssetType>[] = [
   { id: 'precious_material', label: 'Métaux précieux', description: 'Or, argent, platine, diamant', icon: 'diamond-outline' },
-  { id: 'real_estate', label: 'Bien immobilier', description: 'Adresse, valeur, hypothèque', icon: 'home-outline' },
+  { id: 'real_estate', label: 'Bien immobilier', description: 'Prix payé, date, valeur actuelle', icon: 'home-outline' },
 ];
 
 const LOAN_DURATION_UNITS: Array<{ id: LoanDurationUnit; label: string }> = [
@@ -423,9 +439,10 @@ function PortfolioHeaderRow() {
 
 export default function AccountsScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ editWealthAssetId?: string }>();
+  const params = useLocalSearchParams<{ editWealthAssetId?: string; editLoanId?: string }>();
   const editWealthAssetId =
     typeof params.editWealthAssetId === 'string' ? params.editWealthAssetId.trim() : '';
+  const editLoanId = typeof params.editLoanId === 'string' ? params.editLoanId.trim() : '';
   const insets = useSafeAreaInsets();
   const { colors, ghost, ghostCardShadow, isLight } = useAppTheme();
   const scrollRef = useRef<ScrollView>(null);
@@ -477,7 +494,7 @@ export default function AccountsScreen() {
   const [wealthPropertyType, setWealthPropertyType] = useState('');
   const [wealthAddress, setWealthAddress] = useState('');
   const [wealthNotes, setWealthNotes] = useState('');
-  const [wealthMortgageBalance, setWealthMortgageBalance] = useState('');
+  const [wealthPhotoUri, setWealthPhotoUri] = useState('');
   const [wealthEditingAsset, setWealthEditingAsset] = useState<WealthAsset | null>(null);
   const [netWorthChartScope, setNetWorthChartScopeState] = useState<NetWorthChartScope>('inclusive');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -486,7 +503,11 @@ export default function AccountsScreen() {
   const [showLoanTypePicker, setShowLoanTypePicker] = useState(false);
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
   const [loanType, setLoanType] = useState<LoanType>('personal_loan');
-  const [loanName, setLoanName] = useState('');
+  const [loanReason, setLoanReason] = useState('');
+  const [loanAddress, setLoanAddress] = useState('');
+  const [loanDownPayment, setLoanDownPayment] = useState('');
+  const [loanPurchasePrice, setLoanPurchasePrice] = useState('');
+  const [loanCurrentPropertyValue, setLoanCurrentPropertyValue] = useState('');
   const [loanLender, setLoanLender] = useState('');
   const [loanPrincipal, setLoanPrincipal] = useState('');
   const [loanBalance, setLoanBalance] = useState('');
@@ -566,6 +587,7 @@ export default function AccountsScreen() {
     setWealthPurchaseCost(String(asset.purchaseCost ?? ''));
     setWealthPurchaseDate(asset.purchaseDate?.trim() ?? '');
     setWealthNotes(asset.notes ?? '');
+    setWealthPhotoUri(asset.photoUri?.trim() ?? '');
     setIsSavingWealth(false);
   }, []);
 
@@ -655,6 +677,12 @@ export default function AccountsScreen() {
     ),
     [loanDurationAmount, loanDurationUnit, loanStartDate, loanType],
   );
+  const computedMortgageEquity = useMemo(() => {
+    const currentValue = parseOptionalMoney(loanCurrentPropertyValue);
+    const balance = parseOptionalMoney(loanBalance);
+    if (typeof currentValue !== 'number' || typeof balance !== 'number') return null;
+    return computeMortgageEquity({ currentPropertyValue: currentValue, balanceRemaining: balance });
+  }, [loanBalance, loanCurrentPropertyValue]);
   const selectedLoanPaymentAccount = useMemo(
     () => accounts.find((account) => account.id === loanPaymentAccountId) ?? null,
     [accounts, loanPaymentAccountId],
@@ -700,6 +728,11 @@ export default function AccountsScreen() {
   const openAccountDetail = (account: SimulatedAccount) => {
     tapHaptic();
     router.push({ pathname: '/account-detail', params: { accountId: account.id } });
+  };
+
+  const openLoanDetail = (loan: Loan) => {
+    tapHaptic();
+    router.push({ pathname: '/loan-detail', params: { loanId: loan.id } });
   };
 
   const openAccountManager = () => {
@@ -908,7 +941,7 @@ export default function AccountsScreen() {
     setWealthPropertyType('');
     setWealthAddress('');
     setWealthNotes('');
-    setWealthMortgageBalance('');
+    setWealthPhotoUri('');
     setIsSavingWealth(false);
   };
 
@@ -944,17 +977,22 @@ export default function AccountsScreen() {
     const parsedPurchaseCost = parseMoney(wealthPurchaseCost);
     const weight = parseMoney(wealthWeight);
     const manualCurrentValue = parseOptionalMoney(wealthCurrentValue);
-    const mortgageBalance = parseOptionalMoney(wealthMortgageBalance);
     const purchaseCost = !isEditing && wealthType === 'precious_material' && Number.isNaN(parsedPurchaseCost)
       ? (manualCurrentValue ?? 0)
       : parsedPurchaseCost;
 
-    if (wealthType === 'real_estate' && !isEditing && !wealthAddress.trim()) {
-      showPortfolioFormError('Adresse requise', 'Entre l’adresse ou le nom du bien.');
-      return;
+    if (wealthType === 'real_estate' && !isEditing) {
+      if (Number.isNaN(purchaseCost) || purchaseCost < 0) {
+        showPortfolioFormError('Prix requis', 'Entre le prix payé à l’achat.');
+        return;
+      }
+      if (typeof manualCurrentValue !== 'number') {
+        showPortfolioFormError('Valeur requise', 'Entre la valeur actuelle du bien.');
+        return;
+      }
     }
 
-    if (wealthType === 'real_estate' && typeof manualCurrentValue !== 'number') {
+    if (wealthType === 'real_estate' && typeof manualCurrentValue !== 'number' && isEditing) {
       showPortfolioFormError('Valeur requise', 'Entre une estimation de la valeur marchande.');
       return;
     }
@@ -991,19 +1029,12 @@ export default function AccountsScreen() {
         currentValue: manualCurrentValue ?? purchaseCost,
       });
 
-      const wealthNotesValue = [
-        wealthType === 'real_estate' && typeof mortgageBalance === 'number'
-          ? `Solde hypothécaire: ${mortgageBalance.toLocaleString('fr-CA')} $`
-          : null,
-        wealthNotes.trim() || null,
-      ].filter(Boolean).join('\n') || null;
+      const wealthNotesValue = wealthNotes.trim() || null;
 
       const asset: WealthAsset = {
         id: wealthEditingAsset?.id ?? `wealth-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         type: wealthType,
-        name: wealthType === 'real_estate' && !isEditing
-          ? (wealthAddress.trim() || wealthName.trim() || 'Bien immobilier')
-          : (wealthName.trim() || defaultWealthName(wealthType, wealthMaterial, wealthPropertyType)),
+        name: wealthName.trim() || defaultWealthName(wealthType, wealthMaterial, wealthPropertyType),
         material: wealthType === 'precious_material' ? wealthMaterial : null,
         weight: wealthType === 'precious_material' ? weight : null,
         weightUnit: wealthType === 'precious_material' ? wealthWeightUnit : null,
@@ -1013,18 +1044,20 @@ export default function AccountsScreen() {
             ? parseOptionalMoney(wealthPurity)
             : null,
         purchaseCost: wealthType === 'real_estate' && !isEditing
-          ? (manualCurrentValue ?? purchaseCost)
+          ? purchaseCost
           : purchaseCost,
         purchaseDate: wealthPurchaseDate.trim() || null,
         currentValue: !isEditing && typeof manualCurrentValue === 'number'
           ? manualCurrentValue
-          : wealthType === 'real_estate' && !isEditing
-            ? (manualCurrentValue ?? purchaseCost)
+          : wealthType === 'real_estate' && typeof manualCurrentValue === 'number'
+            ? manualCurrentValue
             : valuation.currentValue,
         lastValuationAt: valuation.lastValuationAt ?? wealthEditingAsset?.lastValuationAt ?? null,
         valuationSource: !isEditing && typeof manualCurrentValue === 'number' ? 'manual' : valuation.source,
         propertyType: wealthType === 'real_estate' ? wealthPropertyType.trim() || null : null,
         address: wealthType === 'real_estate' ? wealthAddress.trim() || null : null,
+        photoUri: wealthType === 'real_estate' ? wealthPhotoUri.trim() || null : null,
+        linkedLoanId: wealthEditingAsset?.linkedLoanId ?? null,
         notes: (valuation.note ?? wealthNotesValue) || null,
         createdAt: wealthEditingAsset?.createdAt ?? new Date().toISOString(),
       };
@@ -1042,7 +1075,11 @@ export default function AccountsScreen() {
     const today = formatDateKey(new Date());
     setEditingLoan(null);
     setLoanType(type);
-    setLoanName('');
+    setLoanReason(type === 'mortgage' ? MORTGAGE_DEFAULT_REASON : '');
+    setLoanAddress('');
+    setLoanDownPayment('');
+    setLoanPurchasePrice('');
+    setLoanCurrentPropertyValue('');
     setLoanLender('');
     setLoanPrincipal('');
     setLoanBalance('');
@@ -1073,9 +1110,16 @@ export default function AccountsScreen() {
   const openEditLoanForm = (loan: Loan) => {
     tapHaptic();
     const today = formatDateKey(new Date());
+    setShowLoanTypePicker(false);
     setEditingLoan(loan);
     setLoanType(loan.type ?? 'personal_loan');
-    setLoanName(loan.name);
+    setLoanReason(loan.reason?.trim() || resolveLoanReason(loan));
+    setLoanAddress(loan.address?.trim() ?? '');
+    setLoanDownPayment(typeof loan.downPayment === 'number' ? String(loan.downPayment) : '');
+    setLoanPurchasePrice(typeof loan.purchasePrice === 'number' ? String(loan.purchasePrice) : '');
+    setLoanCurrentPropertyValue(
+      typeof loan.currentPropertyValue === 'number' ? String(loan.currentPropertyValue) : '',
+    );
     setLoanLender(loan.lender);
     setLoanPrincipal(String(loan.principal));
     setLoanBalance(String(loan.balanceRemaining));
@@ -1097,7 +1141,20 @@ export default function AccountsScreen() {
     setShowLoanForm(true);
   };
 
+  useEffect(() => {
+    if (!editLoanId || loans.length === 0 || showLoanForm) return;
+    const match = loans.find((loan) => loan.id === editLoanId);
+    if (!match) return;
+    openEditLoanForm(match);
+  }, [editLoanId, loans, showLoanForm]);
+
+  const clearLoanEditRouteParam = () => {
+    if (!editLoanId) return;
+    router.setParams({ editLoanId: undefined });
+  };
+
   const closeLoanForm = () => {
+    clearLoanEditRouteParam();
     resetLoanForm();
     setFormFeedback(null);
     setShowLoanForm(false);
@@ -1123,9 +1180,12 @@ export default function AccountsScreen() {
     const paymentAccount = selectedLoanPaymentAccount;
     const endDate = computeLoanEndDate(startDate, loanDurationAmount, effectiveDurationUnit) || startDate;
 
-    if (isMortgage && !loanName.trim()) {
-      showPortfolioFormError('Propriété requise', "Entre le nom ou l'adresse de la propriété.");
-      return;
+    if (isMortgage) {
+      const currentPropertyValue = parseOptionalMoney(loanCurrentPropertyValue);
+      if (typeof currentPropertyValue !== 'number' || currentPropertyValue <= 0) {
+        showPortfolioFormError('Valeur actuelle requise', 'Entre la valeur actuelle de la propriété.');
+        return;
+      }
     }
     if (!isMortgage && !loanLender.trim()) {
       showPortfolioFormError(
@@ -1142,10 +1202,10 @@ export default function AccountsScreen() {
         return;
       }
       principal = balanceRemaining;
-    } else if (Number.isNaN(principal) || principal < 0) {
+    } else if (Number.isNaN(principal) || principal <= 0) {
       showPortfolioFormError(
-        isMortgage ? 'Valeur de la propriété invalide' : isLineOfCredit ? 'Limite invalide' : 'Montant initial invalide',
-        isMortgage ? 'Entre la valeur estimée de la propriété.' : isLineOfCredit ? 'Entre la limite de crédit.' : 'Entre le montant original du prêt.',
+        isMortgage ? 'Montant de l’emprunt invalide' : isLineOfCredit ? 'Limite invalide' : 'Montant initial invalide',
+        isMortgage ? 'Entre le montant emprunté pour l’hypothèque.' : isLineOfCredit ? 'Entre la limite de crédit.' : 'Entre le montant original du prêt.',
       );
       return;
     }
@@ -1187,16 +1247,24 @@ export default function AccountsScreen() {
     }
 
     const loanId = editingLoan?.id ?? `loan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const recurringPaymentId = editingLoan?.recurringPaymentId ?? `${loanId}-payment`;
-    const loanNameValue = isMortgage
-      ? (loanName.trim() || loanLender.trim() || 'Hypothèque')
-      : isFriendDebt
-        ? (loanName.trim() || `Dette – ${loanLender.trim()}`)
-        : (loanName.trim() || loanLender.trim());
-    const loan: Loan = {
+    const shouldSyncRecurring = shouldLoanSyncRecurringPayment(monthlyPayment, nextPaymentDate, paymentAccount);
+    const recurringPaymentId = shouldSyncRecurring
+      ? (editingLoan?.recurringPaymentId ?? `${loanId}-payment`)
+      : null;
+    const reasonValue = isMortgage
+      ? (loanReason.trim() || MORTGAGE_DEFAULT_REASON)
+      : loanReason.trim() || null;
+    const loanNameValue = formatLoanDisplayTitle({
+      type: loanType,
+      reason: reasonValue,
+      name: '',
+      lender: loanLender.trim(),
+    });
+    let loan: Loan = {
       id: loanId,
       type: loanType,
       name: loanNameValue,
+      reason: reasonValue,
       lender: loanLender.trim(),
       principal,
       balanceRemaining,
@@ -1209,32 +1277,23 @@ export default function AccountsScreen() {
       paymentFrequency: loanPaymentFrequency,
       paymentAccountId: paymentAccount?.id ?? '',
       nextPaymentDate,
-      recurringPaymentId: monthlyPayment > 0 && paymentAccount ? recurringPaymentId : null,
+      recurringPaymentId,
       icon: loanIcon,
+      address: isMortgage ? loanAddress.trim() || null : null,
+      downPayment: isMortgage ? parseOptionalMoney(loanDownPayment) : null,
+      purchasePrice: isMortgage ? parseOptionalMoney(loanPurchasePrice) : null,
+      currentPropertyValue: isMortgage ? parseOptionalMoney(loanCurrentPropertyValue) : null,
+      friendDebtMode: editingLoan?.friendDebtMode ?? null,
+      wealthAssetId: editingLoan?.wealthAssetId ?? null,
       createdAt: editingLoan?.createdAt ?? new Date().toISOString(),
     };
 
-    await upsertLoan(loan);
-    if (monthlyPayment > 0 && paymentAccount && (requiresScheduling || isPersonalLoan)) {
-      await upsertRecurringPayment({
-        id: recurringPaymentId,
-        name: loan.lender ? `${loanNameValue} - ${loan.lender}` : loanNameValue,
-        amount: monthlyPayment,
-        kind: 'payment',
-        accountId: paymentAccount.id,
-        accountLabel: paymentAccount.last4 ? `${paymentAccount.name} • ${paymentAccount.last4}` : paymentAccount.name,
-        categoryId: null,
-        frequency: loanPaymentFrequency,
-        dueDay: null,
-        nextDate: nextPaymentDate,
-        endDate,
-        active: true,
-        icon: loanIcon,
-        color: DEFAULT_RECURRING_ICON_COLOR,
-        logoUrl: null,
-        createdAt: editingLoan?.createdAt ?? new Date().toISOString(),
-      });
+    if (isMortgage) {
+      loan = await syncMortgageWealthAsset(loan);
     }
+
+    await upsertLoan(loan);
+    await syncLoanRecurringPayment(loan, paymentAccount, editingLoan?.recurringPaymentId);
     successHaptic();
     closeLoanForm();
     await load();
@@ -1314,8 +1373,6 @@ export default function AccountsScreen() {
           >
             <AccountBalanceChart
               accounts={visibleAccounts}
-              savingsGoals={savingsGoals}
-              monthlyFlowsByAccountId={accountMonthlyFlows}
               onAccountPress={openAccountDetail}
               onAddAccount={openNewAccountForm}
               onManageAccounts={openAccountManager}
@@ -1323,8 +1380,7 @@ export default function AccountsScreen() {
             <LoansSection
               loans={loans}
               onAdd={openNewLoanForm}
-              onEdit={openEditLoanForm}
-              onDelete={handleDeleteLoan}
+              onOpen={openLoanDetail}
             />
           </View>
         ) : (
@@ -1430,7 +1486,9 @@ export default function AccountsScreen() {
               styles.modalSheet,
               ghostCardShadow,
               {
-                backgroundColor: colors.surfaceSolid,
+                backgroundColor: colors.containerBackground,
+                borderWidth: 1,
+                borderColor: colors.containerBorder,
                 paddingBottom: Math.max(insets.bottom, spacing.md),
               },
             ]}
@@ -1658,7 +1716,7 @@ export default function AccountsScreen() {
             </View>
           ) : null}
 
-          {editingAccount ? (
+          {!editingAccount ? (
             <>
               <Text style={[styles.label, formThemed.textSecondary]}>Type de compte</Text>
               <View style={styles.typeRow}>
@@ -1788,7 +1846,7 @@ export default function AccountsScreen() {
                 <Text style={[styles.formHint, formThemed.textMuted]}>
                   {wealthType === 'precious_material'
                     ? 'Les métaux tentent une actualisation en ligne sans clé API. Si le réseau échoue, une estimation locale est utilisée.'
-                    : 'Le bien immobilier contribue à ta valeur nette. Le solde hypothécaire est informatif.'}
+                    : 'Le bien immobilier contribue à ta valeur nette. Indique le prix payé, la date d’achat et la valeur actuelle.'}
                 </Text>
               </View>
 
@@ -1924,30 +1982,70 @@ export default function AccountsScreen() {
                 </>
               ) : (
                 <>
-                  <AccountInput
-                    label="Adresse"
-                    value={wealthAddress}
-                    onChangeText={setWealthAddress}
-                    placeholder="123 rue des Érables, Montréal"
-                  />
-                  <AccountInput
-                    label="Valeur marchande estimée"
-                    value={wealthCurrentValue}
-                    onChangeText={setWealthCurrentValue}
-                    placeholder="425000"
-                    keyboardType="decimal-pad"
-                    suffix="$"
-                  />
-                  <AccountInput
-                    label="Solde hypothécaire (optionnel)"
-                    value={wealthMortgageBalance}
-                    onChangeText={setWealthMortgageBalance}
-                    placeholder="280000"
-                    keyboardType="decimal-pad"
-                    suffix="$"
-                  />
-                  {wealthEditingAsset ? (
+                  {!wealthEditingAsset ? (
                     <>
+                      <AccountInput
+                        label="Prix payé"
+                        value={wealthPurchaseCost}
+                        onChangeText={setWealthPurchaseCost}
+                        placeholder="350000"
+                        keyboardType="decimal-pad"
+                        suffix="$"
+                      />
+                      <DatePickerField
+                        label="Date d’achat"
+                        value={wealthPurchaseDate}
+                        placeholder="Choisir une date"
+                        variant="sheet"
+                        onChangeDate={setWealthPurchaseDate}
+                      />
+                      <AccountInput
+                        label="Valeur actuelle"
+                        value={wealthCurrentValue}
+                        onChangeText={setWealthCurrentValue}
+                        placeholder="425000"
+                        keyboardType="decimal-pad"
+                        suffix="$"
+                      />
+                      <PropertyPhotoField
+                        photoUri={wealthPhotoUri}
+                        onPick={() => {
+                          promptPropertyPhotoSource(
+                            () => {
+                              void pickPropertyPhotoFromGallery().then((result) => {
+                                if (!result.cancelled && result.uri) setWealthPhotoUri(result.uri);
+                              });
+                            },
+                            () => {
+                              void capturePropertyPhoto().then((result) => {
+                                if (!result.cancelled && result.uri) setWealthPhotoUri(result.uri);
+                              });
+                            },
+                            wealthPhotoUri.trim()
+                              ? () => setWealthPhotoUri('')
+                              : undefined,
+                          );
+                        }}
+                        colors={colors}
+                        formThemed={formThemed}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <AccountInput
+                        label="Adresse"
+                        value={wealthAddress}
+                        onChangeText={setWealthAddress}
+                        placeholder="123 rue des Érables, Montréal"
+                      />
+                      <AccountInput
+                        label="Valeur actuelle"
+                        value={wealthCurrentValue}
+                        onChangeText={setWealthCurrentValue}
+                        placeholder="425000"
+                        keyboardType="decimal-pad"
+                        suffix="$"
+                      />
                       <AccountInput
                         label="Nom du bien"
                         value={wealthName}
@@ -1960,8 +2058,30 @@ export default function AccountsScreen() {
                         onChangeText={setWealthPropertyType}
                         placeholder="Condo, maison, terrain"
                       />
+                      <PropertyPhotoField
+                        photoUri={wealthPhotoUri}
+                        onPick={() => {
+                          promptPropertyPhotoSource(
+                            () => {
+                              void pickPropertyPhotoFromGallery().then((result) => {
+                                if (!result.cancelled && result.uri) setWealthPhotoUri(result.uri);
+                              });
+                            },
+                            () => {
+                              void capturePropertyPhoto().then((result) => {
+                                if (!result.cancelled && result.uri) setWealthPhotoUri(result.uri);
+                              });
+                            },
+                            wealthPhotoUri.trim()
+                              ? () => setWealthPhotoUri('')
+                              : undefined,
+                          );
+                        }}
+                        colors={colors}
+                        formThemed={formThemed}
+                      />
                     </>
-                  ) : null}
+                  )}
                 </>
               )}
 
@@ -1975,12 +2095,22 @@ export default function AccountsScreen() {
                     keyboardType="decimal-pad"
                     suffix="$"
                   />
-                  <AccountInput
-                    label="Date d’achat (optionnel)"
-                    value={wealthPurchaseDate}
-                    onChangeText={setWealthPurchaseDate}
-                    placeholder="2024-05-17"
-                  />
+                  {wealthType === 'real_estate' ? (
+                    <DatePickerField
+                      label="Date d’achat"
+                      value={wealthPurchaseDate}
+                      placeholder="Choisir une date"
+                      variant="sheet"
+                      onChangeDate={setWealthPurchaseDate}
+                    />
+                  ) : (
+                    <AccountInput
+                      label="Date d’achat (optionnel)"
+                      value={wealthPurchaseDate}
+                      onChangeText={setWealthPurchaseDate}
+                      placeholder="2024-05-17"
+                    />
+                  )}
                 </>
               ) : null}
               <AccountInput
@@ -2044,7 +2174,7 @@ export default function AccountsScreen() {
                 </View>
               ) : null}
 
-              {editingLoan ? (
+              {!editingLoan && !loanType ? (
                 <View style={styles.inputGroup}>
                   <Text style={[styles.label, formThemed.textSecondary]}>Type de dette</Text>
                   <View style={styles.typeRow}>
@@ -2083,19 +2213,30 @@ export default function AccountsScreen() {
                 </View>
               ) : null}
 
+              <AccountInput
+                label="Raison"
+                value={loanReason}
+                onChangeText={setLoanReason}
+                placeholder={
+                  loanType === 'mortgage' ? 'Maison' :
+                  loanType === 'friend_debt' ? 'Souper, dépannage…' :
+                  loanType === 'line_of_credit' ? 'Rénovation, voyage…' :
+                  'Auto, études…'
+                }
+              />
               {loanType === 'mortgage' ? (
                 <AccountInput
-                  label="Propriété (adresse ou nom)"
-                  value={loanName}
-                  onChangeText={setLoanName}
-                  placeholder="Maison familiale – 123 rue des Érables…"
+                  label="Adresse"
+                  value={loanAddress}
+                  onChangeText={setLoanAddress}
+                  placeholder="123 rue des Érables, Montréal"
                 />
               ) : null}
               <AccountInput
                 label={
-                  loanType === 'friend_debt' ? 'Nom du créancier' :
+                  loanType === 'friend_debt' ? 'Créancier' :
                   loanType === 'line_of_credit' ? 'Institution' :
-                  loanType === 'mortgage' ? 'Prêteur (optionnel)' : 'Nom du prêteur'
+                  loanType === 'mortgage' ? 'Prêteur (optionnel)' : 'Prêteur'
                 }
                 value={loanLender}
                 onChangeText={setLoanLender}
@@ -2111,34 +2252,56 @@ export default function AccountsScreen() {
                   suffix="$"
                 />
               ) : null}
-              {loanType === 'friend_debt' ? (
-                <AccountInput
-                  label="Note (optionnel)"
-                  value={loanName}
-                  onChangeText={setLoanName}
-                  placeholder="Souper, dépannage…"
-                />
-              ) : null}
-              {editingLoan && loanType !== 'friend_debt' && loanType !== 'mortgage' ? (
-                <AccountInput
-                  label="Nom du prêt (optionnel)"
-                  value={loanName}
-                  onChangeText={setLoanName}
-                  placeholder={loanType === 'line_of_credit' ? 'Marge rénovations…' : 'Prêt auto…'}
-                />
-              ) : null}
               {loanType !== 'friend_debt' ? (
-                <AccountInput
-                  label={
-                    loanType === 'line_of_credit' ? 'Limite' :
-                    loanType === 'mortgage' ? 'Valeur de la propriété' : 'Montant emprunté'
-                  }
-                  value={loanPrincipal}
-                  onChangeText={setLoanPrincipal}
-                  placeholder={loanType === 'mortgage' ? '450000' : loanType === 'line_of_credit' ? '15000' : '25000'}
-                  keyboardType="decimal-pad"
-                  suffix="$"
-                />
+                <>
+                  {loanType === 'mortgage' ? (
+                    <>
+                      <AccountInput
+                        label="Montant de l’emprunt"
+                        value={loanPrincipal}
+                        onChangeText={setLoanPrincipal}
+                        placeholder="350000"
+                        keyboardType="decimal-pad"
+                        suffix="$"
+                      />
+                      <AccountInput
+                        label="Mise de fonds"
+                        value={loanDownPayment}
+                        onChangeText={setLoanDownPayment}
+                        placeholder="70000"
+                        keyboardType="decimal-pad"
+                        suffix="$"
+                      />
+                      <AccountInput
+                        label="Valeur à l’achat"
+                        value={loanPurchasePrice}
+                        onChangeText={setLoanPurchasePrice}
+                        placeholder="420000"
+                        keyboardType="decimal-pad"
+                        suffix="$"
+                      />
+                      <AccountInput
+                        label="Valeur actuelle"
+                        value={loanCurrentPropertyValue}
+                        onChangeText={setLoanCurrentPropertyValue}
+                        placeholder="450000"
+                        keyboardType="decimal-pad"
+                        suffix="$"
+                      />
+                    </>
+                  ) : (
+                    <AccountInput
+                      label={
+                        loanType === 'line_of_credit' ? 'Limite' : 'Montant emprunté'
+                      }
+                      value={loanPrincipal}
+                      onChangeText={setLoanPrincipal}
+                      placeholder={loanType === 'line_of_credit' ? '15000' : '25000'}
+                      keyboardType="decimal-pad"
+                      suffix="$"
+                    />
+                  )}
+                </>
               ) : null}
               {loanType !== 'friend_debt' || editingLoan ? (
                 <AccountInput
@@ -2149,6 +2312,18 @@ export default function AccountsScreen() {
                   keyboardType="decimal-pad"
                   suffix="$"
                 />
+              ) : null}
+              {loanType === 'mortgage' && computedMortgageEquity ? (
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.label, formThemed.textSecondary]}>Équité estimée</Text>
+                  <View style={[styles.input, formThemed.control, { justifyContent: 'center' }]}>
+                    <Text style={[styles.computedFieldText, formThemed.text]}>
+                      {formatDisplayMoneyAbsolute(computedMortgageEquity.equity)}
+                      {' · '}
+                      {computedMortgageEquity.equityPct.toFixed(0)} %
+                    </Text>
+                  </View>
+                </View>
               ) : null}
               {loanType !== 'friend_debt' ? (
                 <AccountInput
@@ -2237,7 +2412,9 @@ export default function AccountsScreen() {
                 </Text>
                 <View style={[styles.input, formThemed.control, { justifyContent: 'center' }]}>
                   <Text style={[styles.computedFieldText, computedLoanEndDate ? formThemed.text : formThemed.textMuted]}>
-                    {computedLoanEndDate || (loanType === 'mortgage' ? 'Entre une date de début et les années' : 'Entre une date de début et une durée')}
+                    {computedLoanEndDate
+                      ? formatFriendlyDateLabel(computedLoanEndDate)
+                      : (loanType === 'mortgage' ? 'Entre une date de début et les années' : 'Entre une date de début et une durée')}
                   </Text>
                 </View>
               </View>
@@ -2348,8 +2525,8 @@ function usePortfolioFormTheme() {
     () => ({
       modalBackdrop: { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' },
       sheet: {
-        backgroundColor: colors.surfaceSolid,
-        borderColor: colors.border,
+        backgroundColor: colors.containerBackground,
+        borderColor: colors.containerBorder,
         borderWidth: StyleSheet.hairlineWidth,
       },
       handle: { backgroundColor: colors.borderStrong },
@@ -2385,7 +2562,7 @@ function accountFormTitle(kind: AccountKind, editing: boolean) {
 }
 
 function loanFormTitle(type: LoanType, editing: boolean) {
-  if (type === 'friend_debt') return editing ? 'Modifier la dette' : 'Dette à un ami';
+  if (type === 'friend_debt') return editing ? 'Modifier la dette' : 'Dette à un particulier';
   if (type === 'line_of_credit') return editing ? 'Modifier la marge' : 'Marge de crédit';
   if (type === 'mortgage') return editing ? "Modifier l'hypothèque" : 'Hypothèque';
   return editing ? 'Modifier le prêt' : 'Prêt personnel';
@@ -2543,7 +2720,7 @@ function WealthPatrimoineAssetCard({
 }) {
   const gain = asset.currentValue - asset.purchaseCost;
   const gainPositive = gain >= 0;
-  const surfaceColor = isLight ? colors.surfaceSolid : colors.surfaceSolid;
+  const surfaceColor = colors.containerBackground;
   const mutedSurface = isLight ? colors.surfaceElevated : colors.input;
   const metaDate = asset.lastValuationAt ?? asset.purchaseDate ?? undefined;
 
@@ -2569,7 +2746,7 @@ function WealthPatrimoineAssetCard({
     >
       <GlassContainer style={styles.wealthCard} padding={spacing.lg} borderRadius={radius.card}>
       <View style={styles.wealthPatrimoineAssetIdentity}>
-        <View style={[styles.wealthAssetIcon, { backgroundColor: mutedSurface }]}>
+        <View style={userPickedIconWellStyle(48, isLight)}>
           {asset.type === 'real_estate' ? (
             <Ionicons name="home-outline" size={22} color={colors.primary} />
           ) : asset.material ? (
@@ -2777,79 +2954,54 @@ function WealthAssetsSection({
 
 function LoanCard({
   loan,
-  onEdit,
-  onDelete,
+  onOpen,
 }: {
   loan: Loan;
-  onEdit: (loan: Loan) => void;
-  onDelete: (id: string) => void;
+  onOpen: (loan: Loan) => void;
 }) {
-  const { colors, ghostCardShadow, isLight } = useAppTheme();
-  const surfaceColor = isLight ? colors.surfaceSolid : colors.surfaceSolid;
-  const mutedSurface = isLight ? colors.surfaceElevated : colors.input;
-  const trackColor = isLight ? '#E8EDF3' : '#08090B';
-
-  const isMortgage = loan.type === 'mortgage';
-  const paidAmount = Math.max(loan.principal - loan.balanceRemaining, 0);
-  const progressPct = loan.principal > 0 ? Math.min((paidAmount / loan.principal) * 100, 100) : 0;
+  const { colors, ghostCardShadow } = useAppTheme();
+  const loanType = loan.type ?? 'personal_loan';
+  const displayTitle = formatLoanDisplayTitle(loan);
+  const { progressPct } = computeLoanRepaymentProgress(loan);
+  const paymentObligation = formatLoanPaymentObligation(loan.monthlyPayment, loan.paymentFrequency);
+  const showProgress = loan.principal > 0;
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Modifier le prêt ${loan.name}`}
+      accessibilityLabel={`Voir le détail de ${displayTitle}`}
       android_ripple={null}
-      onPress={() => onEdit(loan)}
+      onPress={() => onOpen(loan)}
       style={ghostCardShadow}
     >
       <GlassContainer style={styles.loanCard} padding={spacing.md} borderRadius={radius.card}>
-      <View style={styles.loanCardTopRow}>
-        <UserPickedIconWell icon={resolveLoanIcon(loan)} size={40} wellGlyphWhite />
-        <View style={styles.loanCardTitles}>
-          <Text style={[styles.loanCardName, { color: colors.text }]} {...rowTitleTextProps}>
-            {loan.name}
-          </Text>
-          <Text style={[styles.loanCardSub, { color: colors.textMuted }]} {...rowTitleTextProps}>
-            {loanTypeLabel(loan.type)}{loan.lender ? ` · ${loan.lender}` : ''}
-          </Text>
+        <View style={styles.loanCardTopRow}>
+          <UserPickedIconWell icon={resolveLoanIcon(loan)} size={48} wellGlyphWhite />
+          <View style={styles.loanCardCopy}>
+            <Text style={[styles.loanCardType, { color: colors.textMuted }]} numberOfLines={1}>
+              {loanTypeBadgeLabel(loanType)}
+            </Text>
+            <Text style={[styles.loanCardName, { color: colors.text }]} {...rowTitleTextProps}>
+              {displayTitle}
+            </Text>
+            {showProgress || paymentObligation ? (
+              <View style={styles.loanCardMetaRow}>
+                {paymentObligation ? (
+                  <Text style={[styles.loanCardMetaText, { color: colors.textMuted }]} numberOfLines={1}>
+                    {paymentObligation}
+                  </Text>
+                ) : (
+                  <View />
+                )}
+                {showProgress ? (
+                  <Text style={[styles.loanCardMetaPct, { color: colors.textMuted }]}>
+                    {progressPct.toFixed(0)} % {loanProgressLabel(loanType).toLowerCase()}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
         </View>
-        <View style={styles.loanCardAmountStack}>
-          <Text style={[styles.loanCardBalance, { color: colors.danger }]} {...singleLineAmountProps}>
-            {formatPortfolioOutflow(loan.balanceRemaining)}
-          </Text>
-          <Text style={[styles.loanCardBalanceLabel, { color: colors.textMuted }]}>restant</Text>
-        </View>
-      </View>
-
-      <View style={[styles.loanProgressTrack, { backgroundColor: trackColor }]}>
-        <View
-          style={[
-            styles.loanProgressFill,
-            { width: `${Math.max(progressPct, 3)}%`, backgroundColor: colors.primary },
-          ]}
-        />
-      </View>
-
-      <View style={styles.loanCardMetaRow}>
-        <Text style={[styles.loanCardMeta, { color: colors.textMuted }]}>
-          {isMortgage ? `${progressPct.toFixed(0)} % équité` : `${progressPct.toFixed(0)} % remboursé`}
-        </Text>
-        <View style={styles.loanCardMetaRight}>
-          <Text style={[styles.loanCardMeta, { color: colors.textMuted }]}>
-            {isMortgage
-              ? `${formatPortfolioOutflow(loan.monthlyPayment)}/mois · ${loan.interestRate} %`
-              : `${formatPortfolioOutflow(loan.monthlyPayment)}/${loanPaymentFrequencyLabel(loan.paymentFrequency)} · fin ${loan.endDate}`}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Supprimer ce prêt"
-            hitSlop={8}
-            onPress={(e) => { e.stopPropagation?.(); onDelete(loan.id); }}
-            style={({ pressed }) => [styles.loanDeleteBtn, pressed && styles.pressed]}
-          >
-            <Ionicons name="trash-outline" size={15} color={colors.textMuted} />
-          </Pressable>
-        </View>
-      </View>
       </GlassContainer>
     </Pressable>
   );
@@ -2858,13 +3010,11 @@ function LoanCard({
 function LoansSection({
   loans,
   onAdd,
-  onEdit,
-  onDelete,
+  onOpen,
 }: {
   loans: Loan[];
   onAdd: () => void;
-  onEdit: (loan: Loan) => void;
-  onDelete: (id: string) => void;
+  onOpen: (loan: Loan) => void;
 }) {
   const { colors, isLight } = useAppTheme();
   const totalDebt = loans.reduce((sum, l) => sum + Math.max(l.balanceRemaining, 0), 0);
@@ -2895,7 +3045,7 @@ function LoansSection({
         ) : (
           <View style={styles.loanCardList}>
             {loans.map((loan) => (
-              <LoanCard key={loan.id} loan={loan} onEdit={onEdit} onDelete={onDelete} />
+              <LoanCard key={loan.id} loan={loan} onOpen={onOpen} />
             ))}
           </View>
         )}
@@ -2922,27 +3072,19 @@ function LoansSection({
 
 function AccountBalanceChart({
   accounts,
-  savingsGoals,
-  monthlyFlowsByAccountId,
   onAccountPress,
   onAddAccount,
   onManageAccounts,
 }: {
   accounts: SimulatedAccount[];
-  savingsGoals: SavingsGoal[];
-  monthlyFlowsByAccountId: Record<string, AccountMoneyFlow>;
   onAccountPress: (account: SimulatedAccount) => void;
   onAddAccount: () => void;
   onManageAccounts: () => void;
 }) {
   const { colors, ghost, ghostCardShadow, isLight } = useAppTheme();
-  const sectionCardSurface = colors.cardBackground;
+  const sectionCardSurface = colors.containerBackground;
   const sectionSoftSurface = colors.surfaceElevated;
-  const sectionBorder = colors.border;
-  const savingsGoalNameById = useMemo(
-    () => new Map(savingsGoals.map((goal) => [goal.id, goal.name])),
-    [savingsGoals],
-  );
+  const sectionBorder = colors.containerBorder;
 
   return (
     <View style={styles.accountVisualSection}>
@@ -2978,44 +3120,7 @@ function AccountBalanceChart({
       ) : (
         <View style={styles.accountVisualCards}>
           {accounts.map((account) => {
-            const isCreditCard = account.kind === 'credit';
-            const creditLimit =
-              isCreditCard && typeof account.creditLimit === 'number' && account.creditLimit > 0
-                ? account.creditLimit
-                : undefined;
-            const creditUsed = creditUsedFromBalance(account.balance);
-            const creditUsagePercent = creditLimit ? Math.min((creditUsed / creditLimit) * 100, 100) : undefined;
-            const creditRemaining = creditLimit ? creditLimit - creditUsed : undefined;
-            const isNearCreditLimit = typeof creditRemaining === 'number' && creditRemaining < 100;
-            const monthFlow = monthlyFlowsByAccountId[account.id] ?? { moneyIn: 0, moneyOut: 0 };
-            const flowInColor = colors.primary;
-            const flowOutColor = colors.danger;
-            const tone = account.balance < 0 ? colors.danger : account.kind === 'savings' ? colors.primaryAlt : colors.primary;
-            const showAccountProgressBar = account.kind === 'credit';
-            const creditBalanceIsPositive = isCreditCard && account.balance > 0;
-            const progressBarFillColor =
-              isCreditCard && typeof creditUsagePercent === 'number'
-                ? creditLimitUtilizationBarColor(creditUsagePercent, colors, isLight)
-                : tone;
-            const showCreditLimitNearlyAtCap =
-              isCreditCard && typeof creditUsagePercent === 'number' && creditUsagePercent >= 90;
             const logoUrl = getSimulatedAccountLogoUrl(account);
-            const balanceRatio =
-              typeof creditUsagePercent === 'number'
-                ? creditUsagePercent
-                : Math.min((creditUsed / Math.max(creditUsed, 1)) * 100, 100);
-            const statusLabel = isCreditCard
-              ? typeof creditUsagePercent === 'number'
-                ? `${Math.round(creditUsagePercent)}% utilisé`
-                : 'Crédit'
-              : accountKindLabel(account.kind);
-            const linkedSavingsGoalName = account.linkedSavingsGoalId
-              ? savingsGoalNameById.get(account.linkedSavingsGoalId)
-              : undefined;
-            const surfaceColor = colors.surfaceSolid;
-            const mutedSurface = colors.input;
-            const textColor = colors.text;
-            const mutedTextColor = colors.textMuted;
 
             return (
               <Pressable
@@ -3026,159 +3131,7 @@ function AccountBalanceChart({
                 style={ghostCardShadow}
                 onPress={() => onAccountPress(account)}
               >
-                <GlassContainer
-                  borderRadius={radius.card}
-                  padding={0}
-                  innerStyle={styles.accountVisualCard}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: showCreditLimitNearlyAtCap ? colors.danger : colors.cardBorder,
-                  }}
-                >
-                <View style={styles.accountVisualTopRow}>
-                  <View style={styles.accountVisualIdentity}>
-                    {logoUrl ? (
-                      <LogoIconFrame uri={logoUrl} size={40} />
-                    ) : (
-                      <View style={userPickedIconWellStyle(40, isLight)}>
-                        <Ionicons name={iconForKind(account.kind)} size={16} color={tone} />
-                      </View>
-                    )}
-                    <View style={styles.accountVisualNameGroup}>
-                      <Text style={[styles.accountVisualName, { color: textColor }]} {...rowTitleTextProps}>
-                        {account.name}
-                      </Text>
-                      <Text style={[styles.accountVisualMeta, { color: mutedTextColor }]} {...rowTitleTextProps}>
-                        {linkedSavingsGoalName
-                          ? `Objectif · ${linkedSavingsGoalName}`
-                          : account.institution?.trim() || statusLabel}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.accountVisualBalanceStack}>
-                    <Text
-                      style={[
-                        styles.accountVisualAmount,
-                        {
-                          color: account.balance < 0
-                            ? colors.danger
-                            : creditBalanceIsPositive
-                              ? colors.success
-                              : textColor,
-                        },
-                      ]}
-                      {...singleLineAmountProps}
-                    >
-                      {formatCompactCurrency(account.balance, {
-                        leadingPlusWhenPositive: creditBalanceIsPositive,
-                      })}
-                    </Text>
-                    <View
-                      style={[
-                        styles.accountVisualStatusPill,
-                        { backgroundColor: isNearCreditLimit ? colors.dangerMuted : mutedSurface },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.accountVisualStatusText,
-                          { color: isNearCreditLimit ? colors.danger : mutedTextColor },
-                        ]}
-                      >
-                        {statusLabel}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-
-                <View style={styles.accountVisualLowerZone} pointerEvents="none">
-                  {showAccountProgressBar ? (
-                    <View style={styles.accountVisualTrackGroup}>
-                      <View style={[styles.accountVisualTrack, { backgroundColor: mutedSurface }]}>
-                        <View
-                          style={[
-                            styles.accountVisualFill,
-                            {
-                              width: `${Math.max(balanceRatio, 4)}%`,
-                              backgroundColor: progressBarFillColor,
-                            },
-                          ]}
-                        />
-                      </View>
-                      <View style={styles.accountVisualDetailRow}>
-                        <Text style={[styles.accountVisualDetailText, { color: mutedTextColor }]} numberOfLines={1}>
-                          {creditLimit ? 'Crédit disponible' : 'Solde dû'}
-                        </Text>
-                        <Text style={[styles.accountVisualDetailValue, { color: textColor }]} numberOfLines={1}>
-                          {typeof creditRemaining === 'number'
-                            ? `${formatPortfolioAsset(Math.max(creditRemaining, 0))} dispo`
-                            : formatPortfolioOutflow(creditUsed)}
-                        </Text>
-                      </View>
-                      {showCreditLimitNearlyAtCap ? (
-                        <View
-                          style={[
-                            styles.accountVisualLimitNearBanner,
-                            {
-                              backgroundColor: colors.warningMuted,
-                              borderColor: colors.danger,
-                            },
-                          ]}
-                        >
-                          <Ionicons name="warning-outline" size={14} color={colors.warning} />
-                          <Text
-                            style={[
-                              styles.accountVisualLimitNearBannerText,
-                              { color: colors.warning },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            Limite presque atteinte
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  ) : null}
-
-                  <View style={styles.accountVisualMonthlyFlowGroup}>
-                    <View style={styles.accountVisualFlowSplit}>
-                      <View style={styles.accountVisualFlowItem}>
-                        <Ionicons name="arrow-down" size={13} color={flowInColor} />
-                        <View style={styles.accountVisualFlowTextStack}>
-                          <Text style={[styles.accountVisualFlowColumnLabel, { color: mutedTextColor }]} numberOfLines={1}>
-                            Entrées
-                          </Text>
-                          <Text
-                            style={[styles.accountVisualFlowColumnAmount, { color: flowInColor }]}
-                            numberOfLines={1}
-                            adjustsFontSizeToFit
-                            minimumFontScale={0.72}
-                          >
-                            {formatPortfolioInflow(monthFlow.moneyIn)}
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.accountVisualFlowItem}>
-                        <Ionicons name="arrow-up" size={13} color={flowOutColor} />
-                        <View style={styles.accountVisualFlowTextStack}>
-                          <Text style={[styles.accountVisualFlowColumnLabel, { color: mutedTextColor }]} numberOfLines={1}>
-                            Sorties
-                          </Text>
-                          <Text
-                            style={[styles.accountVisualFlowColumnAmount, { color: flowOutColor }]}
-                            numberOfLines={1}
-                            adjustsFontSizeToFit
-                            minimumFontScale={0.72}
-                          >
-                            {formatPortfolioOutflow(monthFlow.moneyOut)}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-                </GlassContainer>
+                <BankAccountCard account={account} logoUrl={logoUrl} />
               </Pressable>
             );
           })}
@@ -3205,22 +3158,48 @@ function AccountBalanceChart({
   );
 }
 
+function PropertyPhotoField({
+  photoUri,
+  onPick,
+  colors,
+  formThemed,
+}: {
+  photoUri: string;
+  onPick: () => void;
+  colors: AppColors;
+  formThemed: ReturnType<typeof usePortfolioFormTheme>;
+}) {
+  const trimmed = photoUri.trim();
+  return (
+    <View style={styles.inputGroup}>
+      <Text style={[styles.label, formThemed.textSecondary]}>Photo (optionnel)</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={trimmed ? 'Modifier la photo du bien' : 'Ajouter une photo du bien'}
+        onPress={onPick}
+        style={({ pressed }) => [
+          styles.propertyPhotoBtn,
+          formThemed.control,
+          pressed && { opacity: 0.78 },
+        ]}
+      >
+        {trimmed ? (
+          <Image source={{ uri: trimmed }} style={styles.propertyPhotoPreview} contentFit="cover" />
+        ) : (
+          <View style={styles.propertyPhotoPlaceholder}>
+            <Ionicons name="image-outline" size={22} color={colors.textMuted} />
+            <Text style={[styles.propertyPhotoHint, formThemed.textMuted]}>Galerie ou caméra</Text>
+          </View>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
 function parseMoney(value: string) {
   return Number.parseFloat(value.replace(',', '.'));
 }
 
-function loanPaymentFrequencyLabel(frequency: LoanPaymentFrequency) {
-  if (frequency === 'weekly') return 'sem.';
-  if (frequency === 'biweekly') return '2 sem.';
-  return 'mois';
-}
-
-function loanTypeLabel(type: LoanType) {
-  if (type === 'friend_debt') return 'Dette à un ami';
-  if (type === 'line_of_credit') return 'Marge de crédit';
-  if (type === 'mortgage') return 'Hypothèque';
-  return 'Prêt personnel';
-}
 
 function parseOptionalMoney(value: string) {
   const parsed = parseMoney(value);
@@ -3554,11 +3533,11 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   wealthAssetIcon: {
-    width: 42,
-    height: 42,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radius.md,
+    borderRadius: 16,
   },
   wealthGainBadge: {
     flexShrink: 0,
@@ -3677,6 +3656,27 @@ const styles = StyleSheet.create({
     fontSize: typography.meta,
     lineHeight: 18,
   },
+  propertyPhotoBtn: {
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    minHeight: 120,
+    justifyContent: 'center',
+  },
+  propertyPhotoPreview: {
+    width: '100%',
+    height: 160,
+  },
+  propertyPhotoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    minHeight: 120,
+    paddingVertical: spacing.md,
+  },
+  propertyPhotoHint: {
+    fontSize: typography.meta,
+    fontWeight: '700',
+  },
   disabledButton: {
     opacity: 0.55,
   },
@@ -3741,18 +3741,17 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   accountVisualName: {
+    ...interBoldText,
     color: colors.text,
-    flex: 1,
     minWidth: 0,
     fontSize: typography.meta,
-    fontWeight: '800',
     letterSpacing: -0.2,
     lineHeight: 18,
   },
   accountVisualMeta: {
+    ...interBoldText,
     color: colors.textMuted,
     fontSize: typography.micro,
-    fontWeight: '700',
     letterSpacing: 0.2,
   },
   accountVisualBalanceStack: {
@@ -3762,7 +3761,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   accountVisualAmount: {
-    ...rowValue,
+    ...dashboardPaymentAmount,
     letterSpacing: -0.45,
     textAlign: 'right',
   },
@@ -3773,8 +3772,8 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   accountVisualStatusText: {
-    fontSize: 9,
-    fontWeight: '900',
+    ...interSemiboldText,
+    fontSize: typography.micro,
     letterSpacing: 0.2,
   },
   accountVisualLowerZone: {
@@ -3784,6 +3783,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   accountVisualTrackGroup: {
+    minWidth: 0,
+    width: '100%',
+    minHeight: ACCOUNT_CREDIT_PROGRESS_SECTION_HEIGHT,
+    justifyContent: 'center',
+    gap: ACCOUNT_VISUAL_PROGRESS_GROUP_GAP,
+  },
+  accountVisualCompactInfoGroup: {
     minWidth: 0,
     width: '100%',
     minHeight: ACCOUNT_CREDIT_PROGRESS_SECTION_HEIGHT,
@@ -3884,7 +3890,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   balanceChartCard: {
-    backgroundColor: colors.surfaceSolid,
+    backgroundColor: colors.containerBackground,
+    borderWidth: 1,
+    borderColor: colors.containerBorder,
     borderRadius: radius.card,
     padding: spacing.lg,
     gap: spacing.md,
@@ -3916,7 +3924,9 @@ const styles = StyleSheet.create({
   },
   balanceChartEmpty: {
     borderRadius: radius.card,
-    backgroundColor: colors.cardBackground,
+    backgroundColor: colors.containerBackground,
+    borderWidth: 1,
+    borderColor: colors.containerBorder,
     padding: spacing.lg,
     gap: spacing.sm,
   },
@@ -4035,7 +4045,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     minWidth: 92,
     minHeight: 46,
-    backgroundColor: colors.surfaceSolid,
+    backgroundColor: colors.containerBackground,
+    borderWidth: 1,
+    borderColor: colors.containerBorder,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
@@ -4069,7 +4081,9 @@ const styles = StyleSheet.create({
   },
   modalSheet: {
     maxHeight: '86%',
-    backgroundColor: colors.surfaceSolid,
+    backgroundColor: colors.containerBackground,
+    borderWidth: 1,
+    borderColor: colors.containerBorder,
     borderRadius: 30,
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.lg,
@@ -4174,7 +4188,9 @@ const styles = StyleSheet.create({
   },
   accountDetailSheet: {
     maxHeight: '88%',
-    backgroundColor: colors.surfaceSolid,
+    backgroundColor: colors.containerBackground,
+    borderWidth: 1,
+    borderColor: colors.containerBorder,
     borderRadius: 30,
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.lg,
@@ -4328,7 +4344,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   formCard: {
-    backgroundColor: colors.surfaceSolid,
+    backgroundColor: colors.containerBackground,
+    borderWidth: 1,
+    borderColor: colors.containerBorder,
     borderRadius: radius.card,
     padding: spacing.lg,
     gap: spacing.md,
@@ -4529,7 +4547,9 @@ const styles = StyleSheet.create({
   },
   saveText: { color: colors.background, fontSize: typography.body, fontWeight: '800' },
   groupCard: {
-    backgroundColor: colors.surfaceSolid,
+    backgroundColor: colors.containerBackground,
+    borderWidth: 1,
+    borderColor: colors.containerBorder,
     borderRadius: radius.card,
   },
   accountRow: {
@@ -4591,8 +4611,39 @@ const styles = StyleSheet.create({
   },
   loanCardTopRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  loanCardCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  loanCardType: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  loanCardMetaRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: spacing.sm,
+    marginTop: 2,
+  },
+  loanCardMetaText: {
+    ...interMediumText,
+    flex: 1,
+    minWidth: 0,
+    fontSize: typography.micro,
+    fontWeight: '700',
+  },
+  loanCardMetaPct: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    fontWeight: '700',
+    flexShrink: 0,
   },
   loanCardIcon: {
     width: 38,
@@ -4602,59 +4653,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  loanCardTitles: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
   loanCardName: {
     ...rowLabel,
-    fontWeight: '800',
+    ...interBoldText,
+    flex: 1,
+    minWidth: 0,
     letterSpacing: -0.1,
-  },
-  loanCardSub: {
-    fontSize: typography.meta,
-    fontWeight: '500',
-  },
-  loanCardAmountStack: {
-    alignItems: 'flex-end',
-    flexShrink: 0,
-  },
-  loanCardBalance: {
-    ...rowValue,
-    letterSpacing: -0.45,
-    textAlign: 'right',
-  },
-  loanCardBalanceLabel: {
-    fontSize: typography.micro,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  loanProgressTrack: {
-    height: 5,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  loanProgressFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  loanCardMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  loanCardMetaRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  loanCardMeta: {
-    fontSize: typography.meta,
-    fontWeight: '500',
-  },
-  loanDeleteBtn: {
-    padding: 4,
   },
 });

@@ -37,6 +37,8 @@ import {
 import type { MdiIconName } from '@/lib/mdiIconCatalog';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
+  destructiveIconColor,
+  destructiveTextActionStyle,
   FLOATING_NAV_CONTENT_PADDING,
   ICON_WELL_SIZE,
   interBoldText,
@@ -49,6 +51,7 @@ import {
   SECTION_TITLE_STYLE,
   radius,
   spacing,
+  subtleDeleteButtonStyle,
   typography,
 } from '@/constants/theme';
 import {
@@ -464,12 +467,8 @@ function BudgetCategoriesSection({
           </View>
         </View>
 
-        <DashboardCard
-          style={allocStyles.groupedCard}
-          innerStyle={allocStyles.groupedCardInner}
-          padding={0}
-        >
-          {rows.map((row, index) => {
+        <View style={allocStyles.categoryCards}>
+          {rows.map((row) => {
             const usage = getCategoryBudgetUsage(row.limit, row.spent);
             const usagePct = row.limit > 0 ? Math.round((row.spent / row.limit) * 100) : 0;
             const barColor = categoryBudgetBarColor(
@@ -486,68 +485,70 @@ function BudgetCategoriesSection({
                 key={row.id}
                 android_ripple={null}
                 onPress={() => handleSegmentPress(row.id)}
-                style={[
-                  allocStyles.categoryRowPressable,
-                  highlighted && { backgroundColor: isLight ? 'rgba(0,168,84,0.05)' : 'rgba(0,230,100,0.06)' },
-                  index < rows.length - 1 && {
-                    borderBottomWidth: StyleSheet.hairlineWidth,
-                    borderBottomColor: colors.border,
-                  },
-                ]}
               >
-                <View style={allocStyles.categoryRow}>
-                  <UserPickedIconBadge icon={row.icon as IconName} size={40} iconSize={20} />
-                  <View style={allocStyles.rowBody}>
-                    <View style={allocStyles.rowMain}>
-                      <Text style={[allocStyles.rowName, { color: colors.text }]} {...rowTitleTextProps}>
-                        {row.name}
-                      </Text>
-                      <View
-                        style={[
-                          allocStyles.pctPill,
-                          {
-                            backgroundColor: isLight ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.08)',
-                            borderColor: highlighted ? barColor : 'transparent',
-                            borderWidth: highlighted ? 1 : 0,
-                          },
-                        ]}
-                      >
-                        <Text style={[allocStyles.rowPct, { color: barColor }]}>{`${usagePct} %`}</Text>
+                <DashboardCard
+                  innerStyle={[
+                    allocStyles.categoryCardInner,
+                    highlighted && {
+                      backgroundColor: isLight ? 'rgba(0,168,84,0.05)' : 'rgba(0,230,100,0.06)',
+                    },
+                  ]}
+                  padding={0}
+                >
+                  <View style={allocStyles.categoryRow}>
+                    <UserPickedIconBadge icon={row.icon as IconName} size={48} />
+                    <View style={allocStyles.rowBody}>
+                      <View style={allocStyles.rowMain}>
+                        <Text style={[allocStyles.rowName, { color: colors.text }]} {...rowTitleTextProps}>
+                          {row.name}
+                        </Text>
+                        <View
+                          style={[
+                            allocStyles.pctPill,
+                            {
+                              backgroundColor: isLight ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.08)',
+                              borderColor: highlighted ? barColor : 'transparent',
+                              borderWidth: highlighted ? 1 : 0,
+                            },
+                          ]}
+                        >
+                          <Text style={[allocStyles.rowPct, { color: barColor }]}>{`${usagePct} %`}</Text>
+                        </View>
+                      </View>
+                      <DashboardProgressBar
+                        pct={usage.progress * 100}
+                        color={barColor}
+                        height={PROGRESS_BAR_TRACK_HEIGHT}
+                        marginTop={0}
+                      />
+                      <View style={allocStyles.rowMain}>
+                        {usage.isZeroLimitOverspend ? (
+                          <Text
+                            style={[allocStyles.rowAmt, allocStyles.rowAmtLeading, { color: barColor, fontWeight: '700' }]}
+                            {...singleLineAmountProps}
+                          >
+                            Budget dépassé
+                          </Text>
+                        ) : (
+                          <Text
+                            style={[allocStyles.rowAmt, allocStyles.rowAmtLeading, { color: mutedTextColor }]}
+                            {...singleLineAmountProps}
+                          >
+                            {`${formatAllocMoney(row.spent)} dépensé`}
+                          </Text>
+                        )}
+                        <Text style={[allocStyles.rowAmt, { color: mutedTextColor }]} {...singleLineAmountProps}>
+                          {usage.isZeroLimitOverspend ? '0 $ alloué' : `${formatAllocMoney(row.limit)} limite`}
+                        </Text>
                       </View>
                     </View>
-                    <DashboardProgressBar
-                      pct={usage.progress * 100}
-                      color={barColor}
-                      height={PROGRESS_BAR_TRACK_HEIGHT}
-                      marginTop={0}
-                    />
-                    <View style={allocStyles.rowMain}>
-                      {usage.isZeroLimitOverspend ? (
-                        <Text
-                          style={[allocStyles.rowAmt, allocStyles.rowAmtLeading, { color: barColor, fontWeight: '700' }]}
-                          {...singleLineAmountProps}
-                        >
-                          Budget dépassé
-                        </Text>
-                      ) : (
-                        <Text
-                          style={[allocStyles.rowAmt, allocStyles.rowAmtLeading, { color: mutedTextColor }]}
-                          {...singleLineAmountProps}
-                        >
-                          {`${formatAllocMoney(row.spent)} dépensé`}
-                        </Text>
-                      )}
-                      <Text style={[allocStyles.rowAmt, { color: mutedTextColor }]} {...singleLineAmountProps}>
-                        {usage.isZeroLimitOverspend ? '0 $ alloué' : `${formatAllocMoney(row.limit)} limite`}
-                      </Text>
-                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={mutedTextColor} />
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color={mutedTextColor} />
-                </View>
+                </DashboardCard>
               </Pressable>
             );
           })}
-        </DashboardCard>
+        </View>
         <AddCategoryCta onPress={onAddCategory} />
       </View>
     </View>
@@ -613,7 +614,7 @@ function BudgetCategoryDetailSheet({
     <BottomSheet
       visible={Boolean(category)}
       onClose={onClose}
-      sheetStyle={[allocStyles.detailSheet, { backgroundColor: colors.cardBackground }]}
+      sheetStyle={[allocStyles.detailSheet, { backgroundColor: colors.containerBackground }]}
       scrollContentContainerStyle={allocStyles.detailContent}
     >
       {category ? (
@@ -651,7 +652,7 @@ function BudgetCategoryDetailSheet({
             </Pressable>
           </View>
 
-          <View style={[allocStyles.detailHero, { backgroundColor: colors.cardBackground }]}>
+          <View style={[allocStyles.detailHero, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder, borderWidth: 1 }]}>
             <View style={allocStyles.detailHeroTop}>
               <UserPickedIconBadge icon={iconName as IconName} size={48} iconSize={26} />
               <View style={allocStyles.detailHeroCopy}>
@@ -683,7 +684,7 @@ function BudgetCategoryDetailSheet({
             </Text>
           </View>
 
-          <View style={[allocStyles.detailStatsGrid, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+          <View style={[allocStyles.detailStatsGrid, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
             <DetailStat label="Limite mensuelle" value={formatAllocMoney(limit)} />
             <DetailStat label="Limite hebdo" value={category.weeklyLimitAmount != null ? formatAllocMoney(category.weeklyLimitAmount) : 'Non définie'} />
             <DetailStat label="Dépensé" value={formatAllocMoney(spent)} />
@@ -696,7 +697,7 @@ function BudgetCategoryDetailSheet({
             hitSlop={12}
             style={({ pressed }) => [
               allocStyles.historyWide,
-              { backgroundColor: colors.cardBackground, borderColor: colors.border },
+              { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
               pressed && allocStyles.detailBtnPressed,
             ]}
             onPress={() => onOpenHistory(category)}
@@ -735,7 +736,7 @@ function BudgetCategoryFormModalContent({
     <Modal visible={form != null} animationType="slide" transparent onRequestClose={onClose}>
       <View style={[allocStyles.modalBackdrop, { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0,0,0,0.62)' }]}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={allocStyles.modalKeyboard}>
-          <View style={[allocStyles.modalCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+          <View style={[allocStyles.modalCard, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
             <View style={allocStyles.modalHeader}>
               <Text style={[allocStyles.modalTitle, { color: colors.text }]}>
                 {form?.name ? 'Modifier la catégorie' : 'Nouvelle catégorie'}
@@ -772,6 +773,7 @@ function BudgetCategoryFormModalContent({
                 onChangeText={(value) => onChangeForm((cur) => (cur ? { ...cur, weeklyLimit: sanitizeAmount(value) } : cur))}
               />
               <IconPicker
+                key={form?.id ?? 'new-category'}
                 selectedIcon={form?.icon ?? DEFAULT_ICON}
                 selectedColor={normalizeColor(form?.color)}
                 onSelect={(icon) => onChangeForm((cur) => (cur ? { ...cur, icon } : cur))}
@@ -805,15 +807,14 @@ function BudgetCategoryFormModalContent({
                     accessibilityLabel={`Supprimer la catégorie ${editingCategory.categoryName}`}
                     disabled={saving || deleting}
                     style={({ pressed }) => [
-                      allocStyles.deleteWide,
-                      { backgroundColor: colors.dangerMuted, borderColor: colors.danger },
-                      pressed && allocStyles.detailBtnPressed,
+                      subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
+                      pressed && { opacity: 0.72 },
                       (saving || deleting) && allocStyles.disabled,
                     ]}
                     onPress={() => setConfirmDeleteVisible(true)}
                   >
-                    <Ionicons name="trash-outline" size={16} color={colors.danger} />
-                    <Text style={[allocStyles.deleteWideText, { color: colors.danger }]}>
+                    <Ionicons name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
+                    <Text style={destructiveTextActionStyle(isLight)}>
                       {deleting ? 'Suppression...' : 'Supprimer la catégorie'}
                     </Text>
                   </Pressable>
@@ -1071,16 +1072,17 @@ const allocStyles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   countBadgeLabel: { ...interBoldText, fontSize: typography.micro },
-  groupedCard: { overflow: 'hidden' },
-  groupedCardInner: { paddingVertical: 0 },
-  categoryRowPressable: { width: '100%' },
+  categoryCards: { gap: spacing.md },
+  categoryCardInner: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
+    minHeight: UNIFORM_ROW_MIN_HEIGHT,
+  },
   categoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    minHeight: UNIFORM_ROW_MIN_HEIGHT,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
   },
   rowBody: { flex: 1, minWidth: 0, gap: 7 },
   rowMain: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
@@ -1230,17 +1232,6 @@ const allocStyles = StyleSheet.create({
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
   },
-  deleteWide: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    marginTop: spacing.sm,
-  },
-  deleteWideText: { ...interBoldText, fontSize: typography.meta },
   disabled: { opacity: 0.45 },
   modalBackdrop: {
     flex: 1,

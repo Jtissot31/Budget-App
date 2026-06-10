@@ -71,8 +71,8 @@ export function ThemedConfirmModal({
           style={[
             styles.card,
             {
-              backgroundColor: colors.cardBackground,
-              borderColor: colors.border,
+              backgroundColor: colors.containerBackground,
+              borderColor: colors.containerBorder,
             },
           ]}
         >

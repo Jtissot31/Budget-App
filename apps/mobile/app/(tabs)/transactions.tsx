@@ -13,8 +13,9 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AgendaView, type AgendaViewRef } from '@/components/AgendaView';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
+import { ContactFormModal } from '@/components/ContactFormModal';
+import { MerchantDirectory } from '@/components/MerchantDirectory';
 import { MerchantEditModal, type MerchantEditTarget } from '@/components/MerchantEditModal';
-import { MerchantLogo } from '@/components/MerchantLogo';
 import { DashboardCard } from '@/components/DashboardCard';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
@@ -23,43 +24,43 @@ import {
   createNewRecurringPaymentForm,
   RecurringPaymentFormModal,
   manualAccountOptions,
+  recurringPaymentToForm,
   saveRecurringPaymentForm,
   toAccountOptions,
   type PaymentForm,
   type RecurringPaymentAddVariant,
 } from '@/lib/recurringPaymentsForm';
 import { PageTransition } from '@/components/PageTransition';
-import { GlassContainer } from '@/components/GlassContainer';
 import { TransactionRow } from '@/components/TransactionRow';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   colors,
+  containerSurfaceStyle,
+  dashboardPaletteForTheme,
   FLOATING_NAV_CONTENT_PADDING,
   ICON_WELL_SIZE,
   PAGE_PADDING_HORIZONTAL,
   PAGE_TITLE_CONTENT_GAP,
   PAGE_TITLE_STYLE,
   SECTION_TITLE_STYLE,
-  PORTFOLIO_SECTION_GAP,
+  interBoldText,
   radius,
   spacing,
   typography,
 } from '@/constants/theme';
-import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
-import { listDayTotal, rowLabel, rowTitleTextProps, singleLineAmountProps } from '@/lib/textLayout';
-import { getMerchantOverrides, getTransactions, sortTransactionsNewestFirst, getCategories, getCategoryBudgets, getSimulatedAccounts } from '@/lib/db';
+import { listDayTotal } from '@/lib/textLayout';
+import { getContacts, getMerchantOverrides, getTransactions, sortTransactionsNewestFirst, getCategories, getCategoryBudgets, getSimulatedAccounts } from '@/lib/db';
+import { isContactTransferTx } from '@/lib/accountTransactionFlow';
+import { buildContactDirectoryRows } from '@/lib/contactHistory';
 import { dataEvents, uiEvents } from '@/lib/events';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import {
   UNIFORM_ACTION_BUTTON_MIN_HEIGHT,
-  UNIFORM_CHIP_FONT_SIZE,
-  UNIFORM_ROW_MIN_HEIGHT,
   UNIFORM_SECTION_HEADER_MIN_HEIGHT,
-  UNIFORM_SEGMENT_INNER_HEIGHT,
 } from '@/lib/uniformGroupStyles';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
-import type { Category, CategoryBudget, MerchantOverride, Transaction } from '@/types';
+import type { Category, CategoryBudget, Contact, MerchantOverride, RecurringPayment, Transaction } from '@/types';
 
 type ViewTab = 'history' | 'agenda' | 'merchants';
 type HistoryTypeFilter = 'all' | 'expense' | 'income';
@@ -72,6 +73,7 @@ type MerchantRow = {
   useAutoLogo?: boolean;
   count: number;
   total: number;
+  lastVisit: string | null;
 };
 
 function getLocalDayKey(isoDate: string) {
@@ -126,7 +128,9 @@ export default function TransactionsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ view?: string }>();
   const insets = useSafeAreaInsets();
-  const { colors } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
+  const dashboardPalette = useMemo(() => dashboardPaletteForTheme(isLight), [isLight]);
+  const historyQuickActionsSurface = useMemo(() => containerSurfaceStyle(isLight), [isLight]);
   const contentCanvas = colors.background;
   const historyListRef = useRef<FlatList<[string, Transaction[]]>>(null);
   const merchantsListRef = useRef<FlatList<MerchantRow>>(null);
@@ -134,6 +138,7 @@ export default function TransactionsScreen() {
   const hasBlurredRef = useRef(false);
   const [items, setItems] = useState<Transaction[]>([]);
   const [merchantOverrides, setMerchantOverrides] = useState<MerchantOverride[]>([]);
+  const [savedContacts, setSavedContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState('');
   const [historyTypeFilter, setHistoryTypeFilter] = useState<HistoryTypeFilter>('all');
   const [historyFiltersExpanded, setHistoryFiltersExpanded] = useState(false);
@@ -142,6 +147,7 @@ export default function TransactionsScreen() {
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [editingMerchant, setEditingMerchant] = useState<MerchantEditTarget | null>(null);
   const [isEditingMerchants, setIsEditingMerchants] = useState(false);
+  const [showContactForm, setShowContactForm] = useState(false);
   const [recurringForm, setRecurringForm] = useState<PaymentForm | null>(null);
   const [recurringAccounts, setRecurringAccounts] = useState(manualAccountOptions());
   const [recurringCategories, setRecurringCategories] = useState<Category[]>([]);
@@ -171,9 +177,14 @@ export default function TransactionsScreen() {
   }, []);
 
   const load = useCallback(async () => {
-    const [transactions, overrides] = await Promise.all([getTransactions(search), getMerchantOverrides()]);
+    const [transactions, overrides, contacts] = await Promise.all([
+      getTransactions(search),
+      getMerchantOverrides(),
+      getContacts(),
+    ]);
     setItems(transactions);
     setMerchantOverrides(overrides);
+    setSavedContacts(contacts);
   }, [search]);
 
   useEffect(() => {
@@ -182,8 +193,7 @@ export default function TransactionsScreen() {
 
   useEffect(() => dataEvents.subscribe(load), [load]);
 
-  const openNewRecurringPayment = useCallback(async (variant: RecurringPaymentAddVariant = 'bill') => {
-    tapHaptic();
+  const prepareRecurringFormContext = useCallback(async () => {
     const [categories, categoryBudgets, simulatedAccounts] = await Promise.all([
       getCategories(),
       getCategoryBudgets(),
@@ -194,12 +204,23 @@ export default function TransactionsScreen() {
     setRecurringAccounts(accountOptions);
     setRecurringCategories(categories);
     setRecurringCategoryBudgets(categoryBudgets);
-    setRecurringForm(createNewRecurringPaymentForm(accountOptions, categories, variant));
+    return { accountOptions, categories };
   }, []);
 
-  useEffect(() => uiEvents.subscribeNewRecurringPayment(() => {
+  const openNewRecurringPayment = useCallback(async (variant: RecurringPaymentAddVariant = 'bill') => {
+    tapHaptic();
+    const { accountOptions, categories } = await prepareRecurringFormContext();
+    setRecurringForm(createNewRecurringPaymentForm(accountOptions, categories, variant));
+  }, [prepareRecurringFormContext]);
+
+  const openEditRecurringPayment = useCallback(async (payment: RecurringPayment) => {
+    await prepareRecurringFormContext();
+    setRecurringForm(recurringPaymentToForm(payment));
+  }, [prepareRecurringFormContext]);
+
+  useEffect(() => uiEvents.subscribeNewRecurringPayment((variant) => {
     if (activeView !== 'agenda') return;
-    void openNewRecurringPayment();
+    void openNewRecurringPayment(variant);
   }), [activeView, openNewRecurringPayment]);
 
   const saveRecurringPayment = async () => {
@@ -255,16 +276,20 @@ export default function TransactionsScreen() {
   );
 
   const merchants = useMemo(() => {
-    const map = new Map<string, { name: string; count: number; total: number }>();
+    const map = new Map<string, { name: string; count: number; total: number; lastVisit: string | null }>();
     items.forEach((tx) => {
-      if (tx.type === 'transfer' || tx.type === 'income') return;
+      if (tx.type === 'transfer' || tx.type === 'income' || isContactTransferTx(tx)) return;
       const cur = map.get(tx.label) ?? {
         name: tx.label,
         count: 0,
         total: 0,
+        lastVisit: null,
       };
       cur.count += 1;
       cur.total += tx.amount;
+      if (!cur.lastVisit || tx.date > cur.lastVisit) {
+        cur.lastVisit = tx.date;
+      }
       map.set(tx.label, cur);
     });
     return [...map.values()]
@@ -279,10 +304,16 @@ export default function TransactionsScreen() {
           useAutoLogo: override?.useAutoLogo !== false,
           count: m.count,
           total: m.total,
+          lastVisit: m.lastVisit,
         }];
       })
       .sort((a, b) => b.total - a.total);
   }, [items, merchantOverrideMap]);
+
+  const contacts = useMemo(
+    () => buildContactDirectoryRows(items, savedContacts),
+    [items, savedContacts],
+  );
 
   const openMerchantEditor = (merchant: MerchantRow) => {
     const override = merchantOverrideMap.get(merchant.originalName);
@@ -355,7 +386,7 @@ export default function TransactionsScreen() {
             removeClippedSubviews
             ListHeaderComponent={
               <View>
-                <View style={[styles.searchRow, { backgroundColor: colors.cardBackground }]}>
+                <View style={[styles.searchRow, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder, borderWidth: 1 }]}>
                   <Ionicons name="search-outline" size={18} color={colors.textMuted} />
                   <TextInput
                     style={[styles.search, { color: colors.text }]}
@@ -477,123 +508,42 @@ export default function TransactionsScreen() {
         <View style={[styles.agendaWrap, { backgroundColor: contentCanvas }]}>
           <AgendaView
             ref={agendaRef}
-            onAddRecurring={(variant) => void openNewRecurringPayment(variant)}
+            onEditRecurring={(payment) => void openEditRecurringPayment(payment)}
           />
         </View>
       ) : null}
 
       {activeView === 'merchants' ? (
         <View style={[styles.flex, { backgroundColor: contentCanvas }]} collapsable={false}>
-          <FlatList
-            ref={merchantsListRef}
-            style={[styles.listViewport, { backgroundColor: contentCanvas }]}
-            data={merchants}
-            keyExtractor={(m) => m.originalName}
-            removeClippedSubviews
-            ListHeaderComponent={
-              <View>
-                <View style={styles.merchantToolbar}>
-                  <Text style={[styles.merchantToolbarHint, { color: colors.textMuted }]} numberOfLines={2}>
-                    {isEditingMerchants ? 'Touchez un marchand pour le modifier ou le retirer.' : `${merchants.length} marchand${merchants.length > 1 ? 's' : ''}`}
-                  </Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={isEditingMerchants ? "Terminer l'édition des marchands" : 'Modifier les marchands'}
-                    style={({ pressed }) => [
-                      styles.merchantEditModeButton,
-                      {
-                        backgroundColor: isEditingMerchants ? colors.text : colors.surfaceSolid,
-                        borderColor: isEditingMerchants ? colors.text : colors.borderStrong,
-                      },
-                      pressed && styles.pressed,
-                    ]}
-                    onPress={() => {
-                      tapHaptic();
-                      setIsEditingMerchants((editing) => !editing);
-                    }}
-                  >
-                    <Ionicons
-                      name={isEditingMerchants ? 'checkmark-outline' : 'pencil-outline'}
-                      size={14}
-                      color={isEditingMerchants ? colors.background : colors.textSecondary}
-                    />
-                    <Text
-                      style={[
-                        styles.merchantEditModeText,
-                        { color: isEditingMerchants ? colors.background : colors.textSecondary },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {isEditingMerchants ? 'Terminer' : 'Modifier'}
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-            }
-            contentContainerStyle={[
-              styles.list,
-              { backgroundColor: contentCanvas, paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING },
-            ]}
-            ItemSeparatorComponent={() => (
-              <View style={[styles.merchantListSeparator, { backgroundColor: contentCanvas }]} />
-            )}
-            ListEmptyComponent={
-              <View style={[styles.emptyWrap, { backgroundColor: contentCanvas }]}>
-                <Text style={[styles.empty, { color: colors.textMuted }]}>Aucun marchand</Text>
-              </View>
-            }
-            renderItem={({ item }) => {
-              const editOutline = ['rgba(0,245,160,0.55)', 'rgba(0,245,160,0.18)', 'rgba(0,245,160,0.42)'] as const;
-              return (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={
-                  isEditingMerchants
-                    ? `Modifier ${item.name}`
-                    : `Voir l'historique de ${item.name}`
-                }
-                android_ripple={null}
-                onPress={() => {
-                  if (isEditingMerchants) {
-                    openMerchantEditor(item);
-                    return;
-                  }
-                  tapHaptic();
-                  router.push({ pathname: '/merchant-detail', params: { merchant: item.originalName } });
-                }}
-              >
-                <GlassContainer
-                  borderRadius={radius.card}
-                  padding={spacing.md}
-                  innerStyle={[styles.merchantRowInner, isEditingMerchants && styles.merchantRowEditing]}
-                  outlineColors={isEditingMerchants ? editOutline : undefined}
-                >
-                <View style={styles.merchantCenterCol}>
-                  <MerchantLogo
-                    name={item.name}
-                    logoUrl={item.logoUrl}
-                    icon={item.icon}
-                    useAutoLogo={item.useAutoLogo}
-                  />
-                  <Text style={[styles.merchantName, { color: colors.text }]} {...rowTitleTextProps}>
-                    {item.name}
-                  </Text>
-                  {isEditingMerchants ? (
-                    <Text style={[styles.merchantMeta, { color: colors.textMuted }]}>
-                      Touchez pour modifier
-                    </Text>
-                  ) : null}
-                </View>
-                <Ionicons
-                  name={isEditingMerchants ? 'pencil-outline' : 'chevron-forward'}
-                  size={16}
-                  color={isEditingMerchants ? colors.primary : colors.textMuted}
-                  style={styles.merchantChevron}
-                />
-                </GlassContainer>
-              </Pressable>
-            );
+          <MerchantDirectory
+            listRef={merchantsListRef}
+            merchants={merchants}
+            contacts={contacts}
+            isEditing={isEditingMerchants}
+            contentPaddingBottom={insets.bottom + FLOATING_NAV_CONTENT_PADDING}
+            refreshing={refreshing}
+            onRefresh={async () => {
+              setRefreshing(true);
+              await load();
+              setRefreshing(false);
             }}
+            onToggleEdit={() => setIsEditingMerchants((editing) => !editing)}
+            onPressMerchant={(merchant) => {
+              if (isEditingMerchants) {
+                openMerchantEditor(merchant);
+                return;
+              }
+              tapHaptic();
+              router.push({ pathname: '/merchant-detail', params: { merchant: merchant.originalName } });
+            }}
+            onPressContact={(contact) => {
+              tapHaptic();
+              router.push({
+                pathname: '/contact-detail',
+                params: { contact: contact.key, name: contact.name },
+              });
+            }}
+            onAddContact={() => setShowContactForm(true)}
           />
         </View>
       ) : null}
@@ -603,6 +553,12 @@ export default function TransactionsScreen() {
         merchant={editingMerchant}
         bottomInset={insets.bottom}
         onClose={closeMerchantEditor}
+        onSaved={load}
+      />
+      <ContactFormModal
+        visible={showContactForm}
+        bottomInset={insets.bottom}
+        onClose={() => setShowContactForm(false)}
         onSaved={load}
       />
       <TransactionDetailSheet transaction={selected} onClose={() => setSelected(null)} onDeleted={() => { void load(); }} />
@@ -650,12 +606,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     minHeight: 44,
     borderRadius: radius.card,
-    backgroundColor: colors.cardBackground,
+    backgroundColor: colors.containerBackground,
+    borderWidth: 1,
+    borderColor: colors.containerBorder,
   },
   search: { flex: 1, color: colors.text, fontSize: typography.body, padding: 0 },
   filterIconBtn: {
@@ -744,77 +702,6 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   empty: { color: colors.textMuted, textAlign: 'center', fontSize: typography.caption },
-  merchantToolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    paddingTop: spacing.sm,
-    marginBottom: spacing.xl,
-  },
-  merchantToolbarHint: {
-    flex: 1,
-    color: colors.textMuted,
-    fontSize: typography.meta,
-    lineHeight: 17,
-  },
-  merchantEditModeButton: {
-    flexShrink: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    minHeight: UNIFORM_SEGMENT_INNER_HEIGHT,
-  },
-  merchantEditModeText: {
-    fontSize: UNIFORM_CHIP_FONT_SIZE,
-    fontWeight: '800',
-  },
-  merchantListSeparator: {
-    height: PORTFOLIO_SECTION_GAP,
-  },
-  merchantRowInner: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    gap: spacing.sm,
-    minHeight: UNIFORM_ROW_MIN_HEIGHT,
-    paddingVertical: spacing.sm,
-  },
-  merchantRowEditing: {},
-  merchantRowPressed: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  merchantChevron: {
-    opacity: 0.5,
-    position: 'absolute',
-    right: 0,
-    top: '50%',
-    marginTop: -8,
-  },
-  merchantCenterCol: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    paddingHorizontal: spacing.xl,
-    gap: spacing.sm,
-  },
-  merchantName: {
-    ...rowLabel,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  merchantMeta: {
-    color: colors.textMuted,
-    fontSize: typography.meta,
-    marginTop: 2,
-    flexShrink: 1,
-  },
   pressed: { opacity: 0.78 },
   modalBackdrop: {
     flex: 1,
@@ -824,7 +711,7 @@ const styles = StyleSheet.create({
   },
   merchantModalSheet: {
     maxHeight: '86%',
-    backgroundColor: colors.surfaceSolid,
+    backgroundColor: colors.containerBackground,
     borderRadius: 30,
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.lg,
@@ -949,7 +836,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   input: {
-    backgroundColor: colors.surfaceSolid,
+    backgroundColor: colors.containerBackground,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.lg,
     color: colors.text,
@@ -966,19 +853,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   saveText: { color: colors.background, fontSize: typography.body, fontWeight: '800' },
-  deleteBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingVertical: spacing.md,
-  },
-  deleteText: {
-    fontSize: typography.body,
-    fontWeight: '800',
-  },
   confirmOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',

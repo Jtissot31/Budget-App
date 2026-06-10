@@ -37,3 +37,41 @@ export function normalizeArticleSearch(value: string): string {
     .trim()
     .toLowerCase();
 }
+
+export function buildArticlesNoteLine(articles: ItemizedNote[]): string {
+  const payload = articles
+    .filter((item) => item.name.trim() && Number.isFinite(item.price) && item.price >= 0)
+    .map((item) => ({
+      name: item.name.trim(),
+      price: Math.round(item.price * 100) / 100,
+      categoryId: item.categoryId ?? null,
+      categoryName: item.categoryName ?? null,
+    }));
+  return `articles:${JSON.stringify(payload)}`;
+}
+
+export function mergeArticlesIntoNote(note: string | undefined, articles: ItemizedNote[]): string {
+  const accountLine = note?.split('\n').find((part) => part.startsWith('compte:'));
+  const transferLine = note?.split('\n').find((part) => part.startsWith('transfert:'));
+  const prefix = transferLine ?? accountLine ?? 'compte:checking';
+  const articleLine = buildArticlesNoteLine(articles);
+  return articles.length > 0 ? `${prefix}\n${articleLine}` : prefix;
+}
+
+export function createEmptyItemizedRow(id?: string): { id: string; name: string; price: string; categoryId: string | null } {
+  return {
+    id: id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: '',
+    price: '',
+    categoryId: null,
+  };
+}
+
+export function parseItemizedRowsFromNote(note?: string): Array<{ id: string; name: string; price: string; categoryId: string | null }> {
+  return parseItemizedNote(note).map((item, index) => ({
+    id: `${Date.now()}-${index}`,
+    name: item.name,
+    price: Number.isInteger(item.price) ? String(item.price) : item.price.toFixed(2).replace(/\.?0+$/, ''),
+    categoryId: item.categoryId ?? null,
+  }));
+}

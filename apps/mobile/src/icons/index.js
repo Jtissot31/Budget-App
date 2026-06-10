@@ -68,3 +68,103 @@ export { WarningMdi } from "./WarningMdi";
 export { ErrorMdi } from "./ErrorMdi";
 export { InfoIcon } from "./InfoIcon";
 export { NotificationImportant } from "./NotificationImportant";
+// Food & Drink
+export { LocalBar } from "./LocalBar";
+export { Cake } from "./Cake";
+export { LocalPizza } from "./LocalPizza";
+export { Icecream } from "./Icecream";
+export { Nightlife } from "./Nightlife";
+// Transport
+export { DirectionsBike } from "./DirectionsBike";
+export { TwoWheeler } from "./TwoWheeler";
+export { LocalTaxi } from "./LocalTaxi";
+export { EvStation } from "./EvStation";
+// Shopping
+export { ReceiptLong } from "./ReceiptLong";
+export { Loyalty } from "./Loyalty";
+export { LocalOffer } from "./LocalOffer";
+export { Sell } from "./Sell";
+export { Redeem } from "./Redeem";
+// Health
+export { Spa } from "./Spa";
+export { Healing } from "./Healing";
+export { MonitorHeart } from "./MonitorHeart";
+export { Vaccines } from "./Vaccines";
+// Entertainment
+export { SportsSoccer } from "./SportsSoccer";
+export { SportsBasketball } from "./SportsBasketball";
+export { Headphones } from "./Headphones";
+export { Tv } from "./Tv";
+export { SportsTennis } from "./SportsTennis";
+export { SportsGolf } from "./SportsGolf";
+export { Casino } from "./Casino";
+export { Pool } from "./Pool";
+export { SportsVolleyball } from "./SportsVolleyball";
+export { Rowing } from "./Rowing";
+// Home
+export { Kitchen } from "./Kitchen";
+export { KingBed } from "./KingBed";
+export { Bathtub } from "./Bathtub";
+export { Roofing } from "./Roofing";
+export { Yard } from "./Yard";
+export { Garage } from "./Garage";
+// Finance
+export { CurrencyExchange } from "./CurrencyExchange";
+export { PriceCheck } from "./PriceCheck";
+export { Receipt } from "./Receipt";
+export { MoneyOff } from "./MoneyOff";
+export { Paid } from "./Paid";
+// Tech
+export { Computer } from "./Computer";
+export { Smartphone } from "./Smartphone";
+export { TabletMdi } from "./TabletMdi";
+export { Wifi } from "./Wifi";
+export { Bluetooth } from "./Bluetooth";
+export { CloudMdi } from "./CloudMdi";
+export { Code } from "./Code";
+export { TerminalMdi } from "./TerminalMdi";
+export { Headset } from "./Headset";
+// Nature
+export { Park } from "./Park";
+export { Forest } from "./Forest";
+export { Eco } from "./Eco";
+export { WaterDrop } from "./WaterDrop";
+export { WbSunny } from "./WbSunny";
+export { Thunderstorm } from "./Thunderstorm";
+export { AcUnit } from "./AcUnit";
+// Social
+export { Group } from "./Group";
+export { PersonAdd } from "./PersonAdd";
+export { MessageMdi } from "./MessageMdi";
+export { EmailMdi } from "./EmailMdi";
+export { ShareMdi } from "./ShareMdi";
+export { ThumbUp } from "./ThumbUp";
+export { Favorite } from "./Favorite";
+// Education
+export { AutoStories } from "./AutoStories";
+export { Science } from "./Science";
+export { Calculate } from "./Calculate";
+export { HistoryEdu } from "./HistoryEdu";
+export { Psychology } from "./Psychology";
+// Services
+export { LocalLaundryService } from "./LocalLaundryService";
+export { DryCleaning } from "./DryCleaning";
+export { CleaningServices } from "./CleaningServices";
+export { LocalCarWash } from "./LocalCarWash";
+export { BuildMdi } from "./BuildMdi";
+export { Plumbing } from "./Plumbing";
+// Travel
+export { BeachAccess } from "./BeachAccess";
+export { OutdoorGrill } from "./OutdoorGrill";
+export { MapMdi } from "./MapMdi";
+export { Explore } from "./Explore";
+export { Landscape } from "./Landscape";
+export { DirectionsWalk } from "./DirectionsWalk";
+// Extra
+export { Pets } from "./Pets";
+export { ChildCare } from "./ChildCare";
+export { LocalFlorist } from "./LocalFlorist";
+export { Palette } from "./Palette";
+export { CameraAlt } from "./CameraAlt";
+export { Subscriptions } from "./Subscriptions";
+export { CurrencyBitcoin } from "./CurrencyBitcoin";

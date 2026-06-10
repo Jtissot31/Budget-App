@@ -11,9 +11,8 @@ import {
   UNIFORM_SEGMENT_HEIGHT,
   UNIFORM_SEGMENT_INNER_HEIGHT,
 } from '@/lib/uniformGroupStyles';
+import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
-
-const SEGMENT_LABEL_MIN_FONT_SCALE = 0.72;
 
 type Tab<T extends string> = { id: T; label: string; icon?: keyof typeof Ionicons.glyphMap };
 
@@ -69,13 +68,11 @@ export function SegmentedTabs<T extends string>({
                 <Text
                   style={[
                     styles.label,
+                    singleLineLabelStyle,
                     { color: selected ? activeColor : inactiveColor, fontSize: UNIFORM_CHIP_FONT_SIZE },
                     selected && styles.labelActive,
                   ]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={SEGMENT_LABEL_MIN_FONT_SCALE}
-                  ellipsizeMode="tail"
+                  {...chipLabelTextProps({ minScale: 0.72 })}
                 >
                   {tab.label}
                 </Text>

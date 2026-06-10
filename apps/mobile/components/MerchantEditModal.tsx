@@ -16,7 +16,15 @@ import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
 import { MdiIconGlyph } from '@/components/MdiIconGlyph';
 import { MdiIconPicker } from '@/components/MdiIconPicker';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
-import { ICON_WELL_SIZE, radius, spacing, typography } from '@/constants/theme';
+import {
+  destructiveIconColor,
+  destructiveTextActionStyle,
+  ICON_WELL_SIZE,
+  radius,
+  spacing,
+  subtleDeleteButtonStyle,
+  typography,
+} from '@/constants/theme';
 import { formValidationError, type FormFeedback } from '@/lib/formFeedback';
 import { getMerchantLogoUrl, POPULAR_MERCHANT_LOGO_OPTIONS } from '@/lib/merchantLogo';
 import { EXPENSE_MDI_ICON, type MdiIconName } from '@/lib/mdiIconCatalog';
@@ -153,7 +161,7 @@ export function MerchantEditModal({
           style={[
             styles.sheet,
             {
-              backgroundColor: colors.surfaceSolid,
+              backgroundColor: colors.containerBackground,
               paddingBottom: Math.max(bottomInset || insets.bottom, spacing.md),
             },
           ]}
@@ -185,7 +193,7 @@ export function MerchantEditModal({
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.modalContent}
           >
-            <View style={[styles.logoSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.logoSection, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
               <View style={styles.logoHeader}>
                 <Pressable
                   accessibilityRole="button"
@@ -217,7 +225,7 @@ export function MerchantEditModal({
                   }}
                   style={({ pressed }) => [
                     styles.logoEditButton,
-                    { backgroundColor: colors.surfaceSolid, borderColor: colors.border },
+                    { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
                     pressed && styles.pressed,
                   ]}
                 >
@@ -329,17 +337,16 @@ export function MerchantEditModal({
             {showDelete ? (
               <Pressable
                 style={({ pressed }) => [
-                  styles.deleteBtn,
-                  { backgroundColor: colors.dangerMuted, borderColor: colors.danger },
-                  pressed && styles.pressed,
+                  subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
+                  pressed && { opacity: 0.72 },
                 ]}
                 onPress={() => {
                   tapHaptic();
                   setShowDeleteConfirm(true);
                 }}
               >
-                <Ionicons name="trash-outline" size={16} color={colors.danger} />
-                <Text style={[styles.deleteText, { color: colors.danger }]}>Supprimer de la liste</Text>
+                <Ionicons name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
+                <Text style={destructiveTextActionStyle(isLight)}>Supprimer de la liste</Text>
               </Pressable>
             ) : null}
           </ScrollView>
@@ -491,16 +498,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   saveText: { fontSize: typography.body, fontWeight: '800' },
-  deleteBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingVertical: spacing.md,
-  },
-  deleteText: { fontSize: typography.caption, fontWeight: '800' },
   confirmOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',

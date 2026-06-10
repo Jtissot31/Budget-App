@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheet } from '@/components/BottomSheet';
@@ -9,7 +10,16 @@ import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { WealthAssetValueSparkline } from '@/components/WealthAssetValueSparkline';
 import { ghostCardShadow } from '@/constants/ghostUi';
-import { radius, spacing, typography, type AppColors } from '@/constants/theme';
+import {
+  destructiveIconColor,
+  destructiveTextActionStyle,
+  radius,
+  spacing,
+  subtleDeleteButtonStyle,
+  typography,
+  type AppColors,
+} from '@/constants/theme';
+import { userPickedIconGlyphSize, userPickedIconWellStyle } from '@/lib/userPickedIcon';
 import { buildWealthSixMonthIndicativeSeries } from '@/lib/buildWealthSixMonthIndicativeSeries';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { deleteWealthAsset, getWealthAssetById } from '@/lib/db';
@@ -43,7 +53,7 @@ export default function WealthAssetDetailScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const assetId = typeof params.id === 'string' ? params.id.trim() : '';
   const insets = useSafeAreaInsets();
-  const { colors, ghost, isLight } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
   const [asset, setAsset] = useState<WealthAsset | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirmVisible, setConfirmVisible] = useState(false);
@@ -125,7 +135,7 @@ export default function WealthAssetDetailScreen() {
         sheetStyle={[
           stylesMemo.sheetSurface,
           {
-            backgroundColor: colors.surfaceSolid,
+            backgroundColor: colors.containerBackground,
             borderTopLeftRadius: DETAIL_SHEET_TOP_RADIUS,
             borderTopRightRadius: DETAIL_SHEET_TOP_RADIUS,
           },
@@ -146,7 +156,7 @@ export default function WealthAssetDetailScreen() {
             <Ionicons name="chevron-back" size={22} color={colors.text} />
           </Pressable>
           <Text style={[stylesMemo.sheetTitle, { color: colors.text }]} numberOfLines={1}>
-            Patrimoine
+            {asset?.linkedLoanId && asset.address?.trim() ? asset.address.trim() : 'Patrimoine'}
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -174,6 +184,17 @@ export default function WealthAssetDetailScreen() {
             <Text style={[stylesMemo.mutedCenter, { color: colors.textMuted }]}>Actif introuvable.</Text>
           ) : (
             <>
+              {asset.photoUri?.trim() ? (
+                <View style={stylesMemo.bannerWrap}>
+                  <Image
+                    source={{ uri: asset.photoUri.trim() }}
+                    style={stylesMemo.bannerImage}
+                    contentFit="cover"
+                    accessibilityLabel={`Photo de ${asset.name}`}
+                  />
+                </View>
+              ) : null}
+
               <View
                 style={[
                   stylesMemo.heroCard,
@@ -184,15 +205,15 @@ export default function WealthAssetDetailScreen() {
                   },
                 ]}
               >
-                <View style={[stylesMemo.heroIcon, { backgroundColor: ghost.obsidianSoft }]}>
+                <View style={userPickedIconWellStyle(48, isLight)}>
                   {asset.type === 'precious_material' && asset.material ? (
                     <Ionicons
                       name={asset.material === 'diamond' ? 'diamond-outline' : 'disc-outline'}
-                      size={34}
+                      size={userPickedIconGlyphSize(48)}
                       color={colors.primary}
                     />
                   ) : (
-                    <Ionicons name="home-outline" size={30} color={colors.primaryAlt} />
+                    <Ionicons name="home-outline" size={userPickedIconGlyphSize(48)} color={colors.primaryAlt} />
                   )}
                 </View>
                 <View style={stylesMemo.heroCopy}>
@@ -311,16 +332,13 @@ export default function WealthAssetDetailScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Supprimer ce patrimoine"
                 style={({ pressed }) => [
-                  stylesMemo.deleteWide,
-                  { backgroundColor: colors.danger },
-                  pressed && stylesMemo.pressed,
+                  subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
+                  pressed && { opacity: 0.72 },
                 ]}
                 onPress={confirmDelete}
               >
-                <Ionicons name="trash-outline" size={18} color={colors.background} />
-                <Text style={[stylesMemo.deleteWideText, { color: colors.background }]}>
-                  Supprimer ce patrimoine
-                </Text>
+                <Ionicons name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
+                <Text style={destructiveTextActionStyle(isLight)}>Supprimer ce patrimoine</Text>
               </Pressable>
 
               <View style={{ height: Math.max(insets.bottom + spacing.md, spacing.xl) }} />
@@ -404,6 +422,17 @@ function createStyles(colors: AppColors, isLight: boolean) {
       paddingHorizontal: 0,
       gap: spacing.lg,
     },
+    bannerWrap: {
+      borderRadius: radius.xxl,
+      overflow: 'hidden',
+      height: 180,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    bannerImage: {
+      width: '100%',
+      height: '100%',
+    },
     mutedCenter: {
       textAlign: 'center',
       paddingVertical: spacing.xl,
@@ -417,15 +446,6 @@ function createStyles(colors: AppColors, isLight: boolean) {
       borderRadius: radius.xxl,
       borderWidth: StyleSheet.hairlineWidth,
       padding: spacing.lg,
-    },
-    heroIcon: {
-      width: 58,
-      height: 58,
-      borderRadius: radius.lg,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
     },
     heroCopy: { flex: 1, gap: spacing.xs },
     assetName: { fontSize: typography.screenTitle, fontWeight: '900', letterSpacing: -0.6 },
@@ -493,18 +513,6 @@ function createStyles(colors: AppColors, isLight: boolean) {
     historyWideText: {
       fontSize: typography.body,
       fontWeight: '800',
-    },
-    deleteWide: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.sm,
-      minHeight: 52,
-      borderRadius: radius.xl,
-    },
-    deleteWideText: {
-      fontSize: typography.body,
-      fontWeight: '900',
     },
   });
 }

@@ -58,8 +58,8 @@ export function TypingIndicator() {
         style={[
           styles.bubble,
           {
-            backgroundColor: isLight ? colors.surfaceSolid : colors.surfaceSolid,
-            borderColor: isLight ? colors.border : colors.glassBorder,
+            backgroundColor: colors.containerBackground,
+            borderColor: colors.containerBorder,
           },
         ]}
       >

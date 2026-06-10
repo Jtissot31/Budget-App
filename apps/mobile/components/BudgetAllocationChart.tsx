@@ -114,7 +114,7 @@ export function BudgetAllocationChart({
   const mutedTextColor = isLight ? colors.textMuted : '#909090';
   const visualFractions = useMemo(() => getDonutVisualFractions(segments), [segments]);
   const trackColor = isLight ? colors.border : colors.scopeTrack;
-  const hubColor = colors.cardBackground;
+  const hubColor = colors.containerBackground;
   const hasSelection = Boolean(selectedId);
 
   return (
@@ -249,7 +249,7 @@ export function BudgetAllocationChart({
 }
 
 const styles = StyleSheet.create({
-  cardInner: { gap: spacing.lg },
+  cardInner: { gap: spacing.lg, paddingBottom: spacing.sm },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',

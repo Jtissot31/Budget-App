@@ -93,11 +93,11 @@ function createStyles(colors: AppColors) {
   },
   sheet: {
     maxHeight: '88%',
-    backgroundColor: colors.surface,
+    backgroundColor: colors.containerBackground,
     borderTopLeftRadius: radius.xxl,
     borderTopRightRadius: radius.xxl,
     borderTopWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.containerBorder,
     paddingBottom: spacing.xl,
     overflow: 'hidden',
   },

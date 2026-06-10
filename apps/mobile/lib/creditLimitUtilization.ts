@@ -23,6 +23,16 @@ export function formatCreditUtilTimelineLabel(utilizationPercent: number): strin
   return `${Math.round(utilizationPercent)} % utilisé`;
 }
 
+/** Couleur texte « % utilisé » : <50% vert ; 50–79% orange ; ≥80% rouge. */
+export function utilizationPercentColor(
+  percent: number,
+  colors: Pick<AppColors, 'success' | 'warning' | 'danger'>,
+): string {
+  if (percent >= 80) return colors.danger;
+  if (percent >= 50) return colors.warning;
+  return colors.success;
+}
+
 /** Remplissage barre utilisation carte : <65% primary ; ≥65% orange vif ; ≥85% rouge vif. */
 export function creditLimitUtilizationBarColor(
   utilizationPercent: number,

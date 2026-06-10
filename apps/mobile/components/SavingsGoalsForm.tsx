@@ -107,8 +107,6 @@ export function SavingsGoalFormModal({
   categoryBudgets,
   recurringPayments,
   saving,
-  iconPickerExpanded,
-  setIconPickerExpanded,
   onDismiss,
   onSave,
   feedback,
@@ -120,9 +118,7 @@ export function SavingsGoalFormModal({
   categoryBudgets: CategoryBudget[];
   recurringPayments: RecurringPayment[];
   saving: boolean;
-  iconPickerExpanded: boolean;
   feedback?: FormFeedback | null;
-  setIconPickerExpanded: Dispatch<SetStateAction<boolean>>;
   onDismiss: () => void;
   onSave: () => void | Promise<void>;
 }) {
@@ -149,7 +145,7 @@ export function SavingsGoalFormModal({
   const themed = useMemo(
     () => ({
       modalBackdrop: { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' },
-      sheet: { backgroundColor: themeColors.surfaceSolid, borderColor: themeColors.border },
+      sheet: { backgroundColor: themeColors.containerBackground, borderColor: themeColors.containerBorder },
       handle: { backgroundColor: themeColors.borderStrong },
       closeButton: { backgroundColor: themeGhost.obsidianSoft },
       selected: { backgroundColor: themeColors.text },
@@ -202,24 +198,18 @@ export function SavingsGoalFormModal({
               ]}
             >
               <GoalIconSelector
+                formId={form?.id ?? null}
                 selectedIcon={selectedIcon}
                 selectedColor={selectedColor}
                 automaticIcon={automaticIcon}
                 mode={form?.iconMode ?? 'auto'}
-                expanded={iconPickerExpanded}
-                onToggle={() => {
-                  tapHaptic();
-                  setIconPickerExpanded((value) => !value);
-                }}
                 onSelectAuto={() => {
                   tapHaptic();
                   setForm((cur) => (cur ? { ...cur, iconMode: 'auto', icon: getAutomaticGoalIcon(cur.name) } : cur));
-                  setIconPickerExpanded(false);
                 }}
                 onSelectManual={(icon) => {
                   tapHaptic();
                   setForm((cur) => (cur ? { ...cur, icon, iconMode: 'manual' } : cur));
-                  setIconPickerExpanded(false);
                 }}
               />
               {form != null && goals.some((g) => g.id === form.id) ? (
@@ -355,51 +345,91 @@ function FormField({
 }
 
 function GoalIconSelector({
+  formId,
   selectedIcon,
   selectedColor,
   automaticIcon,
   mode,
-  expanded,
-  onToggle,
   onSelectAuto,
   onSelectManual,
 }: {
+  formId: string | null;
   selectedIcon: string;
   selectedColor: string;
   automaticIcon: IconName;
   mode: IconSelectionMode;
-  expanded: boolean;
-  onToggle: () => void;
   onSelectAuto: () => void;
   onSelectManual: (icon: string) => void;
 }) {
   const { colors, ghost, isLight } = useAppTheme();
   const defaultGlyph = resolveUserPickedIconGlyphColor(null, isLight, colors);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [formId]);
+
+  const togglePicker = useCallback(() => {
+    tapHaptic();
+    setExpanded((value) => !value);
+  }, []);
+
+  const handleSelectAuto = useCallback(() => {
+    onSelectAuto();
+    setExpanded(false);
+  }, [onSelectAuto]);
+
+  const handleSelectManual = useCallback(
+    (icon: MdiIconName) => {
+      onSelectManual(icon);
+      setExpanded(false);
+    },
+    [onSelectManual],
+  );
 
   return (
     <View style={[styles.iconSelector, { backgroundColor: ghost.obsidianSoft, borderColor: colors.borderStrong }]}>
       <View style={styles.iconSelectorTop}>
         <Pressable
-          onPress={onToggle}
+          onPress={togglePicker}
           accessibilityRole="button"
           accessibilityLabel="Modifier l'icône"
           hitSlop={10}
+          style={({ pressed }) => [pressed && styles.pressed]}
         >
           <UserPickedIconBadge icon={selectedIcon} color={selectedColor} size={52} iconSize={28} />
         </Pressable>
-        <View style={styles.iconSelectorCopy}>
+        <Pressable
+          onPress={togglePicker}
+          accessibilityRole="button"
+          accessibilityLabel="Ouvrir le sélecteur d'icônes"
+          style={({ pressed }) => [styles.iconSelectorCopy, pressed && styles.pressed]}
+        >
           <Text style={[styles.iconSelectorLabel, { color: colors.text }]}>
             {mode === 'auto' ? 'Icône automatique' : 'Icône choisie'}
           </Text>
           <Text style={[styles.iconSelectorMeta, { color: colors.textMuted }]}>
-            {mode === 'auto' ? "Adaptée au nom de l'objectif" : 'Touche pour parcourir la bibliothèque MDI'}
+            Touche l&apos;icône pour choisir automatique ou MDI
           </Text>
-        </View>
+        </Pressable>
+        <Pressable
+          onPress={togglePicker}
+          accessibilityRole="button"
+          accessibilityLabel="Ouvrir le sélecteur d'icônes"
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.iconEditButton,
+            { backgroundColor: colors.surfaceSolid, borderColor: colors.border },
+            pressed && styles.pressed,
+          ]}
+        >
+          <Ionicons name="pencil-outline" size={14} color={colors.textMuted} />
+        </Pressable>
       </View>
       {expanded ? (
         <View style={styles.iconGrid}>
           <Pressable
-            onPress={onSelectAuto}
+            onPress={handleSelectAuto}
             accessibilityRole="button"
             accessibilityLabel="Utiliser l'icône automatique"
             style={({ pressed }) => [
@@ -426,7 +456,7 @@ function GoalIconSelector({
           <View style={styles.mdiPickerWrap}>
             <MdiIconPicker
               selectedIcon={mode === 'manual' ? selectedIcon : null}
-              onSelect={(icon: MdiIconName) => onSelectManual(icon)}
+              onSelect={handleSelectManual}
               maxHeight={280}
             />
           </View>
@@ -454,7 +484,7 @@ function GoalProjectionCard({ projection }: { projection: GoalProjection }) {
   const { colors, ghost } = useAppTheme();
 
   return (
-    <View style={[styles.projectionCard, { backgroundColor: ghost.obsidianSoft, borderColor: colors.border }]}>
+    <View style={[styles.projectionCard, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
       <Text style={[styles.projectionTitle, { color: colors.text }]}>Projection</Text>
       <ProjectionRow label="Progression" value={formatPercent(projection.progress)} />
       <ProjectionRow label="Reste à épargner" value={formatDisplayMoneyAbsolute(projection.remaining)} />

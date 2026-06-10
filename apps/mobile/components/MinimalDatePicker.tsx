@@ -3,6 +3,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { GhostTokens } from '@/constants/ghostUi';
 import { radius, spacing, typography, type AppColors } from '@/constants/theme';
+import { formatFriendlyDateLabel } from '@/lib/formatFriendlyDateLabel';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -28,6 +29,7 @@ export function DatePickerField({
   const { colors, ghost } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, ghost), [colors, ghost]);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const displayValue = value ? formatFriendlyDateLabel(value) : '';
 
   return (
     <View style={styles.field}>
@@ -45,7 +47,7 @@ export function DatePickerField({
           pressed && styles.pressed,
         ]}
       >
-        <Text style={[styles.inputText, !value && styles.placeholder]}>{value || placeholder}</Text>
+        <Text style={[styles.inputText, !value && styles.placeholder]}>{displayValue || placeholder}</Text>
         <Ionicons name="calendar-clear-outline" size={18} color={ghost.mutedSoft} />
       </Pressable>
 

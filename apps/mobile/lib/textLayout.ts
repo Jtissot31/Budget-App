@@ -1,4 +1,54 @@
+import type { TextStyle } from 'react-native';
+
 import { typographyKit } from '@/constants/typographyKit';
+
+/**
+ * Text display rules (chips, tabs, pills):
+ * - Never break/cut a word in the middle — `numberOfLines` + `ellipsizeMode="tail"` at end of line only, or wrap at word boundaries.
+ * - Single-line chip labels: chip needs min padding + minWidth; `adjustsFontSizeToFit` + `minimumFontScale` only as last resort.
+ * - Selected chip state must keep the same inner content box — see `CHIP_BORDER_WIDTH` in `constants/theme.ts`.
+ */
+
+/** Default minimum scale when auto-shrinking single-line chip/tab labels (last resort). */
+export const CHIP_LABEL_MIN_FONT_SCALE = 0.82;
+
+/** Props for single-line chip / tab / pill labels — tail ellipsis only, never mid-word break. */
+export function chipLabelTextProps(options?: { minScale?: number }) {
+  const minScale = options?.minScale ?? CHIP_LABEL_MIN_FONT_SCALE;
+  return noMidWordClipTextProps({ minScale, singleLine: true });
+}
+
+/**
+ * Reusable text props so labels never clip mid-character.
+ * - Single-line pills/chips: `adjustsFontSizeToFit` + `minimumFontScale` (last resort before tail ellipsis).
+ * - Multi-line: `numberOfLines` + `ellipsizeMode="tail"` (word boundary when possible).
+ */
+export function noMidWordClipTextProps(options?: {
+  minScale?: number;
+  singleLine?: boolean;
+  maxLines?: number;
+}) {
+  const minScale = options?.minScale ?? CHIP_LABEL_MIN_FONT_SCALE;
+  const singleLine = options?.singleLine ?? true;
+  if (singleLine) {
+    return {
+      numberOfLines: 1 as const,
+      ellipsizeMode: 'tail' as const,
+      adjustsFontSizeToFit: true,
+      minimumFontScale: minScale,
+    };
+  }
+  return {
+    numberOfLines: options?.maxLines ?? 2,
+    ellipsizeMode: 'tail' as const,
+  };
+}
+
+/** Text style for labels inside flex rows that must shrink without forcing parent overflow. */
+export const singleLineLabelStyle: Pick<TextStyle, 'flexShrink' | 'minWidth'> = {
+  flexShrink: 1,
+  minWidth: 0,
+};
 
 /**
  * Numeric & list layout helpers — built on `typographyKit` (Portefeuille reference).

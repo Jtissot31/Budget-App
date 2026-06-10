@@ -33,8 +33,8 @@ export function SummaryCard({ title, rows }: Props) {
       style={[
         styles.card,
         {
-          backgroundColor: isLight ? colors.surface : colors.surfaceSolid,
-          borderColor: isLight ? colors.border : colors.glassBorder,
+          backgroundColor: colors.containerBackground,
+          borderColor: colors.containerBorder,
         },
       ]}
     >
