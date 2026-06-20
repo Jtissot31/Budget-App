@@ -16,6 +16,7 @@ import {
   accountBalanceIconTone,
   accountBalanceSubtitle,
   accountBalanceValueColor,
+  accountKindDisplayLabel,
   type AccountBalanceDisplayAccount,
 } from '@/lib/accountBalancePresentation';
 import { creditLimitUtilizationPercent } from '@/lib/creditLimitUtilization';
@@ -89,11 +90,16 @@ export function DashboardAccountBalanceCard({
         valueColor={balanceColor}
         subtitle={accountBalanceSubtitle(account)}
         trailing={
-          typeof creditUtilPct === 'number' ? (
-            <Text style={[styles.accountUsed, { color: muted }]}>
-              {`${Math.round(creditUtilPct)}% utilisé`}
+          <View style={styles.trailingColumn}>
+            {typeof creditUtilPct === 'number' ? (
+              <Text style={[styles.accountUsed, { color: muted }]}>
+                {`${Math.round(creditUtilPct)}% utilisé`}
+              </Text>
+            ) : null}
+            <Text style={[styles.accountKind, { color: muted }]} numberOfLines={1}>
+              {accountKindDisplayLabel(account)}
             </Text>
-          ) : undefined
+          </View>
         }
       />
     </DashboardCard>
@@ -120,7 +126,18 @@ const styles = StyleSheet.create({
   accountUsed: {
     ...interSemiboldText,
     fontSize: typography.micro,
-    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  trailingColumn: {
+    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
+    gap: spacing.xs,
+  },
+  accountKind: {
+    ...interSemiboldText,
+    fontSize: typography.micro,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   pressed: {
     opacity: 0.92,

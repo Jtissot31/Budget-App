@@ -49,16 +49,16 @@ function kindLabel(kind: AccountKind, account: AccountBalanceDisplayAccount) {
   return 'Crédit';
 }
 
-/** Subtitle under the balance — institution / card type, aligned with dashboard « Mes soldes ». */
+/** Type de compte affiché en bas à droite des cartes dashboard. */
+export function accountKindDisplayLabel(account: AccountBalanceDisplayAccount): string {
+  return kindLabel(account.kind, account);
+}
+
+/** Subtitle under the balance — institution / last4 only (type → colonne trailing). */
 export function accountBalanceSubtitle(account: AccountBalanceDisplayAccount): string | undefined {
   const institution = institutionLabel(account);
-  const kind = subtitlePartRedundantWithName(kindLabel(account.kind, account), account.name)
-    ? null
-    : kindLabel(account.kind, account);
 
-  if (institution && kind) return `${institution} / ${kind}`;
   if (institution) return institution;
-  if (kind) return kind;
 
   if (account.last4) {
     const rawInstitution = account.institution?.trim();

@@ -120,7 +120,7 @@ export function DashboardStatLegendItem({ color, label, value, valueColor }: Leg
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
     gap: spacing.md,
     minWidth: 0,
   },
@@ -162,9 +162,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   trailing: {
+    alignSelf: 'stretch',
     alignItems: 'flex-end',
     flexShrink: 0,
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
   },
   legendItem: {
     gap: 4,

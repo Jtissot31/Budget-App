@@ -43,9 +43,11 @@ import {
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { DashboardAccountBalanceCard } from '@/components/DashboardAccountBalanceCard';
 import { DashboardStatCard } from '@/components/DashboardStatCard';
-import { PaymentListRow } from '@/components/PaymentListRow';
-import { TransactionAmountLabel, recurringPaymentAmountDirection } from '@/components/TransactionAmountLabel';
-import { UserPickedIconWell } from '@/components/UserPickedIconWell';
+import { HomeInsightCard } from '@/components/dashboard/HomeInsightCard';
+import { HomeNetWorthHero } from '@/components/dashboard/HomeNetWorthHero';
+import { HomePlansCarousel } from '@/components/dashboard/HomePlansCarousel';
+import { HomeQuickStatsRow } from '@/components/dashboard/HomeQuickStatsRow';
+import type { PortfolioChartCardPeriodData } from '@/components/PortfolioChartCard';
 import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
 import {
   getDashboard,
@@ -55,8 +57,15 @@ import {
   getRecurringPayments,
   getSetting,
   getSimulatedAccounts,
+  getTransactions,
+  getWealthAssets,
   setSetting,
 } from '@/lib/db';
+import {
+  buildNetWorthTrendFromTransactions,
+  NET_WORTH_TREND_HISTORICAL_MONTH_COUNT,
+} from '@/lib/buildNetWorthTrendSeries';
+import { sumWealthAssetsDisplayValue } from '@/lib/wealthAssetPresentation';
 import { PAYCHECK_TRANSACTION_LOOKBACK_LIMIT, resolveNextPaycheckForAccount, resolvePaycheckForPaymentAlert } from '@/lib/estimatedPaycheck';
 import {
   evaluateCheckingInsufficientFunds,
@@ -71,12 +80,7 @@ import {
 } from '@/lib/creditLimitUtilization';
 import { formatPersonDirectedPaymentLabel } from '@/lib/loanPresentation';
 import { getAccountLogoUrl } from '@/lib/merchantLogo';
-import { formatDisplayMoneyAbsolute, formatRecurringPaymentAmount, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
-import { formatUpcomingStatusBadge } from '@/lib/paymentStatusBadge';
-import {
-  buildLoanByRecurringPaymentId,
-  resolveRecurringPaymentDisplayIconById,
-} from '@/lib/recurringPaymentPresentation';
+import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
 import {
   heroStatAmount,
   percentStat,
@@ -113,6 +117,7 @@ import type {
   RecurringPaymentKind,
   SimulatedAccount,
   Transaction,
+  WealthAsset,
 } from '@/types';
 
 type UpcomingPayment = {
@@ -1068,6 +1073,8 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [balanceAccountOptions, setBalanceAccountOptions] = useState<BalanceCompareAccount[]>([]);
   const [simulatedAccounts, setSimulatedAccounts] = useState<SimulatedAccount[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [wealthAssets, setWealthAssets] = useState<WealthAsset[]>([]);
   const [selectedBalanceAccountIds, setSelectedBalanceAccountIds] = useState<string[]>([]);
   const [draftBalanceAccountIds, setDraftBalanceAccountIds] = useState<string[]>([]);
   const [balanceSelectorVisible, setBalanceSelectorVisible] = useState(false);
@@ -1185,17 +1192,29 @@ export default function HomeScreen() {
   }, []);
 
   const load = useCallback(async () => {
-    const [dash, name, recurring, overrides, loadedSimulatedAccounts, storedBalanceIds, incomeTx, loadedLoans] =
-      await Promise.all([
-        getDashboard(),
-        getUserDisplayName(),
-        getRecurringPayments(),
-        getMerchantOverrides(),
-        getSimulatedAccounts(),
-        getSetting(BALANCE_COMPARE_SETTING_KEY, ''),
-        getRecentIncomeTransactions(PAYCHECK_TRANSACTION_LOOKBACK_LIMIT),
-        getLoans(),
-      ]);
+    const [
+      dash,
+      name,
+      recurring,
+      overrides,
+      loadedSimulatedAccounts,
+      storedBalanceIds,
+      incomeTx,
+      loadedLoans,
+      loadedTransactions,
+      loadedWealthAssets,
+    ] = await Promise.all([
+      getDashboard(),
+      getUserDisplayName(),
+      getRecurringPayments(),
+      getMerchantOverrides(),
+      getSimulatedAccounts(),
+      getSetting(BALANCE_COMPARE_SETTING_KEY, ''),
+      getRecentIncomeTransactions(PAYCHECK_TRANSACTION_LOOKBACK_LIMIT),
+      getLoans(),
+      getTransactions(),
+      getWealthAssets(),
+    ]);
     const compareAccounts = toBalanceCompareAccounts(loadedSimulatedAccounts);
     const storedIds = parseBalanceCompareIds(storedBalanceIds);
 
@@ -1204,6 +1223,8 @@ export default function HomeScreen() {
     setRecurringPayments(recurring);
     setLoans(loadedLoans);
     setIncomeTransactions(incomeTx);
+    setTransactions(loadedTransactions);
+    setWealthAssets(loadedWealthAssets);
     setMerchantOverrides(overrides);
     setSimulatedAccounts(loadedSimulatedAccounts);
     setBalanceAccountOptions(compareAccounts);
@@ -1260,6 +1281,53 @@ export default function HomeScreen() {
     [balanceAccountOptions, selectedBalanceAccountIds],
   );
 
+  const totalAccountBalance = useMemo(
+    () => simulatedAccounts.filter((account) => !account.hidden).reduce((sum, account) => sum + account.balance, 0),
+    [simulatedAccounts],
+  );
+
+  const loansByIdForWealth = useMemo(() => new Map(loans.map((loan) => [loan.id, loan])), [loans]);
+
+  const offAccountAssetsBalance = useMemo(
+    () => sumWealthAssetsDisplayValue(wealthAssets, loansByIdForWealth),
+    [wealthAssets, loansByIdForWealth],
+  );
+
+  const totalNetWorth = totalAccountBalance + offAccountAssetsBalance;
+
+  const netWorthTrendPoints = useMemo(
+    () =>
+      buildNetWorthTrendFromTransactions(
+        'inclusive',
+        totalNetWorth,
+        simulatedAccounts,
+        offAccountAssetsBalance,
+        transactions,
+      ),
+    [totalNetWorth, simulatedAccounts, offAccountAssetsBalance, transactions],
+  );
+
+  const sparklineValues = useMemo(() => {
+    const historical = netWorthTrendPoints.slice(0, NET_WORTH_TREND_HISTORICAL_MONTH_COUNT);
+    return historical.slice(-6).map((point) => point.value);
+  }, [netWorthTrendPoints]);
+
+  const heroPeriodData = useMemo((): PortfolioChartCardPeriodData | null => {
+    if (sparklineValues.length < 2) return null;
+    const startValue = sparklineValues[0]!;
+    const endValue = sparklineValues[sparklineValues.length - 1]!;
+    const delta = endValue - startValue;
+    const deltaPercent = startValue !== 0 ? (delta / Math.abs(startValue)) * 100 : 0;
+    return {
+      period: '6M',
+      currentValue: totalNetWorth,
+      delta,
+      deltaPercent,
+      selectedIndex: sparklineValues.length - 1,
+      selectedLabel: '',
+    };
+  }, [sparklineValues, totalNetWorth]);
+
   const openBalanceSelector = useCallback(() => {
     tapHaptic();
     setDraftBalanceAccountIds(balanceCompareAccounts.map((account) => account.id));
@@ -1290,11 +1358,6 @@ export default function HomeScreen() {
   const paymentResolutionPool = useMemo(
     () => toPaymentResolutionAccounts(simulatedAccounts),
     [simulatedAccounts],
-  );
-
-  const loanByRecurringPaymentId = useMemo(
-    () => buildLoanByRecurringPaymentId(loans),
-    [loans],
   );
 
   const upcomingPayments = useMemo(
@@ -1391,8 +1454,6 @@ export default function HomeScreen() {
 
   const nextPaymentAccountName = resolvedAccount?.name ?? nextPayment.account;
   const nextPaymentDate = new Date(`${nextPayment.date}T00:00:00`);
-  const daysToNextPayment = daysUntil(nextPayment.date);
-  const nextPaymentStatusBadge = formatUpcomingStatusBadge(daysToNextPayment);
   const resolvedPaycheckForTimeline =
     checkingFundsAlert?.resolvedPaycheck ??
     resolvePaycheckForPaymentAlert(
@@ -1411,17 +1472,6 @@ export default function HomeScreen() {
       : false;
 
   const nextPaymentDisplayName = formatPersonDirectedPaymentLabel(nextPayment.name);
-  const linkedNextPayment = nextPayment.id
-    ? recurringPayments.find((payment) => payment.id === nextPayment.id)
-    : undefined;
-  const nextPaymentIcon = linkedNextPayment
-    ? resolveRecurringPaymentDisplayIconById(linkedNextPayment, loanByRecurringPaymentId)
-    : nextPayment.icon && nextPayment.icon !== 'repeat-outline'
-      ? nextPayment.icon
-      : isIncomeRecurring
-        ? 'cash-outline'
-        : 'card-outline';
-  const nextPaymentTint = nextPayment.color ?? (isIncomeRecurring ? colors.success : colors.warning);
 
   const forecastShortfallMessage = (() => {
     if (creditRiskActive) {
@@ -1505,6 +1555,8 @@ export default function HomeScreen() {
     return aTime - bTime;
   });
 
+  const primaryInsight = dashboardAlerts[0] ?? null;
+
   return (
     <PageTransition>
     <View style={[styles.screen, { backgroundColor: dashPalette.bg }]}>
@@ -1560,34 +1612,35 @@ export default function HomeScreen() {
       </View>
 
       <View style={dashStyles.sectionFirst}>
-        <View style={dashStyles.sectionHeaderRow}>
-          <DashboardSectionLabel>Alertes</DashboardSectionLabel>
-          {dashboardAlerts.length > 0 ? (
-            <View style={[dashStyles.alertNotificationDot, { backgroundColor: colors.danger }]} />
-          ) : null}
-        </View>
+        <HomeNetWorthHero
+          totalNetWorth={totalNetWorth}
+          sparklineValues={sparklineValues}
+          periodData={heroPeriodData}
+        />
+      </View>
 
-        <View style={dashStyles.alertStack}>
-          {dashboardAlerts.map((alert) => (
-            <AlertCard
-              key={alert.id}
-              alert={alert}
-              today={today}
-              collapsed={alertCollapsed[alert.id] ?? false}
-              reminderEnabled={alertReminders[alert.id] ?? false}
-              onToggleReminder={() => void handleTogglePaycheckReminder(alert)}
-              onExpand={() => void handleExpandAlert(alert.id)}
-              onCollapse={() => void handleCollapseAlert(alert.id)}
-            />
-          ))}
+      <View style={dashStyles.sectionBlock}>
+        <HomeQuickStatsRow
+          monthlyIncome={data.monthlyIncome}
+          monthlyExpenses={data.monthlyExpenses}
+        />
+      </View>
+
+      {primaryInsight ? (
+        <View style={dashStyles.sectionBlock}>
+          <HomeInsightCard title={primaryInsight.title} message={primaryInsight.body} />
         </View>
+      ) : null}
+
+      <View style={dashStyles.sectionBlock}>
+        <HomePlansCarousel />
       </View>
 
       <View style={[dashStyles.section, { borderTopColor: dashPalette.border }]}>
         <View style={dashStyles.sectionHeaderRow}>
           <View>
-            <DashboardSectionLabel>2 comptes favoris</DashboardSectionLabel>
-            <Text style={[dashStyles.sectionTitle, { color: dashPalette.text }]}>Mes soldes</Text>
+            <DashboardSectionLabel>Mes comptes</DashboardSectionLabel>
+            <Text style={[dashStyles.sectionTitle, { color: dashPalette.text }]}>Soldes favoris</Text>
           </View>
           <Pressable
             onPress={openBalanceSelector}
@@ -1616,34 +1669,6 @@ export default function HomeScreen() {
             />
           ))}
         </View>
-      </View>
-
-      <View style={[dashStyles.section, { borderTopColor: dashPalette.border }]}>
-        <DashboardSectionLabel style={dashStyles.paymentSectionLabel}>Prochain paiement</DashboardSectionLabel>
-        <PaymentListRow
-          avatar={
-            <UserPickedIconWell
-              icon={nextPaymentIcon}
-              color={nextPaymentTint}
-              size={48}
-              logoUrl={nextPayment.logoUrl}
-              wellGlyphWhite={nextPayment.recurring}
-            />
-          }
-          title={nextPaymentDisplayName}
-          meta={nextPaymentAccountName}
-          statusBadge={{
-            label: nextPaymentStatusBadge,
-            variant: isIncomeRecurring ? 'upcomingIncome' : 'upcoming',
-          }}
-          amount={
-            <TransactionAmountLabel
-              amount={formatRecurringPaymentAmount(nextPayment.amount, nextPayment.kind ?? 'payment')}
-              direction={recurringPaymentAmountDirection(nextPayment.kind ?? 'payment')}
-              color={isIncomeRecurring ? colors.success : colors.text}
-            />
-          }
-        />
       </View>
 
       <Modal
@@ -2676,6 +2701,9 @@ const dashStyles = StyleSheet.create({
   sectionFirst: {
     paddingTop: PAGE_TITLE_CONTENT_GAP,
     paddingBottom: spacing.sm,
+  },
+  sectionBlock: {
+    paddingTop: spacing.lg,
   },
   section: {
     paddingTop: DASH_SECTION_BREAK,
