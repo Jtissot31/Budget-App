@@ -3,25 +3,61 @@ import { getCategoryIconName, isIconName, type IconName } from '@/constants/cate
 import { EXPENSE_DEFAULT_ICON, resolveExpenseFallbackIcon } from '@/lib/expenseIcon';
 import { getMerchantLogoUrls } from '@/lib/merchantLogo';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
+import {
+  isContactTransferTx,
+  parseExpediteurFromNote,
+} from '@/lib/accountTransactionFlow';
+import { useAppTheme } from '@/lib/themeContext';
 import type { Transaction } from '@/types';
+
+/** Material contact glyph for person-to-person transfers in transaction history. */
+export const CONTACT_TRANSFER_ICON: IconName = 'person-outline';
 
 type Props = {
   transaction: Transaction;
+  contactPhotoUri?: string | null;
   size?: number;
   iconSize?: number;
   style?: ViewStyle;
+  /** History rows: contact icon instead of photo for contact transfers. */
+  preferContactIcon?: boolean;
 };
 
-export function TransactionAvatar({ transaction, size = 38, iconSize, style }: Props) {
+export function isContactPersonTransferTx(
+  tx: Pick<Transaction, 'type' | 'note'>,
+): boolean {
+  return (
+    isContactTransferTx(tx) ||
+    (tx.type === 'income' && Boolean(parseExpediteurFromNote(tx.note)))
+  );
+}
+
+export function TransactionAvatar({
+  transaction,
+  contactPhotoUri,
+  size = 38,
+  iconSize,
+  style,
+  preferContactIcon = false,
+}: Props) {
+  const { colors } = useAppTheme();
   const fallbackIcon = getFallbackIcon(transaction);
+  const trimmedContactPhoto = contactPhotoUri?.trim() ?? '';
+  const showContactTransferIcon =
+    preferContactIcon && isContactPersonTransferTx(transaction);
+  const iconColor = transaction.type === 'income' ? colors.success : transaction.categoryColor;
 
   return (
     <UserPickedIconWell
-      icon={fallbackIcon}
-      color={transaction.categoryColor}
+      icon={showContactTransferIcon ? CONTACT_TRANSFER_ICON : fallbackIcon}
+      color={iconColor}
       size={size}
       iconSize={iconSize}
-      merchantLabel={transaction.label}
+      coverImageUri={showContactTransferIcon ? null : trimmedContactPhoto || null}
+      merchantLabel={
+        showContactTransferIcon || trimmedContactPhoto ? null : transaction.label
+      }
+      noBackground={!showContactTransferIcon}
       style={style}
     />
   );

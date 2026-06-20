@@ -19,18 +19,25 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
+import { PaymentMethodField, type PaymentMethodAccount } from '@/components/PaymentMethodField';
+import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { PageTransition } from '@/components/PageTransition';
-import { BankAccountCard } from '@/components/BankAccountCard';
+import { DashboardAccountBalanceCard } from '@/components/DashboardAccountBalanceCard';
+import { WealthAssetCard } from '@/components/WealthAssetCard';
+import { WealthMaterialIcon } from '@/components/WealthMaterialIcon';
 import { GlassContainer } from '@/components/GlassContainer';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import { formValidationError, type FormFeedback } from '@/lib/formFeedback';
 import { DatePickerField } from '@/components/MinimalDatePicker';
-import Svg, { Circle, Path } from 'react-native-svg';
 import { NetWorthAmountRow } from '@/components/NetWorthAmountRow';
-import { PortfolioChartCard, type NetWorthTrendPoint } from '@/components/PortfolioChartCard';
+import {
+  PortfolioChartCard,
+  type PortfolioChartCardHandle,
+  type PortfolioChartCardPeriodData,
+} from '@/components/PortfolioChartCard';
 import {
   FLOATING_SCROLL_ICON_SIZE,
   FLOATING_SCROLL_SIZE,
@@ -45,7 +52,6 @@ import {
   lightGhostCardShadow,
 } from '@/constants/ghostUi';
 import {
-  chartTokens,
   colors,
   FLOATING_NAV_CONTENT_PADDING,
   ICON_WELL_SIZE,
@@ -58,17 +64,27 @@ import {
   portfolioLight,
   PAGE_PADDING_HORIZONTAL,
   PORTFOLIO_SECTION_GAP,
+  accountDetailSectionDividerStyle,
   SECTION_TITLE_STYLE,
   PROGRESS_BAR_TRACK_HEIGHT,
   radius,
   spacing,
   typography,
+  chartTokens,
+  moneyAmountTypography,
   type AppColors,
+  typographyKit,
 } from '@/constants/theme';
+import {
+  buildCashflowTrendFromTransactions,
+  getCurrentCashflowTotal,
+} from '@/lib/buildCashflowTrendSeries';
 import { buildNetWorthTrendFromTransactions } from '@/lib/buildNetWorthTrendSeries';
 import {
   getCurrentMonthAccountMoneyFlows,
   deleteLoan,
+  ensureCashAccount,
+  getContacts,
   getLoans,
   getSavingsGoals,
   getSimulatedAccounts,
@@ -76,29 +92,39 @@ import {
   getWealthAssets,
   insertSimulatedAccount,
   updateSimulatedAccountPreferences,
+  upsertContactByName,
   upsertLoan,
   upsertWealthAsset,
 } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
-import {
-  creditLimitUtilizationBarColor,
-  creditUsedFromBalance,
-} from '@/lib/creditLimitUtilization';
+import { creditLimitUtilizationBarColor } from '@/lib/creditLimitUtilization';
 import { estimateWealthAssetValue } from '@/lib/assetValuation';
+import {
+  filterPatrimoineWealthAssets,
+  getPatrimoineLinkedMortgage,
+  getWealthAssetDisplayValue,
+  realEstateAssetName,
+  sumWealthAssetsDisplayValue,
+} from '@/lib/wealthAssetPresentation';
 import {
   capturePropertyPhoto,
   pickPropertyPhotoFromGallery,
   promptPropertyPhotoSource,
 } from '@/lib/propertyPhoto';
-import { computeMortgageEquity, MORTGAGE_DEFAULT_NAME, MORTGAGE_DEFAULT_REASON, syncMortgageWealthAsset } from '@/lib/mortgageWealthSync';
-import {
-  formatCompactCurrency,
-  formatCompactGainDollars,
-  formatCompactMoneyMagnitude,
-} from '@/lib/formatCompactGainDollars';
-import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
+import { MORTGAGE_DEFAULT_REASON, syncMortgageWealthAsset } from '@/lib/mortgageWealthSync';
+import { HeroChartDelta } from '@/components/HeroChartDelta';
+import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
+import { formatDisplayMoney, formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
+import { formatNumberInput, parseFormattedNumber, sanitizeNumericInput } from '@/lib/formatNumber';
 import { formatFriendlyDateLabel } from '@/lib/formatFriendlyDateLabel';
-import { dashboardPaymentAmount, rowLabel, rowTitleTextProps, rowValue, singleLineAmountProps } from '@/lib/textLayout';
+import {
+  dashboardPaymentAmount,
+  rowLabel,
+  rowTitleTextProps,
+  rowValue,
+  rowValueContainer,
+  singleLineAmountProps,
+} from '@/lib/textLayout';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
 import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
 import { MdiIconPicker } from '@/components/MdiIconPicker';
@@ -107,14 +133,36 @@ import { getAccountLogoUrl } from '@/lib/merchantLogo';
 import type { MdiIconName } from '@/lib/mdiIconCatalog';
 import { defaultLoanIcon, resolveLoanIcon } from '@/lib/loanIcons';
 import {
+  CHILD_SUPPORT_BENEFICIARY_HINT,
+  CHILD_SUPPORT_BENEFICIARY_LABEL,
+  CHILD_SUPPORT_BENEFICIARY_PLACEHOLDER,
   computeLoanRepaymentProgress,
+  formatChildSupportBeneficiaryDisplayName,
   formatLoanDisplayTitle,
+  formatLoanDebtAmount,
   formatLoanPaymentObligation,
+  loanBalanceLabel,
   loanProgressLabel,
   loanTypeBadgeLabel,
   resolveLoanReason,
 } from '@/lib/loanPresentation';
 import { shouldLoanSyncRecurringPayment, syncLoanRecurringPayment } from '@/lib/syncLoanRecurringPayment';
+import {
+  CHILD_SUPPORT_BENEFICIARY_RELATIONS,
+  CHILD_SUPPORT_PAYMENT_MODES,
+  CHILD_SUPPORT_PRIVATE_PROOF_REMINDER,
+  CHILD_SUPPORT_QUICK_PAYMENT_DAYS,
+  CHILD_SUPPORT_RECIPIENT_REVENU_QUEBEC,
+  computeNextChildSupportPaymentDate,
+  formatChildSupportBeneficiaryRelation,
+  formatChildSupportPaymentDay,
+  formatChildSupportPaymentDayLabel,
+  formatChildSupportPaymentAmount,
+  formatChildSupportRecipientLabel,
+  isChildSupportLoan,
+  parseChildSupportFromLoan,
+  resolveChildSupportBeneficiaryLabel,
+} from '@/lib/childSupportLoan';
 import { userPickedIconGlyphSize, userPickedIconWellStyle } from '@/lib/userPickedIcon';
 import {
   getNetWorthChartScope,
@@ -122,13 +170,24 @@ import {
   type NetWorthChartScope,
 } from '@/lib/settings';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
+import { normalizeSearch } from '@/lib/categoryInference';
+import {
+  buildContactDirectoryRows,
+  findContactByName,
+  resolveContactIdForName,
+  searchContactSuggestions,
+} from '@/lib/contactHistory';
 import { useAppTheme } from '@/lib/themeContext';
 import type { AccountMoneyFlow } from '@/lib/accountTransactionFlow';
 import type {
   AccountKind,
+  ChildSupportBeneficiaryRelation,
+  Contact,
   Loan,
   LoanDurationUnit,
+  LoanPaymentDebitType,
   LoanPaymentFrequency,
+  LoanRateType,
   LoanType,
   SavingsGoal,
   SimulatedAccount,
@@ -149,6 +208,7 @@ const ACCOUNT_TYPES: Array<{
   { id: 'credit', label: 'Crédit', icon: 'card-outline' },
   { id: 'checking', label: 'Compte chèque', icon: 'wallet-outline' },
   { id: 'savings', label: 'Épargne', icon: 'cash-outline' },
+  { id: 'cash', label: 'Argent Cash', icon: 'wallet-outline' },
 ];
 
 const INSTITUTION_LOGO_OPTIONS = [
@@ -192,11 +252,22 @@ const WEIGHT_UNIT_OPTIONS: Array<{ id: WealthWeightUnit; label: string }> = [
   { id: 'ct', label: 'carat' },
 ];
 
+const WEALTH_PROPERTY_TYPE_OPTIONS = [
+  'Maison',
+  'Condo',
+  'Duplex',
+  'Semi-détaché',
+  'Triplex',
+  'Studio',
+  'Immeuble à revenus',
+] as const;
+
 const LOAN_TYPE_OPTIONS: Array<{ id: LoanType; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
   { id: 'friend_debt', label: 'Dette à un particulier', icon: 'people-outline' },
   { id: 'personal_loan', label: 'Prêt personnel', icon: 'cash-outline' },
   { id: 'line_of_credit', label: 'Marge de crédit', icon: 'card-outline' },
   { id: 'mortgage', label: 'Hypothèque', icon: 'home-outline' },
+  { id: 'child_support', label: 'Pension alimentaire', icon: 'heart-outline' },
 ];
 
 type PickerOption<T extends string> = {
@@ -210,14 +281,23 @@ const ACCOUNT_TYPE_PICKER_OPTIONS: PickerOption<AccountKind>[] = [
   { id: 'credit', label: 'Carte de crédit', description: 'Limite, solde dû, institution', icon: 'card-outline' },
   { id: 'checking', label: 'Compte chèque', description: 'Solde et institution', icon: 'wallet-outline' },
   { id: 'savings', label: 'Épargne', description: 'Épargne et taux d’intérêt', icon: 'cash-outline' },
+  { id: 'cash', label: 'Argent Cash', description: 'Espèces, solde manuel', icon: 'wallet-outline' },
 ];
 
 const LOAN_TYPE_PICKER_OPTIONS: PickerOption<LoanType>[] = [
   { id: 'friend_debt', label: 'Dette à un particulier', description: 'Créancier, raison, montant, échéance', icon: 'people-outline' },
   { id: 'personal_loan', label: 'Prêt personnel', description: 'Raison, prêteur, solde, taux, mensualité', icon: 'cash-outline' },
   { id: 'line_of_credit', label: 'Marge de crédit', description: 'Raison, institution, limite, solde utilisé', icon: 'card-outline' },
-  { id: 'mortgage', label: 'Hypothèque', description: 'Raison, propriété, valeur, amortissement', icon: 'home-outline' },
+  { id: 'mortgage', label: 'Hypothèque', description: 'Mise de fonds, taux, paiements', icon: 'home-outline' },
+  { id: 'child_support', label: 'Pension alimentaire', description: 'Revenu Québec ou accord privé, montants et compte de paie', icon: 'heart-outline' },
 ];
+
+function loanFormHint(type: LoanType): string {
+  if (type === 'mortgage') return 'Hypothèque en dette, paiements planifiés.';
+  if (type === 'friend_debt') return 'Réduit ta valeur nette.';
+  if (type === 'child_support') return 'Obligation récurrente planifiée.';
+  return 'Solde en dette, paiements planifiés.';
+}
 
 const WEALTH_TYPE_PICKER_OPTIONS: PickerOption<WealthAssetType>[] = [
   { id: 'precious_material', label: 'Métaux précieux', description: 'Or, argent, platine, diamant', icon: 'diamond-outline' },
@@ -235,6 +315,23 @@ const LOAN_PAYMENT_FREQUENCIES: Array<{ id: LoanPaymentFrequency; label: string 
   { id: 'monthly', label: 'Mensuel' },
 ];
 
+const MORTGAGE_PAYMENT_FREQUENCIES: Array<{ id: LoanPaymentFrequency; label: string }> = [
+  { id: 'monthly', label: 'Mensuel' },
+  { id: 'biweekly', label: 'Aux 2 semaines' },
+];
+
+const LOAN_RATE_TYPES: Array<{ id: LoanRateType; label: string }> = [
+  { id: 'fixed', label: 'Fixe' },
+  { id: 'variable', label: 'Variable' },
+];
+
+const MORTGAGE_AMORTIZATION_YEARS = [15, 20, 25, 30] as const;
+
+const LOAN_PAYMENT_DEBIT_TYPES: Array<{ id: LoanPaymentDebitType; label: string }> = [
+  { id: 'automatic', label: 'Automatique' },
+  { id: 'manual', label: 'Manuel' },
+];
+
 /** Shared card/lower-section heights keep account cards visually equal. */
 const ACCOUNT_VISUAL_CARD_MIN_HEIGHT = 176;
 const ACCOUNT_VISUAL_LOWER_SECTION_MIN_HEIGHT = 88;
@@ -244,6 +341,8 @@ const ACCOUNT_CREDIT_PROGRESS_SECTION_HEIGHT = 44;
 
 const FLOATING_ACTION_THUMB_RAISE = FLOATING_SCROLL_SIZE;
 const FLOATING_ACTION_CLEARANCE = 136 + FLOATING_ACTION_THUMB_RAISE;
+/** Nudge the portfolio scroll FAB below the chart period row (incl. 1A). */
+const PORTFOLIO_SCROLL_FAB_PERIOD_CLEARANCE = 24;
 
 /** Portfolio scroll tail below Patrimoine: tab reserve + FAB breathing room (~legacy `FLOATING_ACTION_CLEARANCE`).
  * Compressed ~½ for short lists; grows with extra assets, capped toward legacy clearance for long lists. */
@@ -272,20 +371,17 @@ const PORTFOLIO_BLOCK_GAP = spacing.xl;
 const PORTFOLIO_BLOCK_BREAK = spacing.xxl + spacing.lg;
 const CHART_RED = chartTokens.negative;
 const LIGHT_PORTFOLIO_TEXT = portfolioLight.text;
-const DELTA_MINT = chartTokens.line;
-const LIGHT_DELTA_MINT = portfolioLight.chartCurve;
-const LIGHT_CHART_RED = '#CF222E';
-const DELTA_MINT_BG = 'rgba(0, 230, 118, 0.15)';
-const DELTA_MINT_BORDER = 'rgba(0, 230, 118, 0.28)';
-const LIGHT_DELTA_MINT_BG = portfolioLight.deltaBg;
-const LIGHT_DELTA_MINT_BORDER = portfolioLight.deltaBorder;
-const LIGHT_TREND_RED_BG = 'rgba(207, 34, 46, 0.1)';
 
-type PortfolioScrollTarget = 'balances' | 'wealth';
-type PortfolioScrollStage = 'top' | PortfolioScrollTarget;
+type PortfolioScrollTarget = 'balances' | 'wealth' | 'debts';
+type PortfolioScrollStage = 'top' | 'bottom' | PortfolioScrollTarget;
 type PortfolioSectionMetrics = Record<PortfolioScrollTarget, { y: number; height: number }>;
-/** Top alignment keeps section titles below the status bar; scroll Y subtracts safe-area top (see `getPortfolioScrollOffset`). */
-type PortfolioScrollOffsetMode = 'center' | 'top';
+type PortfolioScrollCycleAction = {
+  target: PortfolioScrollTarget | 'top' | 'bottom';
+  icon: 'chevron-down' | 'chevron-up';
+};
+/** Top alignment keeps section titles below the status bar; toggle anchors the secondary section tabs (see `getPortfolioScrollOffset`). */
+type PortfolioScrollOffsetMode = 'center' | 'top' | 'toggle';
+type PortfolioSectionToggleMetrics = { y: number; height: number };
 
 function formatMoney(value: number) {
   return formatDisplayMoneyAbsolute(value);
@@ -365,75 +461,12 @@ function formatSignedMoney(value: number) {
   return formatCompactCurrency(value);
 }
 
-function formatMonthlyNetWorthDelta(value: number) {
-  return `${formatCompactGainDollars(value, { leadingPlusWhenPositive: true })} ce mois-ci`;
-}
-
-function NetWorthDeltaBadge({ delta }: { delta: number }) {
-  const { colors, isLight } = useAppTheme();
-  const deltaPositive = delta >= 0;
-  const deltaTextColor = deltaPositive ? (isLight ? LIGHT_DELTA_MINT : DELTA_MINT) : isLight ? LIGHT_CHART_RED : CHART_RED;
-  const deltaBadgeBackground = deltaPositive
-    ? isLight
-      ? LIGHT_DELTA_MINT_BG
-      : DELTA_MINT_BG
-    : isLight
-      ? LIGHT_TREND_RED_BG
-      : colors.dangerMuted;
-  const deltaBadgeBorder = deltaPositive
-    ? isLight
-      ? LIGHT_DELTA_MINT_BORDER
-      : DELTA_MINT_BORDER
-    : isLight
-      ? 'rgba(185, 28, 28, 0.24)'
-      : colors.danger;
-
-  return (
-    <View
-      style={[
-        styles.deltaBadge,
-        {
-          backgroundColor: deltaBadgeBackground,
-          borderColor: deltaBadgeBorder,
-        },
-      ]}
-    >
-      <Text style={[styles.deltaBadgeText, { color: deltaTextColor }]}>
-        {deltaPositive ? '↗ ' : '↘ '}
-        {formatMonthlyNetWorthDelta(delta)}
-      </Text>
-    </View>
-  );
-}
 function PortfolioHeaderRow() {
   const { isLight } = useAppTheme();
   const titleColor = isLight ? LIGHT_PORTFOLIO_TEXT : portfolioDark.text;
-  const iconBg = isLight ? portfolioLight.iconButton : portfolioDark.iconButton;
-  const iconBorder = isLight ? portfolioLight.border : portfolioDark.border;
-  const iconColor = isLight ? LIGHT_PORTFOLIO_TEXT : portfolioDark.text;
 
   return (
-    <View style={styles.portfolioHeaderRow}>
-      <Text style={[styles.pageTitle, styles.pageTitleInHeader, { color: titleColor }]}>Portefeuille</Text>
-      <View style={styles.portfolioHeaderActions}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Rechercher"
-          onPress={() => tapHaptic()}
-          style={[styles.portfolioHeaderIconButton, { backgroundColor: iconBg, borderColor: iconBorder }]}
-        >
-          <Ionicons name="search-outline" size={20} color={iconColor} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Statistiques"
-          onPress={() => tapHaptic()}
-          style={[styles.portfolioHeaderIconButton, { backgroundColor: iconBg, borderColor: iconBorder }]}
-        >
-          <Ionicons name="bar-chart-outline" size={20} color={iconColor} />
-        </Pressable>
-      </View>
-    </View>
+    <Text style={[styles.pageTitle, styles.portfolioHeaderTitle, { color: titleColor }]}>Portefeuille</Text>
   );
 }
 
@@ -446,6 +479,7 @@ export default function AccountsScreen() {
   const insets = useSafeAreaInsets();
   const { colors, ghost, ghostCardShadow, isLight } = useAppTheme();
   const scrollRef = useRef<ScrollView>(null);
+  const portfolioChartRef = useRef<PortfolioChartCardHandle>(null);
   /** Skip one scroll-to-top after closing `wealth-asset-detail` (stack) opened from this tab. */
   const skipPortfolioScrollToTopOnceRef = useRef(false);
   const portfolioViewportHeightRef = useRef(0);
@@ -455,7 +489,11 @@ export default function AccountsScreen() {
   const portfolioSectionMetricsRef = useRef<PortfolioSectionMetrics>({
     balances: { y: 0, height: 0 },
     wealth: { y: 0, height: 0 },
+    debts: { y: 0, height: 0 },
   });
+  const portfolioSectionToggleMetricsRef = useRef<PortfolioSectionToggleMetrics>({ y: 0, height: 0 });
+  const pendingPortfolioSectionScrollRef = useRef<PortfolioScrollTarget | null>(null);
+  const scrollToPortfolioSectionRef = useRef<(target: PortfolioScrollTarget) => void>(() => {});
   const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [accountMonthlyFlows, setAccountMonthlyFlows] = useState<Record<string, AccountMoneyFlow>>({});
@@ -476,7 +514,6 @@ export default function AccountsScreen() {
   const [selectedInstitutionLogoId, setSelectedInstitutionLogoId] = useState<string | null>(null);
   const [showLogoPicker, setShowLogoPicker] = useState(false);
   const [portfolioScrollStage, setPortfolioScrollStage] = useState<PortfolioScrollStage>('top');
-  const [hasPortfolioScrolledDown, setHasPortfolioScrolledDown] = useState(false);
   const [wealthAssets, setWealthAssets] = useState<WealthAsset[]>([]);
   const [showWealthForm, setShowWealthForm] = useState(false);
   const [showWealthTypePicker, setShowWealthTypePicker] = useState(false);
@@ -504,6 +541,9 @@ export default function AccountsScreen() {
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
   const [loanType, setLoanType] = useState<LoanType>('personal_loan');
   const [loanReason, setLoanReason] = useState('');
+  const [savedContacts, setSavedContacts] = useState<Contact[]>([]);
+  const [loanBeneficiaryContactId, setLoanBeneficiaryContactId] = useState<string | null>(null);
+  const [creatingLoanBeneficiaryContact, setCreatingLoanBeneficiaryContact] = useState(false);
   const [loanAddress, setLoanAddress] = useState('');
   const [loanDownPayment, setLoanDownPayment] = useState('');
   const [loanPurchasePrice, setLoanPurchasePrice] = useState('');
@@ -519,19 +559,49 @@ export default function AccountsScreen() {
   const [loanPaymentFrequency, setLoanPaymentFrequency] = useState<LoanPaymentFrequency>('monthly');
   const [loanPaymentAccountId, setLoanPaymentAccountId] = useState('');
   const [loanNextPaymentDate, setLoanNextPaymentDate] = useState('');
+  const [loanRateType, setLoanRateType] = useState<LoanRateType>('fixed');
+  const [loanRateTermYears, setLoanRateTermYears] = useState('5');
+  const [loanRenewalDate, setLoanRenewalDate] = useState('');
+  const [loanAmortizationYears, setLoanAmortizationYears] = useState('25');
+  const [loanPaymentDebitType, setLoanPaymentDebitType] = useState<LoanPaymentDebitType>('automatic');
+  const [loanBeneficiaryRelation, setLoanBeneficiaryRelation] = useState<ChildSupportBeneficiaryRelation | null>(null);
   const [loanIcon, setLoanIcon] = useState<MdiIconName>(defaultLoanIcon('personal_loan'));
   const [showLoanIconPicker, setShowLoanIconPicker] = useState(false);
   const [confirmLoanDeleteVisible, setConfirmLoanDeleteVisible] = useState(false);
   const [pendingLoanDeleteId, setPendingLoanDeleteId] = useState<string | null>(null);
+  const [chartPeriodData, setChartPeriodData] = useState<PortfolioChartCardPeriodData | null>(null);
+  const handleChartPeriodData = useCallback((data: PortfolioChartCardPeriodData) => {
+    setChartPeriodData((prev) => {
+      if (
+        prev &&
+        prev.period === data.period &&
+        prev.currentValue === data.currentValue &&
+        prev.delta === data.delta &&
+        prev.deltaPercent === data.deltaPercent &&
+        prev.selectedIndex === data.selectedIndex &&
+        prev.selectedLabel === data.selectedLabel
+      ) {
+        return prev;
+      }
+      return data;
+    });
+  }, []);
+  const clearPortfolioChartSelection = useCallback(() => {
+    portfolioChartRef.current?.clearSelection();
+  }, []);
+  const [activeSection, setActiveSection] = useState<'accounts' | 'loans'>('accounts');
 
   const load = useCallback(async () => {
-    const [nextAccounts, nextSavingsGoals, nextWealthAssets, flows, nextLoans, nextTransactions] = await Promise.all([
+    await ensureCashAccount();
+    const [nextAccounts, nextSavingsGoals, nextWealthAssets, flows, nextLoans, nextTransactions, nextContacts] =
+      await Promise.all([
       getSimulatedAccounts(),
       getSavingsGoals(),
       getWealthAssets(),
       getCurrentMonthAccountMoneyFlows(),
       getLoans(),
       getTransactions(),
+      getContacts(),
     ]);
     setAccounts(nextAccounts);
     setSavingsGoals(nextSavingsGoals);
@@ -539,6 +609,7 @@ export default function AccountsScreen() {
     setAccountMonthlyFlows(flows);
     setLoans(nextLoans);
     setTransactions(nextTransactions);
+    setSavedContacts(nextContacts);
   }, []);
 
   useEffect(() => {
@@ -554,17 +625,23 @@ export default function AccountsScreen() {
   const handleNetWorthChartScopeChange = useCallback((scope: NetWorthChartScope) => {
     setNetWorthChartScopeState(scope);
     void setNetWorthChartScope(scope);
+    pendingPortfolioSectionScrollRef.current = null;
     clearPortfolioProgrammaticScroll();
     portfolioProgrammaticScrollStageRef.current = null;
     setPortfolioScrollState('top');
     scrollRef.current?.scrollTo({ y: 0, animated: true });
   }, []);
 
+  const handleWealthPropertyTypeChange = useCallback((value: string) => {
+    setWealthPropertyType(value);
+    setWealthName(value);
+  }, []);
+
   const populateWealthFromAsset = useCallback((asset: WealthAsset) => {
     setWealthEditingAsset(asset);
     setWealthType(asset.type);
-    setWealthName(asset.name);
     if (asset.type === 'precious_material') {
+      setWealthName(asset.name);
       if (asset.material) setWealthMaterial(asset.material);
       setWealthWeightUnit(asset.weightUnit ?? 'g');
       setWealthWeight(typeof asset.weight === 'number' ? String(asset.weight) : '');
@@ -576,7 +653,9 @@ export default function AccountsScreen() {
       );
       setWealthCurrentValue('');
     } else {
-      setWealthPropertyType(asset.propertyType ?? '');
+      const propertyType = asset.propertyType ?? '';
+      setWealthPropertyType(propertyType);
+      setWealthName(propertyType.trim() ? realEstateAssetName(propertyType) : asset.name);
       setWealthAddress(asset.address ?? '');
       setWealthCurrentValue(typeof asset.currentValue === 'number' ? String(asset.currentValue) : '');
       setWealthWeight('');
@@ -609,7 +688,6 @@ export default function AccountsScreen() {
       }
       portfolioProgrammaticScrollStageRef.current = null;
       setPortfolioScrollStage('top');
-      setHasPortfolioScrolledDown(false);
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     }, []),
     skipPortfolioScrollToTopOnceRef,
@@ -626,42 +704,36 @@ export default function AccountsScreen() {
   const totalBalance = useMemo(() => accounts.reduce((sum, a) => sum + a.balance, 0), [accounts]);
   const orderedAccounts = useMemo(() => sortAccountsForDisplay(accounts), [accounts]);
   const visibleAccounts = useMemo(() => orderedAccounts.filter((account) => !account.hidden), [orderedAccounts]);
-  const offAccountAssetsBalance = useMemo(
-    () => wealthAssets.reduce((sum, asset) => sum + Math.max(asset.currentValue, 0), 0),
+  const patrimoineWealthAssets = useMemo(
+    () => filterPatrimoineWealthAssets(wealthAssets),
     [wealthAssets],
   );
-  const loansTotalBalance = useMemo(
-    () => loans.reduce((sum, loan) => sum + Math.max(loan.balanceRemaining, 0), 0),
-    [loans],
-  );
-  const chartScopeBreakdown = useMemo(
-    () =>
-      computeNetWorthBreakdown(
-        netWorthChartScope,
-        accounts,
-        offAccountAssetsBalance,
-        loansTotalBalance,
-      ),
-    [netWorthChartScope, accounts, offAccountAssetsBalance, loansTotalBalance],
+  const loansById = useMemo(() => new Map(loans.map((loan) => [loan.id, loan])), [loans]);
+  const offAccountAssetsBalance = useMemo(
+    () => sumWealthAssetsDisplayValue(wealthAssets, loansById),
+    [wealthAssets, loansById],
   );
   const totalNetWorth = totalBalance + offAccountAssetsBalance;
-  const chartNetWorthTotal = netWorthChartScope === 'inclusive' ? totalNetWorth : totalBalance;
-  const netWorthTrend = useMemo(
+  const chartNetWorthTotal = totalNetWorth;
+  const chartCashflowTotal = useMemo(
+    () => getCurrentCashflowTotal(accounts, transactions),
+    [accounts, transactions],
+  );
+  const chartHeroFallbackTotal =
+    netWorthChartScope === 'inclusive' ? chartNetWorthTotal : chartCashflowTotal;
+  const portfolioChartPoints = useMemo(
     () =>
-      buildNetWorthTrendFromTransactions(
-        netWorthChartScope,
-        chartNetWorthTotal,
-        accounts,
-        offAccountAssetsBalance,
-        transactions,
-      ),
+      netWorthChartScope === 'inclusive'
+        ? buildNetWorthTrendFromTransactions(
+            'inclusive',
+            chartNetWorthTotal,
+            accounts,
+            offAccountAssetsBalance,
+            transactions,
+          )
+        : buildCashflowTrendFromTransactions(accounts, transactions),
     [netWorthChartScope, chartNetWorthTotal, accounts, offAccountAssetsBalance, transactions],
   );
-  const netWorthDelta = useMemo(() => {
-    const values = netWorthTrend.map((point) => point.value);
-    const previousMonthValue = values[Math.max(values.length - 2, 0)] ?? 0;
-    return values[values.length - 1] - previousMonthValue;
-  }, [netWorthTrend]);
   const logoSourceName = institution.trim() || name.trim();
   const selectedInstitutionLogo = useMemo(
     () => INSTITUTION_LOGO_OPTIONS.find((option) => option.id === selectedInstitutionLogoId) ?? null,
@@ -677,12 +749,6 @@ export default function AccountsScreen() {
     ),
     [loanDurationAmount, loanDurationUnit, loanStartDate, loanType],
   );
-  const computedMortgageEquity = useMemo(() => {
-    const currentValue = parseOptionalMoney(loanCurrentPropertyValue);
-    const balance = parseOptionalMoney(loanBalance);
-    if (typeof currentValue !== 'number' || typeof balance !== 'number') return null;
-    return computeMortgageEquity({ currentPropertyValue: currentValue, balanceRemaining: balance });
-  }, [loanBalance, loanCurrentPropertyValue]);
   const selectedLoanPaymentAccount = useMemo(
     () => accounts.find((account) => account.id === loanPaymentAccountId) ?? null,
     [accounts, loanPaymentAccountId],
@@ -712,6 +778,9 @@ export default function AccountsScreen() {
     setShowAccountTypePicker(false);
     resetForm();
     setKind(selectedKind);
+    if (selectedKind === 'cash') {
+      setName('Argent Cash');
+    }
     setShowForm(true);
   };
 
@@ -723,6 +792,53 @@ export default function AccountsScreen() {
 
   const showPortfolioFormError = (title: string, message: string) => {
     setFormFeedback(formValidationError(title, message));
+  };
+
+  const childSupportContactDirectoryRows = useMemo(
+    () => buildContactDirectoryRows(transactions, savedContacts),
+    [savedContacts, transactions],
+  );
+  const childSupportContactSuggestions = useMemo(() => {
+    if (loanType !== 'child_support') return [];
+    if (loanReason.trim().length < 3) return [];
+    return searchContactSuggestions(savedContacts, loanReason, 5, childSupportContactDirectoryRows);
+  }, [childSupportContactDirectoryRows, loanReason, loanType, savedContacts]);
+  const isKnownChildSupportContactName = useCallback(
+    (name: string) => {
+      const normalized = normalizeSearch(name);
+      if (!normalized) return false;
+      return childSupportContactDirectoryRows.some((row) => row.key === normalized);
+    },
+    [childSupportContactDirectoryRows],
+  );
+  const updateChildSupportBeneficiary = (value: string) => {
+    setLoanReason(value);
+    setLoanBeneficiaryContactId(findContactByName(savedContacts, value)?.id ?? null);
+  };
+  const selectChildSupportBeneficiary = (name: string) => {
+    tapHaptic();
+    setLoanReason(name);
+    setLoanBeneficiaryContactId(resolveContactIdForName(savedContacts, name));
+  };
+  const handleCreateLoanBeneficiaryContact = async () => {
+    const name = loanReason.trim();
+    if (!name || isKnownChildSupportContactName(name) || loanBeneficiaryContactId) return;
+
+    setCreatingLoanBeneficiaryContact(true);
+    try {
+      const contact = await upsertContactByName(name);
+      setSavedContacts((current) => {
+        const key = contact.normalizedName;
+        const without = current.filter((item) => item.normalizedName !== key);
+        return [...without, contact].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+      });
+      setLoanBeneficiaryContactId(contact.id);
+      successHaptic();
+    } catch {
+      showPortfolioFormError('Erreur', 'Impossible de créer ce contact.');
+    } finally {
+      setCreatingLoanBeneficiaryContact(false);
+    }
   };
 
   const openAccountDetail = (account: SimulatedAccount) => {
@@ -791,33 +907,102 @@ export default function AccountsScreen() {
   const handlePortfolioSectionLayout = (target: PortfolioScrollTarget, event: LayoutChangeEvent) => {
     const { height, y } = event.nativeEvent.layout;
     portfolioSectionMetricsRef.current[target] = { y, height };
+
+    if (pendingPortfolioSectionScrollRef.current && height > 0) {
+      const pendingTarget = pendingPortfolioSectionScrollRef.current;
+      const balancesReady = portfolioSectionMetricsRef.current.balances.height > 0;
+      const toggleReady = portfolioSectionToggleMetricsRef.current.height > 0;
+      const canScrollToToggle =
+        (pendingTarget === 'balances' || pendingTarget === 'debts') && balancesReady && toggleReady;
+      const canScrollToSection = pendingTarget === target;
+
+      if (canScrollToToggle || canScrollToSection) {
+        pendingPortfolioSectionScrollRef.current = null;
+        requestAnimationFrame(() => {
+          scrollToPortfolioSectionRef.current(pendingTarget);
+        });
+      }
+    }
   };
 
-  const getPortfolioScrollOffset = (target: PortfolioScrollTarget, mode: PortfolioScrollOffsetMode = 'center') => {
-    const section = portfolioSectionMetricsRef.current[target];
+  const handlePortfolioSectionToggleLayout = (event: LayoutChangeEvent) => {
+    const { height, y } = event.nativeEvent.layout;
+    portfolioSectionToggleMetricsRef.current = { y, height };
+
+    if (pendingPortfolioSectionScrollRef.current && height > 0) {
+      const pendingTarget = pendingPortfolioSectionScrollRef.current;
+      const balancesReady = portfolioSectionMetricsRef.current.balances.height > 0;
+
+      if ((pendingTarget === 'balances' || pendingTarget === 'debts') && balancesReady) {
+        pendingPortfolioSectionScrollRef.current = null;
+        requestAnimationFrame(() => {
+          scrollToPortfolioSectionRef.current(pendingTarget);
+        });
+      }
+    }
+  };
+
+  const clampPortfolioScrollOffset = (rawOffset: number) => {
     const viewportHeight = portfolioViewportHeightRef.current;
     const contentHeight = portfolioContentHeightRef.current;
-    // Sections are direct children of the scroll-content container, so onLayout `y` is already
-    // the absolute scroll offset.
-    const sectionY = section.y;
-    // Fall back to a reasonable section height when onLayout hasn't fired yet (e.g. first tap
-    // before AccountBalanceChart has measured), so the center formula stays sensible.
-    const sectionHeight = section.height > 0 ? section.height : 300;
-    // ScrollView aligns `y` with the raw viewport top (under the Android status bar). Offset by safe area +
-    // a small gutter so Patrimoine isn’t clipped; same value drives FAB stage threshold via `handleScroll`.
-    const rawOffset =
-      mode === 'top'
-        ? sectionY - insets.top - spacing.sm
-        : sectionY - (viewportHeight - sectionHeight) / 2;
     const maxOffset = viewportHeight > 0 && contentHeight > 0 ? Math.max(contentHeight - viewportHeight, 0) : undefined;
     const clampedOffset = Math.max(rawOffset, 0);
 
     return typeof maxOffset === 'number' ? Math.min(clampedOffset, maxOffset) : clampedOffset;
   };
 
+  const getPortfolioToggleScrollOffset = () => {
+    const balances = portfolioSectionMetricsRef.current.balances;
+    const toggle = portfolioSectionToggleMetricsRef.current;
+    const toggleAbsoluteY = toggle.height > 0 ? balances.y + toggle.y : balances.y;
+
+    return clampPortfolioScrollOffset(toggleAbsoluteY - insets.top - spacing.md);
+  };
+
+  const getPortfolioScrollOffset = (target: PortfolioScrollTarget, mode: PortfolioScrollOffsetMode = 'center') => {
+    const viewportHeight = portfolioViewportHeightRef.current;
+    let sectionY: number;
+    let sectionHeight: number;
+
+    if (target === 'debts') {
+      const balances = portfolioSectionMetricsRef.current.balances;
+      const debts = portfolioSectionMetricsRef.current.debts;
+      // Dettes is nested inside the balances container; combine offsets for scroll anchoring.
+      sectionY = balances.y + debts.y;
+      sectionHeight = debts.height > 0 ? debts.height : 200;
+    } else {
+      const section = portfolioSectionMetricsRef.current[target];
+      // Sections are direct children of the scroll-content container, so onLayout `y` is already
+      // the absolute scroll offset.
+      sectionY = section.y;
+      // Fall back to a reasonable section height when onLayout hasn't fired yet (e.g. first tap
+      // before AccountBalanceChart has measured), so the center formula stays sensible.
+      sectionHeight = section.height > 0 ? section.height : 300;
+    }
+    // ScrollView aligns `y` with the raw viewport top (under the Android status bar). Offset by safe area +
+    // a small gutter so Patrimoine isn’t clipped; same value drives FAB stage threshold via `handleScroll`.
+    if (mode === 'toggle' && (target === 'balances' || target === 'debts')) {
+      return getPortfolioToggleScrollOffset();
+    }
+
+    const rawOffset =
+      mode === 'top'
+        ? target === 'balances'
+          ? getPortfolioToggleScrollOffset()
+          : sectionY - insets.top - spacing.sm
+        : sectionY - (viewportHeight - sectionHeight) / 2;
+
+    return clampPortfolioScrollOffset(rawOffset);
+  };
+
+  const getPortfolioBottomScrollOffset = () => {
+    const viewportHeight = portfolioViewportHeightRef.current;
+    const contentHeight = portfolioContentHeightRef.current;
+    return viewportHeight > 0 && contentHeight > 0 ? Math.max(contentHeight - viewportHeight, 0) : 0;
+  };
+
   const setPortfolioScrollState = (stage: PortfolioScrollStage) => {
     setPortfolioScrollStage(stage);
-    setHasPortfolioScrolledDown(stage !== 'top');
   };
 
   const clearPortfolioProgrammaticScroll = () => {
@@ -863,9 +1048,25 @@ export default function AccountsScreen() {
       return;
     }
 
+    const bottomOffset = getPortfolioBottomScrollOffset();
+    const bottomThreshold = Math.max(bottomOffset - spacing.lg, spacing.xs);
+    if (bottomOffset > 0 && offsetY >= bottomThreshold) {
+      setPortfolioScrollState('bottom');
+      return;
+    }
+
+    const debtsOffset = getPortfolioScrollOffset('debts', 'top');
+    const debtsThreshold = Math.max(debtsOffset * 0.35, spacing.lg);
     const balancesOffset = getPortfolioScrollOffset('balances', 'top');
     const balancesThreshold = Math.max(balancesOffset * 0.35, spacing.lg);
-    setPortfolioScrollState(offsetY >= balancesThreshold ? 'balances' : 'top');
+
+    if (offsetY >= debtsThreshold) {
+      setPortfolioScrollState('debts');
+    } else if (offsetY >= balancesThreshold) {
+      setPortfolioScrollState('balances');
+    } else {
+      setPortfolioScrollState('top');
+    }
   };
 
   const scrollToPortfolioTop = () => {
@@ -874,23 +1075,90 @@ export default function AccountsScreen() {
     scrollRef.current?.scrollTo({ y: 0, animated: true });
   };
 
-  const scrollToPortfolioSection = (target: PortfolioScrollTarget) => {
+  const scrollToPortfolioBottom = () => {
     tapHaptic();
-    beginPortfolioProgrammaticScroll(target);
+    beginPortfolioProgrammaticScroll('bottom');
     scrollRef.current?.scrollTo({
-      y: getPortfolioScrollOffset(target, 'top'),
+      y: getPortfolioBottomScrollOffset(),
       animated: true,
     });
   };
 
-  const nextPortfolioScrollTarget: PortfolioScrollTarget | null =
+  const scrollToPortfolioSection = (target: PortfolioScrollTarget) => {
+    tapHaptic();
+    beginPortfolioProgrammaticScroll(target);
+    const offsetMode: PortfolioScrollOffsetMode =
+      target === 'wealth' ? 'top' : target === 'balances' || target === 'debts' ? 'toggle' : 'top';
+    scrollRef.current?.scrollTo({
+      y: getPortfolioScrollOffset(target, offsetMode),
+      animated: true,
+    });
+  };
+  scrollToPortfolioSectionRef.current = scrollToPortfolioSection;
+
+  const handleActiveSectionChange = useCallback(
+    (section: 'accounts' | 'loans') => {
+      if (section === activeSection) return;
+
+      setActiveSection(section);
+
+      if (netWorthChartScope !== 'accounts_only') return;
+
+      const target: PortfolioScrollTarget = section === 'accounts' ? 'balances' : 'debts';
+      const balancesReady = portfolioSectionMetricsRef.current.balances.height > 0;
+      const toggleReady = portfolioSectionToggleMetricsRef.current.height > 0;
+
+      if (!balancesReady || !toggleReady) {
+        pendingPortfolioSectionScrollRef.current = target;
+        return;
+      }
+
+      scrollToPortfolioSection(target);
+    },
+    [activeSection, netWorthChartScope],
+  );
+
+  const nextPortfolioScrollAction: PortfolioScrollCycleAction | null =
     netWorthChartScope === 'inclusive'
       ? portfolioScrollStage === 'top'
-        ? 'wealth'
-        : null
+        ? { target: 'wealth', icon: 'chevron-down' }
+        : portfolioScrollStage === 'wealth'
+          ? { target: 'top', icon: 'chevron-up' }
+          : null
       : portfolioScrollStage === 'top'
-        ? 'balances'
-        : null;
+        ? { target: 'balances', icon: 'chevron-down' }
+        : portfolioScrollStage === 'balances' || portfolioScrollStage === 'debts'
+          ? { target: 'bottom', icon: 'chevron-down' }
+          : portfolioScrollStage === 'bottom'
+            ? { target: 'top', icon: 'chevron-up' }
+            : null;
+
+  const handlePortfolioScrollCycle = () => {
+    if (!nextPortfolioScrollAction) return;
+
+    if (nextPortfolioScrollAction.target === 'top') {
+      scrollToPortfolioTop();
+      return;
+    }
+
+    if (nextPortfolioScrollAction.target === 'bottom') {
+      scrollToPortfolioBottom();
+      return;
+    }
+
+    scrollToPortfolioSection(nextPortfolioScrollAction.target);
+  };
+
+  const portfolioScrollAccessibilityLabel =
+    nextPortfolioScrollAction?.target === 'balances'
+      ? 'Centrer les soldes des comptes'
+      : nextPortfolioScrollAction?.target === 'wealth'
+        ? 'Centrer le patrimoine hors compte'
+        : nextPortfolioScrollAction?.target === 'debts'
+          ? 'Centrer la section Prêts et obligations'
+          : nextPortfolioScrollAction?.target === 'bottom'
+            ? 'Descendre tout en bas du portefeuille'
+            : 'Remonter tout en haut du portefeuille';
 
   const saveAccount = async () => {
     const parsedBalance = parseMoney(balance);
@@ -908,12 +1176,18 @@ export default function AccountsScreen() {
       name: name.trim(),
       kind,
       balance: kind === 'credit' ? -Math.abs(parsedBalance) : parsedBalance,
-      institution: selectedInstitutionLogo?.institution ?? (institution.trim() || undefined),
-      last4: kind === 'credit' ? (last4.trim() || editingAccount?.last4) : editingAccount?.last4,
+      institution:
+        kind === 'cash'
+          ? undefined
+          : selectedInstitutionLogo?.institution ?? (institution.trim() || undefined),
+      last4: kind === 'credit' ? (last4.trim() || editingAccount?.last4) : undefined,
       creditLimit: kind === 'credit' ? parseOptionalMoney(creditLimit) : undefined,
       dueDay: kind === 'credit' ? parseOptionalInt(dueDay) : undefined,
-      interestRate: kind !== 'checking' ? parseOptionalMoney(interestRate) : undefined,
-      logoUrl: selectedInstitutionLogo?.logoUrl ?? getAccountLogoUrl(logoSourceName) ?? undefined,
+      interestRate: kind === 'savings' ? parseOptionalMoney(interestRate) : undefined,
+      logoUrl:
+        kind === 'cash'
+          ? undefined
+          : selectedInstitutionLogo?.logoUrl ?? getAccountLogoUrl(logoSourceName) ?? undefined,
       linkedSavingsGoalId: editingAccount?.linkedSavingsGoalId ?? null,
       hidden: editingAccount?.hidden ?? false,
       displayOrder: editingAccount?.displayOrder ?? accounts.length,
@@ -1034,7 +1308,12 @@ export default function AccountsScreen() {
       const asset: WealthAsset = {
         id: wealthEditingAsset?.id ?? `wealth-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         type: wealthType,
-        name: wealthName.trim() || defaultWealthName(wealthType, wealthMaterial, wealthPropertyType),
+        name:
+          wealthType === 'real_estate'
+            ? wealthPropertyType.trim()
+              ? realEstateAssetName(wealthPropertyType)
+              : wealthName.trim() || 'Bien immobilier'
+            : wealthName.trim() || defaultWealthName(wealthType, wealthMaterial, wealthPropertyType),
         material: wealthType === 'precious_material' ? wealthMaterial : null,
         weight: wealthType === 'precious_material' ? weight : null,
         weightUnit: wealthType === 'precious_material' ? wealthWeightUnit : null,
@@ -1076,6 +1355,8 @@ export default function AccountsScreen() {
     setEditingLoan(null);
     setLoanType(type);
     setLoanReason(type === 'mortgage' ? MORTGAGE_DEFAULT_REASON : '');
+    setLoanBeneficiaryContactId(null);
+    setCreatingLoanBeneficiaryContact(false);
     setLoanAddress('');
     setLoanDownPayment('');
     setLoanPurchasePrice('');
@@ -1083,14 +1364,20 @@ export default function AccountsScreen() {
     setLoanLender('');
     setLoanPrincipal('');
     setLoanBalance('');
-    setLoanRate(type === 'friend_debt' ? '0' : '');
+    setLoanRate(type === 'friend_debt' || type === 'child_support' ? '0' : '');
     setLoanMonthlyPayment('');
     setLoanStartDate(today);
-    setLoanDurationAmount(type === 'mortgage' ? '25' : '12');
+    setLoanDurationAmount(type === 'child_support' ? '1' : type === 'mortgage' ? '25' : '12');
     setLoanDurationUnit(type === 'mortgage' ? 'years' : 'months');
     setLoanPaymentFrequency('monthly');
     setLoanPaymentAccountId(accounts[0]?.id ?? '');
     setLoanNextPaymentDate(today);
+    setLoanRateType('fixed');
+    setLoanRateTermYears('5');
+    setLoanRenewalDate('');
+    setLoanAmortizationYears('25');
+    setLoanPaymentDebitType(type === 'child_support' ? 'automatic' : 'automatic');
+    setLoanBeneficiaryRelation(null);
     setLoanIcon(defaultLoanIcon(type));
     setShowLoanIconPicker(false);
   };
@@ -1113,7 +1400,12 @@ export default function AccountsScreen() {
     setShowLoanTypePicker(false);
     setEditingLoan(loan);
     setLoanType(loan.type ?? 'personal_loan');
-    setLoanReason(loan.reason?.trim() || resolveLoanReason(loan));
+    const beneficiaryName = loan.reason?.trim() || resolveLoanReason(loan);
+    setLoanReason(beneficiaryName);
+    setLoanBeneficiaryContactId(
+      loan.type === 'child_support' ? resolveContactIdForName(savedContacts, beneficiaryName) : null,
+    );
+    setCreatingLoanBeneficiaryContact(false);
     setLoanAddress(loan.address?.trim() ?? '');
     setLoanDownPayment(typeof loan.downPayment === 'number' ? String(loan.downPayment) : '');
     setLoanPurchasePrice(typeof loan.purchasePrice === 'number' ? String(loan.purchasePrice) : '');
@@ -1127,7 +1419,10 @@ export default function AccountsScreen() {
     setLoanMonthlyPayment(String(loan.monthlyPayment));
     setLoanStartDate(loan.startDate || today);
     if ((loan.type ?? 'personal_loan') === 'mortgage') {
-      setLoanDurationAmount(String(loanDurationAmountInYears(loan.durationAmount || 25, loan.durationUnit ?? 'months')));
+      const amortYears = loan.amortizationYears
+        ?? loanDurationAmountInYears(loan.durationAmount || 25, loan.durationUnit ?? 'months');
+      setLoanAmortizationYears(String(amortYears));
+      setLoanDurationAmount(String(amortYears));
       setLoanDurationUnit('years');
     } else {
       setLoanDurationAmount(String(loan.durationAmount || 12));
@@ -1136,6 +1431,21 @@ export default function AccountsScreen() {
     setLoanPaymentFrequency(loan.paymentFrequency ?? 'monthly');
     setLoanPaymentAccountId(loan.paymentAccountId || accounts[0]?.id || '');
     setLoanNextPaymentDate(loan.nextPaymentDate || today);
+    setLoanRateType(loan.rateType ?? 'fixed');
+    setLoanRateTermYears(String(loan.rateTermYears ?? 5));
+    setLoanRenewalDate(loan.renewalDate?.trim() || '');
+    setLoanPaymentDebitType(loan.paymentDebitType ?? 'automatic');
+    if ((loan.type ?? 'personal_loan') === 'child_support') {
+      const fields = parseChildSupportFromLoan(loan);
+      setLoanPrincipal(String(fields.baseMonthly));
+      setLoanDownPayment(fields.specialFeesMonthly > 0 ? String(fields.specialFeesMonthly) : '');
+      setLoanDurationAmount(String(fields.paymentDay));
+      setLoanRenewalDate(fields.indexationDate ?? '');
+      setLoanPaymentDebitType(fields.paymentMode);
+      setLoanBeneficiaryRelation(fields.beneficiaryRelation);
+      setLoanBalance('0');
+      setLoanMonthlyPayment(String(fields.totalMonthly));
+    }
     setLoanIcon(resolveLoanIcon(loan));
     setShowLoanIconPicker(false);
     setShowLoanForm(true);
@@ -1166,28 +1476,44 @@ export default function AccountsScreen() {
     const isLineOfCredit = loanType === 'line_of_credit';
     const isMortgage = loanType === 'mortgage';
     const isPersonalLoan = loanType === 'personal_loan';
-    const requiresScheduling = isMortgage || Boolean(editingLoan);
+    const isChildSupport = loanType === 'child_support';
+    const requiresScheduling = isMortgage || isChildSupport || Boolean(editingLoan);
 
     let principal = parseMoney(loanPrincipal);
     let balanceRemaining = parseMoney(loanBalance);
-    const interestRate = isFriendDebt ? 0 : parseMoney(loanRate);
+    const interestRate = isFriendDebt || isChildSupport ? 0 : parseMoney(loanRate);
     const parsedMonthlyPayment = loanMonthlyPayment.trim() ? parseMoney(loanMonthlyPayment) : 0;
-    const monthlyPayment = Number.isNaN(parsedMonthlyPayment) ? 0 : parsedMonthlyPayment;
-    const durationAmount = Number.parseInt(loanDurationAmount, 10);
+    let monthlyPayment = Number.isNaN(parsedMonthlyPayment) ? 0 : parsedMonthlyPayment;
+    let durationAmount = Number.parseInt(loanDurationAmount, 10);
+    const mortgageRateTermYears = Number.parseInt(loanRateTermYears, 10);
+    const mortgageAmortizationYears = Number.parseInt(loanAmortizationYears, 10);
     const effectiveDurationUnit = effectiveLoanDurationUnit(loanType, loanDurationUnit);
     const startDate = loanStartDate.trim() || today;
-    const nextPaymentDate = loanNextPaymentDate.trim() || startDate;
+    let nextPaymentDate = loanNextPaymentDate.trim() || startDate;
     const paymentAccount = selectedLoanPaymentAccount;
-    const endDate = computeLoanEndDate(startDate, loanDurationAmount, effectiveDurationUnit) || startDate;
+    const renewalDate = loanRenewalDate.trim();
+    let childSupportSpecialFees = 0;
+    let endDate = isMortgage
+      ? (computeLoanEndDate(startDate, loanAmortizationYears, 'years') || startDate)
+      : isChildSupport
+        ? ''
+        : (computeLoanEndDate(startDate, loanDurationAmount, effectiveDurationUnit) || startDate);
 
     if (isMortgage) {
-      const currentPropertyValue = parseOptionalMoney(loanCurrentPropertyValue);
-      if (typeof currentPropertyValue !== 'number' || currentPropertyValue <= 0) {
-        showPortfolioFormError('Valeur actuelle requise', 'Entre la valeur actuelle de la propriété.');
+      if (!Number.isFinite(mortgageAmortizationYears) || mortgageAmortizationYears <= 0) {
+        showPortfolioFormError('Amortissement invalide', "Entre la durée d'amortissement en années.");
+        return;
+      }
+      if (!Number.isFinite(mortgageRateTermYears) || mortgageRateTermYears <= 0) {
+        showPortfolioFormError('Période du taux invalide', 'Entre la durée du taux (ex. 5 ans).');
+        return;
+      }
+      if (!renewalDate) {
+        showPortfolioFormError('Date de renouvellement requise', 'Choisis la date de renouvellement du taux.');
         return;
       }
     }
-    if (!isMortgage && !loanLender.trim()) {
+    if (!isMortgage && !isChildSupport && !loanLender.trim()) {
       showPortfolioFormError(
         isFriendDebt ? 'Créancier requis' : isLineOfCredit ? 'Institution requise' : 'Prêteur requis',
         isFriendDebt
@@ -1202,6 +1528,27 @@ export default function AccountsScreen() {
         return;
       }
       principal = balanceRemaining;
+    } else if (isChildSupport) {
+      childSupportSpecialFees = loanDownPayment.trim() ? parseMoney(loanDownPayment) : 0;
+      if (Number.isNaN(principal) || principal <= 0) {
+        showPortfolioFormError('Montant invalide', 'Entre le montant de base mensuel de la pension.');
+        return;
+      }
+      if (Number.isNaN(childSupportSpecialFees) || childSupportSpecialFees < 0) {
+        showPortfolioFormError('Frais invalides', 'Entre un montant valide pour les frais particuliers.');
+        return;
+      }
+      if (!Number.isFinite(durationAmount) || durationAmount < 1 || durationAmount > 31) {
+        showPortfolioFormError('Jour invalide', 'Choisis un jour de paiement entre 1 et 31.');
+        return;
+      }
+      if (loanPaymentDebitType === 'automatic' && !loanBeneficiaryRelation) {
+        showPortfolioFormError('Bénéficiaire requis', 'Indique si la pension est versée à la mère ou au père.');
+        return;
+      }
+      monthlyPayment = principal + childSupportSpecialFees;
+      balanceRemaining = 0;
+      nextPaymentDate = computeNextChildSupportPaymentDate(durationAmount);
     } else if (Number.isNaN(principal) || principal <= 0) {
       showPortfolioFormError(
         isMortgage ? 'Montant de l’emprunt invalide' : isLineOfCredit ? 'Limite invalide' : 'Montant initial invalide',
@@ -1209,78 +1556,134 @@ export default function AccountsScreen() {
       );
       return;
     }
-    if (!isFriendDebt && (Number.isNaN(balanceRemaining) || balanceRemaining < 0)) {
+    if (!isFriendDebt && !isChildSupport && (Number.isNaN(balanceRemaining) || balanceRemaining < 0)) {
       showPortfolioFormError(
         isLineOfCredit ? 'Solde utilisé invalide' : 'Solde restant invalide',
         isLineOfCredit ? 'Entre le solde utilisé sur la marge.' : 'Entre le solde restant à rembourser.',
       );
       return;
     }
-    if (!isFriendDebt && (Number.isNaN(interestRate) || interestRate < 0)) {
+    if (!isFriendDebt && !isChildSupport && (Number.isNaN(interestRate) || interestRate < 0)) {
       showPortfolioFormError('Taux invalide', 'Entre le taux d\'intérêt en %.');
       return;
     }
-    if ((isPersonalLoan || isMortgage) && (Number.isNaN(monthlyPayment) || monthlyPayment <= 0)) {
-      showPortfolioFormError('Paiement invalide', 'Entre le montant du paiement mensuel.');
+    if ((isPersonalLoan || isMortgage || isChildSupport) && (Number.isNaN(monthlyPayment) || monthlyPayment <= 0)) {
+      showPortfolioFormError(
+        'Paiement invalide',
+        isChildSupport
+          ? 'Entre le montant de base mensuel de la pension.'
+          : isMortgage
+            ? 'Entre le montant du paiement.'
+            : 'Entre le montant du paiement mensuel.',
+      );
+      return;
+    }
+    if (isPersonalLoan && !loanNextPaymentDate.trim()) {
+      showPortfolioFormError('Prochain paiement requis', 'Choisis la date du prochain paiement.');
       return;
     }
     if (requiresScheduling) {
-      if (!Number.isFinite(durationAmount) || durationAmount <= 0) {
-        showPortfolioFormError(
-          isMortgage ? 'Amortissement invalide' : 'Durée invalide',
-          isMortgage ? "Entre l'amortissement restant en années." : 'Entre une durée positive en mois ou en années.',
-        );
+      if (!isMortgage && !isChildSupport && (!Number.isFinite(durationAmount) || durationAmount <= 0)) {
+        showPortfolioFormError('Durée invalide', 'Entre une durée positive en mois ou en années.');
         return;
       }
       if (!paymentAccount) {
         showPortfolioFormError('Compte requis', 'Choisis le compte qui fera les paiements.');
         return;
       }
-      if (!nextPaymentDate) {
+      if (!isChildSupport && !nextPaymentDate) {
         showPortfolioFormError('Prochain paiement requis', 'Choisis la date du prochain paiement.');
         return;
       }
-      if (nextPaymentDate > endDate) {
+      if (endDate && nextPaymentDate > endDate) {
         showPortfolioFormError('Date invalide', 'Le prochain paiement doit arriver avant la fin calculée.');
         return;
       }
     }
 
     const loanId = editingLoan?.id ?? `loan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const shouldSyncRecurring = shouldLoanSyncRecurringPayment(monthlyPayment, nextPaymentDate, paymentAccount);
+    const childSupportReason = isChildSupport
+      ? loanPaymentDebitType === 'automatic'
+        ? formatChildSupportBeneficiaryRelation(loanBeneficiaryRelation) ?? ''
+        : loanReason.trim()
+      : '';
+    const childSupportLender = isChildSupport
+      ? loanPaymentDebitType === 'automatic'
+        ? CHILD_SUPPORT_RECIPIENT_REVENU_QUEBEC
+        : ''
+      : loanLender.trim();
+    const draftLoanForSync: Loan = {
+      id: loanId,
+      type: loanType,
+      name: '',
+      reason: isChildSupport ? childSupportReason || null : null,
+      lender: childSupportLender,
+      principal,
+      balanceRemaining,
+      interestRate,
+      paymentDebitType: isChildSupport ? loanPaymentDebitType : null,
+      beneficiaryRelation: isChildSupport && loanPaymentDebitType === 'automatic' ? loanBeneficiaryRelation : null,
+      monthlyPayment,
+      paymentAccountId: paymentAccount?.id ?? '',
+      nextPaymentDate,
+      paymentFrequency: isChildSupport ? 'monthly' : loanPaymentFrequency,
+      createdAt: editingLoan?.createdAt ?? new Date().toISOString(),
+    } as Loan;
+    const shouldSyncRecurring = shouldLoanSyncRecurringPayment(
+      monthlyPayment,
+      nextPaymentDate,
+      paymentAccount,
+      draftLoanForSync,
+    );
     const recurringPaymentId = shouldSyncRecurring
       ? (editingLoan?.recurringPaymentId ?? `${loanId}-payment`)
       : null;
     const reasonValue = isMortgage
       ? (loanReason.trim() || MORTGAGE_DEFAULT_REASON)
-      : loanReason.trim() || null;
+      : isChildSupport
+        ? childSupportReason || null
+        : loanReason.trim() || null;
     const loanNameValue = formatLoanDisplayTitle({
       type: loanType,
       reason: reasonValue,
       name: '',
-      lender: loanLender.trim(),
+      lender: childSupportLender,
     });
     let loan: Loan = {
       id: loanId,
       type: loanType,
       name: loanNameValue,
       reason: reasonValue,
-      lender: loanLender.trim(),
+      lender: childSupportLender,
       principal,
       balanceRemaining,
       interestRate,
+      rateType: isMortgage ? loanRateType : null,
+      rateTermYears: isMortgage && Number.isFinite(mortgageRateTermYears) ? mortgageRateTermYears : null,
+      renewalDate: isMortgage || isChildSupport ? renewalDate || null : null,
+      amortizationYears: isMortgage && Number.isFinite(mortgageAmortizationYears) ? mortgageAmortizationYears : null,
+      paymentDebitType: isMortgage || isChildSupport ? loanPaymentDebitType : null,
+      beneficiaryRelation: isChildSupport && loanPaymentDebitType === 'automatic' ? loanBeneficiaryRelation : null,
       monthlyPayment,
       startDate,
       endDate,
-      durationAmount: Number.isFinite(durationAmount) && durationAmount > 0 ? durationAmount : 12,
-      durationUnit: effectiveDurationUnit,
-      paymentFrequency: loanPaymentFrequency,
+      durationAmount: isMortgage
+        ? (Number.isFinite(mortgageAmortizationYears) && mortgageAmortizationYears > 0 ? mortgageAmortizationYears : 25)
+        : isChildSupport
+          ? durationAmount
+          : (Number.isFinite(durationAmount) && durationAmount > 0 ? durationAmount : 12),
+      durationUnit: isMortgage ? 'years' : effectiveDurationUnit,
+      paymentFrequency: isChildSupport ? 'monthly' : loanPaymentFrequency,
       paymentAccountId: paymentAccount?.id ?? '',
       nextPaymentDate,
       recurringPaymentId,
       icon: loanIcon,
-      address: isMortgage ? loanAddress.trim() || null : null,
-      downPayment: isMortgage ? parseOptionalMoney(loanDownPayment) : null,
+      address: isMortgage ? (loanAddress.trim() || editingLoan?.address?.trim() || null) : null,
+      downPayment: isMortgage
+        ? parseOptionalMoney(loanDownPayment)
+        : isChildSupport
+          ? childSupportSpecialFees
+          : null,
       purchasePrice: isMortgage ? parseOptionalMoney(loanPurchasePrice) : null,
       currentPropertyValue: isMortgage ? parseOptionalMoney(loanCurrentPropertyValue) : null,
       friendDebtMode: editingLoan?.friendDebtMode ?? null,
@@ -1305,8 +1708,8 @@ export default function AccountsScreen() {
   };
 
   const portfolioBottomPadding = useMemo(
-    () => portfolioScrollBottomPadding(insets.bottom, wealthAssets.length),
-    [insets.bottom, wealthAssets.length],
+    () => portfolioScrollBottomPadding(insets.bottom, patrimoineWealthAssets.length),
+    [insets.bottom, patrimoineWealthAssets.length],
   );
 
   return (
@@ -1342,7 +1745,12 @@ export default function AccountsScreen() {
           />
         }
       >
-        <View style={styles.portfolioHeroBlock}>
+        <Pressable
+          onPress={clearPortfolioChartSelection}
+          style={styles.portfolioHeroBlock}
+          accessibilityRole="none"
+          accessibilityLabel="Effacer la sélection du graphique"
+        >
           <PortfolioHeaderRow />
           <View style={styles.portfolioScopeWrap}>
             <SegmentedTabs
@@ -1355,41 +1763,65 @@ export default function AccountsScreen() {
               showDivider={false}
             />
           </View>
-          <DashboardSectionLabel style={styles.heroEyebrow}>VALEUR NETTE</DashboardSectionLabel>
-          <NetWorthAmountRow totalBalance={chartNetWorthTotal} />
-          <NetWorthDeltaBadge delta={netWorthDelta} />
-        </View>
-        <View style={styles.chartSectionWrap}>
+          <DashboardSectionLabel style={styles.heroEyebrow}>
+            {netWorthChartScope === 'inclusive' ? 'VALEUR NETTE' : 'FLUX DE TRÉSORERIE'}
+          </DashboardSectionLabel>
+          <NetWorthAmountRow totalBalance={chartPeriodData?.currentValue ?? chartHeroFallbackTotal} />
+          <HeroChartDelta periodData={chartPeriodData} />
+        </Pressable>
+        <Pressable
+          onPress={clearPortfolioChartSelection}
+          style={styles.chartSectionWrap}
+          accessibilityRole="none"
+          accessibilityLabel="Effacer la sélection du graphique"
+        >
           <PortfolioChartCard
-            points={netWorthTrend}
-            totalAssets={chartScopeBreakdown.totalAssets}
-            totalDebts={chartScopeBreakdown.totalDebts}
+            ref={portfolioChartRef}
+            points={portfolioChartPoints}
+            onPeriodData={handleChartPeriodData}
           />
-        </View>
+        </Pressable>
+        <View style={[styles.chartToBalancesDivider, accountDetailSectionDividerStyle(isLight)]} />
         {netWorthChartScope === 'accounts_only' ? (
           <View
             onLayout={(event) => handlePortfolioSectionLayout('balances', event)}
             style={[styles.accountPortfolioSection, { paddingBottom: portfolioBottomPadding }]}
           >
-            <AccountBalanceChart
-              accounts={visibleAccounts}
-              onAccountPress={openAccountDetail}
-              onAddAccount={openNewAccountForm}
-              onManageAccounts={openAccountManager}
-            />
-            <LoansSection
-              loans={loans}
-              onAdd={openNewLoanForm}
-              onOpen={openLoanDetail}
-            />
+            <View style={styles.sectionToggleWrap} onLayout={handlePortfolioSectionToggleLayout}>
+              <SegmentedTabs
+                tabs={[
+                  { id: 'accounts', label: 'Solde des comptes' },
+                  { id: 'loans', label: 'Prêts et obligations' },
+                ]}
+                active={activeSection}
+                onChange={handleActiveSectionChange}
+                showDivider={false}
+                variant="section"
+                size="section"
+              />
+            </View>
+            {activeSection === 'accounts' ? (
+              <AccountBalanceChart
+                accounts={visibleAccounts}
+                onAccountPress={openAccountDetail}
+                onAddAccount={openNewAccountForm}
+                onManageAccounts={openAccountManager}
+              />
+            ) : (
+              <LoansSection
+                loans={loans}
+                onAdd={openNewLoanForm}
+                onOpen={openLoanDetail}
+                onSectionLayout={(event) => handlePortfolioSectionLayout('debts', event)}
+              />
+            )}
           </View>
         ) : (
           <View
             onLayout={(event) => handlePortfolioSectionLayout('wealth', event)}
             style={[
               styles.wealthPortfolioSection,
-              styles.wealthPortfolioSectionUnderChart,
-              { paddingBottom: portfolioBottomPadding },
+              { paddingHorizontal: PAGE_PADDING_HORIZONTAL, paddingBottom: portfolioBottomPadding },
             ]}
           >
             <View style={styles.balanceChartHeader}>
@@ -1397,7 +1829,7 @@ export default function AccountsScreen() {
                 <DashboardSectionLabel>Actifs hors compte</DashboardSectionLabel>
                 <Text style={[styles.balanceChartTitle, { color: colors.text }]}>Patrimoine</Text>
               </View>
-              {wealthAssets.length > 0 && (
+              {patrimoineWealthAssets.length > 0 && (
                 <View
                   style={[
                     styles.wealthToggleBadge,
@@ -1405,14 +1837,15 @@ export default function AccountsScreen() {
                   ]}
                 >
                   <Text style={[styles.wealthToggleBadgeLabel, { color: colors.textSecondary }]}>
-                    {wealthAssets.length}
+                    {patrimoineWealthAssets.length}
                   </Text>
                 </View>
               )}
             </View>
 
             <WealthAssetsSection
-              assets={wealthAssets}
+              assets={patrimoineWealthAssets}
+              loansById={loansById}
               onAdd={openNewWealthForm}
               onOpenAsset={(asset) => {
                 tapHaptic();
@@ -1431,41 +1864,32 @@ export default function AccountsScreen() {
           {
             right: spacing.lg,
             bottom: Math.max(
-              insets.bottom + FLOATING_NAV_CONTENT_PADDING + 88 + FLOATING_ACTION_THUMB_RAISE,
-              132 + FLOATING_ACTION_THUMB_RAISE,
+              insets.bottom +
+                FLOATING_NAV_CONTENT_PADDING +
+                88 +
+                FLOATING_ACTION_THUMB_RAISE -
+                PORTFOLIO_SCROLL_FAB_PERIOD_CLEARANCE,
+              132 + FLOATING_ACTION_THUMB_RAISE - PORTFOLIO_SCROLL_FAB_PERIOD_CLEARANCE,
             ),
           },
         ]}
       >
-        {hasPortfolioScrolledDown ? (
+        {nextPortfolioScrollAction ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Remonter tout en haut du portefeuille"
+            accessibilityLabel={portfolioScrollAccessibilityLabel}
             style={({ pressed }) => [
               floatingGlassScrollSurface(colors, isLight),
               ghostCardShadow,
               pressed && floatingGlassButtonPressed,
             ]}
-            onPress={scrollToPortfolioTop}
+            onPress={handlePortfolioScrollCycle}
           >
-            <Ionicons name="chevron-up" size={FLOATING_SCROLL_ICON_SIZE} color={colors.text} />
-          </Pressable>
-        ) : null}
-
-        {nextPortfolioScrollTarget ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={
-              nextPortfolioScrollTarget === 'balances' ? 'Centrer les soldes des comptes' : 'Centrer le patrimoine hors compte'
-            }
-            style={({ pressed }) => [
-              floatingGlassScrollSurface(colors, isLight),
-              ghostCardShadow,
-              pressed && floatingGlassButtonPressed,
-            ]}
-            onPress={() => scrollToPortfolioSection(nextPortfolioScrollTarget)}
-          >
-            <Ionicons name="chevron-down" size={FLOATING_SCROLL_ICON_SIZE} color={colors.text} />
+            <Ionicons
+              name={nextPortfolioScrollAction.icon}
+              size={FLOATING_SCROLL_ICON_SIZE}
+              color={colors.text}
+            />
           </Pressable>
         ) : null}
       </View>
@@ -1599,8 +2023,7 @@ export default function AccountsScreen() {
 
       <PortfolioTypePickerSheet
         visible={showLoanTypePicker}
-        title="Ajouter une dette"
-        subtitle="Choisis le type de dette ou de prêt."
+        title="Ajouter une obligation"
         options={LOAN_TYPE_PICKER_OPTIONS}
         onClose={() => setShowLoanTypePicker(false)}
         onSelect={handleLoanTypeSelect}
@@ -1620,41 +2043,56 @@ export default function AccountsScreen() {
         title={accountFormTitle(kind, Boolean(editingAccount))}
         onClose={closeForm}
       >
-          <View style={styles.formHead}>
-            <View style={styles.logoPreviewWrap}>
-              {previewLogo ? (
-                <LogoIconFrame uri={previewLogo} size={52} />
-              ) : (
+          {kind === 'cash' ? (
+            <View style={styles.formHead}>
+              <View style={styles.logoPreviewWrap}>
                 <IconFrame size={52}>
-                  <Ionicons name="business-outline" size={22} color={colors.textMuted} />
+                  <Ionicons name="wallet-outline" size={22} color={colors.primary} />
                 </IconFrame>
-              )}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Modifier le logo"
-                style={({ pressed }) => [
-                  styles.logoEditButton,
-                  { backgroundColor: colors.primary, borderColor: colors.surfaceSolid, shadowColor: colors.primary },
-                  pressed && styles.pressed,
-                ]}
-                onPress={() => {
-                  tapHaptic();
-                  setShowLogoPicker((visible) => !visible);
-                }}
-              >
-                <Ionicons name="pencil-outline" size={15} color={isLight ? colors.text : ghost.void} />
-              </Pressable>
+              </View>
+              <View style={styles.formHeadCopy}>
+                <Text style={[styles.formHint, formThemed.textMuted]}>
+                  Solde manuel — pas de synchronisation bancaire.
+                </Text>
+              </View>
             </View>
-            <View style={styles.formHeadCopy}>
-              <Text style={[styles.formHint, formThemed.textMuted]}>
-                {selectedInstitutionLogo
-                  ? 'Logo manuel sélectionné.'
-                  : 'Le logo se déduit du nom. Exemple : Visa Desjardins -> Desjardins.'}
-              </Text>
+          ) : (
+            <View style={styles.formHead}>
+              <View style={styles.logoPreviewWrap}>
+                {previewLogo ? (
+                  <LogoIconFrame uri={previewLogo} size={52} />
+                ) : (
+                  <IconFrame size={52}>
+                    <Ionicons name="business-outline" size={22} color={colors.textMuted} />
+                  </IconFrame>
+                )}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Modifier le logo"
+                  style={({ pressed }) => [
+                    styles.logoEditButton,
+                    { backgroundColor: colors.primary, borderColor: colors.surfaceSolid, shadowColor: colors.primary },
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={() => {
+                    tapHaptic();
+                    setShowLogoPicker((visible) => !visible);
+                  }}
+                >
+                  <Ionicons name="pencil-outline" size={15} color={isLight ? colors.text : ghost.void} />
+                </Pressable>
+              </View>
+              <View style={styles.formHeadCopy}>
+                <Text style={[styles.formHint, formThemed.textMuted]}>
+                  {selectedInstitutionLogo
+                    ? 'Logo manuel sélectionné.'
+                    : 'Le logo se déduit du nom. Exemple : Visa Desjardins -> Desjardins.'}
+                </Text>
+              </View>
             </View>
-          </View>
+          )}
 
-          {showLogoPicker ? (
+          {kind !== 'cash' && showLogoPicker ? (
             <View style={styles.logoPickerGroup}>
               <View style={styles.logoPickerTitleRow}>
                 <Text style={[styles.label, { color: colors.textMuted }]}>Logo</Text>
@@ -1728,6 +2166,9 @@ export default function AccountsScreen() {
                       onPress={() => {
                         tapHaptic();
                         setKind(t.id);
+                        if (t.id === 'cash' && !name.trim()) {
+                          setName('Argent Cash');
+                        }
                       }}
                       style={[
                         styles.typeChip,
@@ -1753,19 +2194,27 @@ export default function AccountsScreen() {
             label="Nom du compte"
             value={name}
             onChangeText={setName}
-            placeholder={kind === 'credit' ? 'Visa Desjardins' : 'Tangerine chèque'}
+            placeholder={
+              kind === 'credit'
+                ? 'Visa Desjardins'
+                : kind === 'cash'
+                  ? 'Argent Cash'
+                  : 'Tangerine chèque'
+            }
           />
-          <AccountInput
-            label="Institution"
-            value={institution}
-            onChangeText={setInstitution}
-            placeholder="Desjardins, Tangerine, BMO…"
-          />
+          {kind !== 'cash' ? (
+            <AccountInput
+              label="Institution"
+              value={institution}
+              onChangeText={setInstitution}
+              placeholder="Desjardins, Tangerine, BMO…"
+            />
+          ) : null}
           <AccountInput
             label={kind === 'credit' ? 'Solde dû actuel' : 'Solde actuel'}
             value={balance}
             onChangeText={setBalance}
-            placeholder={kind === 'credit' ? '580.42' : '3240.50'}
+            placeholder={kind === 'credit' ? '580.42' : kind === 'cash' ? '120.00' : '3240.50'}
             keyboardType="decimal-pad"
             suffix="$"
           />
@@ -1836,13 +2285,17 @@ export default function AccountsScreen() {
         onClose={closeWealthForm}
       >
               <View style={styles.wealthFormHero}>
-                <View style={[styles.wealthFormIcon, formThemed.control]}>
-                  {wealthType === 'precious_material' ? (
-                    <MaterialIcon material={wealthMaterial} size={34} />
-                  ) : (
-                    <Ionicons name="home-outline" size={26} color={colors.primary} />
-                  )}
-                </View>
+                {wealthType === 'precious_material' && wealthMaterial === 'silver' ? (
+                  <WealthMaterialIcon material={wealthMaterial} size={34} />
+                ) : (
+                  <View style={[styles.wealthFormIcon, formThemed.control]}>
+                    {wealthType === 'precious_material' ? (
+                      <WealthMaterialIcon material={wealthMaterial} size={34} />
+                    ) : (
+                      <Ionicons name="home-outline" size={26} color={colors.primary} />
+                    )}
+                  </View>
+                )}
                 <Text style={[styles.formHint, formThemed.textMuted]}>
                   {wealthType === 'precious_material'
                     ? 'Les métaux tentent une actualisation en ligne sans clé API. Si le réseau échoue, une estimation locale est utilisée.'
@@ -1900,7 +2353,7 @@ export default function AccountsScreen() {
                             selected ? formThemed.selected : formThemed.control,
                           ]}
                         >
-                          <MaterialIcon material={option.id} size={30} />
+                          <WealthMaterialIcon material={option.id} size={30} />
                           <Text style={[styles.logoOptionText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
                             {option.label}
                           </Text>
@@ -1984,8 +2437,13 @@ export default function AccountsScreen() {
                 <>
                   {!wealthEditingAsset ? (
                     <>
+                      <WealthPropertyTypeSelector
+                        value={wealthPropertyType}
+                        onChange={handleWealthPropertyTypeChange}
+                        formThemed={formThemed}
+                      />
                       <AccountInput
-                        label="Prix payé"
+                        label="Coût d’achat"
                         value={wealthPurchaseCost}
                         onChangeText={setWealthPurchaseCost}
                         placeholder="350000"
@@ -2007,6 +2465,16 @@ export default function AccountsScreen() {
                         keyboardType="decimal-pad"
                         suffix="$"
                       />
+                      {wealthEditingAsset?.linkedLoanId?.trim() ? (
+                        <WealthRealEstateEquityHint
+                          asset={wealthEditingAsset}
+                          currentValueInput={wealthCurrentValue}
+                          linkedLoan={
+                            loans.find((loan) => loan.id === wealthEditingAsset.linkedLoanId?.trim()) ?? null
+                          }
+                          formThemed={formThemed}
+                        />
+                      ) : null}
                       <PropertyPhotoField
                         photoUri={wealthPhotoUri}
                         onPick={() => {
@@ -2032,11 +2500,25 @@ export default function AccountsScreen() {
                     </>
                   ) : (
                     <>
+                      <WealthPropertyTypeSelector
+                        value={wealthPropertyType}
+                        onChange={handleWealthPropertyTypeChange}
+                        formThemed={formThemed}
+                      />
                       <AccountInput
-                        label="Adresse"
-                        value={wealthAddress}
-                        onChangeText={setWealthAddress}
-                        placeholder="123 rue des Érables, Montréal"
+                        label="Coût d’achat"
+                        value={wealthPurchaseCost}
+                        onChangeText={setWealthPurchaseCost}
+                        placeholder="350000"
+                        keyboardType="decimal-pad"
+                        suffix="$"
+                      />
+                      <DatePickerField
+                        label="Date d’achat"
+                        value={wealthPurchaseDate}
+                        placeholder="Choisir une date"
+                        variant="sheet"
+                        onChangeDate={setWealthPurchaseDate}
                       />
                       <AccountInput
                         label="Valeur actuelle"
@@ -2046,17 +2528,21 @@ export default function AccountsScreen() {
                         keyboardType="decimal-pad"
                         suffix="$"
                       />
+                      {wealthEditingAsset?.linkedLoanId?.trim() ? (
+                        <WealthRealEstateEquityHint
+                          asset={wealthEditingAsset}
+                          currentValueInput={wealthCurrentValue}
+                          linkedLoan={
+                            loans.find((loan) => loan.id === wealthEditingAsset.linkedLoanId?.trim()) ?? null
+                          }
+                          formThemed={formThemed}
+                        />
+                      ) : null}
                       <AccountInput
-                        label="Nom du bien"
-                        value={wealthName}
-                        onChangeText={setWealthName}
-                        placeholder="Condo Montréal"
-                      />
-                      <AccountInput
-                        label="Type de bien"
-                        value={wealthPropertyType}
-                        onChangeText={setWealthPropertyType}
-                        placeholder="Condo, maison, terrain"
+                        label="Adresse"
+                        value={wealthAddress}
+                        onChangeText={setWealthAddress}
+                        placeholder="123 rue des Érables, Montréal"
                       />
                       <PropertyPhotoField
                         photoUri={wealthPhotoUri}
@@ -2085,32 +2571,22 @@ export default function AccountsScreen() {
                 </>
               )}
 
-              {wealthEditingAsset ? (
+              {wealthEditingAsset && wealthType === 'precious_material' ? (
                 <>
                   <AccountInput
                     label="Coût à l’achat"
                     value={wealthPurchaseCost}
                     onChangeText={setWealthPurchaseCost}
-                    placeholder={wealthType === 'real_estate' ? '350000' : '1800'}
+                    placeholder="1800"
                     keyboardType="decimal-pad"
                     suffix="$"
                   />
-                  {wealthType === 'real_estate' ? (
-                    <DatePickerField
-                      label="Date d’achat"
-                      value={wealthPurchaseDate}
-                      placeholder="Choisir une date"
-                      variant="sheet"
-                      onChangeDate={setWealthPurchaseDate}
-                    />
-                  ) : (
-                    <AccountInput
-                      label="Date d’achat (optionnel)"
-                      value={wealthPurchaseDate}
-                      onChangeText={setWealthPurchaseDate}
-                      placeholder="2024-05-17"
-                    />
-                  )}
+                  <AccountInput
+                    label="Date d’achat (optionnel)"
+                    value={wealthPurchaseDate}
+                    onChangeText={setWealthPurchaseDate}
+                    placeholder="2024-05-17"
+                  />
                 </>
               ) : null}
               <AccountInput
@@ -2141,7 +2617,7 @@ export default function AccountsScreen() {
         title={loanFormTitle(loanType, Boolean(editingLoan))}
         onClose={closeLoanForm}
       >
-              <View style={[styles.wealthFormHero, { marginBottom: spacing.xs }]}>
+              <View style={[styles.wealthFormHero, styles.loanFormHero, { marginBottom: spacing.xs }]}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Changer l'icône de la dette"
@@ -2152,12 +2628,8 @@ export default function AccountsScreen() {
                 >
                   <UserPickedIconWell icon={loanIcon} size={52} wellGlyphWhite />
                 </Pressable>
-                <Text style={[styles.formHint, formThemed.textMuted]}>
-                  {loanType === 'mortgage'
-                    ? "L'hypothèque est comptabilisée dans vos dettes. L'équité (valeur – solde) contribue à votre valeur nette."
-                    : loanType === 'friend_debt'
-                      ? 'La dette sera déduite de ta valeur nette.'
-                      : "Le solde restant est comptabilisé comme une dette et ses paiements seront ajoutés à l'agenda."}
+                <Text style={[styles.formHint, styles.loanFormHeroHint, formThemed.textMuted]}>
+                  {loanFormHint(loanType)}
                 </Text>
               </View>
 
@@ -2174,220 +2646,71 @@ export default function AccountsScreen() {
                 </View>
               ) : null}
 
-              {!editingLoan && !loanType ? (
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.label, formThemed.textSecondary]}>Type de dette</Text>
-                  <View style={styles.typeRow}>
-                    {LOAN_TYPE_OPTIONS.map((option) => {
-                      const selected = loanType === option.id;
-                      return (
-                        <Pressable
-                          key={option.id}
-                          onPress={() => {
-                            setLoanType(option.id);
-                            setLoanIcon(defaultLoanIcon(option.id));
-                            if (option.id === 'friend_debt') setLoanRate('0');
-                            if (option.id === 'mortgage') {
-                              setLoanDurationAmount(String(
-                                loanDurationAmountInYears(
-                                  Number.parseInt(loanDurationAmount, 10) || 12,
-                                  loanDurationUnit,
-                                ),
-                              ));
-                              setLoanDurationUnit('years');
-                            }
-                          }}
-                          style={[
-                            styles.typeChip,
-                            selected ? formThemed.selected : formThemed.control,
-                          ]}
-                        >
-                          <Ionicons name={option.icon} size={15} color={selected ? colors.primary : colors.textSecondary} />
-                          <Text style={[styles.typeChipText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
-                            {option.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              ) : null}
-
-              <AccountInput
-                label="Raison"
-                value={loanReason}
-                onChangeText={setLoanReason}
-                placeholder={
-                  loanType === 'mortgage' ? 'Maison' :
-                  loanType === 'friend_debt' ? 'Souper, dépannage…' :
-                  loanType === 'line_of_credit' ? 'Rénovation, voyage…' :
-                  'Auto, études…'
-                }
-              />
               {loanType === 'mortgage' ? (
-                <AccountInput
-                  label="Adresse"
-                  value={loanAddress}
-                  onChangeText={setLoanAddress}
-                  placeholder="123 rue des Érables, Montréal"
-                />
-              ) : null}
-              <AccountInput
-                label={
-                  loanType === 'friend_debt' ? 'Créancier' :
-                  loanType === 'line_of_credit' ? 'Institution' :
-                  loanType === 'mortgage' ? 'Prêteur (optionnel)' : 'Prêteur'
-                }
-                value={loanLender}
-                onChangeText={setLoanLender}
-                placeholder={loanType === 'friend_debt' ? 'Nom de la personne' : 'Desjardins, RBC, BMO…'}
-              />
-              {loanType === 'friend_debt' && !editingLoan ? (
-                <AccountInput
-                  label="Montant dû"
-                  value={loanBalance}
-                  onChangeText={setLoanBalance}
-                  placeholder="250"
-                  keyboardType="decimal-pad"
-                  suffix="$"
-                />
-              ) : null}
-              {loanType !== 'friend_debt' ? (
                 <>
-                  {loanType === 'mortgage' ? (
-                    <>
-                      <AccountInput
-                        label="Montant de l’emprunt"
-                        value={loanPrincipal}
-                        onChangeText={setLoanPrincipal}
-                        placeholder="350000"
-                        keyboardType="decimal-pad"
-                        suffix="$"
-                      />
-                      <AccountInput
-                        label="Mise de fonds"
-                        value={loanDownPayment}
-                        onChangeText={setLoanDownPayment}
-                        placeholder="70000"
-                        keyboardType="decimal-pad"
-                        suffix="$"
-                      />
-                      <AccountInput
-                        label="Valeur à l’achat"
-                        value={loanPurchasePrice}
-                        onChangeText={setLoanPurchasePrice}
-                        placeholder="420000"
-                        keyboardType="decimal-pad"
-                        suffix="$"
-                      />
-                      <AccountInput
-                        label="Valeur actuelle"
-                        value={loanCurrentPropertyValue}
-                        onChangeText={setLoanCurrentPropertyValue}
-                        placeholder="450000"
-                        keyboardType="decimal-pad"
-                        suffix="$"
-                      />
-                    </>
-                  ) : (
+                  <AccountInput
+                    label="Mise de fonds"
+                    value={loanDownPayment}
+                    onChangeText={setLoanDownPayment}
+                    placeholder="70000"
+                    keyboardType="decimal-pad"
+                    suffix="$"
+                  />
+                  <AccountInput
+                    label="Montant emprunté"
+                    value={loanPrincipal}
+                    onChangeText={setLoanPrincipal}
+                    placeholder="350000"
+                    keyboardType="decimal-pad"
+                    suffix="$"
+                  />
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, formThemed.textSecondary]}>Temps d'amortissement</Text>
+                    <View style={styles.typeRow}>
+                      {MORTGAGE_AMORTIZATION_YEARS.map((years) => {
+                        const selected = loanAmortizationYears === String(years);
+                        return (
+                          <Pressable
+                            key={years}
+                            onPress={() => setLoanAmortizationYears(String(years))}
+                            style={[
+                              styles.typeChip,
+                              selected ? formThemed.selected : formThemed.control,
+                            ]}
+                          >
+                            <Text style={[styles.typeChipText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
+                              {years} ans
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
                     <AccountInput
-                      label={
-                        loanType === 'line_of_credit' ? 'Limite' : 'Montant emprunté'
-                      }
-                      value={loanPrincipal}
-                      onChangeText={setLoanPrincipal}
-                      placeholder={loanType === 'line_of_credit' ? '15000' : '25000'}
-                      keyboardType="decimal-pad"
-                      suffix="$"
-                    />
-                  )}
-                </>
-              ) : null}
-              {loanType !== 'friend_debt' || editingLoan ? (
-                <AccountInput
-                  label={loanType === 'line_of_credit' ? 'Solde utilisé' : 'Solde restant'}
-                  value={loanBalance}
-                  onChangeText={setLoanBalance}
-                  placeholder={loanType === 'line_of_credit' ? '4200' : '18500'}
-                  keyboardType="decimal-pad"
-                  suffix="$"
-                />
-              ) : null}
-              {loanType === 'mortgage' && computedMortgageEquity ? (
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.label, formThemed.textSecondary]}>Équité estimée</Text>
-                  <View style={[styles.input, formThemed.control, { justifyContent: 'center' }]}>
-                    <Text style={[styles.computedFieldText, formThemed.text]}>
-                      {formatDisplayMoneyAbsolute(computedMortgageEquity.equity)}
-                      {' · '}
-                      {computedMortgageEquity.equityPct.toFixed(0)} %
-                    </Text>
-                  </View>
-                </View>
-              ) : null}
-              {loanType !== 'friend_debt' ? (
-                <AccountInput
-                  label="Taux d'intérêt"
-                  value={loanRate}
-                  onChangeText={setLoanRate}
-                  placeholder="5.99"
-                  keyboardType="decimal-pad"
-                  suffix="%"
-                />
-              ) : null}
-              {(loanType === 'personal_loan' || loanType === 'mortgage') ? (
-                <AccountInput
-                  label="Paiement mensuel"
-                  value={loanMonthlyPayment}
-                  onChangeText={setLoanMonthlyPayment}
-                  placeholder={loanType === 'mortgage' ? '1800' : '420'}
-                  keyboardType="decimal-pad"
-                  suffix="$"
-                />
-              ) : null}
-              {loanType === 'friend_debt' ? (
-                <DatePickerField
-                  label="Date d'échéance (optionnel)"
-                  value={loanNextPaymentDate}
-                  placeholder="Choisir une date"
-                  variant="sheet"
-                  onChangeDate={setLoanNextPaymentDate}
-                />
-              ) : null}
-              {(editingLoan || loanType === 'mortgage') ? (
-                <DatePickerField
-                  label="Date de début"
-                  value={loanStartDate}
-                  placeholder="Choisir une date"
-                  variant="sheet"
-                  onChangeDate={setLoanStartDate}
-                />
-              ) : null}
-
-              {(editingLoan || loanType === 'mortgage') ? (
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, formThemed.textSecondary]}>
-                  {loanType === 'mortgage' ? 'Amortissement restant (années)' : 'Durée'}
-                </Text>
-                <View style={styles.loanDurationRow}>
-                  <View style={styles.loanDurationAmount}>
-                    <AccountInput
-                      label={loanType === 'mortgage' ? 'Années' : 'Nombre'}
-                      value={loanDurationAmount}
-                      onChangeText={setLoanDurationAmount}
-                      placeholder={loanType === 'mortgage' ? '25' : '12'}
+                      label="Durée personnalisée"
+                      value={loanAmortizationYears}
+                      onChangeText={setLoanAmortizationYears}
+                      placeholder="25"
                       keyboardType="number-pad"
-                      suffix={loanType === 'mortgage' ? 'ans' : undefined}
+                      suffix="ans"
                     />
                   </View>
-                  {loanType !== 'mortgage' ? (
-                    <View style={[styles.typeRow, styles.loanDurationUnitRow]}>
-                      {LOAN_DURATION_UNITS.map((option) => {
-                        const selected = loanDurationUnit === option.id;
+                  <AccountInput
+                    label="Taux d'intérêt"
+                    value={loanRate}
+                    onChangeText={setLoanRate}
+                    placeholder="5.99"
+                    keyboardType="decimal-pad"
+                    suffix="%"
+                  />
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, formThemed.textSecondary]}>Type de taux</Text>
+                    <View style={styles.typeRow}>
+                      {LOAN_RATE_TYPES.map((option) => {
+                        const selected = loanRateType === option.id;
                         return (
                           <Pressable
                             key={option.id}
-                            onPress={() => setLoanDurationUnit(option.id)}
+                            onPress={() => setLoanRateType(option.id)}
                             style={[
                               styles.typeChip,
                               selected ? formThemed.selected : formThemed.control,
@@ -2400,90 +2723,550 @@ export default function AccountsScreen() {
                         );
                       })}
                     </View>
+                  </View>
+                  <AccountInput
+                    label="Période du taux"
+                    value={loanRateTermYears}
+                    onChangeText={setLoanRateTermYears}
+                    placeholder="5"
+                    keyboardType="number-pad"
+                    suffix="ans"
+                  />
+                  <DatePickerField
+                    label="Date de début"
+                    value={loanStartDate}
+                    placeholder="Choisir une date"
+                    variant="sheet"
+                    onChangeDate={setLoanStartDate}
+                  />
+                  <DatePickerField
+                    label="Date de renouvellement"
+                    value={loanRenewalDate}
+                    placeholder="Choisir une date"
+                    variant="sheet"
+                    onChangeDate={setLoanRenewalDate}
+                  />
+                  <AccountInput
+                    label="Solde restant"
+                    value={loanBalance}
+                    onChangeText={setLoanBalance}
+                    placeholder="320000"
+                    keyboardType="decimal-pad"
+                    suffix="$"
+                  />
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, formThemed.textSecondary]}>Fréquence des paiements</Text>
+                    <View style={styles.typeRow}>
+                      {MORTGAGE_PAYMENT_FREQUENCIES.map((option) => {
+                        const selected = loanPaymentFrequency === option.id;
+                        return (
+                          <Pressable
+                            key={option.id}
+                            onPress={() => setLoanPaymentFrequency(option.id)}
+                            style={[
+                              styles.typeChip,
+                              selected ? formThemed.selected : formThemed.control,
+                            ]}
+                          >
+                            <Text style={[styles.typeChipText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
+                              {option.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                  <AccountInput
+                    label="Montant du paiement"
+                    value={loanMonthlyPayment}
+                    onChangeText={setLoanMonthlyPayment}
+                    placeholder="1800"
+                    keyboardType="decimal-pad"
+                    suffix="$"
+                  />
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, formThemed.textSecondary]}>Prélèvement</Text>
+                    <View style={styles.typeRow}>
+                      {LOAN_PAYMENT_DEBIT_TYPES.map((option) => {
+                        const selected = loanPaymentDebitType === option.id;
+                        return (
+                          <Pressable
+                            key={option.id}
+                            onPress={() => setLoanPaymentDebitType(option.id)}
+                            style={[
+                              styles.typeChip,
+                              selected ? formThemed.selected : formThemed.control,
+                            ]}
+                          >
+                            <Text style={[styles.typeChipText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
+                              {option.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                  <DatePickerField
+                    label="Date de paiement"
+                    value={loanNextPaymentDate}
+                    placeholder="Choisir une date"
+                    variant="sheet"
+                    onChangeDate={setLoanNextPaymentDate}
+                  />
+                  <PaymentMethodField
+                    accounts={accounts.map((a): PaymentMethodAccount => ({ id: a.id, name: a.name, last4: a.last4 ?? undefined, kind: a.kind }))}
+                    selectedAccountId={loanPaymentAccountId}
+                    onSelectAccount={setLoanPaymentAccountId}
+                    chipControlStyle={formThemed.control}
+                    chipSelectedStyle={formThemed.selected}
+                    selectedTextStyle={formThemed.selectedText}
+                    textSecondaryStyle={formThemed.textSecondary}
+                  />
+                </>
+              ) : (
+                <>
+                  {!editingLoan && !loanType ? (
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, formThemed.textSecondary]}>Type de dette</Text>
+                      <View style={styles.typeRow}>
+                        {LOAN_TYPE_OPTIONS.map((option) => {
+                          const selected = loanType === option.id;
+                          return (
+                            <Pressable
+                              key={option.id}
+                              onPress={() => {
+                                setLoanType(option.id);
+                                setLoanIcon(defaultLoanIcon(option.id));
+                                if (option.id === 'friend_debt' || option.id === 'child_support') setLoanRate('0');
+                              }}
+                              style={[
+                                styles.typeChip,
+                                selected ? formThemed.selected : formThemed.control,
+                              ]}
+                            >
+                              <Ionicons name={option.icon} size={15} color={selected ? colors.primary : colors.textSecondary} />
+                              <Text style={[styles.typeChipText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
+                                {option.label}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
                   ) : null}
-                </View>
-              </View>
-              ) : null}
 
-              {(editingLoan || loanType === 'mortgage') ? (
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, formThemed.textSecondary]}>
-                  {loanType === 'mortgage' ? 'Fin estimée (amortissement)' : 'Date de fin calculée'}
-                </Text>
-                <View style={[styles.input, formThemed.control, { justifyContent: 'center' }]}>
-                  <Text style={[styles.computedFieldText, computedLoanEndDate ? formThemed.text : formThemed.textMuted]}>
-                    {computedLoanEndDate
-                      ? formatFriendlyDateLabel(computedLoanEndDate)
-                      : (loanType === 'mortgage' ? 'Entre une date de début et les années' : 'Entre une date de début et une durée')}
-                  </Text>
-                </View>
-              </View>
-              ) : null}
-
-              {editingLoan ? (
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, formThemed.textSecondary]}>Fréquence des paiements</Text>
-                <View style={styles.typeRow}>
-                  {LOAN_PAYMENT_FREQUENCIES.map((option) => {
-                    const selected = loanPaymentFrequency === option.id;
-                    return (
-                      <Pressable
-                        key={option.id}
-                        onPress={() => setLoanPaymentFrequency(option.id)}
-                        style={[
-                          styles.typeChip,
-                          selected ? formThemed.selected : formThemed.control,
-                        ]}
-                      >
-                        <Text style={[styles.typeChipText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
-                          {option.label}
+                  {loanType === 'child_support' ? (
+                    <>
+                      <View style={styles.inputGroup}>
+                        <Text style={[styles.childSupportEyebrow, formThemed.textSecondary]}>
+                          Mode de paiement
                         </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-              ) : null}
+                        <View style={styles.typeRow}>
+                          {CHILD_SUPPORT_PAYMENT_MODES.map((option) => {
+                            const selected = loanPaymentDebitType === option.id;
+                            return (
+                              <Pressable
+                                key={option.id}
+                                onPress={() => {
+                                  setLoanPaymentDebitType(option.id);
+                                  if (option.id === 'automatic') {
+                                    setLoanBeneficiaryContactId(null);
+                                  } else {
+                                    setLoanBeneficiaryRelation(null);
+                                  }
+                                }}
+                                style={[
+                                  styles.typeChip,
+                                  selected ? formThemed.selected : formThemed.control,
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.typeChipText,
+                                    selected ? formThemed.selectedText : formThemed.textSecondary,
+                                  ]}
+                                >
+                                  {option.label}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                        {CHILD_SUPPORT_PAYMENT_MODES.map((option) =>
+                          loanPaymentDebitType === option.id ? (
+                            <Text key={`${option.id}-hint`} style={[styles.formHint, formThemed.textMuted]}>
+                              {option.description}
+                            </Text>
+                          ) : null,
+                        )}
+                      </View>
 
-              {(editingLoan || loanType === 'mortgage') ? (
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, formThemed.textSecondary]}>Compte utilisé pour payer</Text>
-                <View style={styles.typeRow}>
-                  {accounts.length === 0 ? (
-                    <Text style={[styles.formHint, formThemed.textMuted]}>Ajoute un compte pour planifier les paiements.</Text>
-                  ) : (
-                    accounts.map((account) => {
-                      const selected = loanPaymentAccountId === account.id;
-                      return (
-                        <Pressable
-                          key={account.id}
-                          onPress={() => setLoanPaymentAccountId(account.id)}
-                          style={[
-                            styles.typeChip,
-                            selected ? formThemed.selected : formThemed.control,
-                          ]}
-                        >
-                          <Ionicons name={iconForKind(account.kind)} size={15} color={selected ? colors.primary : colors.textSecondary} />
-                          <Text style={[styles.typeChipText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
-                            {account.last4 ? `${account.name} • ${account.last4}` : account.name}
+                      {loanPaymentDebitType === 'automatic' ? (
+                        <>
+                          <View style={styles.inputGroup}>
+                            <Text style={[styles.childSupportEyebrow, formThemed.textSecondary]}>
+                              Destinataire
+                            </Text>
+                            <Text style={[moneyAmountTypography({ tier: 'stat', fontSize: 18, lineHeight: 22 }), formThemed.text]}>
+                              {CHILD_SUPPORT_RECIPIENT_REVENU_QUEBEC}
+                            </Text>
+                            <Text style={[styles.formHint, formThemed.textMuted]}>
+                              Retenue à la source sur ta paie (ordre du tribunal).
+                            </Text>
+                          </View>
+                          <View style={styles.inputGroup}>
+                            <Text style={[styles.childSupportEyebrow, formThemed.textSecondary]}>
+                              Bénéficiaire
+                            </Text>
+                            <View style={styles.typeRow}>
+                              {CHILD_SUPPORT_BENEFICIARY_RELATIONS.map((option) => {
+                                const selected = loanBeneficiaryRelation === option.id;
+                                return (
+                                  <Pressable
+                                    key={option.id}
+                                    onPress={() => setLoanBeneficiaryRelation(option.id)}
+                                    style={[
+                                      styles.typeChip,
+                                      selected ? formThemed.selected : formThemed.control,
+                                    ]}
+                                  >
+                                    <Text
+                                      style={[
+                                        styles.typeChipText,
+                                        selected ? formThemed.selectedText : formThemed.textSecondary,
+                                      ]}
+                                    >
+                                      {option.label}
+                                    </Text>
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+                          </View>
+                        </>
+                      ) : (
+                        <>
+                          <ChildSupportBeneficiaryField
+                            value={loanReason}
+                            onChangeText={updateChildSupportBeneficiary}
+                            suggestions={childSupportContactSuggestions}
+                            linkedContactId={loanBeneficiaryContactId}
+                            creatingContact={creatingLoanBeneficiaryContact}
+                            onSelectSuggestion={selectChildSupportBeneficiary}
+                            onCreateContact={() => void handleCreateLoanBeneficiaryContact()}
+                            isKnownContactName={isKnownChildSupportContactName}
+                            formThemed={formThemed}
+                          />
+                          <Text style={[styles.formHint, formThemed.textMuted]}>
+                            {CHILD_SUPPORT_PRIVATE_PROOF_REMINDER}
                           </Text>
-                        </Pressable>
-                      );
-                    })
-                  )}
-                </View>
-              </View>
-              ) : null}
+                        </>
+                      )}
 
-              {(editingLoan || loanType === 'mortgage') ? (
-              <DatePickerField
-                label={`Prochain paiement (${loanMonthlyPayment.trim() ? `${loanMonthlyPayment.trim().replace(',', '.')} $` : 'montant par paiement'})`}
-                value={loanNextPaymentDate}
-                placeholder="Choisir la prochaine date"
-                variant="sheet"
-                onChangeDate={setLoanNextPaymentDate}
-              />
-              ) : null}
+                      <AccountInput
+                        label="Montant de base (mensuel)"
+                        value={loanPrincipal}
+                        onChangeText={setLoanPrincipal}
+                        placeholder="650"
+                        keyboardType="decimal-pad"
+                        suffix="$"
+                        labelStyle={styles.childSupportEyebrow}
+                      />
+                      <AccountInput
+                        label="Total des frais particuliers (mensuel)"
+                        value={loanDownPayment}
+                        onChangeText={setLoanDownPayment}
+                        placeholder="Garde, activités..."
+                        keyboardType="decimal-pad"
+                        suffix="$"
+                        labelStyle={styles.childSupportEyebrow}
+                      />
+                      {(() => {
+                        const base = parseMoney(loanPrincipal);
+                        const fees = loanDownPayment.trim() ? parseMoney(loanDownPayment) : 0;
+                        const total =
+                          (Number.isNaN(base) ? 0 : base) + (Number.isNaN(fees) ? 0 : fees);
+                        if (total <= 0) return null;
+                        return (
+                          <View style={styles.inputGroup}>
+                            <Text style={[styles.childSupportEyebrow, formThemed.textSecondary]}>
+                              Total mensuel
+                            </Text>
+                            <Text style={[moneyAmountTypography({ tier: 'hero' }), formThemed.text]}>
+                              {formatDisplayMoneyAbsolute(total)}
+                            </Text>
+                          </View>
+                        );
+                      })()}
+                      <View style={styles.inputGroup}>
+                        <Text style={[styles.childSupportEyebrow, formThemed.textSecondary]}>
+                          Jour du paiement
+                        </Text>
+                        <View style={styles.typeRow}>
+                          {CHILD_SUPPORT_QUICK_PAYMENT_DAYS.map((day) => {
+                            const selected = loanDurationAmount === String(day);
+                            return (
+                              <Pressable
+                                key={day}
+                                onPress={() => setLoanDurationAmount(String(day))}
+                                style={[
+                                  styles.typeChip,
+                                  selected ? formThemed.selected : formThemed.control,
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.typeChipText,
+                                    selected ? formThemed.selectedText : formThemed.textSecondary,
+                                  ]}
+                                >
+                                  {formatChildSupportPaymentDay(day)}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                        <View style={[styles.inputShell, formThemed.control]}>
+                          <NumericAmountInput
+                            value={loanDurationAmount}
+                            onChangeText={(value) =>
+                              setLoanDurationAmount(value.replace(/[^0-9]/g, '').slice(0, 2))
+                            }
+                            keyboardType="decimal-pad"
+                            placeholder="1–31"
+                            style={[styles.inputWithSuffix, formThemed.text]}
+                            placeholderTextColor={colors.textMuted}
+                          />
+                        </View>
+                        {Number.isFinite(Number.parseInt(loanDurationAmount, 10)) &&
+                        Number.parseInt(loanDurationAmount, 10) >= 1 &&
+                        Number.parseInt(loanDurationAmount, 10) <= 31 ? (
+                          <Text style={[styles.formHint, formThemed.textMuted]}>
+                            {formatChildSupportPaymentDayLabel(Number.parseInt(loanDurationAmount, 10))}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <DatePickerField
+                        label="Date de la prochaine indexation"
+                        value={loanRenewalDate}
+                        placeholder="Choisir une date (optionnel)"
+                        variant="sheet"
+                        onChangeDate={setLoanRenewalDate}
+                        labelStyle={styles.childSupportEyebrow}
+                      />
+                      <PaymentMethodField
+                        label={
+                          loanPaymentDebitType === 'automatic'
+                            ? 'Compte de paie (dépôt du salaire)'
+                            : 'Compte de paiement'
+                        }
+                        accounts={accounts.map((a): PaymentMethodAccount => ({ id: a.id, name: a.name, last4: a.last4 ?? undefined, kind: a.kind }))}
+                        selectedAccountId={loanPaymentAccountId}
+                        onSelectAccount={setLoanPaymentAccountId}
+                        chipControlStyle={formThemed.control}
+                        chipSelectedStyle={formThemed.selected}
+                        selectedTextStyle={formThemed.selectedText}
+                        textSecondaryStyle={formThemed.textSecondary}
+                      />
+                    </>
+                  ) : (
+                    <>
+                  <AccountInput
+                    label="Raison"
+                    value={loanReason}
+                    onChangeText={setLoanReason}
+                    placeholder={
+                      loanType === 'friend_debt' ? 'Souper, dépannage…' :
+                      loanType === 'line_of_credit' ? 'Rénovation, voyage…' :
+                      'Auto, études…'
+                    }
+                  />
+                  <AccountInput
+                    label={
+                      loanType === 'friend_debt' ? 'Créancier' :
+                      loanType === 'line_of_credit' ? 'Institution' : 'Prêteur'
+                    }
+                    value={loanLender}
+                    onChangeText={setLoanLender}
+                    placeholder={loanType === 'friend_debt' ? 'Nom de la personne' : 'Desjardins, RBC, BMO…'}
+                  />
+                  {loanType === 'friend_debt' && !editingLoan ? (
+                    <AccountInput
+                      label="Montant dû"
+                      value={loanBalance}
+                      onChangeText={setLoanBalance}
+                      placeholder="250"
+                      keyboardType="decimal-pad"
+                      suffix="$"
+                    />
+                  ) : null}
+                  {loanType !== 'friend_debt' ? (
+                    <AccountInput
+                      label={loanType === 'line_of_credit' ? 'Limite' : 'Montant emprunté'}
+                      value={loanPrincipal}
+                      onChangeText={setLoanPrincipal}
+                      placeholder={loanType === 'line_of_credit' ? '15000' : '25000'}
+                      keyboardType="decimal-pad"
+                      suffix="$"
+                    />
+                  ) : null}
+                  {loanType !== 'friend_debt' || editingLoan ? (
+                    <AccountInput
+                      label={loanType === 'line_of_credit' ? 'Solde utilisé' : 'Solde restant'}
+                      value={loanBalance}
+                      onChangeText={setLoanBalance}
+                      placeholder={loanType === 'line_of_credit' ? '4200' : '18500'}
+                      keyboardType="decimal-pad"
+                      suffix="$"
+                    />
+                  ) : null}
+                  {loanType !== 'friend_debt' ? (
+                    <AccountInput
+                      label="Taux d'intérêt"
+                      value={loanRate}
+                      onChangeText={setLoanRate}
+                      placeholder="5.99"
+                      keyboardType="decimal-pad"
+                      suffix="%"
+                    />
+                  ) : null}
+                  {loanType === 'personal_loan' ? (
+                    <AccountInput
+                      label="Paiement mensuel"
+                      value={loanMonthlyPayment}
+                      onChangeText={setLoanMonthlyPayment}
+                      placeholder="420"
+                      keyboardType="decimal-pad"
+                      suffix="$"
+                    />
+                  ) : null}
+                  {loanType === 'personal_loan' ? (
+                    <DatePickerField
+                      label="Date du prochain paiement"
+                      value={loanNextPaymentDate}
+                      placeholder="Choisir une date"
+                      variant="sheet"
+                      onChangeDate={setLoanNextPaymentDate}
+                    />
+                  ) : null}
+                  {loanType === 'friend_debt' ? (
+                    <DatePickerField
+                      label="Date d'échéance (optionnel)"
+                      value={loanNextPaymentDate}
+                      placeholder="Choisir une date"
+                      variant="sheet"
+                      onChangeDate={setLoanNextPaymentDate}
+                    />
+                  ) : null}
+                  {editingLoan ? (
+                    <DatePickerField
+                      label="Date de début"
+                      value={loanStartDate}
+                      placeholder="Choisir une date"
+                      variant="sheet"
+                      onChangeDate={setLoanStartDate}
+                    />
+                  ) : null}
+
+                  {editingLoan ? (
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, formThemed.textSecondary]}>Durée</Text>
+                      <View style={styles.loanDurationRow}>
+                        <View style={styles.loanDurationAmount}>
+                          <AccountInput
+                            label="Nombre"
+                            value={loanDurationAmount}
+                            onChangeText={setLoanDurationAmount}
+                            placeholder="12"
+                            keyboardType="number-pad"
+                          />
+                        </View>
+                        <View style={[styles.typeRow, styles.loanDurationUnitRow]}>
+                          {LOAN_DURATION_UNITS.map((option) => {
+                            const selected = loanDurationUnit === option.id;
+                            return (
+                              <Pressable
+                                key={option.id}
+                                onPress={() => setLoanDurationUnit(option.id)}
+                                style={[
+                                  styles.typeChip,
+                                  selected ? formThemed.selected : formThemed.control,
+                                ]}
+                              >
+                                <Text style={[styles.typeChipText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
+                                  {option.label}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {editingLoan ? (
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, formThemed.textSecondary]}>Date de fin calculée</Text>
+                      <View style={[styles.input, formThemed.control, { justifyContent: 'center' }]}>
+                        <Text style={[styles.computedFieldText, computedLoanEndDate ? formThemed.text : formThemed.textMuted]}>
+                          {computedLoanEndDate
+                            ? formatFriendlyDateLabel(computedLoanEndDate)
+                            : 'Entre une date de début et une durée'}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {editingLoan ? (
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.label, formThemed.textSecondary]}>Fréquence des paiements</Text>
+                      <View style={styles.typeRow}>
+                        {LOAN_PAYMENT_FREQUENCIES.map((option) => {
+                          const selected = loanPaymentFrequency === option.id;
+                          return (
+                            <Pressable
+                              key={option.id}
+                              onPress={() => setLoanPaymentFrequency(option.id)}
+                              style={[
+                                styles.typeChip,
+                                selected ? formThemed.selected : formThemed.control,
+                              ]}
+                            >
+                              <Text style={[styles.typeChipText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
+                                {option.label}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {editingLoan ? (
+                    <PaymentMethodField
+                      accounts={accounts.map((a): PaymentMethodAccount => ({ id: a.id, name: a.name, last4: a.last4 ?? undefined, kind: a.kind }))}
+                      selectedAccountId={loanPaymentAccountId}
+                      onSelectAccount={setLoanPaymentAccountId}
+                      chipControlStyle={formThemed.control}
+                      chipSelectedStyle={formThemed.selected}
+                      selectedTextStyle={formThemed.selectedText}
+                      textSecondaryStyle={formThemed.textSecondary}
+                    />
+                  ) : null}
+
+                  {editingLoan ? (
+                    <DatePickerField
+                      label={`Prochain paiement (${loanMonthlyPayment.trim() ? `${formatNumberInput(loanMonthlyPayment.trim())} $` : 'montant par paiement'})`}
+                      value={loanNextPaymentDate}
+                      placeholder="Choisir la prochaine date"
+                      variant="sheet"
+                      onChangeDate={setLoanNextPaymentDate}
+                    />
+                  ) : null}
+                    </>
+                  )}
+                </>
+              )}
 
               {formFeedback ? (
                 <ThemedFormMessage
@@ -2558,6 +3341,7 @@ function accountFormTitle(kind: AccountKind, editing: boolean) {
   if (editing) return 'Modifier le compte';
   if (kind === 'credit') return 'Carte de crédit';
   if (kind === 'savings') return 'Compte épargne';
+  if (kind === 'cash') return 'Argent Cash';
   return 'Compte chèque';
 }
 
@@ -2565,6 +3349,7 @@ function loanFormTitle(type: LoanType, editing: boolean) {
   if (type === 'friend_debt') return editing ? 'Modifier la dette' : 'Dette à un particulier';
   if (type === 'line_of_credit') return editing ? 'Modifier la marge' : 'Marge de crédit';
   if (type === 'mortgage') return editing ? "Modifier l'hypothèque" : 'Hypothèque';
+  if (type === 'child_support') return editing ? 'Modifier la pension alimentaire' : 'Pension alimentaire';
   return editing ? 'Modifier le prêt' : 'Prêt personnel';
 }
 
@@ -2678,25 +3463,139 @@ function PortfolioFormSheetModal({
   );
 }
 
+function WealthRealEstateEquityHint({
+  asset,
+  currentValueInput,
+  linkedLoan,
+  formThemed,
+}: {
+  asset: WealthAsset;
+  currentValueInput: string;
+  linkedLoan: Loan | null;
+  formThemed: ReturnType<typeof usePortfolioFormTheme>;
+}) {
+  if (!linkedLoan || linkedLoan.type !== 'mortgage') return null;
+
+  const parsedValue = parseOptionalMoney(currentValueInput);
+  const previewAsset: WealthAsset = {
+    ...asset,
+    currentValue: typeof parsedValue === 'number' ? parsedValue : asset.currentValue,
+  };
+  const displayValue = getWealthAssetDisplayValue(previewAsset, linkedLoan);
+
+  return (
+    <Text style={[styles.wealthFinePrint, formThemed.textMuted]}>
+      Équité nette affichée : {formatDisplayMoneyAbsolute(displayValue)} (valeur du bien − solde hypothèque)
+    </Text>
+  );
+}
+
+function ChildSupportBeneficiaryField({
+  value,
+  onChangeText,
+  suggestions,
+  linkedContactId,
+  creatingContact,
+  onSelectSuggestion,
+  onCreateContact,
+  isKnownContactName,
+  formThemed,
+}: {
+  value: string;
+  onChangeText: (value: string) => void;
+  suggestions: string[];
+  linkedContactId: string | null;
+  creatingContact: boolean;
+  onSelectSuggestion: (name: string) => void;
+  onCreateContact: () => void;
+  isKnownContactName: (name: string) => boolean;
+  formThemed: ReturnType<typeof usePortfolioFormTheme>;
+}) {
+  const { colors } = useAppTheme();
+  const trimmedValue = value.trim();
+  const showCreateContact =
+    trimmedValue.length > 0 && !linkedContactId && !isKnownContactName(trimmedValue);
+
+  return (
+    <View style={styles.inputGroup}>
+      <Text style={[styles.label, formThemed.textSecondary]}>
+        {CHILD_SUPPORT_BENEFICIARY_LABEL} (optionnel)
+      </Text>
+      <Text style={[styles.formHint, formThemed.textMuted]}>{CHILD_SUPPORT_BENEFICIARY_HINT}</Text>
+      <TextInput
+        style={[styles.input, formThemed.control, formThemed.text]}
+        placeholder={CHILD_SUPPORT_BENEFICIARY_PLACEHOLDER}
+        placeholderTextColor={colors.textMuted}
+        value={value}
+        onChangeText={onChangeText}
+      />
+      {suggestions.length > 0 ? (
+        <View style={styles.suggestionRow}>
+          {suggestions.map((name) => (
+            <Pressable
+              key={name}
+              onPress={() => onSelectSuggestion(name)}
+              style={({ pressed }) => [styles.suggestionChip, formThemed.control, pressed && styles.pressed]}
+            >
+              <Ionicons name="person-outline" size={13} color={colors.textMuted} />
+              <Text style={[styles.suggestionText, formThemed.text]} numberOfLines={1}>
+                {name}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      {showCreateContact ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Créer le contact"
+          onPress={onCreateContact}
+          disabled={creatingContact}
+          style={({ pressed }) => [
+            styles.createContactButton,
+            formThemed.control,
+            pressed && styles.pressed,
+            creatingContact && styles.createContactButtonDisabled,
+          ]}
+        >
+          <Ionicons name="person-add-outline" size={16} color={colors.primary} />
+          <Text style={[styles.createContactButtonText, formThemed.selectedText]}>
+            {creatingContact ? 'Création...' : 'Créer le contact'}
+          </Text>
+        </Pressable>
+      ) : null}
+      {linkedContactId ? (
+        <Text style={[styles.linkedContactHint, formThemed.textMuted]}>
+          Lié au contact existant — aucun doublon ne sera créé.
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 function AccountInput(props: React.ComponentProps<typeof TextInput> & { label: string; suffix?: string }) {
-  const { label, suffix, ...inputProps } = props;
+  const { label, suffix, keyboardType, ...inputProps } = props;
   const { colors } = useAppTheme();
   const formThemed = usePortfolioFormTheme();
+  const InputComponent = keyboardType === 'decimal-pad' ? NumericAmountInput : TextInput;
+
   return (
     <View style={styles.inputGroup}>
       <Text style={[styles.label, formThemed.textSecondary]}>{label}</Text>
       {suffix ? (
         <View style={[styles.inputShell, formThemed.control]}>
-          <TextInput
+          <InputComponent
             {...inputProps}
+            keyboardType={keyboardType}
             style={[styles.inputWithSuffix, formThemed.text]}
             placeholderTextColor={colors.textMuted}
           />
           <Text style={[styles.inputSuffix, formThemed.textSecondary]}>{suffix}</Text>
         </View>
       ) : (
-        <TextInput
+        <InputComponent
           {...inputProps}
+          keyboardType={keyboardType}
           style={[styles.input, formThemed.control, formThemed.text]}
           placeholderTextColor={colors.textMuted}
         />
@@ -2707,35 +3606,15 @@ function AccountInput(props: React.ComponentProps<typeof TextInput> & { label: s
 
 function WealthPatrimoineAssetCard({
   asset,
+  linkedLoan,
   ghostCardShadow,
-  isLight,
-  colors,
   onOpenAsset,
 }: {
   asset: WealthAsset;
+  linkedLoan?: Loan | null;
   ghostCardShadow: GhostCardShadowStyle;
-  isLight: boolean;
-  colors: AppColors;
   onOpenAsset: (asset: WealthAsset) => void;
 }) {
-  const gain = asset.currentValue - asset.purchaseCost;
-  const gainPositive = gain >= 0;
-  const surfaceColor = colors.containerBackground;
-  const mutedSurface = isLight ? colors.surfaceElevated : colors.input;
-  const metaDate = asset.lastValuationAt ?? asset.purchaseDate ?? undefined;
-
-  const pct = asset.purchaseCost !== 0 ? ((asset.currentValue - asset.purchaseCost) / asset.purchaseCost) * 100 : null;
-  const pctLabel =
-    pct === null ? '—' : Math.abs(pct) < 0.05 ? '0 %' : `${pct >= 0 ? '+' : ''}${pct.toFixed(1)} %`;
-  const pctIsPositive = pct !== null && pct > 0.05;
-  const pctIsNegative = pct !== null && pct < -0.05;
-  const pctBg = pctIsPositive
-    ? colors.successMuted
-    : pctIsNegative
-      ? colors.dangerMuted
-      : mutedSurface;
-  const pctColor = pctIsPositive ? colors.success : pctIsNegative ? colors.danger : colors.textMuted;
-
   return (
     <Pressable
       accessibilityRole="button"
@@ -2744,95 +3623,23 @@ function WealthPatrimoineAssetCard({
       onPress={() => onOpenAsset(asset)}
       style={ghostCardShadow}
     >
-      <GlassContainer style={styles.wealthCard} padding={spacing.lg} borderRadius={radius.card}>
-      <View style={styles.wealthPatrimoineAssetIdentity}>
-        <View style={userPickedIconWellStyle(48, isLight)}>
-          {asset.type === 'real_estate' ? (
-            <Ionicons name="home-outline" size={22} color={colors.primary} />
-          ) : asset.material ? (
-            <MaterialIcon material={asset.material} size={26} />
-          ) : (
-            <Ionicons name="diamond-outline" size={22} color={colors.textMuted} />
-          )}
-        </View>
-        <View style={styles.wealthPatrimoineAssetTitles}>
-          <Text style={[styles.wealthPatrimoineAssetName, { color: colors.text }]} {...rowTitleTextProps}>
-            {asset.name}
-          </Text>
-          <Text style={[styles.wealthPatrimoineAssetSubtitle, { color: colors.textMuted }]} numberOfLines={2} ellipsizeMode="tail">
-            {assetSubtitle(asset)}
-          </Text>
-        </View>
-        <View style={[styles.wealthPctPill, { backgroundColor: pctBg }]}>
-          <Text style={[styles.wealthPctPillText, { color: pctColor }]}>{pctLabel}</Text>
-        </View>
-      </View>
-
-      <View style={styles.wealthPerformanceRow}>
-        <View style={styles.wealthValueBlock}>
-          <Text style={[styles.wealthValueLabel, { color: colors.textMuted }]}>Valeur actuelle</Text>
-          <Text
-            style={[styles.wealthValue, { color: colors.text }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.72}
-          >
-            {formatCompactMoneyMagnitude(asset.currentValue)}
-          </Text>
-          <Text style={[styles.wealthCostText, { color: colors.textMuted }]}>
-            Coût · {formatCompactMoneyMagnitude(asset.purchaseCost)}
-          </Text>
-        </View>
-
-        <View style={styles.wealthGainPanel}>
-          <Text
-            style={[styles.wealthGainAmount, { color: gainPositive ? colors.success : colors.danger }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.72}
-          >
-            {formatCompactGainDollars(gain, { leadingPlusWhenPositive: true })}
-          </Text>
-          <Text style={[styles.wealthGainLabel, { color: colors.textMuted }]}>Variation</Text>
-        </View>
-      </View>
-
-      <View style={styles.wealthMetaRow}>
-        <Text style={[styles.wealthSourceText, { color: colors.textMuted }]} numberOfLines={1}>
-          {valuationSourceLabel(asset)}
-        </Text>
-        <Text style={[styles.wealthSourceText, { color: colors.textMuted }]} numberOfLines={1}>
-          {metaDate ? formatShortDate(metaDate) : '—'}
-        </Text>
-      </View>
-      </GlassContainer>
+      <WealthAssetCard asset={asset} linkedLoan={linkedLoan} />
     </Pressable>
   );
 }
 
 function WealthAssetsSection({
   assets,
+  loansById,
   onAdd,
   onOpenAsset,
 }: {
   assets: WealthAsset[];
+  loansById: ReadonlyMap<string, Loan>;
   onAdd: () => void;
   onOpenAsset: (asset: WealthAsset) => void;
 }) {
   const { colors, ghostCardShadow, isLight } = useAppTheme();
-  const [patrimoineListExpanded, setPatrimoineListExpanded] = useState(false);
-
-  useEffect(() => {
-    if (assets.length <= 1) setPatrimoineListExpanded(false);
-  }, [assets.length]);
-
-  const patrimoineHeroAsset = assets[0];
-
-  const togglePatrimoineList = useCallback(() => {
-    if (assets.length <= 1) return;
-    tapHaptic();
-    setPatrimoineListExpanded((v) => !v);
-  }, [assets.length]);
 
   return (
     <View style={styles.wealthSection}>
@@ -2858,76 +3665,23 @@ function WealthAssetsSection({
             <Text style={[styles.premiumAddCtaLabel, { color: colors.text }]}>Ajouter</Text>
           </Pressable>
         </View>
-      ) : patrimoineHeroAsset ? (
+      ) : (
         <>
           <View style={styles.wealthCards}>
-            <WealthPatrimoineAssetCard
-              asset={patrimoineHeroAsset}
-              ghostCardShadow={ghostCardShadow}
-              isLight={isLight}
-              colors={colors}
-              onOpenAsset={onOpenAsset}
-            />
-
             {assets.length > 1 ? (
-              <>
-                <View style={styles.wealthCarouselFooter}>
-                  <Text style={[styles.wealthCarouselCounter, { color: colors.textMuted }]}>
-                    {assets.length} actifs
-                  </Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: patrimoineListExpanded }}
-                    accessibilityLabel={
-                      patrimoineListExpanded
-                        ? 'Masquer les actifs hors compte supplémentaires'
-                        : 'Voir tous les actifs hors compte'
-                    }
-                    accessibilityHint={`${assets.length} conteneurs suivis au total.`}
-                    onPress={togglePatrimoineList}
-                    style={({ pressed }) => [
-                      styles.wealthVoirPlus,
-                      {
-                        borderColor: isLight ? 'rgba(15, 23, 42, 0.12)' : 'rgba(255, 255, 255, 0.14)',
-                        backgroundColor: isLight ? 'rgba(248, 250, 252, 0.9)' : 'rgba(12, 12, 12, 0.85)',
-                      },
-                      pressed && floatingGlassButtonPressed,
-                    ]}
-                  >
-                    <Text style={[styles.wealthVoirPlusLabel, { color: colors.textSecondary }]}>
-                      {patrimoineListExpanded ? 'Voir moins' : 'Voir plus'}
-                    </Text>
-                    <MotiView
-                      animate={{ rotate: patrimoineListExpanded ? '180deg' : '0deg' }}
-                      transition={{ type: 'timing', duration: 220 }}
-                      style={styles.wealthVoirPlusChevronWrap}
-                    >
-                      <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
-                    </MotiView>
-                  </Pressable>
-                </View>
-
-                {patrimoineListExpanded ? (
-                  <MotiView
-                    from={{ opacity: 0, translateY: -6 }}
-                    animate={{ opacity: 1, translateY: 0 }}
-                    transition={{ type: 'timing', duration: 240 }}
-                    style={styles.wealthPatrimoineExpandedStack}
-                  >
-                    {assets.slice(1).map((asset) => (
-                      <WealthPatrimoineAssetCard
-                        key={asset.id}
-                        asset={asset}
-                        ghostCardShadow={ghostCardShadow}
-                        isLight={isLight}
-                        colors={colors}
-                        onOpenAsset={onOpenAsset}
-                      />
-                    ))}
-                  </MotiView>
-                ) : null}
-              </>
+              <Text style={[styles.wealthCarouselCounter, { color: colors.textMuted }]}>
+                {assets.length} actifs
+              </Text>
             ) : null}
+            {assets.map((asset) => (
+              <WealthPatrimoineAssetCard
+                key={asset.id}
+                asset={asset}
+                linkedLoan={getPatrimoineLinkedMortgage(asset, loansById)}
+                ghostCardShadow={ghostCardShadow}
+                onOpenAsset={onOpenAsset}
+              />
+            ))}
           </View>
 
           <Pressable
@@ -2947,10 +3701,18 @@ function WealthAssetsSection({
             <Text style={[styles.premiumAddCtaLabel, { color: colors.text }]}>Ajouter</Text>
           </Pressable>
         </>
-      ) : null}
+      )}
     </View>
   );
 }
+
+const LOAN_CARD_SURFACE = {
+  fill: '#101010',
+  border: 'rgba(255, 255, 255, 0.08)',
+  label: 'rgba(255, 255, 255, 0.45)',
+  text: '#ffffff',
+  meta: 'rgba(255, 255, 255, 0.62)',
+} as const;
 
 function LoanCard({
   loan,
@@ -2959,12 +3721,25 @@ function LoanCard({
   loan: Loan;
   onOpen: (loan: Loan) => void;
 }) {
-  const { colors, ghostCardShadow } = useAppTheme();
+  const { ghostCardShadow } = useAppTheme();
   const loanType = loan.type ?? 'personal_loan';
-  const displayTitle = formatLoanDisplayTitle(loan);
+  const isChildSupport = isChildSupportLoan(loan);
+  const beneficiaryLabel = isChildSupport
+    ? formatChildSupportBeneficiaryDisplayName(resolveChildSupportBeneficiaryLabel(loan))
+    : '';
+  const displayTitle = isChildSupport
+    ? beneficiaryLabel || 'Pension alimentaire'
+    : formatLoanDisplayTitle(loan);
+  const childSupportRecipient = isChildSupport ? formatChildSupportRecipientLabel(loan) : null;
   const { progressPct } = computeLoanRepaymentProgress(loan);
-  const paymentObligation = formatLoanPaymentObligation(loan.monthlyPayment, loan.paymentFrequency);
-  const showProgress = loan.principal > 0;
+  const paymentObligation = isChildSupport
+    ? null
+    : formatLoanPaymentObligation(loan.monthlyPayment, loan.paymentFrequency);
+  const showProgress = !isChildSupport && loan.principal > 0;
+  const balanceLabel = loanBalanceLabel(loanType);
+  const heroAmount = isChildSupport
+    ? formatChildSupportPaymentAmount(loan) ?? formatLoanDebtAmount(0)
+    : formatLoanDebtAmount(loan.balanceRemaining);
 
   return (
     <Pressable
@@ -2974,34 +3749,69 @@ function LoanCard({
       onPress={() => onOpen(loan)}
       style={ghostCardShadow}
     >
-      <GlassContainer style={styles.loanCard} padding={spacing.md} borderRadius={radius.card}>
+      <GlassContainer
+        style={[styles.loanCard, { borderColor: LOAN_CARD_SURFACE.border }]}
+        innerBackgroundColor={LOAN_CARD_SURFACE.fill}
+        padding={spacing.lg}
+        borderRadius={radius.card}
+      >
         <View style={styles.loanCardTopRow}>
           <UserPickedIconWell icon={resolveLoanIcon(loan)} size={48} wellGlyphWhite />
           <View style={styles.loanCardCopy}>
-            <Text style={[styles.loanCardType, { color: colors.textMuted }]} numberOfLines={1}>
+            <Text style={styles.loanCardType} numberOfLines={1}>
               {loanTypeBadgeLabel(loanType)}
             </Text>
-            <Text style={[styles.loanCardName, { color: colors.text }]} {...rowTitleTextProps}>
+            <Text style={styles.loanCardName} numberOfLines={3} ellipsizeMode="tail">
               {displayTitle}
             </Text>
-            {showProgress || paymentObligation ? (
-              <View style={styles.loanCardMetaRow}>
-                {paymentObligation ? (
-                  <Text style={[styles.loanCardMetaText, { color: colors.textMuted }]} numberOfLines={1}>
-                    {paymentObligation}
-                  </Text>
-                ) : (
-                  <View />
-                )}
-                {showProgress ? (
-                  <Text style={[styles.loanCardMetaPct, { color: colors.textMuted }]}>
-                    {progressPct.toFixed(0)} % {loanProgressLabel(loanType).toLowerCase()}
-                  </Text>
-                ) : null}
-              </View>
+            {isChildSupport && childSupportRecipient ? (
+              <Text style={styles.loanCardRecipient} numberOfLines={1}>
+                {childSupportRecipient}
+              </Text>
             ) : null}
           </View>
+          <View style={styles.loanCardAmountBlock}>
+            {!isChildSupport ? (
+              <Text style={styles.loanCardHeroLabel}>{balanceLabel}</Text>
+            ) : null}
+            <Text
+              style={[
+                styles.loanCardHeroAmount,
+                isChildSupport
+                  ? moneyAmountTypography({ tier: 'stat', fontSize: 20, lineHeight: 24 })
+                  : moneyAmountTypography({ tier: 'stat', fontSize: 24, lineHeight: 28 }),
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.72}
+            >
+              {heroAmount}
+            </Text>
+          </View>
         </View>
+
+        {!isChildSupport && (showProgress || paymentObligation) ? (
+          <View style={styles.loanCardSecondaryRow}>
+            {showProgress ? (
+              loanType === 'personal_loan' && loan.nextPaymentDate.trim() ? (
+                <Text style={styles.loanCardSecondaryMetric} numberOfLines={1}>
+                  {formatFriendlyDateLabel(loan.nextPaymentDate)}
+                </Text>
+              ) : (
+                <Text style={styles.loanCardSecondaryMetric}>
+                  {progressPct.toFixed(0)} % {loanProgressLabel(loanType).toLowerCase()}
+                </Text>
+              )
+            ) : (
+              <View />
+            )}
+            {paymentObligation ? (
+              <Text style={styles.loanCardSecondaryPayment} numberOfLines={1}>
+                {paymentObligation}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
       </GlassContainer>
     </Pressable>
   );
@@ -3011,20 +3821,22 @@ function LoansSection({
   loans,
   onAdd,
   onOpen,
+  onSectionLayout,
 }: {
   loans: Loan[];
   onAdd: () => void;
   onOpen: (loan: Loan) => void;
+  onSectionLayout?: (event: LayoutChangeEvent) => void;
 }) {
   const { colors, isLight } = useAppTheme();
   const totalDebt = loans.reduce((sum, l) => sum + Math.max(l.balanceRemaining, 0), 0);
 
   return (
-    <View style={styles.loansSectionContainer}>
+    <View style={styles.loansSectionContainer} onLayout={onSectionLayout}>
       <View style={styles.balanceChartHeader}>
         <View style={styles.balanceChartTitleGroup}>
-          <DashboardSectionLabel>Dettes</DashboardSectionLabel>
-          <Text style={[styles.balanceChartTitle, { color: colors.text }]}>Dettes & Prêts</Text>
+          <DashboardSectionLabel>Obligations</DashboardSectionLabel>
+          <Text style={[styles.balanceChartTitle, { color: colors.text }]}>Prêts et obligations</Text>
         </View>
         <View style={styles.loansSectionHeaderActions}>
           {loans.length > 0 && (
@@ -3051,7 +3863,7 @@ function LoansSection({
         )}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Ajouter une dette ou un prêt"
+          accessibilityLabel="Ajouter un prêt ou une obligation"
           onPress={onAdd}
           style={({ pressed }) => [
             styles.premiumAddCta,
@@ -3081,7 +3893,7 @@ function AccountBalanceChart({
   onAddAccount: () => void;
   onManageAccounts: () => void;
 }) {
-  const { colors, ghost, ghostCardShadow, isLight } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
   const sectionCardSurface = colors.containerBackground;
   const sectionSoftSurface = colors.surfaceElevated;
   const sectionBorder = colors.containerBorder;
@@ -3119,22 +3931,15 @@ function AccountBalanceChart({
         </View>
       ) : (
         <View style={styles.accountVisualCards}>
-          {accounts.map((account) => {
-            const logoUrl = getSimulatedAccountLogoUrl(account);
-
-            return (
-              <Pressable
-                key={account.id}
-                accessibilityRole="button"
-                accessibilityLabel={`Voir le détail du compte ${account.name}`}
-                android_ripple={null}
-                style={ghostCardShadow}
-                onPress={() => onAccountPress(account)}
-              >
-                <BankAccountCard account={account} logoUrl={logoUrl} />
-              </Pressable>
-            );
-          })}
+          {accounts.map((account) => (
+            <DashboardAccountBalanceCard
+              key={account.id}
+              account={account}
+              logoUrl={getSimulatedAccountLogoUrl(account)}
+              onPress={() => onAccountPress(account)}
+              accessibilityLabel={`Voir le détail du compte ${account.name}`}
+            />
+          ))}
         </View>
       )}
 
@@ -3154,6 +3959,45 @@ function AccountBalanceChart({
         <Ionicons name="add" size={18} color={colors.textSecondary} />
         <Text style={[styles.premiumAddCtaLabel, { color: colors.text }]}>Ajouter</Text>
       </Pressable>
+    </View>
+  );
+}
+
+function WealthPropertyTypeSelector({
+  value,
+  onChange,
+  formThemed,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  formThemed: ReturnType<typeof usePortfolioFormTheme>;
+}) {
+  const { colors } = useAppTheme();
+
+  return (
+    <View style={styles.inputGroup}>
+      <Text style={[styles.label, formThemed.textSecondary]}>Type de bien</Text>
+      <View style={styles.typeRow}>
+        {WEALTH_PROPERTY_TYPE_OPTIONS.map((option) => {
+          const selected = value === option;
+          return (
+            <Pressable
+              key={option}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              onPress={() => {
+                tapHaptic();
+                onChange(option);
+              }}
+              style={[styles.typeChip, selected ? formThemed.selected : formThemed.control]}
+            >
+              <Text style={[styles.typeChipText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
+                {option}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -3197,7 +4041,7 @@ function PropertyPhotoField({
 }
 
 function parseMoney(value: string) {
-  return Number.parseFloat(value.replace(',', '.'));
+  return parseFormattedNumber(value);
 }
 
 
@@ -3207,67 +4051,16 @@ function parseOptionalMoney(value: string) {
 }
 
 function parseOptionalInt(value: string) {
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number.parseInt(sanitizeNumericInput(value), 10);
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
-function iconForKind(kind: AccountKind): keyof typeof Ionicons.glyphMap {
-  if (kind === 'credit') return 'card-outline';
-  if (kind === 'savings') return 'cash-outline';
-  return 'wallet-outline';
-}
 
 function accountKindLabel(kind: AccountKind) {
   if (kind === 'credit') return 'Crédit';
   if (kind === 'savings') return 'Épargne';
+  if (kind === 'cash') return 'Argent Cash';
   return 'Chèque';
-}
-
-function MaterialIcon({ material, size }: { material: WealthMaterial; size: number }) {
-  const { isLight } = useAppTheme();
-  const tone = materialTone(material, isLight);
-
-  if (material === 'diamond') {
-    return (
-      <Svg width={size} height={size} viewBox="0 0 40 40">
-        <Path d="M9 13 L15 7 H25 L31 13 L20 33 Z" fill={tone.fill} stroke={tone.stroke} strokeWidth={2} strokeLinejoin="round" />
-        <Path d="M9 13 H31 M15 7 L20 13 L25 7 M15 13 L20 33 L25 13" fill="none" stroke={tone.stroke} strokeWidth={1.4} strokeLinecap="round" />
-      </Svg>
-    );
-  }
-
-  if (material === 'silver') {
-    return (
-      <Svg width={size} height={size} viewBox="0 0 40 40">
-        <Circle cx={20} cy={20} r={13} fill={tone.fill} stroke={tone.stroke} strokeWidth={2} />
-        <Path d="M14 22 C16 25 24 25 26 21 C28 17 18 18 16 15 C15 13 17 11 20 11 C23 11 25 12 26 14" fill="none" stroke={tone.stroke} strokeWidth={2.2} strokeLinecap="round" />
-      </Svg>
-    );
-  }
-
-  if (material === 'platinum') {
-    return (
-      <Svg width={size} height={size} viewBox="0 0 40 40">
-        <Path d="M10 28 L14 10 H24 C29 10 32 13 32 18 C32 23 28 26 22 26 H17 L16 28 Z" fill={tone.fill} stroke={tone.stroke} strokeWidth={2} strokeLinejoin="round" />
-        <Path d="M18 16 H23 C25 16 26 17 26 19 C26 21 24 22 21 22 H17" fill="none" stroke={tone.stroke} strokeWidth={2} strokeLinecap="round" />
-      </Svg>
-    );
-  }
-
-  return (
-    <Svg width={size} height={size} viewBox="0 0 40 40">
-      <Circle cx={20} cy={20} r={14} fill={tone.fill} stroke={tone.stroke} strokeWidth={2} />
-      <Path d="M25 15 C23.8 12.8 21.6 11.7 18.8 12 C15 12.5 12.6 15.5 12.6 20 C12.6 24.4 15.1 27.4 19.2 28 C22.1 28.4 24.4 27.2 25.8 24.8" fill="none" stroke={tone.stroke} strokeWidth={2.4} strokeLinecap="round" />
-      <Path d="M19 17 H28 M19 23 H28" stroke={tone.stroke} strokeWidth={2} strokeLinecap="round" />
-    </Svg>
-  );
-}
-
-function materialTone(material: WealthMaterial, isLight: boolean) {
-  if (material === 'gold') return { fill: isLight ? '#FDE68A' : '#FACC15', stroke: '#A16207' };
-  if (material === 'silver') return { fill: isLight ? '#E5E7EB' : '#CBD5E1', stroke: '#64748B' };
-  if (material === 'platinum') return { fill: isLight ? '#D8F3F0' : '#9FE7DF', stroke: '#0F766E' };
-  return { fill: isLight ? '#EDE9FE' : '#C4B5FD', stroke: '#7C3AED' };
 }
 
 function materialLabel(material: WealthMaterial) {
@@ -3278,28 +4071,8 @@ function materialLabel(material: WealthMaterial) {
 }
 
 function defaultWealthName(type: WealthAssetType, material: WealthMaterial, propertyType: string) {
-  if (type === 'real_estate') return propertyType.trim() || 'Bien immobilier';
+  if (type === 'real_estate') return realEstateAssetName(propertyType);
   return materialLabel(material);
-}
-
-function assetSubtitle(asset: WealthAsset) {
-  if (asset.type === 'real_estate') return asset.propertyType?.trim() || 'Bien immobilier';
-  const material = asset.material ? materialLabel(asset.material) : 'Matériau précieux';
-  const weight = typeof asset.weight === 'number' ? `${asset.weight} ${asset.weightUnit ?? ''}`.trim() : null;
-  if (asset.material === 'gold' && asset.karats) return `${material} ${asset.karats}k${weight ? ` · ${weight}` : ''}`;
-  return weight ? `${material} · ${weight}` : material;
-}
-
-function valuationSourceLabel(asset: WealthAsset) {
-  if (asset.valuationSource === 'market') return 'Cours en ligne';
-  if (asset.valuationSource === 'manual') return 'Valeur manuelle';
-  return 'Estimation locale';
-}
-
-function formatShortDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('fr-CA', { month: 'short', day: 'numeric' });
 }
 
 function getSimulatedAccountLogoUrl(account: SimulatedAccount) {
@@ -3330,30 +4103,6 @@ function sortAccountsForDisplay(accounts: SimulatedAccount[]) {
   });
 }
 
-function computeNetWorthBreakdown(
-  scope: NetWorthChartScope,
-  accounts: SimulatedAccount[],
-  offAccountAssetsBalance: number,
-  loansTotalBalance: number,
-) {
-  const accountAssets = accounts.reduce((sum, account) => sum + Math.max(account.balance, 0), 0);
-  const accountDebts = accounts.reduce(
-    (sum, account) => sum + creditUsedFromBalance(account.balance),
-    0,
-  );
-
-  if (scope === 'inclusive') {
-    return {
-      totalAssets: accountAssets + offAccountAssetsBalance,
-      totalDebts: accountDebts + loansTotalBalance,
-    };
-  }
-
-  return {
-    totalAssets: accountAssets,
-    totalDebts: accountDebts,
-  };
-}
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
@@ -3364,37 +4113,36 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   chartSectionWrap: {
-    marginBottom: PORTFOLIO_BLOCK_GAP,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xl,
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+  },
+  chartToBalancesDivider: {
+    marginHorizontal: PAGE_PADDING_HORIZONTAL,
+    marginBottom: spacing.xl,
   },
   portfolioHeroBlock: {
     alignItems: 'flex-start',
     gap: 0,
     paddingHorizontal: PORTFOLIO_PAGE_PADDING,
   },
-  portfolioHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  portfolioHeaderTitle: {
     marginTop: spacing.lg,
     marginBottom: spacing.lg,
-  },
-  portfolioHeaderActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  portfolioHeaderIconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   portfolioScopeWrap: {
     alignSelf: 'stretch',
     width: '100%',
     marginBottom: spacing.md,
+  },
+  sectionToggleWrap: {
+    alignSelf: 'stretch',
+    width: '100%',
+    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  heroEyebrow: {
+    marginBottom: 6,
   },
   pageTitle: {
     ...interExtraBoldText,
@@ -3406,21 +4154,6 @@ const styles = StyleSheet.create({
     marginTop: 0,
     marginBottom: 0,
     paddingHorizontal: 0,
-  },
-  heroEyebrow: {
-    marginBottom: 6,
-  },
-  deltaBadge: {
-    alignSelf: 'flex-start',
-    marginTop: 10,
-    borderRadius: 24,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-  },
-  deltaBadgeText: {
-    ...interBoldText,
-    fontSize: 13,
   },
   wealthSection: {
     gap: PORTFOLIO_SECTION_GAP,
@@ -3627,6 +4360,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
   },
+  loanFormHero: {
+    alignItems: 'flex-start',
+  },
+  loanFormHeroHint: {
+    flex: 1,
+    flexShrink: 1,
+  },
   wealthFormIcon: {
     width: 58,
     height: 58,
@@ -3683,19 +4423,15 @@ const styles = StyleSheet.create({
   accountPortfolioSection: {
     gap: 0,
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    marginTop: PORTFOLIO_BLOCK_GAP,
-    paddingTop: spacing.sm,
+    marginTop: 0,
+    paddingTop: 0,
   },
   accountVisualSection: {
     gap: spacing.lg,
   },
   wealthPortfolioSection: {
     gap: PORTFOLIO_SECTION_GAP,
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    marginTop: PORTFOLIO_BLOCK_BREAK,
-    paddingTop: spacing.md,
-  },
-  wealthPortfolioSectionUnderChart: {
+    paddingHorizontal: 0,
     marginTop: 0,
     paddingTop: 0,
   },
@@ -4505,6 +5241,9 @@ const styles = StyleSheet.create({
     fontSize: typography.meta,
   },
   inputGroup: { gap: spacing.sm },
+  childSupportEyebrow: {
+    ...typographyKit.eyebrow,
+  },
   label: {
     ...interBoldText,
     fontSize: typography.caption,
@@ -4537,6 +5276,49 @@ const styles = StyleSheet.create({
   inputSuffix: {
     ...interBoldText,
     fontSize: typography.body,
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+  },
+  suggestionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  suggestionText: {
+    ...interBoldText,
+    fontSize: typography.caption,
+    lineHeight: 18,
+  },
+  createContactButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    minHeight: 44,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  createContactButtonDisabled: {
+    opacity: 0.6,
+  },
+  createContactButtonText: {
+    ...interBoldText,
+    fontSize: typography.caption,
+    lineHeight: 18,
+  },
+  linkedContactHint: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    lineHeight: 15,
   },
   saveBtn: {
     backgroundColor: colors.primary,
@@ -4591,8 +5373,6 @@ const styles = StyleSheet.create({
   },
   loansSectionContainer: {
     gap: PORTFOLIO_SECTION_GAP,
-    marginTop: PORTFOLIO_BLOCK_BREAK,
-    paddingTop: spacing.md,
   },
   loansSectionHeaderActions: {
     flexDirection: 'row',
@@ -4604,10 +5384,10 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   loanCardList: {
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   loanCard: {
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   loanCardTopRow: {
     flexDirection: 'row',
@@ -4617,33 +5397,62 @@ const styles = StyleSheet.create({
   loanCardCopy: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    flexShrink: 1,
+    gap: spacing.xs,
+  },
+  loanCardAmountBlock: {
+    ...rowValueContainer,
+    minWidth: 88,
+    gap: spacing.xs,
+    paddingTop: 1,
   },
   loanCardType: {
     ...interMediumText,
     fontSize: typography.micro,
     letterSpacing: 0.3,
     textTransform: 'uppercase',
+    color: LOAN_CARD_SURFACE.label,
   },
-  loanCardMetaRow: {
+  loanCardHeroLabel: {
+    ...interMediumText,
+    fontSize: 9,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    textAlign: 'right',
+    color: LOAN_CARD_SURFACE.label,
+  },
+  loanCardHeroAmount: {
+    ...interExtraBoldText,
+    fontSize: 24,
+    lineHeight: 28,
+    letterSpacing: -0.4,
+    textAlign: 'right',
+    color: LOAN_CARD_SURFACE.text,
+    fontVariant: ['tabular-nums'],
+  },
+  loanCardSecondaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
-    marginTop: 2,
   },
-  loanCardMetaText: {
+  loanCardSecondaryMetric: {
     ...interMediumText,
+    fontSize: typography.micro,
+    lineHeight: 16,
+    color: LOAN_CARD_SURFACE.meta,
+    fontVariant: ['tabular-nums'],
+    flexShrink: 0,
+  },
+  loanCardSecondaryPayment: {
+    ...interMediumText,
+    fontSize: typography.micro,
+    lineHeight: 16,
+    color: LOAN_CARD_SURFACE.meta,
+    fontVariant: ['tabular-nums'],
     flex: 1,
     minWidth: 0,
-    fontSize: typography.micro,
-    fontWeight: '700',
-  },
-  loanCardMetaPct: {
-    ...interMediumText,
-    fontSize: typography.micro,
-    fontWeight: '700',
-    flexShrink: 0,
+    textAlign: 'right',
   },
   loanCardIcon: {
     width: 38,
@@ -4656,8 +5465,13 @@ const styles = StyleSheet.create({
   loanCardName: {
     ...rowLabel,
     ...interBoldText,
-    flex: 1,
-    minWidth: 0,
     letterSpacing: -0.1,
+    color: LOAN_CARD_SURFACE.text,
+  },
+  loanCardRecipient: {
+    ...interMediumText,
+    fontSize: typography.caption,
+    color: LOAN_CARD_SURFACE.meta,
+    marginTop: 2,
   },
 });

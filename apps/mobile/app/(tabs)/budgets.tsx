@@ -22,7 +22,9 @@ import { DashboardProgressBar } from '@/components/DashboardProgressBar';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { PageTransition } from '@/components/PageTransition';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
+import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { GlassContainer } from '@/components/GlassContainer';
+import { ModifierButton } from '@/components/ModifierButton';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import type { FormFeedback } from '@/lib/formFeedback';
@@ -66,6 +68,7 @@ import {
 import { dataEvents } from '@/lib/events';
 import type { BudgetChartSegment } from '@/lib/budgetChart';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { parseFormattedNumber, sanitizeNumericInput } from '@/lib/formatNumber';
 import { categoryBudgetBarColor, getCategoryBudgetUsage } from '@/lib/categoryBudgetUsage';
 import { rowLabel, rowTitleTextProps, rowValue, singleLineAmountProps } from '@/lib/textLayout';
 import { UNIFORM_ROW_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
@@ -623,20 +626,11 @@ function BudgetCategoryDetailSheet({
             <Text style={[allocStyles.detailSheetTitle, { color: colors.text }]} {...rowTitleTextProps}>
               {category.categoryName}
             </Text>
-            <Pressable
-              accessibilityRole="button"
+            <ModifierButton
               accessibilityLabel={`Modifier la catégorie ${category.categoryName}`}
-              hitSlop={10}
-              style={({ pressed }) => [
-                allocStyles.detailActionBtn,
-                { backgroundColor: colors.surfaceSolid, borderColor: colors.borderStrong },
-                pressed && allocStyles.detailBtnPressed,
-              ]}
               onPress={() => onEditCategory(category)}
-            >
-              <Ionicons name="pencil-outline" size={15} color={colors.text} />
-              <Text style={[allocStyles.detailActionLabel, { color: colors.text }]}>Modifier</Text>
-            </Pressable>
+              hitSlop={10}
+            />
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Fermer"
@@ -865,11 +859,12 @@ function CategoryFormField({
   onChangeText: (value: string) => void;
 }) {
   const { colors } = useAppTheme();
+  const InputComponent = keyboardType === 'decimal-pad' ? NumericAmountInput : TextInput;
 
   return (
     <View style={allocStyles.field}>
       <Text style={[allocStyles.fieldLabel, { color: colors.textMuted }]}>{label}</Text>
-      <TextInput
+      <InputComponent
         style={[allocStyles.input, { backgroundColor: colors.surfaceElevated, borderColor: colors.border, color: colors.text }]}
         value={value}
         onChangeText={onChangeText}
@@ -1138,20 +1133,6 @@ const allocStyles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.35,
   },
-  detailActionBtn: {
-    flexShrink: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    height: 36,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-  },
-  detailActionLabel: {
-    fontSize: typography.micro,
-    fontWeight: '700',
-  },
   detailCloseBtn: {
     flexShrink: 0,
     alignItems: 'center',
@@ -1412,11 +1393,11 @@ function createLocalId() {
 }
 
 function sanitizeAmount(value: string) {
-  return value.replace(/[^0-9.,]/g, '').replace(',', '.');
+  return sanitizeNumericInput(value);
 }
 
 function parseAmount(value: string) {
-  return Number.parseFloat(value.replace(',', '.'));
+  return parseFormattedNumber(value);
 }
 
 function formatPercent(value: number) {

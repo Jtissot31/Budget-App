@@ -3,7 +3,7 @@ export type TransactionType = 'expense' | 'income' | 'transfer';
 export type SyncStatus = 'synced' | 'pending' | 'failed';
 export type ReceiptStatus = 'attached' | 'scan_pending';
 
-export type AccountKind = 'credit' | 'checking' | 'savings';
+export type AccountKind = 'credit' | 'checking' | 'savings' | 'cash';
 
 export interface Category {
   id: string;
@@ -98,7 +98,7 @@ export interface WealthAsset {
   address?: string | null;
   /** Banner photo URI for detail view (real estate). */
   photoUri?: string | null;
-  /** Linked mortgage loan id when synced from Dettes & Prêts. */
+  /** Linked mortgage loan id when synced from Prêts et obligations. */
   linkedLoanId?: string | null;
   notes?: string | null;
   createdAt: string;
@@ -119,6 +119,7 @@ export interface Contact {
   name: string;
   normalizedName: string;
   isEmployer?: boolean;
+  photoUri?: string | null;
   createdAt: string;
 }
 
@@ -136,10 +137,19 @@ export interface SavingsGoal {
   createdAt: string;
 }
 
-export type LoanType = 'friend_debt' | 'personal_loan' | 'line_of_credit' | 'mortgage';
+export type LoanType =
+  | 'friend_debt'
+  | 'personal_loan'
+  | 'line_of_credit'
+  | 'mortgage'
+  | 'child_support';
 export type FriendDebtMode = 'open' | 'payment_plan';
 export type LoanDurationUnit = 'months' | 'years';
 export type LoanPaymentFrequency = 'weekly' | 'biweekly' | 'monthly';
+export type LoanRateType = 'fixed' | 'variable';
+export type LoanPaymentDebitType = 'automatic' | 'manual';
+/** Parent receveur pour pension retenue par Revenu Québec (ordre du tribunal). */
+export type ChildSupportBeneficiaryRelation = 'mother' | 'father';
 
 export interface Loan {
   id: string;
@@ -152,6 +162,18 @@ export interface Loan {
   principal: number;
   balanceRemaining: number;
   interestRate: number;
+  /** Mortgage rate type — fixe ou variable. */
+  rateType?: LoanRateType | null;
+  /** Mortgage interest-rate term length in years (e.g. 5-year fixed). */
+  rateTermYears?: number | null;
+  /** Mortgage rate renewal date. */
+  renewalDate?: string | null;
+  /** Mortgage amortization period in years (e.g. 25, 30). */
+  amortizationYears?: number | null;
+  /** Mortgage payment withdrawal — automatic pre-authorized debit or manual. */
+  paymentDebitType?: LoanPaymentDebitType | null;
+  /** Pension alimentaire — mère ou père bénéficiaire (mode Revenu Québec). */
+  beneficiaryRelation?: ChildSupportBeneficiaryRelation | null;
   monthlyPayment: number;
   startDate: string;
   endDate: string;

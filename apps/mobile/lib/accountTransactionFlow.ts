@@ -44,6 +44,11 @@ export function resolveAccountIdLabel(
   return accountId;
 }
 
+export function isLikelySavingsGoalId(endpointId: string): boolean {
+  const trimmed = endpointId.trim();
+  return trimmed.startsWith('goal-') || trimmed.startsWith('goal_');
+}
+
 export function resolveEndpointLabel(
   endpointId: string,
   accounts: readonly SimulatedAccount[] = [],
@@ -52,7 +57,43 @@ export function resolveEndpointLabel(
   const goal = savingsGoals.find((item) => item.id === endpointId);
   if (goal) return goal.name.trim();
 
-  return resolveAccountIdLabel(endpointId, accounts);
+  const accountLabel = resolveAccountIdLabel(endpointId, accounts);
+  if (accountLabel !== endpointId) return accountLabel;
+
+  if (isLikelySavingsGoalId(endpointId)) return 'Objectif supprimé';
+  return 'Compte supprimé';
+}
+
+export function resolveTransactionHistorySubtitle(
+  tx: Pick<Transaction, 'type' | 'note'>,
+  context: {
+    accounts?: readonly SimulatedAccount[];
+    savingsGoals?: readonly Pick<SavingsGoal, 'id' | 'name'>[];
+  } = {},
+): string | null {
+  const accounts = context.accounts ?? [];
+  const savingsGoals = context.savingsGoals ?? [];
+
+  if (isContactTransferTx(tx)) {
+    const sourceId = parseAccountIdFromNote(tx.note);
+    return sourceId ? resolveEndpointLabel(sourceId, accounts, savingsGoals) : null;
+  }
+
+  if (tx.type === 'transfer') {
+    const { sourceId, destinationId } = parseTransferAccountsFromNote(tx.note);
+    if (sourceId || destinationId) {
+      const source = sourceId ? resolveEndpointLabel(sourceId, accounts, savingsGoals) : null;
+      const destination = destinationId ? resolveEndpointLabel(destinationId, accounts, savingsGoals) : null;
+      if (source && destination) return `${source} → ${destination}`;
+      if (source) return source;
+      if (destination) return destination;
+    }
+
+    const accountId = parseAccountIdFromNote(tx.note);
+    return accountId ? resolveEndpointLabel(accountId, accounts, savingsGoals) : null;
+  }
+
+  return resolveTransactionPaymentMethodLabel(tx, { accounts, savingsGoals });
 }
 
 export function resolveTransactionAccountLabel(
@@ -226,7 +267,7 @@ export function findInsufficientFundsViolation(
   for (const [accountId, delta] of netDeltas) {
     if (delta >= 0) continue;
     const account = accountById.get(accountId);
-    if (!account || (account.kind !== 'checking' && account.kind !== 'savings')) continue;
+    if (!account || (account.kind !== 'checking' && account.kind !== 'savings' && account.kind !== 'cash')) continue;
     if (account.balance + delta < 0) {
       const name = account.name.trim();
       return {

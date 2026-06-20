@@ -11,22 +11,25 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BankAccountCard } from '@/components/BankAccountCard';
+import { CashAccountCard } from '@/components/CashAccountCard';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
+import { SurfaceCard } from '@/components/SurfaceCard';
+import { NumericAmountInput } from '@/components/NumericAmountInput';
+import { OverflowMenuButton } from '@/components/OverflowMenuButton';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import { formValidationError, type FormFeedback } from '@/lib/formFeedback';
 import { PageTransition } from '@/components/PageTransition';
 import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
-import { EXPENSE_DEFAULT_ICON } from '@/lib/expenseIcon';
 import { getMerchantLogoUrl } from '@/lib/merchantLogo';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionRow } from '@/components/TransactionRow';
-import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import {
   frequencyLabel,
   manualAccountOptions,
@@ -40,12 +43,9 @@ import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   colors,
   ICON_WELL_SIZE,
-  accountDetailHeroActionLinkStyle,
-  accountDetailHeroActionMutedTextStyle,
-  accountDetailHeroActionSeparatorStyle,
-  accountDetailHeroActionsStyle,
   accountDetailHeroBlockStyle,
-  accountDetailRecurringHeaderStyle,
+  accountDetailRecurringPanelStyle,
+  accountDetailRecurringTriggerStyle,
   accountDetailSectionDividerStyle,
   accountDetailStatementStatColStyle,
   accountDetailStatementStatLabelStyle,
@@ -60,11 +60,14 @@ import {
   spacing,
   subtleDeleteButtonStyle,
   typography,
+  typographyKit,
+  type AppColors,
 } from '@/constants/theme';
 import {
   deleteSimulatedAccount,
   getCategories,
   getCategoryBudgets,
+  getLoans,
   getRecurringPayments,
   getSavingsGoals,
   getSimulatedAccounts,
@@ -77,13 +80,20 @@ import { tapHaptic, successHaptic } from '@/lib/haptics';
 import { getAccountLogoUrl } from '@/lib/merchantLogo';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
+import { formatCreditDueDateLabel } from '@/lib/creditDueDate';
 import {
   creditLimitUtilizationPercent,
   creditUsedFromBalance,
   utilizationPercentColor,
 } from '@/lib/creditLimitUtilization';
 import { parseIsoDay } from '@/lib/estimatedPaycheck';
-import { formatDisplayMoneyAbsolute, formatRecurringPaymentAmount, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
+import {
+  buildLoanByRecurringPaymentId,
+  resolveRecurringPaymentDisplayIconById,
+} from '@/lib/recurringPaymentPresentation';
+import { TransactionAmountLabel, recurringPaymentAmountDirection } from '@/components/TransactionAmountLabel';
+import { formatDisplayMoneyAbsolute, formatRecurringPaymentAmount } from '@/lib/formatDisplayMoney';
+import { parseFormattedNumber, sanitizeNumericInput } from '@/lib/formatNumber';
 import { UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import {
   filterTransactionsByType,
@@ -93,7 +103,7 @@ import {
   type HistoryTypeFilter,
   transactionMatchesSearch,
 } from '@/lib/transactionListUtils';
-import type { AccountKind, Category, CategoryBudget, RecurringPayment, SavingsGoal, SimulatedAccount, Transaction } from '@/types';
+import type { AccountKind, Category, CategoryBudget, Loan, RecurringPayment, SavingsGoal, SimulatedAccount, Transaction } from '@/types';
 
 const ACCOUNT_TYPES: Array<{
   id: AccountKind;
@@ -103,6 +113,7 @@ const ACCOUNT_TYPES: Array<{
   { id: 'credit', label: 'Crédit', icon: 'card-outline' },
   { id: 'checking', label: 'Compte chèque', icon: 'wallet-outline' },
   { id: 'savings', label: 'Épargne', icon: 'cash-outline' },
+  { id: 'cash', label: 'Argent Cash', icon: 'wallet-outline' },
 ];
 
 const INSTITUTION_LOGO_OPTIONS = [
@@ -132,11 +143,9 @@ function formatMoney(value: number) {
   return formatDisplayMoneyAbsolute(value);
 }
 
-function formatSignedMoney(value: number) {
-  return formatSignedDisplayMoney(value);
-}
-
 const SUBSCRIPTION_CATEGORY_PATTERN = /abonnement|subscription|loisir|divertissement|streaming/;
+const RECURRING_ICON_SIZE = 40;
+const RECURRING_TRIGGER_ICON_SIZE = 17;
 
 function recurringPaymentTypeLabel(payment: RecurringPayment) {
   if ((payment.kind ?? 'payment') === 'income') return 'Revenu récurrent';
@@ -194,6 +203,119 @@ function recurringPaymentDefinitionMeta(payment: RecurringPayment, from: Date) {
   const next = payment.active ? nextRecurringOccurrence(payment, from) : null;
   if (next) parts.push(formatRecurringNextDate(next));
   return parts.join(' · ');
+}
+
+type CreditDetailRow = {
+  label: string;
+  value: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  valueColor?: string;
+};
+
+function buildCreditDetailRows(
+  account: SimulatedAccount,
+  creditInfo: { creditLimit?: number; utilPct?: number; available?: number },
+  today: Date,
+  colors: Pick<AppColors, 'text' | 'textMuted' | 'danger' | 'warning' | 'success'>,
+): CreditDetailRow[] {
+  const rows: CreditDetailRow[] = [];
+
+  if (typeof creditInfo.utilPct === 'number') {
+    rows.push({
+      label: '% utilisé',
+      value: `${Math.round(creditInfo.utilPct)} %`,
+      icon: 'pie-chart-outline',
+      valueColor: utilizationPercentColor(creditInfo.utilPct, colors),
+    });
+  }
+
+  if (typeof creditInfo.available === 'number') {
+    rows.push({
+      label: 'Disponible',
+      value: formatMoney(creditInfo.available),
+      icon: 'wallet-outline',
+    });
+  }
+
+  if (typeof creditInfo.creditLimit === 'number') {
+    rows.push({
+      label: 'Plafond',
+      value: formatMoney(creditInfo.creditLimit),
+      icon: 'card-outline',
+    });
+  }
+
+  if (typeof account.dueDay === 'number') {
+    rows.push({
+      label: 'Échéance',
+      value: formatCreditDueDateLabel(account.dueDay, today),
+      icon: 'calendar-outline',
+    });
+  }
+
+  if (typeof account.interestRate === 'number') {
+    rows.push({
+      label: "Taux d'intérêt",
+      value: `${account.interestRate} %`,
+      icon: 'trending-up-outline',
+    });
+  }
+
+  return rows;
+}
+
+function chunkDetailRows<T>(rows: T[]): T[][] {
+  const pairs: T[][] = [];
+  for (let index = 0; index < rows.length; index += 2) {
+    pairs.push(rows.slice(index, index + 2));
+  }
+  return pairs;
+}
+
+function DetailInfoRowPair({
+  rows,
+  colors,
+  isLast,
+}: {
+  rows: CreditDetailRow[];
+  colors: Pick<AppColors, 'text' | 'textMuted' | 'border'>;
+  isLast: boolean;
+}) {
+  return (
+    <View
+      style={[
+        styles.infoRowPair,
+        !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+      ]}
+    >
+      {rows.map((row, index) => (
+        <DetailInfoRow key={`${row.label}-${index}`} row={row} colors={colors} />
+      ))}
+      {rows.length === 1 ? <View style={styles.infoRowCellSpacer} /> : null}
+    </View>
+  );
+}
+
+function DetailInfoRow({
+  row,
+  colors,
+}: {
+  row: CreditDetailRow;
+  colors: Pick<AppColors, 'text' | 'textMuted' | 'border'>;
+}) {
+  return (
+    <View style={styles.infoRow}>
+      {row.icon ? (
+        <Ionicons name={row.icon} size={18} color={colors.textMuted} style={styles.infoRowIcon} />
+      ) : (
+        <View style={styles.infoRowIconSpacer} />
+      )}
+      <View style={styles.infoRowCopy}>
+        <Text style={[styles.infoRowLabel, { color: colors.textMuted }]}>{row.label}</Text>
+        <Text style={[styles.infoRowValue, { color: row.valueColor ?? colors.text }]}>{row.value}</Text>
+      </View>
+    </View>
+  );
 }
 
 function DetailRow({
@@ -263,30 +385,22 @@ function StatementStatColumn({
 function CheckingMonthlyStatsRow({
   revenues,
   expenses,
-  net,
 }: {
   revenues: number;
   expenses: number;
-  net: number;
 }) {
   const { colors } = useAppTheme();
 
   return (
     <View style={accountDetailStatementStatsRowStyle()}>
       <StatementStatColumn
-        label="Revenus"
+        label="Revenu"
         value={`+${formatMoney(revenues)}`}
+        valueColor={colors.success}
         align="left"
       />
       <StatementStatColumn
-        label="Net ce mois"
-        value={formatSignedMoney(net)}
-        valueColor={net >= 0 ? colors.success : colors.danger}
-        align="center"
-        prominent
-      />
-      <StatementStatColumn
-        label="Dépenses"
+        label="Montant dépensé"
         value={`−${formatMoney(expenses)}`}
         align="right"
       />
@@ -313,21 +427,41 @@ function FlowDivider() {
   return <View style={accountDetailSectionDividerStyle(isLight)} />;
 }
 
+function RecurringChevron({ expanded, color }: { expanded: boolean; color: string }) {
+  const rotation = useSharedValue(expanded ? 1 : 0);
+
+  useEffect(() => {
+    rotation.value = withTiming(expanded ? 1 : 0, { duration: 220 });
+  }, [expanded, rotation]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value * 180}deg` }],
+  }));
+
+  return (
+    <Animated.View style={animatedStyle}>
+      <Ionicons name="chevron-down" size={16} color={color} />
+    </Animated.View>
+  );
+}
+
 export default function AccountDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ accountId?: string }>();
   const accountId = typeof params.accountId === 'string' ? params.accountId : '';
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
+  const searchInputRef = useRef<TextInput>(null);
   const { colors, ghost, ghostCardShadow, isLight } = useAppTheme();
   const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
   const [search, setSearch] = useState('');
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const [historyTypeFilter, setHistoryTypeFilter] = useState<HistoryTypeFilter>('all');
   const [historyFiltersExpanded, setHistoryFiltersExpanded] = useState(false);
-  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showRecurringPayments, setShowRecurringPayments] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -352,22 +486,32 @@ export default function AccountDetailScreen() {
   const [recurringFeedback, setRecurringFeedback] = useState<FormFeedback | null>(null);
 
   const load = useCallback(async () => {
-    const [nextAccounts, nextSavingsGoals, nextTransactions, nextRecurringPayments] = await Promise.all([
+    const [nextAccounts, nextSavingsGoals, nextTransactions, nextRecurringPayments, nextLoans] = await Promise.all([
       getSimulatedAccounts(),
       getSavingsGoals(),
       getTransactions(),
       getRecurringPayments(),
+      getLoans(),
     ]);
     setAccounts(nextAccounts);
     setSavingsGoals(nextSavingsGoals);
     setTransactions(nextTransactions);
     setRecurringPayments(nextRecurringPayments);
+    setLoans(nextLoans);
   }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
+    setSearch('');
+    setSearchExpanded(false);
     void load();
   }, [accountId, load]);
+
+  useEffect(() => {
+    if (!searchExpanded) return;
+    const timer = setTimeout(() => searchInputRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
+  }, [searchExpanded]);
 
   useRefreshOnFocus(load);
   useEffect(() => dataEvents.subscribe(load), [load]);
@@ -397,14 +541,19 @@ export default function AccountDetailScreen() {
     date.setHours(0, 0, 0, 0);
     return date;
   }, []);
+  const loanByRecurringPaymentId = useMemo(
+    () => buildLoanByRecurringPaymentId(loans),
+    [loans],
+  );
+
   const accountRecurringPayments = useMemo(() => {
     if (!account) return [];
     return recurringPayments
       .filter((payment) => payment.accountId === account.id)
       .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   }, [account, recurringPayments]);
-  const checkingMonthlyStats = useMemo(() => {
-    if (!account || account.kind !== 'checking') return null;
+  const monthlyTransactionStats = useMemo(() => {
+    if (!account || (account.kind !== 'checking' && account.kind !== 'credit' && account.kind !== 'cash')) return null;
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
@@ -416,7 +565,7 @@ export default function AccountDetailScreen() {
       if (tx.type === 'income') revenues += Math.abs(tx.amount);
       else if (tx.type === 'expense') expenses += Math.abs(tx.amount);
     });
-    return { revenues, expenses, net: revenues - expenses };
+    return { revenues, expenses };
   }, [account, accountTransactions]);
   const creditInfo = useMemo(() => {
     if (!account || account.kind !== 'credit') return null;
@@ -427,6 +576,10 @@ export default function AccountDetailScreen() {
     const available = typeof creditLimit === 'number' ? Math.max(0, creditLimit - creditUsed) : undefined;
     return { creditLimit, creditUsed, utilPct, available };
   }, [account]);
+  const creditDetailRows = useMemo(() => {
+    if (!account || account.kind !== 'credit' || !creditInfo) return [];
+    return buildCreditDetailRows(account, creditInfo, today, colors);
+  }, [account, colors, creditInfo, today]);
   const logoSourceName = institution.trim() || name.trim();
   const selectedInstitutionLogo = useMemo(
     () => INSTITUTION_LOGO_OPTIONS.find((option) => option.id === selectedInstitutionLogoId) ?? null,
@@ -489,12 +642,18 @@ export default function AccountDetailScreen() {
       name: name.trim(),
       kind,
       balance: kind === 'credit' ? -Math.abs(parsedBalance) : parsedBalance,
-      institution: selectedInstitutionLogo?.institution ?? (institution.trim() || undefined),
-      last4: editingAccount.last4,
+      institution:
+        kind === 'cash'
+          ? undefined
+          : selectedInstitutionLogo?.institution ?? (institution.trim() || undefined),
+      last4: kind === 'credit' ? editingAccount.last4 : undefined,
       creditLimit: kind === 'credit' ? parseOptionalMoney(creditLimit) : undefined,
       dueDay: kind === 'credit' ? parseOptionalInt(dueDay) : undefined,
-      interestRate: kind !== 'checking' ? parseOptionalMoney(interestRate) : undefined,
-      logoUrl: selectedInstitutionLogo?.logoUrl ?? getAccountLogoUrl(logoSourceName) ?? undefined,
+      interestRate: kind === 'savings' ? parseOptionalMoney(interestRate) : undefined,
+      logoUrl:
+        kind === 'cash'
+          ? undefined
+          : selectedInstitutionLogo?.logoUrl ?? getAccountLogoUrl(logoSourceName) ?? undefined,
       linkedSavingsGoalId: editingAccount.linkedSavingsGoalId ?? null,
       hidden: editingAccount.hidden,
       displayOrder: editingAccount.displayOrder,
@@ -528,6 +687,17 @@ export default function AccountDetailScreen() {
     setRecurringFeedback(null);
   }, []);
 
+  const collapseSearch = useCallback(() => {
+    setSearch('');
+    setSearchExpanded(false);
+    searchInputRef.current?.blur();
+  }, []);
+
+  const expandSearch = useCallback(() => {
+    tapHaptic();
+    setSearchExpanded(true);
+  }, []);
+
   const saveRecurringPayment = async () => {
     if (!recurringForm) return;
     setRecurringSaving(true);
@@ -546,7 +716,7 @@ export default function AccountDetailScreen() {
   return (
     <PageTransition>
     <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
-      <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
+      <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.lg + spacing.md }]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Retour"
@@ -563,7 +733,31 @@ export default function AccountDetailScreen() {
         <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
           {account?.name ?? 'Compte'}
         </Text>
-        <View style={styles.topBarSpacer} />
+        {account ? (
+          <OverflowMenuButton
+            accessibilityLabel="Options du compte"
+            items={[
+              {
+                key: 'edit',
+                label: 'Modifier',
+                onPress: () => openEditAccountForm(account),
+              },
+              ...(account.kind !== 'cash'
+                ? [
+                    {
+                      key: 'delete',
+                      label: 'Supprimer',
+                      icon: 'trash-outline' as const,
+                      destructive: true,
+                      onPress: () => confirmDeleteAccount(account),
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        ) : (
+          <View style={styles.topBarSpacer} />
+        )}
       </View>
 
       <ScrollView
@@ -585,60 +779,22 @@ export default function AccountDetailScreen() {
         {account ? (
           <>
             <View style={accountDetailHeroBlockStyle()}>
-              <View style={accountDetailHeroActionsStyle()}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Modifier le compte"
-                  style={({ pressed }) => [accountDetailHeroActionLinkStyle(), pressed && styles.pressed]}
-                  onPress={() => openEditAccountForm(account)}
-                >
-                  <Text style={accountDetailHeroActionMutedTextStyle(isLight)}>Modifier</Text>
-                </Pressable>
-                <Text style={accountDetailHeroActionSeparatorStyle(isLight)}>·</Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Supprimer le compte"
-                  style={({ pressed }) => [accountDetailHeroActionLinkStyle(), pressed && styles.pressed]}
-                  onPress={() => confirmDeleteAccount(account)}
-                >
-                  <Text style={destructiveTextActionStyle(isLight)}>Supprimer</Text>
-                </Pressable>
-              </View>
               <View style={ghostCardShadow}>
-                <BankAccountCard
-                  account={account}
-                  logoUrl={getSimulatedAccountLogoUrl(account)}
-                />
+                {account.kind === 'cash' ? (
+                  <CashAccountCard account={account} />
+                ) : (
+                  <BankAccountCard
+                    account={account}
+                    logoUrl={getSimulatedAccountLogoUrl(account)}
+                  />
+                )}
               </View>
             </View>
 
-            {creditInfo ? (
-              <StatementStatsRow
-                stats={[
-                  {
-                    label: 'Solde dû',
-                    value: formatSignedDisplayMoney(-creditInfo.creditUsed),
-                    valueColor: colors.danger,
-                  },
-                  ...(typeof creditInfo.available === 'number'
-                    ? [{ label: 'Disponible', value: formatMoney(creditInfo.available) }]
-                    : []),
-                  ...(typeof creditInfo.utilPct === 'number'
-                    ? [{
-                        label: '% utilisé',
-                        value: `${Math.round(creditInfo.utilPct)} %`,
-                        valueColor: utilizationPercentColor(creditInfo.utilPct, colors),
-                      }]
-                    : []),
-                ]}
-              />
-            ) : null}
-
-            {checkingMonthlyStats ? (
+            {monthlyTransactionStats ? (
               <CheckingMonthlyStatsRow
-                revenues={checkingMonthlyStats.revenues}
-                expenses={checkingMonthlyStats.expenses}
-                net={checkingMonthlyStats.net}
+                revenues={monthlyTransactionStats.revenues}
+                expenses={monthlyTransactionStats.expenses}
               />
             ) : null}
 
@@ -660,32 +816,119 @@ export default function AccountDetailScreen() {
               />
             ) : null}
 
-            {creditInfo &&
-            (typeof creditInfo.creditLimit === 'number' ||
-              typeof account.dueDay === 'number' ||
-              typeof account.interestRate === 'number') ? (
-              <>
-                <FlowDivider />
-                {typeof creditInfo.creditLimit === 'number' ? (
-                  <DetailRow
-                    label="Limite"
-                    value={formatMoney(creditInfo.creditLimit)}
-                    isLast={
-                      typeof account.dueDay !== 'number' && typeof account.interestRate !== 'number'
-                    }
-                  />
-                ) : null}
-                {typeof account.dueDay === 'number' ? (
-                  <DetailRow
-                    label="Échéance"
-                    value={`Jour ${account.dueDay}`}
-                    isLast={typeof account.interestRate !== 'number'}
-                  />
-                ) : null}
-                {typeof account.interestRate === 'number' ? (
-                  <DetailRow label="Taux d'intérêt" value={`${account.interestRate} %`} isLast />
-                ) : null}
-              </>
+            <View style={showRecurringPayments ? accountDetailRecurringPanelStyle(isLight) : undefined}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Paiements récurrents liés à ce compte"
+                accessibilityHint="Affiche ou masque la liste des paiements récurrents"
+                accessibilityState={{ expanded: showRecurringPayments }}
+                android_ripple={null}
+                style={({ pressed }) => [
+                  accountDetailRecurringTriggerStyle(),
+                  showRecurringPayments && {
+                    paddingHorizontal: spacing.md,
+                    borderBottomColor: colors.border,
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                  },
+                  !showRecurringPayments && pressed && styles.pressed,
+                ]}
+                onPress={() => {
+                  tapHaptic();
+                  setShowRecurringPayments((visible) => !visible);
+                }}
+              >
+                <View style={styles.recurringTriggerCopy}>
+                  <View style={styles.recurringTriggerTitleRow}>
+                    <Ionicons
+                      name="calendar-outline"
+                      size={RECURRING_TRIGGER_ICON_SIZE}
+                      color={colors.textSecondary}
+                    />
+                    <Text style={[typographyKit.eyebrow, { color: colors.textMuted }]}>
+                      Paiements récurrents
+                    </Text>
+                  </View>
+                  {!showRecurringPayments ? (
+                    <Text style={[styles.recurringTriggerHint, { color: colors.textMuted }]} numberOfLines={1}>
+                      {accountRecurringPayments.length > 0
+                        ? `${accountRecurringPayments.length} lié${accountRecurringPayments.length > 1 ? 's' : ''} à ce compte`
+                        : 'Aucun paiement lié'}
+                    </Text>
+                  ) : null}
+                </View>
+                <View style={styles.recurringTriggerMeta}>
+                  <Text style={[styles.recurringTriggerCount, { color: colors.textMuted }]}>
+                    {accountRecurringPayments.length}
+                  </Text>
+                  <RecurringChevron expanded={showRecurringPayments} color={colors.textMuted} />
+                </View>
+              </Pressable>
+
+              {showRecurringPayments ? (
+                <View style={styles.recurringPanelBody}>
+                  {accountRecurringPayments.length > 0 ? (
+                    accountRecurringPayments.map((payment, paymentIndex) => (
+                      <Pressable
+                        key={payment.id}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Modifier ${payment.name}`}
+                        android_ripple={null}
+                        style={({ pressed }) => [
+                          styles.recurringPaymentRow,
+                          paymentIndex < accountRecurringPayments.length - 1 && {
+                            borderBottomColor: colors.border,
+                            borderBottomWidth: StyleSheet.hairlineWidth,
+                          },
+                          pressed && styles.pressed,
+                        ]}
+                        onPress={() => void openEditRecurringPayment(payment)}
+                      >
+                        <UserPickedIconWell
+                          icon={resolveRecurringPaymentDisplayIconById(payment, loanByRecurringPaymentId)}
+                          color={payment.color}
+                          size={RECURRING_ICON_SIZE}
+                          wellGlyphWhite
+                          logoUrl={payment.logoUrl?.trim() || getMerchantLogoUrl(payment.name) || null}
+                        />
+                        <View style={styles.recurringPaymentCopy}>
+                          <Text style={[typographyKit.listPrimary, { color: colors.text }]} numberOfLines={1}>
+                            {payment.name}
+                          </Text>
+                          <Text style={[typographyKit.microMedium, { color: colors.textMuted }]} numberOfLines={1}>
+                            {recurringPaymentDefinitionMeta(payment, today)}
+                          </Text>
+                        </View>
+                        <TransactionAmountLabel
+                          amount={formatRecurringPaymentAmount(payment.amount, payment.kind ?? 'payment')}
+                          direction={recurringPaymentAmountDirection(payment.kind ?? 'payment')}
+                          color={payment.kind === 'income' ? colors.success : colors.text}
+                          textStyle={styles.recurringPaymentAmount}
+                        />
+                      </Pressable>
+                    ))
+                  ) : (
+                    <Text style={[styles.recurringPanelEmpty, { color: colors.textMuted }]}>
+                      Aucun paiement récurrent pour ce compte.
+                    </Text>
+                  )}
+                </View>
+              ) : null}
+            </View>
+
+            {creditDetailRows.length > 0 ? (
+              <SurfaceCard style={styles.infoCard}>
+                <Text style={[styles.infoSectionLabel, { color: colors.textMuted }]}>DÉTAILS</Text>
+                <View style={[styles.infoRows, { borderColor: colors.border }]}>
+                  {chunkDetailRows(creditDetailRows).map((pair, pairIndex, pairs) => (
+                    <DetailInfoRowPair
+                      key={`${pair[0]?.label ?? 'pair'}-${pairIndex}`}
+                      rows={pair}
+                      colors={colors}
+                      isLast={pairIndex === pairs.length - 1}
+                    />
+                  ))}
+                </View>
+              </SurfaceCard>
             ) : null}
 
             {account.kind === 'savings' && linkedSavingsGoal ? (
@@ -713,131 +956,90 @@ export default function AccountDetailScreen() {
               </>
             ) : null}
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Paiements récurrents de ce compte"
-              accessibilityState={{ expanded: showRecurringPayments }}
-              android_ripple={null}
-              style={({ pressed }) => [
-                accountDetailRecurringHeaderStyle(isLight),
-                pressed && styles.pressed,
-              ]}
-              onPress={() => {
-                tapHaptic();
-                setShowRecurringPayments((visible) => !visible);
-              }}
-            >
-              <View style={styles.recurringSectionTitleRow}>
-                <Ionicons name="repeat" size={18} color={colors.primary} />
-                <Text style={[styles.recurringSectionTitle, { color: colors.text }]}>
-                  Paiements récurrents de ce compte
-                </Text>
-              </View>
-              <View style={styles.recurringSectionMeta}>
-                <View style={[styles.recurringCountBadge, { backgroundColor: colors.blueMuted }]}>
-                  <Text style={[styles.recurringCountBadgeText, { color: colors.primary }]}>
-                    {accountRecurringPayments.length}
-                  </Text>
-                </View>
-                <Ionicons
-                  name={showRecurringPayments ? 'chevron-up' : 'chevron-down'}
-                  size={18}
-                  color={colors.textMuted}
-                />
-              </View>
-            </Pressable>
-
-            {showRecurringPayments ? (
-              <View style={styles.recurringList}>
-                {accountRecurringPayments.length > 0 ? (
-                  accountRecurringPayments.map((payment, paymentIndex) => (
-                    <Pressable
-                      key={payment.id}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Modifier ${payment.name}`}
-                      android_ripple={null}
-                      style={[
-                        styles.recurringPaymentRow,
-                        paymentIndex < accountRecurringPayments.length - 1 && {
-                          borderBottomColor: colors.border,
-                          borderBottomWidth: StyleSheet.hairlineWidth,
-                        },
-                      ]}
-                      onPress={() => void openEditRecurringPayment(payment)}
-                    >
-                      <UserPickedIconWell
-                        icon={
-                          payment.icon && payment.icon !== 'repeat-outline'
-                            ? payment.icon
-                            : payment.kind === 'income'
-                              ? 'AttachMoney'
-                              : EXPENSE_DEFAULT_ICON
-                        }
-                        color={payment.color}
-                        size={48}
-                        wellGlyphWhite
-                        logoUrl={payment.logoUrl?.trim() || getMerchantLogoUrl(payment.name) || null}
-                      />
-                      <View style={styles.recurringPaymentCopy}>
-                        <Text style={[styles.recurringPaymentName, { color: colors.text }]} numberOfLines={1}>
-                          {payment.name}
-                        </Text>
-                        <Text style={[styles.recurringPaymentMeta, { color: colors.textMuted }]} numberOfLines={1}>
-                          {recurringPaymentDefinitionMeta(payment, today)}
-                        </Text>
-                      </View>
-                      <Text style={[styles.recurringPaymentAmount, { color: payment.kind === 'income' ? colors.success : colors.text }]}>
-                        {formatRecurringPaymentAmount(payment.amount, payment.kind ?? 'payment')}
-                      </Text>
-                    </Pressable>
-                  ))
-                ) : (
-                  <Text style={[styles.emptyInline, { color: colors.textMuted }]}>Aucun paiement récurrent pour ce compte.</Text>
-                )}
-              </View>
-            ) : null}
-
             <FlowDivider />
 
             <View style={styles.transactionList}>
-              <View style={[styles.searchRow, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
-                <Ionicons name="search-outline" size={18} color={colors.textMuted} />
-                <TextInput
-                  style={[styles.searchInput, { color: colors.text }]}
-                  placeholder="Rechercher"
-                  placeholderTextColor={colors.textMuted}
-                  value={search}
-                  onChangeText={setSearch}
-                />
-                {search.trim().length > 0 ? (
+              {searchExpanded ? (
+                <View style={[styles.searchRow, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
+                  <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+                  <TextInput
+                    ref={searchInputRef}
+                    style={[styles.searchInput, { color: colors.text }]}
+                    placeholder="Rechercher"
+                    placeholderTextColor={colors.textMuted}
+                    value={search}
+                    onChangeText={setSearch}
+                    returnKeyType="search"
+                  />
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="Effacer la recherche"
+                    accessibilityLabel={search.trim().length > 0 ? 'Effacer la recherche' : 'Fermer la recherche'}
                     hitSlop={8}
-                    onPress={() => setSearch('')}
+                    onPress={collapseSearch}
                     style={styles.clearSearchBtn}
                   >
                     <Ionicons name="close-circle" size={18} color={colors.textMuted} />
                   </Pressable>
-                ) : null}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Filtres"
-                  accessibilityState={{ expanded: historyFiltersExpanded }}
-                  hitSlop={8}
-                  onPress={() => {
-                    tapHaptic();
-                    setHistoryFiltersExpanded((expanded) => !expanded);
-                  }}
-                  style={styles.filterIconBtn}
-                >
-                  <Ionicons
-                    name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
-                    size={20}
-                    color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
-                  />
-                </Pressable>
-              </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Filtres"
+                    accessibilityState={{ expanded: historyFiltersExpanded }}
+                    hitSlop={8}
+                    onPress={() => {
+                      tapHaptic();
+                      setHistoryFiltersExpanded((expanded) => !expanded);
+                    }}
+                    style={styles.filterIconBtn}
+                  >
+                    <Ionicons
+                      name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
+                      size={20}
+                      color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
+                    />
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.searchToolbarRow}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Rechercher"
+                    hitSlop={8}
+                    onPress={expandSearch}
+                    style={({ pressed }) => [
+                      styles.searchIconBtn,
+                      { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Ionicons
+                      name="search-outline"
+                      size={20}
+                      color={search.trim().length > 0 ? colors.primary : colors.textMuted}
+                    />
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Filtres"
+                    accessibilityState={{ expanded: historyFiltersExpanded }}
+                    hitSlop={8}
+                    onPress={() => {
+                      tapHaptic();
+                      setHistoryFiltersExpanded((expanded) => !expanded);
+                    }}
+                    style={({ pressed }) => [
+                      styles.searchIconBtn,
+                      { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Ionicons
+                      name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
+                      size={20}
+                      color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
+                    />
+                  </Pressable>
+                </View>
+              )}
               {historyFiltersExpanded ? (
                 <View style={styles.historyFilterWrap}>
                   <SegmentedTabs
@@ -870,10 +1072,7 @@ export default function AccountDetailScreen() {
                           key={tx.id}
                           transaction={tx}
                           accounts={accounts}
-                          onPress={() => {
-                            tapHaptic();
-                            setSelectedTransaction(tx);
-                          }}
+                          onPress={() => { tapHaptic(); router.push({ pathname: '/transaction-detail', params: { transactionId: tx.id } }); }}
                         />
                       ))}
                     </View>
@@ -920,39 +1119,52 @@ export default function AccountDetailScreen() {
               </View>
 
               <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
-              <View style={styles.formHead}>
-                <View style={styles.logoPreviewWrap}>
-                  {previewLogo ? (
-                    <LogoIconFrame uri={previewLogo} size={52} />
-                  ) : (
+              {kind === 'cash' ? (
+                <View style={styles.formHead}>
+                  <View style={styles.logoPreviewWrap}>
                     <IconFrame size={52}>
-                      <Ionicons name="business-outline" size={22} color={colors.textMuted} />
+                      <Ionicons name="wallet-outline" size={22} color={colors.primary} />
                     </IconFrame>
-                  )}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Modifier le logo"
-                    style={({ pressed }) => [
-                      styles.logoEditButton,
-                      { backgroundColor: colors.primary, borderColor: colors.surfaceSolid, shadowColor: colors.primary },
-                      pressed && styles.pressed,
-                    ]}
-                    onPress={() => {
-                      tapHaptic();
-                      setShowLogoPicker((visible) => !visible);
-                    }}
-                  >
-                    <Ionicons name="pencil-outline" size={15} color={isLight ? colors.text : ghost.void} />
-                  </Pressable>
+                  </View>
+                  <Text style={[styles.formHint, formThemed.textMuted]}>
+                    Solde manuel — pas de synchronisation bancaire.
+                  </Text>
                 </View>
-                <Text style={[styles.formHint, formThemed.textMuted]}>
-                  {selectedInstitutionLogo
-                    ? 'Logo manuel sélectionné.'
-                    : 'Le logo se déduit du nom. Exemple : Visa Desjardins -> Desjardins.'}
-                </Text>
-              </View>
+              ) : (
+                <View style={styles.formHead}>
+                  <View style={styles.logoPreviewWrap}>
+                    {previewLogo ? (
+                      <LogoIconFrame uri={previewLogo} size={52} />
+                    ) : (
+                      <IconFrame size={52}>
+                        <Ionicons name="business-outline" size={22} color={colors.textMuted} />
+                      </IconFrame>
+                    )}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Modifier le logo"
+                      style={({ pressed }) => [
+                        styles.logoEditButton,
+                        { backgroundColor: colors.primary, borderColor: colors.surfaceSolid, shadowColor: colors.primary },
+                        pressed && styles.pressed,
+                      ]}
+                      onPress={() => {
+                        tapHaptic();
+                        setShowLogoPicker((visible) => !visible);
+                      }}
+                    >
+                      <Ionicons name="pencil-outline" size={15} color={isLight ? colors.text : ghost.void} />
+                    </Pressable>
+                  </View>
+                  <Text style={[styles.formHint, formThemed.textMuted]}>
+                    {selectedInstitutionLogo
+                      ? 'Logo manuel sélectionné.'
+                      : 'Le logo se déduit du nom. Exemple : Visa Desjardins -> Desjardins.'}
+                  </Text>
+                </View>
+              )}
 
-              {showLogoPicker ? (
+              {kind !== 'cash' && showLogoPicker ? (
                 <View style={styles.logoPickerGroup}>
                   <View style={styles.logoPickerTitleRow}>
                     <Text style={[styles.label, { color: colors.textMuted }]}>Logo</Text>
@@ -996,6 +1208,9 @@ export default function AccountDetailScreen() {
                       onPress={() => {
                         tapHaptic();
                         setKind(type.id);
+                        if (type.id === 'cash' && !name.trim()) {
+                          setName('Argent Cash');
+                        }
                       }}
                       style={[
                         styles.typeChip,
@@ -1015,14 +1230,22 @@ export default function AccountDetailScreen() {
                 label="Nom du compte"
                 value={name}
                 onChangeText={setName}
-                placeholder={kind === 'credit' ? 'Visa Desjardins' : 'Tangerine chèque'}
+                placeholder={
+                  kind === 'credit'
+                    ? 'Visa Desjardins'
+                    : kind === 'cash'
+                      ? 'Argent Cash'
+                      : 'Tangerine chèque'
+                }
               />
-              <AccountInput label="Institution" value={institution} onChangeText={setInstitution} placeholder="Desjardins, Tangerine, BMO…" />
+              {kind !== 'cash' ? (
+                <AccountInput label="Institution" value={institution} onChangeText={setInstitution} placeholder="Desjardins, Tangerine, BMO…" />
+              ) : null}
               <AccountInput
                 label={kind === 'credit' ? 'Solde dû actuel' : 'Solde actuel'}
                 value={balance}
                 onChangeText={setBalance}
-                placeholder={kind === 'credit' ? '580.42' : '3240.50'}
+                placeholder={kind === 'credit' ? '580.42' : kind === 'cash' ? '120.00' : '3240.50'}
                 keyboardType="decimal-pad"
                 suffix="$"
               />
@@ -1074,28 +1297,29 @@ export default function AccountDetailScreen() {
 
               <PrimarySaveButton label="Enregistrer" onPress={() => void saveAccount()} />
 
-              <View style={styles.deleteSection}>
-                <View style={[styles.deleteDivider, { backgroundColor: colors.border }]} />
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Supprimer le compte"
-                  style={({ pressed }) => [
-                    subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
-                    pressed && { opacity: 0.72 },
-                  ]}
-                  onPress={() => editingAccount && confirmDeleteAccount(editingAccount)}
-                >
-                  <Ionicons name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
-                  <Text style={destructiveTextActionStyle(isLight)}>Supprimer le compte</Text>
-                </Pressable>
-              </View>
+              {kind !== 'cash' && (
+                <View style={styles.deleteSection}>
+                  <View style={[styles.deleteDivider, { backgroundColor: colors.border }]} />
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Supprimer le compte"
+                    style={({ pressed }) => [
+                      subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
+                      pressed && { opacity: 0.72 },
+                    ]}
+                    onPress={() => editingAccount && confirmDeleteAccount(editingAccount)}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
+                    <Text style={destructiveTextActionStyle(isLight)}>Supprimer le compte</Text>
+                  </Pressable>
+                </View>
+              )}
               </ScrollView>
             </View>
           </KeyboardAvoidingView>
         </View>
       </Modal>
 
-      <TransactionDetailSheet transaction={selectedTransaction} onClose={() => setSelectedTransaction(null)} onDeleted={() => { void load(); }} />
       <RecurringPaymentFormModal
         visible={recurringForm != null}
         form={recurringForm}
@@ -1169,25 +1393,28 @@ function usePortfolioFormTheme() {
 }
 
 function AccountInput(props: React.ComponentProps<typeof TextInput> & { label: string; suffix?: string }) {
-  const { label, suffix, ...inputProps } = props;
+  const { label, suffix, keyboardType, ...inputProps } = props;
   const { colors } = useAppTheme();
   const formThemed = usePortfolioFormTheme();
+  const InputComponent = keyboardType === 'decimal-pad' ? NumericAmountInput : TextInput;
 
   return (
     <View style={styles.inputGroup}>
       <Text style={[styles.label, formThemed.textSecondary]}>{label}</Text>
       {suffix ? (
         <View style={[styles.inputShell, formThemed.control]}>
-          <TextInput
+          <InputComponent
             {...inputProps}
+            keyboardType={keyboardType}
             style={[styles.inputWithSuffix, formThemed.text]}
             placeholderTextColor={colors.textMuted}
           />
           <Text style={[styles.inputSuffix, formThemed.textSecondary]}>{suffix}</Text>
         </View>
       ) : (
-        <TextInput
+        <InputComponent
           {...inputProps}
+          keyboardType={keyboardType}
           style={[styles.input, formThemed.control, formThemed.text]}
           placeholderTextColor={colors.textMuted}
         />
@@ -1232,7 +1459,7 @@ function LogoOption({
 }
 
 function parseMoney(value: string) {
-  return Number.parseFloat(value.replace(',', '.'));
+  return parseFormattedNumber(value);
 }
 
 function parseOptionalMoney(value: string) {
@@ -1241,7 +1468,7 @@ function parseOptionalMoney(value: string) {
 }
 
 function parseOptionalInt(value: string) {
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number.parseInt(sanitizeNumericInput(value), 10);
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
@@ -1283,7 +1510,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.lg,
   },
   backButton: {
     width: 38,
@@ -1298,7 +1525,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginHorizontal: spacing.sm,
     ...interExtraBoldText,
-    fontSize: typography.caption,
+    fontSize: typography.body,
     letterSpacing: -0.2,
   },
   topBarSpacer: { width: 38 },
@@ -1328,6 +1555,56 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'right',
   },
+  infoCard: {
+    gap: spacing.sm,
+  },
+  infoSectionLabel: {
+    ...interBoldText,
+    fontSize: typography.micro,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  infoRows: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  infoRowPair: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  infoRow: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  infoRowCellSpacer: {
+    flex: 1,
+    minWidth: 0,
+  },
+  infoRowIcon: {
+    marginTop: 2,
+    width: 20,
+  },
+  infoRowIconSpacer: {
+    width: 20,
+  },
+  infoRowCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  infoRowLabel: {
+    ...interBoldText,
+    fontSize: typography.micro,
+    letterSpacing: 0.55,
+    textTransform: 'uppercase',
+  },
+  infoRowValue: {
+    fontSize: typography.body,
+    fontWeight: '700',
+  },
   savingsProgressBlock: {
     paddingBottom: spacing.xs,
   },
@@ -1347,84 +1624,74 @@ const styles = StyleSheet.create({
   deleteDivider: {
     height: StyleSheet.hairlineWidth,
   },
-  recurringSectionTitleRow: {
+  recurringTriggerCopy: {
     flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  recurringTriggerTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.xs,
     minWidth: 0,
   },
-  recurringSectionTitle: {
-    ...interExtraBoldText,
-    fontSize: typography.body,
-    letterSpacing: -0.2,
-    flexShrink: 1,
+  recurringTriggerHint: {
+    ...typographyKit.microMedium,
   },
-  recurringSectionMeta: {
+  recurringTriggerMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.xs,
     flexShrink: 0,
   },
-  recurringCountBadge: {
-    minWidth: 24,
-    height: 24,
-    borderRadius: 12,
-    paddingHorizontal: spacing.xs,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recurringCountBadgeText: {
-    ...interExtraBoldText,
-    fontSize: typography.meta,
+  recurringTriggerCount: {
+    ...typographyKit.metaMedium,
     fontVariant: ['tabular-nums'],
+    minWidth: 14,
+    textAlign: 'right',
   },
-  recurringList: {
-    gap: 0,
-    paddingTop: spacing.xs,
+  recurringPanelBody: {
+    paddingHorizontal: spacing.md,
+  },
+  recurringPanelEmpty: {
+    ...typographyKit.microMedium,
+    lineHeight: 18,
+    paddingVertical: spacing.md,
   },
   recurringPaymentRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     paddingVertical: spacing.sm + 2,
-    minHeight: 56,
+    minHeight: 52,
   },
-  recurringPaymentIcon: {
-    width: ICON_WELL_SIZE,
-    height: ICON_WELL_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recurringPaymentIconFallback: {
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-  },
-  recurringPaymentLogo: { width: 23, height: 23 },
   recurringPaymentCopy: {
     flex: 1,
     minWidth: 0,
     gap: 2,
   },
-  recurringPaymentName: {
-    color: colors.text,
-    fontSize: typography.caption,
-    fontWeight: '800',
-  },
-  recurringPaymentMeta: {
-    color: colors.textMuted,
-    fontSize: typography.micro,
-    fontWeight: '700',
-  },
   recurringPaymentAmount: {
-    color: colors.text,
-    fontSize: typography.meta,
-    fontWeight: '800',
+    ...typographyKit.meta,
+    fontVariant: ['tabular-nums'],
     flexShrink: 0,
   },
   transactionList: {
     gap: spacing.md,
+  },
+  searchToolbarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    minHeight: 44,
+  },
+  searchIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   searchRow: {
     flexDirection: 'row',
@@ -1452,7 +1719,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   transactionGroup: {
-    marginBottom: spacing.xxl,
+    marginBottom: spacing.xl,
   },
   groupHeaderRow: {
     flexDirection: 'row',

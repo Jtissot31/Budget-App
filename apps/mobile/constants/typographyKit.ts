@@ -153,8 +153,8 @@ export const typographyKit = {
   netWorthHero: {
     ...interExtraBoldText,
     ...tabular,
-    fontSize: 52,
-    letterSpacing: -2,
+    fontSize: 42,
+    letterSpacing: -1.6,
   },
 
   /** Wealth card main value (Patrimoine carousel) */

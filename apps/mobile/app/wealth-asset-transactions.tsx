@@ -8,7 +8,6 @@ import { BottomSheet } from '@/components/BottomSheet';
 import { PageTransition } from '@/components/PageTransition';
 import { TransactionRow } from '@/components/TransactionRow';
 import { SurfaceCard } from '@/components/SurfaceCard';
-import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import { ghostCardShadow } from '@/constants/ghostUi';
 import { radius, spacing, typography, type AppColors } from '@/constants/theme';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
@@ -16,7 +15,7 @@ import { getTransactionsForWealthAsset, getWealthAssetById, sortTransactionsNewe
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
-import { wealthAssetHeroSubtitle } from '@/lib/wealthAssetPresentation';
+import { wealthAssetHeroSubtitleWithFallback } from '@/lib/wealthAssetPresentation';
 import type { Transaction, WealthAsset } from '@/types';
 
 /** Match detail sheet silhouette — unified `BottomSheet`. */
@@ -92,7 +91,6 @@ export default function WealthAssetTransactionsScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [simulatedAccounts, setSimulatedAccounts] = useState<SimulatedAccount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<Transaction | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const stylesMemo = useMemo(() => createShellStyles(colors), [colors]);
@@ -232,7 +230,7 @@ export default function WealthAssetTransactionsScreen() {
                     {displayName}
                   </Text>
                   <Text style={[stylesMemo.assetMeta, { color: colors.textMuted }]}>
-                    {loading ? 'Chargement du profil…' : asset ? wealthAssetHeroSubtitle(asset) : 'Actif introuvable localement.'}
+                    {loading ? 'Chargement du profil…' : asset ? wealthAssetHeroSubtitleWithFallback(asset) : 'Actif introuvable localement.'}
                   </Text>
                 </View>
               </View>
@@ -294,10 +292,7 @@ export default function WealthAssetTransactionsScreen() {
                         ...tx,
                         label: getTransactionTitle(tx, tx.categoryName?.trim() || displayName),
                       }}
-                      onPress={() => {
-                        tapHaptic();
-                        setSelected(tx);
-                      }}
+                      onPress={() => { tapHaptic(); router.push({ pathname: '/transaction-detail', params: { transactionId: tx.id } }); }}
                     />
                   ))}
                 </View>
@@ -307,7 +302,6 @@ export default function WealthAssetTransactionsScreen() {
         </View>
       </BottomSheet>
 
-      <TransactionDetailSheet transaction={selected} onClose={() => setSelected(null)} onDeleted={() => { void load(); }} />
     </View>
     </PageTransition>
   );

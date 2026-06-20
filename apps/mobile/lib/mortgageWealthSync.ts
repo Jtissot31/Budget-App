@@ -23,9 +23,12 @@ export async function syncMortgageWealthAsset(loan: Loan): Promise<Loan> {
 
   const assetId = loan.wealthAssetId ?? `wealth-${loan.id}`;
   const existing = await getWealthAssetById(assetId);
+  const downPayment = loan.downPayment ?? 0;
+  const estimatedPurchase = loan.principal + downPayment;
+  const purchaseCost =
+    loan.purchasePrice ?? existing?.purchaseCost ?? (estimatedPurchase > 0 ? estimatedPurchase : loan.principal);
   const currentValue =
-    loan.currentPropertyValue ?? loan.purchasePrice ?? existing?.currentValue ?? loan.principal;
-  const purchaseCost = loan.purchasePrice ?? existing?.purchaseCost ?? currentValue;
+    loan.currentPropertyValue ?? existing?.currentValue ?? purchaseCost;
 
   const asset: WealthAsset = {
     id: assetId,

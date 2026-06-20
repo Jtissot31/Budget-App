@@ -1,5 +1,6 @@
 import { getApiBaseUrl } from '@/lib/settings';
 import { inferCategoryForItem, normalizeSearch } from '@/lib/categoryInference';
+import { parseFormattedNumberOrZero } from '@/lib/formatNumber';
 import type { ItemizedNote } from '@/lib/itemizedNote';
 import type { Category } from '@/types';
 
@@ -37,8 +38,7 @@ const MERCHANT_TEMPLATES: Record<string, string[]> = {
 };
 
 function parsePrice(raw: string): number {
-  const parsed = parseFloat(raw.replace(',', '.'));
-  return Number.isFinite(parsed) ? parsed : 0;
+  return parseFormattedNumberOrZero(raw);
 }
 
 function roundMoney(value: number): number {

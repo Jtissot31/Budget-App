@@ -27,7 +27,7 @@ export const lightGhost = {
   hairline: '#D0D7DE',
 } as const;
 
-export type GhostTokens = typeof darkGhost;
+export type GhostTokens = { [K in keyof typeof darkGhost]: string };
 
 export const ghostThemes = {
   dark: darkGhost,

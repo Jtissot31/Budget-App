@@ -8,9 +8,8 @@ import { DashboardCard } from '@/components/DashboardCard';
 import { DashboardDateBadge } from '@/components/DashboardDateBadge';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { PaymentDetailSheet, type PaymentDetailPayload } from '@/components/PaymentDetailSheet';
+import { OverflowMenuButton, type OverflowMenuItem } from '@/components/OverflowMenuButton';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
-import { EXPENSE_DEFAULT_ICON } from '@/lib/expenseIcon';
-import { floatingGlassButtonPressed } from '@/constants/floatingGlassButton';
 import {
   FLOATING_NAV_CONTENT_PADDING,
   interBoldText,
@@ -22,11 +21,11 @@ import {
   type AppColors,
 } from '@/constants/theme';
 import { typographyKit } from '@/constants/typographyKit';
-import { listRowTitle, portfolioNumericText, rowValue, singleLineAmountProps } from '@/lib/textLayout';
+import { portfolioNumericText, rowValue } from '@/lib/textLayout';
 import { UNIFORM_ACTION_BUTTON_MIN_HEIGHT, UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
-import { dataEvents } from '@/lib/events';
-import { getCategoryBudgets, getRecentIncomeTransactions, getRecurringPayments } from '@/lib/db';
+import { dataEvents, uiEvents } from '@/lib/events';
+import { getCategoryBudgets, getLoans, getRecentIncomeTransactions, getRecurringPayments } from '@/lib/db';
 import {
   ESTIMATED_PAYCHECK_LABEL,
   inferAllEstimatedPaychecksForRange,
@@ -34,10 +33,17 @@ import {
 } from '@/lib/estimatedPaycheck';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
+import { PaymentListRow, type PaymentListRowBadgeVariant } from '@/components/PaymentListRow';
+import { TransactionAmountLabel, recurringPaymentAmountDirection } from '@/components/TransactionAmountLabel';
 import { formatDisplayMoneyAbsolute, formatRecurringPaymentAmount } from '@/lib/formatDisplayMoney';
 import { getMerchantLogoUrl } from '@/lib/merchantLogo';
 import { resolvePaymentStatusBadge } from '@/lib/paymentStatusBadge';
-import type { CategoryBudget, RecurringPayment, Transaction } from '@/types';
+import {
+  buildLoanByRecurringPaymentId,
+  resolveAgendaBillDisplayIcon,
+  resolveRecurringPaymentDisplayIconById,
+} from '@/lib/recurringPaymentPresentation';
+import type { CategoryBudget, Loan, RecurringPayment, Transaction } from '@/types';
 
 type AgendaViewProps = {
   onEditRecurring?: (payment: RecurringPayment) => void;
@@ -57,8 +63,6 @@ export type AgendaBill = {
   categoryName?: string | null;
   categoryId?: string | null;
 };
-
-type IconName = keyof typeof Ionicons.glyphMap;
 
 export type AgendaViewRef = {
   resetToTop: () => void;
@@ -219,7 +223,7 @@ function hasSameBill(items: AgendaBill[], bill: AgendaBill) {
   });
 }
 
-function mergeBillsByDate(...sources: Array<Record<string, AgendaBill[]>>) {
+function mergeBillsByDate(...sources: Record<string, AgendaBill[]>[]) {
   const merged: Record<string, AgendaBill[]> = {};
   sources.forEach((source) => {
     Object.entries(source).forEach(([key, bills]) => {
@@ -289,14 +293,6 @@ function hasExcludedIncomeKeyword(text: string) {
     || text.includes('facebook marketplace');
 }
 
-function isLikelyPayTransaction(transaction: Transaction) {
-  const text = getTransactionSearchText(transaction);
-  return transaction.type === 'income'
-    && transaction.amount > 0
-    && hasPayKeyword(text)
-    && !hasExcludedIncomeKeyword(text);
-}
-
 function isActualPayTransaction(transaction: Transaction) {
   const text = getTransactionSearchText(transaction);
   return transaction.type === 'income'
@@ -340,10 +336,13 @@ function resolveBillDisplayLogo(bill: AgendaBill) {
   return null;
 }
 
-function resolveBillDisplayIcon(bill: AgendaBill) {
-  if (isIconName(bill.icon) && bill.icon !== 'repeat-outline') return bill.icon;
-  if (bill.kind === 'income' || isPayBill(bill)) return 'cash-outline';
-  return EXPENSE_DEFAULT_ICON;
+function resolveBillDisplayIcon(
+  bill: AgendaBill,
+  loanByRecurringPaymentId: Map<string, Loan>,
+) {
+  return resolveAgendaBillDisplayIcon(bill, loanByRecurringPaymentId, {
+    isPayBill: (item) => isPayBill(item as AgendaBill),
+  });
 }
 
 function getPaymentCardMeta(bill: AgendaBill) {
@@ -523,9 +522,11 @@ function recurringListMeta(payment: RecurringPayment, from: Date) {
   return parts.join(' · ');
 }
 
-function resolveRecurringListIcon(payment: RecurringPayment) {
-  if (payment.icon?.trim() && payment.icon !== 'repeat-outline') return payment.icon;
-  return (payment.kind ?? 'payment') === 'income' ? 'cash-outline' : EXPENSE_DEFAULT_ICON;
+function resolveRecurringListIcon(
+  payment: RecurringPayment,
+  loanByRecurringPaymentId: Map<string, Loan>,
+) {
+  return resolveRecurringPaymentDisplayIconById(payment, loanByRecurringPaymentId);
 }
 
 export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function AgendaView({ onEditRecurring }, ref) {
@@ -537,23 +538,27 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
   const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudget[]>([]);
   const [recentIncomeTransactions, setRecentIncomeTransactions] = useState<Transaction[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [paymentDetail, setPaymentDetail] = useState<PaymentDetailPayload | null>(null);
   const [showRecurringList, setShowRecurringList] = useState(false);
+  const [listOnlyMode, setListOnlyMode] = useState(false);
 
   const todayKey = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
 
   const loadRecurringPayments = useCallback(async () => {
-    const [payments, budgets, incomeTransactions] = await Promise.all([
+    const [payments, budgets, incomeTransactions, loadedLoans] = await Promise.all([
       getRecurringPayments(),
       getCategoryBudgets(),
       getRecentIncomeTransactions(INCOME_TRANSACTION_LOOKBACK_LIMIT),
+      getLoans(),
     ]);
     setRecurringPayments(payments);
     setCategoryBudgets(budgets);
     setRecentIncomeTransactions(incomeTransactions);
+    setLoans(loadedLoans);
   }, []);
 
   const categoryBudgetById = useMemo(() => {
@@ -561,6 +566,11 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
     categoryBudgets.forEach((item) => lookup.set(item.categoryId, item));
     return lookup;
   }, [categoryBudgets]);
+
+  const loanByRecurringPaymentId = useMemo(
+    () => buildLoanByRecurringPaymentId(loans),
+    [loans],
+  );
 
   useEffect(() => {
     void loadRecurringPayments();
@@ -592,7 +602,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
     const firstDow = first.getDay();
     const offset = firstDow === 0 ? 6 : firstDow - 1;
     const dim = new Date(year, month + 1, 0).getDate();
-    const total = Math.ceil((offset + dim) / 7) * 7;
+    const total = 42;
     const cells: ({ day: number } | null)[] = [];
     for (let i = 0; i < total; i++) {
       const day = i - offset + 1;
@@ -709,7 +719,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
       kind: b.kind,
       dateLabel: b.date ?? formatBillDateLong(dateKey),
       logoUrl: resolveBillDisplayLogo(b),
-      icon: b.icon ?? rp?.icon,
+      icon: resolveBillDisplayIcon(b, loanByRecurringPaymentId),
       color: b.color ?? rp?.color,
       frequencyLabel: rp ? frequencyLabel(rp.frequency) : null,
       frequency: rp?.frequency,
@@ -737,6 +747,57 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
     tapHaptic();
     setShowRecurringList(true);
   };
+
+  const handleEnterListOnlyMode = () => {
+    tapHaptic();
+    setSelectedKey(null);
+    setListOnlyMode(true);
+  };
+
+  const handleExitListOnlyMode = () => {
+    tapHaptic();
+    setListOnlyMode(false);
+  };
+
+  const overflowMenuItems: OverflowMenuItem[] = [
+    listOnlyMode
+      ? {
+          key: 'calendar',
+          label: 'Voir le calendrier',
+          icon: 'calendar-outline',
+          onPress: handleExitListOnlyMode,
+        }
+      : {
+          key: 'list-only',
+          label: 'Voir la liste seulement',
+          icon: 'reorder-four-outline',
+          onPress: handleEnterListOnlyMode,
+        },
+    {
+      key: 'list',
+      label: 'Voir la liste',
+      icon: 'list-outline',
+      onPress: handleOpenRecurringList,
+    },
+    {
+      key: 'add-bill',
+      label: 'Ajouter une facture',
+      icon: 'receipt-outline',
+      onPress: () => uiEvents.requestNewRecurringPayment('bill'),
+    },
+    {
+      key: 'add-subscription',
+      label: 'Ajouter un abonnement',
+      icon: 'card-outline',
+      onPress: () => uiEvents.requestNewRecurringPayment('subscription'),
+    },
+    {
+      key: 'add-income',
+      label: 'Ajouter un revenu récurrent',
+      icon: 'trending-up-outline',
+      onPress: () => uiEvents.requestNewRecurringPayment('income'),
+    },
+  ];
 
   const handleEditRecurring = (payment: RecurringPayment) => {
     tapHaptic();
@@ -769,17 +830,13 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
     ].filter((section) => section.items.length > 0);
   }, [recurringPayments, today]);
 
-  const renderAgendaPaymentCards = (
-    items: { key: string; b: AgendaBill }[],
-    variant: 'default' | 'upcoming' = 'default',
-  ) => (
+  const renderAgendaPaymentCards = (items: { key: string; b: AgendaBill }[]) => (
     <View style={styles.agendaPaymentList}>
       {items.map(({ key, b }, index) => (
         <AgendaPaymentCard
           key={`${key}-${index}-${b.sourceId ?? b.name}`}
           bill={b}
           dateKey={key}
-          variant={variant}
           statusLabel={resolvePaymentStatusBadge(key, todayKey, {
             isIncome: (b.kind ?? 'payment') === 'income',
             isPay: isPayBill(b),
@@ -789,6 +846,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
           styles={styles}
           colors={colors}
           categoryBudget={resolveBillCategoryBudget(b)}
+          loanByRecurringPaymentId={loanByRecurringPaymentId}
         />
       ))}
     </View>
@@ -807,18 +865,37 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
         contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPadding }]}
       >
         <View style={styles.monthHeader}>
-          <Pressable onPress={prevMonth} hitSlop={14} style={styles.navHit}>
-            <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
-          </Pressable>
+          {listOnlyMode ? (
+            <View style={styles.navHit} />
+          ) : (
+            <Pressable onPress={prevMonth} hitSlop={14} style={styles.navHit}>
+              <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
+            </Pressable>
+          )}
           <View style={styles.monthTitles}>
-            <Text style={styles.monthName}>{MONTHS_FR[month]}</Text>
-            <Text style={styles.yearSub}>{year}</Text>
+            {listOnlyMode ? (
+              <Text style={styles.monthName}>À venir</Text>
+            ) : (
+              <>
+                <Text style={styles.monthName}>{MONTHS_FR[month]}</Text>
+                <Text style={styles.yearSub}>{year}</Text>
+              </>
+            )}
           </View>
-          <Pressable onPress={nextMonth} hitSlop={14} style={styles.navHit}>
-            <Ionicons name="chevron-forward" size={22} color={colors.textSecondary} />
-          </Pressable>
+          <View style={styles.monthHeaderRight}>
+            {listOnlyMode ? null : (
+              <Pressable onPress={nextMonth} hitSlop={14} style={styles.navHit}>
+                <Ionicons name="chevron-forward" size={22} color={colors.textSecondary} />
+              </Pressable>
+            )}
+            <OverflowMenuButton
+              items={overflowMenuItems}
+              accessibilityLabel="Options paiements récurrents"
+            />
+          </View>
         </View>
 
+        {!listOnlyMode ? (
         <View style={styles.insetGroupShadow}>
           <DashboardCard padding={0} innerStyle={styles.calendarInner}>
             <View style={styles.dowRow}>
@@ -903,30 +980,9 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
             </View>
           </DashboardCard>
         </View>
-
-        {onEditRecurring ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Liste des paiements récurrents"
-            accessibilityHint="Affiche tous les abonnements, paiements et revenus récurrents pour les modifier"
-            onPress={handleOpenRecurringList}
-            style={({ pressed }) => [
-              styles.premiumAddCta,
-              {
-                backgroundColor: isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(18, 18, 18, 0.92)',
-                borderColor: colors.borderStrong,
-              },
-              pressed && floatingGlassButtonPressed,
-            ]}
-          >
-            <Ionicons name="repeat-outline" size={22} color={colors.textSecondary} />
-            <Text style={[styles.premiumAddCtaLabel, { color: colors.text }]}>
-              Liste des paiements récurrents
-            </Text>
-          </Pressable>
         ) : null}
 
-        {selBills && selBills.length > 0 ? (
+        {!listOnlyMode && selBills && selBills.length > 0 ? (
           <View style={styles.section}>
             <View style={styles.sectionHeaderBlock}>
               <View style={styles.sectionLabelRow}>
@@ -942,7 +998,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
             </View>
             {renderAgendaPaymentCards(selBills.map((b) => ({ key: selectedKey!, b })))}
           </View>
-        ) : selectedKey ? (
+        ) : !listOnlyMode && selectedKey ? (
           <View style={styles.section}>
             <View style={styles.sectionHeaderBlock}>
               <View style={styles.sectionLabelRow}>
@@ -965,7 +1021,9 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
           </View>
         ) : (
           <View style={styles.section}>
-            <DashboardSectionLabel style={styles.sectionEyebrow}>À venir</DashboardSectionLabel>
+            {!listOnlyMode ? (
+              <DashboardSectionLabel style={styles.sectionEyebrow}>À venir</DashboardSectionLabel>
+            ) : null}
             {upcomingCount > 0 ? (
               <View style={styles.agendaPaymentList}>
                 {upcoming.map(([key, bills]) => (
@@ -981,7 +1039,6 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
                           key={`${key}-${index}-${b.sourceId ?? b.name}`}
                           bill={b}
                           dateKey={key}
-                          variant="upcoming"
                           statusLabel={resolvePaymentStatusBadge(key, todayKey, {
                             isIncome: (b.kind ?? 'payment') === 'income',
                             isPay: isPayBill(b),
@@ -991,6 +1048,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
                           styles={styles}
                           colors={colors}
                           categoryBudget={resolveBillCategoryBudget(b)}
+                          loanByRecurringPaymentId={loanByRecurringPaymentId}
                         />
                       ))}
                     </View>
@@ -1080,11 +1138,11 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
                             ]}
                           >
                             <UserPickedIconWell
-                              icon={resolveRecurringListIcon(payment)}
-                              color={payment.color}
+                              icon={resolveRecurringListIcon(payment, loanByRecurringPaymentId)}
+                              color={isIncome ? colors.success : payment.color}
                               size={44}
                               logoUrl={payment.logoUrl?.trim() || getMerchantLogoUrl(payment.name)}
-                              wellGlyphWhite
+                              wellGlyphWhite={!isIncome}
                             />
                             <View style={styles.pickerCopy}>
                               <Text
@@ -1102,17 +1160,17 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
                                 {recurringListMeta(payment, today)}
                               </Text>
                             </View>
-                            <Text
-                              style={[
+                            <TransactionAmountLabel
+                              amount={formatRecurringPaymentAmount(payment.amount, payment.kind ?? 'payment')}
+                              direction={recurringPaymentAmountDirection(payment.kind ?? 'payment')}
+                              color={isIncome ? colors.success : colors.text}
+                              textStyle={[
                                 styles.recurringListAmount,
                                 isIncome
                                   ? styles.agendaPaymentAmountIncome
                                   : styles.agendaPaymentAmountRecurring,
                               ]}
-                              {...singleLineAmountProps}
-                            >
-                              {formatRecurringPaymentAmount(payment.amount, payment.kind ?? 'payment')}
-                            </Text>
+                            />
                           </Pressable>
                         );
                       })}
@@ -1166,100 +1224,87 @@ function AgendaBillBudgetHint({
   );
 }
 
+function resolveAgendaPaymentBadgeVariant(
+  dateKey: string,
+  todayKey: string,
+  statusLabel: string,
+  isIncome: boolean,
+): PaymentListRowBadgeVariant {
+  if (dateKey > todayKey) {
+    return isIncome ? 'upcomingIncome' : 'upcoming';
+  }
+  if (statusLabel === 'REÇU') return 'received';
+  return 'paid';
+}
+
 function AgendaPaymentCard({
   bill,
   dateKey,
-  variant = 'default',
   statusLabel,
   todayKey,
   onPress,
   styles,
   colors,
   categoryBudget,
+  loanByRecurringPaymentId,
 }: {
   bill: AgendaBill;
   dateKey: string;
-  variant?: 'default' | 'upcoming';
   statusLabel: string;
   todayKey: string;
   onPress: () => void;
   styles: ReturnType<typeof createStyles>;
   colors: AppColors;
   categoryBudget: CategoryBudget | null;
+  loanByRecurringPaymentId: Map<string, Loan>;
 }) {
   const isIncome = isPayBill(bill) || bill.kind === 'income';
-  const badgeVariant =
-    dateKey > todayKey ? 'upcoming' : statusLabel === 'REÇU' ? 'received' : 'paid';
-  const showIncomeCheck = isIncome;
+  const badgeVariant = resolveAgendaPaymentBadgeVariant(dateKey, todayKey, statusLabel, isIncome);
   const displayLogoUrl = resolveBillDisplayLogo(bill);
-  const displayIcon = resolveBillDisplayIcon(bill);
+  const displayIcon = resolveBillDisplayIcon(bill, loanByRecurringPaymentId);
   const displayTint = bill.color ?? (isIncome ? colors.success : colors.warning);
 
   return (
-    <Pressable onPress={onPress} android_ripple={null}>
-      <DashboardCard style={styles.agendaPaymentCard}>
+    <PaymentListRow
+      onPress={onPress}
+      avatar={
         <UserPickedIconWell
           icon={displayIcon}
           color={displayTint}
           size={48}
           logoUrl={displayLogoUrl}
-          wellGlyphWhite={Boolean(bill.recurring)}
+          wellGlyphWhite={Boolean(bill.recurring) && !isIncome}
           style={styles.agendaPaymentAvatar}
         />
-        <View style={styles.agendaPaymentCopy}>
-          <Text style={styles.agendaPaymentTitle} numberOfLines={2} ellipsizeMode="tail">
-            {bill.name}
-          </Text>
-          <View style={styles.agendaPaymentMetaRow}>
-            {showIncomeCheck ? (
-              <Ionicons name="checkmark-circle" size={12} color={colors.success} />
-            ) : null}
-            <Text style={styles.agendaPaymentMeta} numberOfLines={1} ellipsizeMode="tail">
-              {getPaymentCardMeta(bill)}
-            </Text>
-          </View>
-          <AgendaBillBudgetHint bill={bill} categoryBudget={categoryBudget} />
-        </View>
-        <View style={styles.agendaPaymentAmountBlock}>
-          <View
-            style={[
-              styles.agendaPaymentBadge,
-              badgeVariant === 'received' && styles.agendaPaymentBadgeReceived,
-              badgeVariant === 'paid' && styles.agendaPaymentBadgePaid,
-              badgeVariant === 'upcoming' && (isIncome ? styles.agendaPaymentBadgeUpcomingIncome : styles.agendaPaymentBadgeUpcoming),
-            ]}
-          >
-            <Text
-              style={[
-                styles.agendaPaymentBadgeText,
-                badgeVariant === 'received' && styles.agendaPaymentBadgeTextReceived,
-                badgeVariant === 'paid' && styles.agendaPaymentBadgeTextPaid,
-                badgeVariant === 'upcoming' && (isIncome ? styles.agendaPaymentBadgeTextUpcomingIncome : styles.agendaPaymentBadgeTextUpcoming),
-              ]}
-            >
-              {statusLabel}
-            </Text>
-          </View>
-          <Text
-            style={[
-              styles.agendaPaymentAmount,
-              isPayBill(bill) && styles.agendaPaymentAmountIncome,
-              isRecurringExpenseBill(bill) && styles.agendaPaymentAmountRecurring,
-            ]}
-            {...singleLineAmountProps}
-          >
-            {bill.recurring
+      }
+      title={bill.name}
+      meta={getPaymentCardMeta(bill)}
+      statusBadge={{ label: statusLabel, variant: badgeVariant }}
+      footer={<AgendaBillBudgetHint bill={bill} categoryBudget={categoryBudget} />}
+      amount={
+        <TransactionAmountLabel
+          amount={
+            bill.recurring
               ? formatRecurringPaymentAmount(bill.amount, bill.kind ?? 'payment')
-              : formatDisplayMoneyAbsolute(bill.amount)}
-          </Text>
-        </View>
-      </DashboardCard>
-    </Pressable>
+              : formatDisplayMoneyAbsolute(bill.amount)
+          }
+          direction={
+            isIncome
+              ? 'income'
+              : bill.recurring || isRecurringExpenseBill(bill)
+                ? recurringPaymentAmountDirection(bill.kind ?? 'payment')
+                : 'neutral'
+          }
+          color={isIncome ? colors.success : colors.text}
+          textStyle={[
+            styles.agendaPaymentAmount,
+            isPayBill(bill) && styles.agendaPaymentAmountIncome,
+            isRecurringExpenseBill(bill) && styles.agendaPaymentAmountRecurring,
+          ]}
+        />
+      }
+    />
   );
-}
-
-function isIconName(value?: string): value is IconName {
-  return Boolean(value && value in Ionicons.glyphMap);
 }
 
 function createStyles(colors: AppColors) {
@@ -1289,6 +1334,10 @@ function createStyles(colors: AppColors) {
     minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  monthHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   monthTitles: {
     alignItems: 'center',
@@ -1328,7 +1377,11 @@ function createStyles(colors: AppColors) {
     fontWeight: '700',
     letterSpacing: 0.2,
   },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    minHeight: 6 * 48,
+  },
   cell: {
     width: '14.28%',
     paddingHorizontal: 2,
@@ -1467,40 +1520,7 @@ function createStyles(colors: AppColors) {
   upcomingGroupItems: {
     gap: spacing.md,
   },
-  agendaPaymentCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.lg,
-  },
   agendaPaymentAvatar: {
-    flexShrink: 0,
-  },
-  agendaPaymentCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: spacing.xs,
-  },
-  agendaPaymentTitle: {
-    ...listRowTitle,
-    fontSize: 13,
-    color: colors.text,
-  },
-  agendaPaymentMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minWidth: 0,
-  },
-  agendaPaymentMeta: {
-    ...interMediumText,
-    fontSize: typography.micro,
-    flex: 1,
-    minWidth: 0,
-    color: colors.textMuted,
-  },
-  agendaPaymentAmountBlock: {
-    alignItems: 'flex-end',
     flexShrink: 0,
   },
   agendaPaymentAmount: {
@@ -1513,41 +1533,6 @@ function createStyles(colors: AppColors) {
   },
   agendaPaymentAmountRecurring: {
     color: colors.danger,
-  },
-  agendaPaymentBadge: {
-    marginBottom: spacing.xs,
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  agendaPaymentBadgeUpcoming: {
-    backgroundColor: 'rgba(230,160,0,0.14)',
-  },
-  agendaPaymentBadgeUpcomingIncome: {
-    backgroundColor: 'rgba(0,230,100,0.1)',
-  },
-  agendaPaymentBadgePaid: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  agendaPaymentBadgeReceived: {
-    backgroundColor: 'rgba(0,230,100,0.1)',
-  },
-  agendaPaymentBadgeText: {
-    ...interMediumText,
-    fontSize: 11,
-    letterSpacing: 0.3,
-  },
-  agendaPaymentBadgeTextUpcoming: {
-    color: colors.warning,
-  },
-  agendaPaymentBadgeTextUpcomingIncome: {
-    color: colors.success,
-  },
-  agendaPaymentBadgeTextPaid: {
-    color: colors.textMuted,
-  },
-  agendaPaymentBadgeTextReceived: {
-    color: colors.success,
   },
   emptyCardInner: {
     alignItems: 'center',
@@ -1572,23 +1557,6 @@ function createStyles(colors: AppColors) {
     fontSize: typography.caption,
     lineHeight: typography.caption + 6,
     textAlign: 'center',
-  },
-  premiumAddCta: {
-    marginBottom: spacing.md,
-    alignSelf: 'stretch',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.md,
-    minHeight: UNIFORM_ACTION_BUTTON_MIN_HEIGHT,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  premiumAddCtaLabel: {
-    ...typographyKit.bodyBold,
-    letterSpacing: 0.15,
   },
   pickerBackdrop: {
     flex: 1,

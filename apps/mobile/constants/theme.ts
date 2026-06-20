@@ -47,7 +47,37 @@ export const CONTAINER_BORDER = '#1c1c1c';
 /** Light-theme container outline (same as `lightDashboardPalette.border`). */
 export const CONTAINER_BORDER_LIGHT = '#C0C0C8';
 
-/** Segmented tab bar — Transactions / Portefeuille scope tabs (dark) */
+/**
+ * Liquid spring presets for {@link ThemeSegmentedControl} / {@link SegmentedTabs} sliding pill.
+ * Slight overshoot + stretch/squash on tab change — canonical animated segmented control motion.
+ */
+export const liquidSegmentedSpring = {
+  damping: 19,
+  stiffness: 295,
+  mass: 0.6,
+  overshootClamping: false,
+} as const;
+
+export const liquidSegmentedSettleSpring = {
+  damping: 22,
+  stiffness: 400,
+  mass: 0.5,
+} as const;
+
+/**
+ * **Theme kit — segmented controls**
+ *
+ * Use {@link ThemeSegmentedControl} (`components/ThemeSegmentedControl.tsx`) for every
+ * multi-option toggle in a shared track: scope tabs, history filters, settings rows, chart periods.
+ *
+ * - Animation is on by default (`animated` prop); do not disable except for tests.
+ * - Variants: `primary` (hero scope tabs) · `section` (in-card / settings rows).
+ * - Sizes: `sm` · `section` · `md` (default) · `lg`.
+ * - Colors: `segmentedTabBarDark` / `segmentedTabBarLight`, or `colors.segmentedTab*` / `scopeTrack`.
+ *
+ * Not for: boolean on/off (`Switch`), wrap chips in forms ({@link chipSelectableShellStyle}),
+ * icon-card grids ({@link TransferModePicker}), or picker sheets.
+ */
 export const segmentedTabBarDark = {
   track: '#1C1C1C',
   activePill: '#2C2C2C',
@@ -93,8 +123,11 @@ export const darkColors = {
   containerBorder: dashboardPalette.border,
   cardBackground: dashboardPalette.card,
   glassSolid: dashboardPalette.card,
-  surfaceElevated: dashboardPalette.iconBox,
+  surfaceElevated: '#1F1F23',
   input: dashboardPalette.iconBox,
+  accentGreen: '#4ADE80',
+  codeBg: '#161618',
+  borderSubtle: 'rgba(255, 255, 255, 0.07)',
   border: dashboardPalette.border,
   borderStrong: dashboardPalette.border,
   cardBorder: dashboardPalette.border,
@@ -147,6 +180,9 @@ export const lightColors = {
   glassSolid: '#FFFFFF',
   surfaceElevated: '#E8E8ED',
   input: '#E8E8ED',
+  accentGreen: '#4ADE80',
+  codeBg: '#E4E4EA',
+  borderSubtle: 'rgba(0, 0, 0, 0.07)',
   border: CONTAINER_BORDER_LIGHT,
   borderStrong: '#9090A0',
   cardBorder: CONTAINER_BORDER_LIGHT,
@@ -183,7 +219,7 @@ export const lightColors = {
   segmentedTabInactiveText: segmentedTabBarLight.inactiveText,
 } as const;
 
-export type AppColors = typeof darkColors;
+export type AppColors = { [K in keyof typeof darkColors]: typeof darkColors[K] extends number ? number : string };
 export type ThemePreference = 'dark' | 'light';
 
 export const themeColors: Record<ThemePreference, AppColors> = {
@@ -392,6 +428,84 @@ export const typography = {
   displayAmount: 38,
 } as const;
 
+/**
+ * DM Mono font tokens (`DMMono_400Regular`, `DMMono_500Medium`).
+ *
+ * **Exclusively** for the ARTICLES / receipt section in the transaction detail view
+ * (`app/transaction-detail.tsx` — `TransactionReceiptCard`, itemized line amounts).
+ *
+ * Do **not** use DM Mono elsewhere. Labels → Inter. Money amounts → {@link moneyAmountTypography}
+ * (Inter ExtraBold) or `typographyKit`.
+ *
+ * Forbidden surfaces (use Inter + {@link moneyAmountTypography} instead):
+ * - Dashboard / Accueil (`app/(tabs)/index.tsx`)
+ * - Portefeuille cards (`BankAccountCard`, `CashAccountCard`, `LoanCard`)
+ * - Transaction list rows (`TransactionRow`)
+ * - Debt, cash, portfolio, chart metrics
+ *
+ * Import only in transaction-detail articles components; prefer {@link articlesReceiptTypography}.
+ */
+export const ARTICLES_MONO_FONT = {
+  regular: 'DMMono_400Regular',
+  medium: 'DMMono_500Medium',
+} as const;
+
+/**
+ * Receipt / articles typography — DM Mono for itemized receipt lines in transaction detail only.
+ * Pair with {@link ARTICLES_MONO_FONT}; do not use on dashboard, cards, or list rows.
+ */
+export function articlesReceiptTypography(
+  weight: keyof typeof ARTICLES_MONO_FONT = 'medium',
+): Pick<TextStyle, 'fontFamily' | 'fontVariant'> {
+  return {
+    fontFamily: ARTICLES_MONO_FONT[weight],
+    fontVariant: ['tabular-nums'],
+  };
+}
+
+/** Accueil dashboard semantic colors — value direction on home tab only. */
+export const DASHBOARD_VALUE_GREEN = '#4ADE80';
+export const DASHBOARD_VALUE_RED = '#FF6B6B';
+
+/** Unified savings-goal progress bar fill — matches chart/savings accent (#4ADE80). */
+export const GOAL_PROGRESS_FILL = DASHBOARD_VALUE_GREEN;
+export const GOAL_PROGRESS_TRACK_LIGHT = '#E8EDF3';
+export const GOAL_PROGRESS_TRACK_DARK = '#08090B';
+
+export function goalProgressTrackColor(isLight: boolean): string {
+  return isLight ? GOAL_PROGRESS_TRACK_LIGHT : GOAL_PROGRESS_TRACK_DARK;
+}
+
+/**
+ * Standard Inter ExtraBold money typography for all monetary amounts **except**
+ * transaction-detail ARTICLES/receipt lines (those use {@link articlesReceiptTypography}).
+ *
+ * Use for: dashboard cards, portfolio cards, debt amounts, chart metrics, transaction row amounts, etc.
+ */
+export function moneyAmountTypography(options?: {
+  /** Preset size tier; default `card` (16px). Use `hero` for large card balances. */
+  tier?: 'card' | 'hero' | 'stat' | 'row';
+  fontSize?: number;
+  lineHeight?: number;
+  letterSpacing?: number;
+}): TextStyle {
+  const tier = options?.tier ?? 'card';
+  const preset =
+    tier === 'hero'
+      ? typographyKit.statHero
+      : tier === 'stat'
+        ? typographyKit.heroStat
+        : tier === 'row'
+          ? typographyKit.rowAmount
+          : typographyKit.cardMetric;
+  return {
+    ...preset,
+    ...(options?.fontSize != null ? { fontSize: options.fontSize } : null),
+    ...(options?.lineHeight != null ? { lineHeight: options.lineHeight } : null),
+    ...(options?.letterSpacing != null ? { letterSpacing: options.letterSpacing } : null),
+  };
+}
+
 /** Space between stacked blocks inside a Portefeuille tab section */
 export const PORTFOLIO_SECTION_GAP = spacing.lg;
 
@@ -403,6 +517,101 @@ export const labelText = {
   ...interMediumText,
   textTransform: 'uppercase' as const,
   letterSpacing: 0.6,
+};
+
+/** Compact tag label size (10px) — {@link tagTypography}, {@link uiTagTextStyle}. */
+export const TAG_FONT_SIZE = typography.micro - 2;
+
+/** Default letter-spacing for compact tags. */
+export const TAG_LETTER_SPACING = 0.6;
+
+/** Horizontal padding inside tag shells. */
+export const TAG_PADDING_HORIZONTAL = spacing.sm;
+
+/** Vertical padding inside tag shells. */
+export const TAG_PADDING_VERTICAL = 3;
+
+/** Default corner radius for tag shells (rounded rect). */
+export const TAG_BORDER_RADIUS = radius.sm;
+
+/**
+ * Compact uppercase tag label typography.
+ *
+ * Use for: account name tags in « Mes soldes », status chips (« DEMAIN », « PAYÉ »),
+ * inline metadata badges beside card titles.
+ *
+ * Pair with {@link tagContainerStyle} or {@link uiTagContainerStyle} for the shell.
+ * For full-pill badges with hairline outline (ex. WealthAssetCard type badge), pass
+ * `pill: true` and `bordered: true` on {@link tagContainerStyle}.
+ *
+ * Not for: section eyebrows ({@link typographyKit.eyebrow}), selectable chips
+ * ({@link chipShellBorderStyle}), or large stat labels ({@link labelText}).
+ */
+export function tagTypography(options?: {
+  color?: string;
+  fontSize?: number;
+  letterSpacing?: number;
+}): TextStyle {
+  return {
+    ...interMediumText,
+    fontSize: options?.fontSize ?? TAG_FONT_SIZE,
+    letterSpacing: options?.letterSpacing ?? TAG_LETTER_SPACING,
+    textTransform: 'uppercase',
+    ...(options?.color != null ? { color: options.color } : null),
+  };
+}
+
+/**
+ * Tag / pill container shell behind a {@link tagTypography} label.
+ *
+ * Use for: Mes soldes account name tags, status chips, category/type badges on cards.
+ * Supply `backgroundColor` / `borderColor` from theme tokens at the call site.
+ */
+export function tagContainerStyle(options?: {
+  backgroundColor?: string;
+  borderColor?: string;
+  /** Hairline outline (ex. WealthAssetCard type badge). */
+  bordered?: boolean;
+  /** Full pill (`radius.pill`) instead of rounded rect (`radius.sm`). */
+  pill?: boolean;
+  alignSelf?: ViewStyle['alignSelf'];
+}): ViewStyle {
+  const shell: ViewStyle = {
+    alignSelf: options?.alignSelf ?? 'flex-start',
+    maxWidth: '100%',
+    flexShrink: 1,
+    borderRadius: options?.pill ? radius.pill : TAG_BORDER_RADIUS,
+    paddingHorizontal: TAG_PADDING_HORIZONTAL,
+    paddingVertical: TAG_PADDING_VERTICAL,
+  };
+  if (options?.backgroundColor != null) {
+    shell.backgroundColor = options.backgroundColor;
+  }
+  if (options?.bordered) {
+    shell.borderWidth = StyleSheet.hairlineWidth;
+    if (options.borderColor != null) {
+      shell.borderColor = options.borderColor;
+    }
+  }
+  return shell;
+}
+
+/** Static tag text baseline for `StyleSheet.create` — set `color` at use site. */
+export const uiTagTextStyle: TextStyle = {
+  ...interMediumText,
+  fontSize: TAG_FONT_SIZE,
+  letterSpacing: TAG_LETTER_SPACING,
+  textTransform: 'uppercase',
+};
+
+/** Static tag container baseline for `StyleSheet.create` — fill/border at use site. */
+export const uiTagContainerStyle: ViewStyle = {
+  alignSelf: 'flex-start',
+  maxWidth: '100%',
+  flexShrink: 1,
+  borderRadius: TAG_BORDER_RADIUS,
+  paddingHorizontal: TAG_PADDING_HORIZONTAL,
+  paddingVertical: TAG_PADDING_VERTICAL,
 };
 
 /** @deprecated Use interBoldText */
@@ -420,6 +629,39 @@ export function getFloatingTabBarBottomInset(safeBottom: number): number {
     return spacing.lg;
   }
   return Math.max(safeBottom, spacing.sm);
+}
+
+/** Tab pill row height in `FloatingTabBar` (excludes safe-area padding on nav shell). */
+export const FLOATING_TAB_BAR_PILL_HEIGHT = Platform.OS === 'android' ? 9 + 50 + 7 : 11 + 50 + 11;
+
+/** Minimal gap between chat input and the Android system navigation bar at rest. */
+export const CHAT_INPUT_ABOVE_SYSTEM_NAV_GAP = spacing.xs;
+
+/** Bottom inset for overlays (e.g. chat input) sitting just above the tab bar. */
+export function getFloatingTabBarOverlayInset(
+  safeBottom: number,
+  options?: { keyboardVisible?: boolean; tabBarVisible?: boolean },
+): number {
+  const keyboardVisible = options?.keyboardVisible ?? false;
+  const tabBarVisible = options?.tabBarVisible ?? true;
+
+  if (keyboardVisible) {
+    return Platform.OS === 'android' ? spacing.sm : Math.max(safeBottom, spacing.sm);
+  }
+
+  if (Platform.OS === 'android') {
+    const systemNavInset = getFloatingTabBarBottomInset(safeBottom);
+    if (!tabBarVisible) {
+      return systemNavInset;
+    }
+    return systemNavInset + CHAT_INPUT_ABOVE_SYSTEM_NAV_GAP;
+  }
+
+  if (!tabBarVisible) {
+    return Math.max(safeBottom, spacing.xs);
+  }
+
+  return safeBottom + FLOATING_TAB_BAR_PILL_HEIGHT;
 }
 
 const FLOATING_NAV_BASE_PADDING = 112;
@@ -549,18 +791,19 @@ export const portfolioDark = {
  *    ({@link accountDetailHeroActionsStyle}, {@link destructiveTextActionStyle} pour Supprimer)
  * 2. **BankAccountCard** — carte hero dans `ghostCardShadow` (composant séparé, ne pas dupliquer)
  * 3. **Ligne stats relevé** — 3 colonnes selon le type de compte :
- *    - Chèque : Revenus · Net ce mois (prominent) · Dépenses ({@link ACCOUNT_DETAIL_STATEMENT_COLUMNS})
- *    - Crédit : Solde dû · Disponible · % utilisé
+ *    - Chèque : Revenus · Solde (prominent) · Dépenses ({@link ACCOUNT_DETAIL_STATEMENT_COLUMNS})
+ *    - Crédit : % utilisé · Solde (prominent) · Disponible
  *    - Épargne : Épargné · Objectif · Atteint
  * 4. **DetailRows secondaires** — paires label/valeur avec hairline entre lignes (limite, échéance, objectif…)
- * 5. **En-tête collapsible** paiements récurrents ({@link accountDetailRecurringHeaderStyle})
+ * 5. **Menu déroulant** paiements récurrents ({@link accountDetailRecurringTriggerStyle},
+ *    {@link accountDetailRecurringPanelStyle})
  * 6. **Historique transactions** — barre recherche + filtres SegmentedTabs + groupes {@link TransactionRow}
  *
  * Règles couleur des valeurs stats :
- * - **Compte chèque** : seul « Net ce mois » est coloré (vert si ≥ 0, rouge sinon) ;
+ * - **Compte chèque** : « Solde » en `colors.text` (ou `colors.danger` si négatif) ;
  *   « Revenus » et « Dépenses » restent en `colors.text` avec préfixe +/−.
- * - **Crédit** : « Solde dû » en `colors.danger` avec montant signé − ;
- *   « Disponible » en `colors.text` ; « % utilisé » via {@link utilizationPercentColor}
+ * - **Crédit** : « Solde » centré en `colors.text` avec montant signé − ;
+ *   « Disponible » à droite en `colors.text` ; « % utilisé » à gauche via {@link utilizationPercentColor}
  *   (`lib/creditLimitUtilization.ts` : &lt;50 % vert, 50–79 % orange, ≥80 % rouge).
  * - **Carte crédit (BankAccountCard)** : affiche solde dû + disponible uniquement — pas de % sur la carte.
  */
@@ -623,7 +866,7 @@ export function accountDetailHeroBlockStyle(): ViewStyle {
   };
 }
 
-/** 3-column statement stats row (Revenus · Net ce mois · Dépenses, etc.). */
+/** 3-column statement stats row (Revenus · Solde · Dépenses, etc.). */
 export function accountDetailStatementStatsRowStyle(): ViewStyle {
   return {
     flexDirection: 'row',
@@ -647,7 +890,7 @@ export function accountDetailStatementStatColStyle(options?: {
   };
 }
 
-/** Tabular hero stat value — 28px default, 32px when `prominent` (ex. « Net ce mois »). */
+/** Tabular hero stat value — 28px default, 32px when `prominent` (ex. « Solde »). */
 export function accountDetailStatementStatValueStyle(prominent?: boolean): TextStyle {
   return {
     ...interExtraBoldText,
@@ -662,7 +905,7 @@ export function accountDetailStatementStatValueStyle(prominent?: boolean): TextS
   };
 }
 
-/** Muted label under a statement stat (ex. « Revenus », « Net ce mois »). */
+/** Muted label under a statement stat (ex. « Revenus », « Solde »). */
 export function accountDetailStatementStatLabelStyle(): TextStyle {
   return {
     ...interMediumText,
@@ -701,7 +944,7 @@ export function accountDetailSectionDividerStyle(isLight: boolean): ViewStyle {
  * 3. **Ligne stats transfert** — Reçu (+) · Net (prominent, vert/rouge) · Envoyé (−)
  *    ({@link accountDetailStatementStatsRowStyle}) ; net = total reçu − total envoyé
  * 4. **DetailRows secondaires** — Opérations, Période (hairline entre lignes)
- * 5. **Toggle employeur** — rangée ouverte avec Switch (si contact enregistré), sans GlassContainer
+ * 5. **Toggle employeur** — rangée compacte type DetailRow (eyebrow « Employeur » + Switch), sans GlassContainer
  * 6. **Historique** — recherche + filtres SegmentedTabs (Tous · Envoyés · Reçus) + groupes {@link TransactionRow}
  *
  * Règles couleur des valeurs stats :
@@ -709,7 +952,7 @@ export function accountDetailSectionDividerStyle(isLight: boolean): ViewStyle {
  * - seul « Net » est coloré (vert si ≥ 0, rouge sinon).
  */
 
-/** Bordered collapsible header for « Paiements récurrents de ce compte ». */
+/** Bordered section header — merchant receipts library (non-collapsible). */
 export function accountDetailRecurringHeaderStyle(isLight: boolean): ViewStyle {
   const palette = dashboardPaletteForTheme(isLight);
   return {
@@ -724,6 +967,113 @@ export function accountDetailRecurringHeaderStyle(isLight: boolean): ViewStyle {
     minHeight: 48,
     borderColor: palette.border,
     backgroundColor: palette.card,
+  };
+}
+
+/** Minimal expand/collapse trigger for account recurring payments dropdown. */
+export function accountDetailRecurringTriggerStyle(): ViewStyle {
+  return {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    minHeight: 44,
+    paddingVertical: spacing.sm,
+  };
+}
+
+/** Hairline panel wrapping expanded recurring payment rows on account detail. */
+export function accountDetailRecurringPanelStyle(isLight: boolean): ViewStyle {
+  const palette = dashboardPaletteForTheme(isLight);
+  return {
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.border,
+    overflow: 'hidden',
+  };
+}
+
+/**
+ * Pages détail dettes (`app/loan-detail.tsx`) et patrimoine (`app/wealth-asset-detail.tsx`) —
+ * cartouche SurfaceCard « DÉTAILS » avec sous-sections à lignes simples
+ * (Prêt / Taux / Paiements, Patrimoine / Achat / Spécifications…), barres de progression
+ * et carrousel graphiques hypothèque.
+ */
+
+/** Vertical gap between sub-sections inside the DÉTAILS card (Prêt → Taux → Paiements). */
+export const detailSubSectionsGap = spacing.lg;
+
+/** Min height for mortgage chart carousel pages ({@link MortgageDetailCharts}). */
+export const detailCarouselPageMinHeight = 252;
+
+/** Eyebrow « DÉTAILS » (or « TRANSACTIONS ») on a SurfaceCard detail block. */
+export function detailSectionLabelStyle(): TextStyle {
+  return {
+    ...interBoldText,
+    fontSize: typography.micro,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  };
+}
+
+/** SurfaceCard shell wrapping the DÉTAILS eyebrow and sub-section rows. */
+export function detailSectionsCardStyle(): ViewStyle {
+  return {
+    gap: spacing.sm,
+  };
+}
+
+/**
+ * Sub-section header inside DÉTAILS — 11px uppercase muted eyebrow
+ * (ex. « Prêt », « Taux », « Paiements », « Patrimoine »).
+ */
+export function detailSubSectionHeaderStyle(): TextStyle {
+  return {
+    ...interMediumText,
+    fontSize: 11,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: spacing.xs,
+  };
+}
+
+/**
+ * Single-line detail row — icon + label + value with 8px vertical padding.
+ * Pair with hairline separators between rows inside a sub-section.
+ */
+export function detailSingleLineRowStyle(): ViewStyle {
+  return {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  };
+}
+
+/** Muted centered footnote below sub-sections (ex. « Début · 12 janv. 2024 »). */
+export function detailSectionFootnoteStyle(): TextStyle {
+  return {
+    ...typographyKit.microMedium,
+    marginTop: spacing.lg,
+    textAlign: 'center',
+  };
+}
+
+/**
+ * Track + fill styles for remboursé / utilisation / équité progress bars
+ * on loan and wealth asset detail pages.
+ */
+export function detailProgressBarStyle(): { track: ViewStyle; fill: ViewStyle } {
+  return {
+    track: {
+      height: 10,
+      borderRadius: radius.pill,
+      overflow: 'hidden',
+    },
+    fill: {
+      height: 10,
+      borderRadius: radius.pill,
+    },
   };
 }
 

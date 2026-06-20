@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -15,15 +15,15 @@ import {
   type PaymentForm,
 } from '@/lib/recurringPaymentsForm';
 import { BottomSheet } from '@/components/BottomSheet';
+import { ModifierButton } from '@/components/ModifierButton';
 import { CategoryBudgetProgress } from '@/components/CategoryBudgetProgress';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
-import type { FormFeedback } from '@/lib/formFeedback';
+import { EMPTY_DETAIL_VALUE } from '@/lib/detailDisplay';
 import type { ThemedConfirmVariant } from '@/components/ThemedConfirmModal';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
-import { EXPENSE_DEFAULT_ICON } from '@/lib/expenseIcon';
 import {
   destructiveIconColor,
   destructiveTextActionStyle,
@@ -43,9 +43,11 @@ import {
   upsertRecurringPayment,
 } from '@/lib/db';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
-import { detailHeroAmount, singleLineAmountProps } from '@/lib/textLayout';
+import { detailHeroAmount } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
+import { TransactionAmountLabel, recurringPaymentAmountDirection } from '@/components/TransactionAmountLabel';
 import { formatDisplayMoneyAbsolute, formatRecurringPaymentAmount } from '@/lib/formatDisplayMoney';
+import { resolveRecurringPaymentDisplayIcon } from '@/lib/recurringPaymentPresentation';
 import type { Category, CategoryBudget, RecurringPaymentFrequency, SimulatedAccount } from '@/types';
 
 export type PaymentDetailPayload = {
@@ -241,16 +243,16 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
       ? detailCategoryBudgets.find((item) => item.categoryId === detail.categoryId) ?? null
       : null;
 
-  const account = detail.account?.trim() ? detail.account : '—';
+  const account = detail.account?.trim() ? detail.account : EMPTY_DETAIL_VALUE;
   const recLabel =
     detail.frequencyLabel?.trim()
       ? detail.frequencyLabel
       : detail.recurring === undefined
-        ? '—'
+        ? EMPTY_DETAIL_VALUE
         : detail.recurring
           ? 'Oui'
           : 'Non';
-  const dateStr = detail.dateLabel?.trim() ? detail.dateLabel : '—';
+  const dateStr = detail.dateLabel?.trim() ? detail.dateLabel : EMPTY_DETAIL_VALUE;
   const kindLabel = detail.kind === 'income' ? 'Revenu' : 'Paiement';
 
   const showModifierHeader =
@@ -322,6 +324,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
   const formattedAmount = detail.recurring
     ? formatRecurringPaymentAmount(detail.amount, detail.kind ?? 'payment')
     : formatDisplayMoneyAbsolute(detail.amount);
+  const amountDirection = recurringPaymentAmountDirection(detail.kind ?? 'payment');
 
   const onSaveRecurring = async () => {
     if (!recurringForm) return;
@@ -378,8 +381,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
             </Text>
           </View>
           {showModifierHeader ? (
-            <Pressable
-              accessibilityRole="button"
+            <ModifierButton
               accessibilityLabel={
                 recurringEditId
                   ? 'Modifier le paiement ou revenu récurrent'
@@ -387,21 +389,11 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
                     ? 'Modifier la transaction'
                     : 'Ajouter une échéance de paie récurrente'
               }
-              hitSlop={10}
               onPress={onPressModifier}
               disabled={Boolean(recurringEditId && recurringEditLoading)}
-              style={({ pressed }) => [
-                styles.modifierButton,
-                pressed && styles.headerButtonPressed,
-                recurringEditId && recurringEditLoading && styles.disabled,
-              ]}
-            >
-              {recurringEditId && recurringEditLoading ? (
-                <ActivityIndicator size="small" color={colors.text} />
-              ) : (
-                <Text style={styles.modifierLabel}>Modifier</Text>
-              )}
-            </Pressable>
+              loading={Boolean(recurringEditId && recurringEditLoading)}
+              hitSlop={10}
+            />
           ) : null}
           <Pressable
             accessibilityRole="button"
@@ -416,9 +408,14 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
 
       {detail.subtitle ? <Text style={styles.subtitle}>{detail.subtitle}</Text> : null}
 
-        <Text style={[styles.amount, { color: amountTint }]} {...singleLineAmountProps}>
-          {formattedAmount}
-      </Text>
+        <TransactionAmountLabel
+          amount={formattedAmount}
+          direction={amountDirection}
+          color={amountTint}
+          textStyle={styles.amount}
+          iconSize={16}
+          containerStyle={{ justifyContent: 'center' }}
+        />
 
         {isEstimatedPayRow ? (
           <View style={styles.estimatedPayBanner}>
@@ -675,12 +672,10 @@ const avatarShell = StyleSheet.create({
 function PaymentAvatar({ detail, size }: { detail: PaymentDetailPayload; size: number }) {
   const { colors } = useAppTheme();
   const tint = normalizeHex(detail.color) ?? (detail.kind === 'income' ? colors.success : colors.warning);
-  const icon =
-    detail.icon && detail.icon !== 'repeat-outline'
-      ? detail.icon
-      : detail.kind === 'income'
-        ? 'AttachMoney'
-        : EXPENSE_DEFAULT_ICON;
+  const icon = resolveRecurringPaymentDisplayIcon({
+    icon: detail.icon,
+    kind: detail.kind,
+  });
 
   return (
     <UserPickedIconBadge
@@ -713,23 +708,6 @@ function createStyles(colors: AppColors) {
       flexShrink: 1,
       color: colors.text,
       fontSize: typography.dashboardGreeting,
-      fontWeight: '800',
-    },
-    modifierButton: {
-      flexShrink: 0,
-      paddingHorizontal: spacing.sm,
-      minWidth: 88,
-      height: 36,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: radius.pill,
-      backgroundColor: colors.surfaceSolid,
-      borderWidth: 1,
-      borderColor: colors.borderStrong,
-    },
-    modifierLabel: {
-      color: colors.text,
-      fontSize: typography.caption,
       fontWeight: '800',
     },
     closeButton: {

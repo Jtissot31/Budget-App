@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { MdiIcon } from '@/components/MdiIcon';
@@ -9,16 +10,19 @@ import {
   spacing,
   typography,
 } from '@/constants/theme';
-import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
+import { singleLineLabelStyle } from '@/lib/textLayout';
 import { tapHaptic } from '@/lib/haptics';
 import { WELL_GLYPH_WHITE, type MdiIconName } from '@/lib/mdiIconCatalog';
 import { useAppTheme } from '@/lib/themeContext';
 
 export type TransferMode = 'accounts' | 'person' | 'person_from';
 
+type ContactDirection = 'to' | 'from';
+
 type TransferModeOption = {
   mode: TransferMode;
-  icon: MdiIconName;
+  icon?: MdiIconName;
+  contactDirection?: ContactDirection;
   label: string;
   accessibilityLabel: string;
 };
@@ -28,21 +32,48 @@ const TRANSFER_MODE_OPTIONS: TransferModeOption[] = [
     mode: 'accounts',
     icon: 'SwapHoriz',
     label: 'Mes comptes',
-    accessibilityLabel: 'Transfert entre mes comptes',
+    accessibilityLabel: 'Virement entre mes comptes',
   },
   {
     mode: 'person',
-    icon: 'Payments',
+    contactDirection: 'to',
     label: 'Vers contact',
-    accessibilityLabel: 'Transfert vers un contact',
+    accessibilityLabel: 'Envoyer de l’argent à un contact',
   },
   {
     mode: 'person_from',
-    icon: 'Person',
+    contactDirection: 'from',
     label: 'Depuis contact',
-    accessibilityLabel: 'Transfert depuis un contact',
+    accessibilityLabel: 'Recevoir de l’argent d’un contact',
   },
 ];
+
+type ContactDirectionIconProps = {
+  direction: ContactDirection;
+  color: string;
+  accentColor: string;
+};
+
+function ContactDirectionIcon({ direction, color, accentColor }: ContactDirectionIconProps) {
+  const isSendToContact = direction === 'to';
+
+  return (
+    <View style={styles.contactIconWrap}>
+      {isSendToContact ? (
+        <Ionicons name="arrow-forward" size={11} color={accentColor} style={styles.contactArrowSend} />
+      ) : null}
+      <Ionicons
+        name="person-outline"
+        size={15}
+        color={color}
+        style={isSendToContact ? styles.contactPersonSend : styles.contactPersonReceive}
+      />
+      {!isSendToContact ? (
+        <Ionicons name="arrow-forward" size={11} color={accentColor} style={styles.contactArrowReceive} />
+      ) : null}
+    </View>
+  );
+}
 
 type Props = {
   value: TransferMode;
@@ -56,8 +87,20 @@ export function TransferModePicker({ value, onChange }: Props) {
     <View style={styles.section}>
       <DashboardSectionLabel>Provenance</DashboardSectionLabel>
       <View style={styles.grid}>
-        {TRANSFER_MODE_OPTIONS.map(({ mode, icon, label, accessibilityLabel }) => {
+        {TRANSFER_MODE_OPTIONS.map(({ mode, icon, contactDirection, label, accessibilityLabel }) => {
           const selected = value === mode;
+          const glyphColor = selected ? WELL_GLYPH_WHITE : colors.textSecondary;
+          const accentColor =
+            contactDirection === 'to'
+              ? selected
+                ? '#FFD0D0'
+                : colors.danger
+              : contactDirection === 'from'
+                ? selected
+                  ? '#C8F5DC'
+                  : colors.success
+                : glyphColor;
+
           return (
             <Pressable
               key={mode}
@@ -86,11 +129,15 @@ export function TransferModePicker({ value, onChange }: Props) {
                   },
                 ]}
               >
-                <MdiIcon
-                  name={icon}
-                  size={20}
-                  color={selected ? WELL_GLYPH_WHITE : colors.textSecondary}
-                />
+                {contactDirection ? (
+                  <ContactDirectionIcon
+                    direction={contactDirection}
+                    color={glyphColor}
+                    accentColor={accentColor}
+                  />
+                ) : (
+                  <MdiIcon name={icon!} size={20} color={glyphColor} />
+                )}
               </View>
               <Text
                 style={[
@@ -141,6 +188,26 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  contactIconWrap: {
+    width: 28,
+    height: 20,
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contactPersonSend: {
+    marginLeft: 2,
+  },
+  contactPersonReceive: {
+    marginRight: 2,
+  },
+  contactArrowSend: {
+    marginRight: 1,
+  },
+  contactArrowReceive: {
+    marginLeft: 1,
   },
   label: {
     ...interBoldText,

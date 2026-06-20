@@ -1,9 +1,12 @@
 import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 import {
   accumulateAccountMoneyFlows,
   getTransactionAccountDeltas,
   type AccountMoneyFlow,
 } from '@/lib/accountTransactionFlow';
+import { normalizeRecurringPaymentIconsFromLoans } from '@/lib/recurringPaymentPresentation';
+import { parseItemizedNote } from '@/lib/itemizedNote';
 import { dataEvents } from '@/lib/events';
 import { normalizeSearch } from '@/lib/categoryInference';
 import { DEPRECATED_BUDGET_CATEGORY_IDS } from '@/constants/categoryOptions';
@@ -27,7 +30,8 @@ import type {
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 let dbOpenFailed = false;
 
-const DB_OPEN_TIMEOUT_MS = 5_000;
+/** Web needs extra time for WASM worker + OPFS; native can be slower on cold start with WAL. */
+const DB_OPEN_TIMEOUT_MS = Platform.OS === 'web' ? 30_000 : 15_000;
 
 export function isDatabaseAvailable(): boolean {
   return !dbOpenFailed;
@@ -69,12 +73,8 @@ export function sortTransactionsNewestFirst(transactions: Transaction[]): Transa
   return [...transactions].sort(compareTransactionsNewestFirst);
 }
 
-export async function getDb(): Promise<SQLite.SQLiteDatabase> {
-  if (!dbPromise) {
-    dbPromise = withDbOpenTimeout(
-      (async () => {
-      const db = await SQLite.openDatabaseAsync('budget.db');
-      await db.execAsync(`
+async function initializeDatabaseSchema(db: SQLite.SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
         PRAGMA journal_mode = WAL;
         CREATE TABLE IF NOT EXISTS categories (
           id TEXT PRIMARY KEY NOT NULL,
@@ -200,20 +200,28 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
           created_at TEXT NOT NULL
         );
       `);
-      await ensureSavingsGoalColumns(db);
-      await ensureSimulatedAccountColumns(db);
-      await ensureTransactionColumns(db);
-      await ensureCategoryBudgetColumns(db);
-      await ensureRecurringPaymentColumns(db);
-      await ensureLoanColumns(db);
-      await ensureWealthAssetColumns(db);
-      await ensureMerchantOverrideColumns(db);
-      await ensureContactsTable(db);
-      await removeDeprecatedBudgetCategories(db);
+  await ensureSavingsGoalColumns(db);
+  await ensureSimulatedAccountColumns(db);
+  await ensureTransactionColumns(db);
+  await ensureCategoryBudgetColumns(db);
+  await ensureRecurringPaymentColumns(db);
+  await ensureLoanColumns(db);
+  await ensureWealthAssetColumns(db);
+  await ensureMerchantOverrideColumns(db);
+  await ensureContactsTable(db);
+  await removeDeprecatedBudgetCategories(db);
+}
+
+export async function getDb(): Promise<SQLite.SQLiteDatabase> {
+  if (!dbPromise) {
+    dbPromise = (async () => {
+      const db = await withDbOpenTimeout(
+        SQLite.openDatabaseAsync('budget.db'),
+        'SQLite open',
+      );
+      await initializeDatabaseSchema(db);
       return db;
-    })(),
-      'SQLite open',
-    ).catch((error: unknown) => {
+    })().catch((error: unknown) => {
       dbPromise = null;
       dbOpenFailed = true;
       console.warn('[Boot] SQLite open failed', error);
@@ -322,6 +330,12 @@ async function ensureLoanColumns(db: SQLite.SQLiteDatabase): Promise<void> {
   await addColumn('current_property_value', 'current_property_value REAL');
   await addColumn('wealth_asset_id', 'wealth_asset_id TEXT');
   await addColumn('reason', 'reason TEXT');
+  await addColumn('rate_type', 'rate_type TEXT');
+  await addColumn('rate_term_years', 'rate_term_years INTEGER');
+  await addColumn('renewal_date', 'renewal_date TEXT');
+  await addColumn('amortization_years', 'amortization_years INTEGER');
+  await addColumn('payment_debit_type', 'payment_debit_type TEXT');
+  await addColumn('beneficiary_relation', 'beneficiary_relation TEXT');
 }
 
 async function ensureWealthAssetColumns(db: SQLite.SQLiteDatabase): Promise<void> {
@@ -372,6 +386,9 @@ async function ensureContactsTable(db: SQLite.SQLiteDatabase): Promise<void> {
   const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(contacts)');
   if (!columns.some((column) => column.name === 'is_employer')) {
     await db.execAsync('ALTER TABLE contacts ADD COLUMN is_employer INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!columns.some((column) => column.name === 'photo_uri')) {
+    await db.execAsync('ALTER TABLE contacts ADD COLUMN photo_uri TEXT');
   }
 }
 
@@ -484,6 +501,23 @@ export async function insertSimulatedAccount(account: SimulatedAccount): Promise
   dataEvents.emit();
 }
 
+/**
+ * Ensures exactly one cash account exists. Uses a single atomic INSERT … WHERE NOT EXISTS
+ * so it is safe to call on every app load without emitting a data event.
+ */
+export async function ensureCashAccount(): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT INTO simulated_accounts (
+       id, name, kind, balance, institution, last4, credit_limit, due_day,
+       interest_rate, logo_url, linked_savings_goal_id, hidden, display_order, created_at
+     )
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+     WHERE NOT EXISTS (SELECT 1 FROM simulated_accounts WHERE kind = 'cash')`,
+    ['argent-cash-seed', 'Argent Cash', 'cash', 0, null, null, null, null, null, null, null, 0, null, new Date().toISOString()],
+  );
+}
+
 export async function updateSimulatedAccountPreferences(
   id: string,
   preferences: Pick<SimulatedAccount, 'hidden' | 'displayOrder'>,
@@ -508,13 +542,19 @@ export async function deleteSimulatedAccount(id: string): Promise<void> {
   dataEvents.emit();
 }
 
-export async function adjustSimulatedAccountBalance(id: string, delta: number): Promise<void> {
+export async function adjustSimulatedAccountBalance(
+  id: string,
+  delta: number,
+  options?: { emit?: boolean },
+): Promise<void> {
   const trimmedId = id.trim();
   if (!trimmedId || !Number.isFinite(delta) || delta === 0) return;
 
   const db = await getDb();
   await db.runAsync('UPDATE simulated_accounts SET balance = balance + ? WHERE id = ?', [delta, trimmedId]);
-  dataEvents.emit();
+  if (options?.emit !== false) {
+    dataEvents.emit();
+  }
 }
 
 export async function adjustSavingsGoalCurrentAmount(id: string, delta: number): Promise<void> {
@@ -605,6 +645,12 @@ const LOAN_SELECT_COLUMNS = `
        principal,
        balance_remaining AS balanceRemaining,
        interest_rate AS interestRate,
+       rate_type AS rateType,
+       rate_term_years AS rateTermYears,
+       renewal_date AS renewalDate,
+       amortization_years AS amortizationYears,
+       payment_debit_type AS paymentDebitType,
+       beneficiary_relation AS beneficiaryRelation,
        monthly_payment AS monthlyPayment,
        start_date AS startDate,
        end_date AS endDate,
@@ -650,10 +696,11 @@ export async function upsertLoan(loan: Loan): Promise<void> {
   await db.runAsync(
     `INSERT OR REPLACE INTO loans (
        id, type, name, reason, lender, principal, balance_remaining, interest_rate,
-       monthly_payment, start_date, end_date, duration_amount, duration_unit,
+       rate_type, rate_term_years, renewal_date, amortization_years, payment_debit_type,
+       beneficiary_relation, monthly_payment, start_date, end_date, duration_amount, duration_unit,
        payment_frequency, payment_account_id, next_payment_date, recurring_payment_id,
        icon, address, down_payment, purchase_price, current_property_value, wealth_asset_id, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       loan.id,
       loan.type,
@@ -663,6 +710,12 @@ export async function upsertLoan(loan: Loan): Promise<void> {
       loan.principal,
       loan.balanceRemaining,
       loan.interestRate,
+      loan.rateType ?? null,
+      loan.rateTermYears ?? null,
+      loan.renewalDate ?? null,
+      loan.amortizationYears ?? null,
+      loan.paymentDebitType ?? null,
+      loan.beneficiaryRelation ?? null,
       loan.monthlyPayment,
       loan.startDate,
       loan.endDate,
@@ -710,6 +763,7 @@ function mapContactRow(row: {
   name: string;
   normalizedName: string;
   isEmployer?: number | null;
+  photoUri?: string | null;
   createdAt: string;
 }): Contact {
   return {
@@ -717,6 +771,7 @@ function mapContactRow(row: {
     name: row.name,
     normalizedName: row.normalizedName,
     isEmployer: row.isEmployer === 1,
+    photoUri: row.photoUri ?? null,
     createdAt: row.createdAt,
   };
 }
@@ -728,9 +783,10 @@ export async function getContacts(): Promise<Contact[]> {
     name: string;
     normalizedName: string;
     isEmployer: number;
+    photoUri?: string | null;
     createdAt: string;
   }>(
-    `SELECT id, name, normalized_name AS normalizedName, COALESCE(is_employer, 0) AS isEmployer, created_at AS createdAt
+    `SELECT id, name, normalized_name AS normalizedName, COALESCE(is_employer, 0) AS isEmployer, photo_uri AS photoUri, created_at AS createdAt
      FROM contacts
      ORDER BY name COLLATE NOCASE ASC`,
   );
@@ -746,9 +802,10 @@ export async function getContactByNormalizedName(normalizedName: string): Promis
     name: string;
     normalizedName: string;
     isEmployer: number;
+    photoUri?: string | null;
     createdAt: string;
   }>(
-    `SELECT id, name, normalized_name AS normalizedName, COALESCE(is_employer, 0) AS isEmployer, created_at AS createdAt
+    `SELECT id, name, normalized_name AS normalizedName, COALESCE(is_employer, 0) AS isEmployer, photo_uri AS photoUri, created_at AS createdAt
      FROM contacts
      WHERE normalized_name = ?
      LIMIT 1`,
@@ -773,9 +830,10 @@ export async function upsertContactByName(
     name: string;
     normalizedName: string;
     isEmployer: number;
+    photoUri?: string | null;
     createdAt: string;
   }>(
-    `SELECT id, name, normalized_name AS normalizedName, COALESCE(is_employer, 0) AS isEmployer, created_at AS createdAt
+    `SELECT id, name, normalized_name AS normalizedName, COALESCE(is_employer, 0) AS isEmployer, photo_uri AS photoUri, created_at AS createdAt
      FROM contacts
      WHERE normalized_name = ?
      LIMIT 1`,
@@ -805,11 +863,12 @@ export async function upsertContactByName(
     name: trimmed,
     normalizedName,
     isEmployer,
+    photoUri: null,
     createdAt: new Date().toISOString(),
   };
   await db.runAsync(
-    'INSERT INTO contacts (id, name, normalized_name, is_employer, created_at) VALUES (?, ?, ?, ?, ?)',
-    [contact.id, contact.name, contact.normalizedName, isEmployer ? 1 : 0, contact.createdAt],
+    'INSERT INTO contacts (id, name, normalized_name, is_employer, photo_uri, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [contact.id, contact.name, contact.normalizedName, isEmployer ? 1 : 0, null, contact.createdAt],
   );
   dataEvents.emit();
   return contact;
@@ -820,6 +879,14 @@ export async function updateContactEmployer(contactId: string, isEmployer: boole
   if (!trimmed) return;
   const db = await getDb();
   await db.runAsync('UPDATE contacts SET is_employer = ? WHERE id = ?', [isEmployer ? 1 : 0, trimmed]);
+  dataEvents.emit();
+}
+
+export async function updateContactPhoto(contactId: string, photoUri: string | null): Promise<void> {
+  const trimmed = contactId.trim();
+  if (!trimmed) return;
+  const db = await getDb();
+  await db.runAsync('UPDATE contacts SET photo_uri = ? WHERE id = ?', [photoUri?.trim() || null, trimmed]);
   dataEvents.emit();
 }
 
@@ -985,11 +1052,20 @@ export async function getRecurringPayments(): Promise<RecurringPayment[]> {
      ORDER BY rp.active DESC, COALESCE(rp.next_date, rp.created_at) ASC`,
   );
 
-  return rows.map((row) => ({
+  const payments = rows.map((row) => ({
     ...row,
     kind: row.kind === 'income' ? 'income' : 'payment',
     active: row.active === 1,
   }));
+
+  const loans = await getLoans();
+  const { payments: normalized, repairs } = normalizeRecurringPaymentIconsFromLoans(payments, loans);
+  if (repairs.length > 0) {
+    for (const payment of repairs) {
+      await db.runAsync('UPDATE recurring_payments SET icon = ? WHERE id = ?', [payment.icon, payment.id]);
+    }
+  }
+  return normalized;
 }
 
 export async function upsertRecurringPayment(payment: RecurringPayment): Promise<void> {
@@ -1027,21 +1103,24 @@ export async function deleteRecurringPayment(id: string): Promise<void> {
   dataEvents.emit();
 }
 
-export async function insertTransaction(tx: {
-  id: string;
-  label: string;
-  amount: number;
-  type: TransactionType;
-  date: string;
-  categoryId: string;
-  transactionIcon?: string | null;
-  receiptUri?: string | null;
-  receiptStatus?: Transaction['receiptStatus'];
-  note?: string;
-  wealthAssetId?: string | null;
-  savingsGoalId?: string | null;
-  syncStatus?: 'pending' | 'synced';
-}): Promise<void> {
+export async function insertTransaction(
+  tx: {
+    id: string;
+    label: string;
+    amount: number;
+    type: TransactionType;
+    date: string;
+    categoryId: string;
+    transactionIcon?: string | null;
+    receiptUri?: string | null;
+    receiptStatus?: Transaction['receiptStatus'];
+    note?: string;
+    wealthAssetId?: string | null;
+    savingsGoalId?: string | null;
+    syncStatus?: 'pending' | 'synced';
+  },
+  options?: { emit?: boolean },
+): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `INSERT INTO transactions (id, label, amount, type, date, category_id, transaction_icon, receipt_uri, receipt_status, note, wealth_asset_id, savings_goal_id, sync_status)
@@ -1053,8 +1132,8 @@ export async function insertTransaction(tx: {
        date = excluded.date,
        category_id = excluded.category_id,
        transaction_icon = COALESCE(excluded.transaction_icon, transactions.transaction_icon),
-       receipt_uri = COALESCE(excluded.receipt_uri, transactions.receipt_uri),
-       receipt_status = COALESCE(excluded.receipt_status, transactions.receipt_status),
+       receipt_uri = excluded.receipt_uri,
+       receipt_status = excluded.receipt_status,
        note = excluded.note,
        wealth_asset_id = COALESCE(excluded.wealth_asset_id, transactions.wealth_asset_id),
        savings_goal_id = COALESCE(excluded.savings_goal_id, transactions.savings_goal_id),
@@ -1075,7 +1154,9 @@ export async function insertTransaction(tx: {
       tx.syncStatus ?? 'pending',
     ],
   );
-  dataEvents.emit();
+  if (options?.emit !== false) {
+    dataEvents.emit();
+  }
 }
 
 export async function getTransactionById(id: string): Promise<Transaction | null> {
@@ -1280,7 +1361,7 @@ export async function getTransactions(search?: string): Promise<Transaction[]> {
       `SELECT t.id, t.label, t.amount, t.type, t.date, t.category_id AS categoryId,
               t.transaction_icon AS transactionIcon, t.receipt_uri AS receiptUri,
               t.receipt_status AS receiptStatus, t.note, t.sync_status AS syncStatus,
-              t.wealth_asset_id AS wealthAssetId,
+              t.wealth_asset_id AS wealthAssetId, t.savings_goal_id AS savingsGoalId,
               c.name AS categoryName, c.icon AS categoryIcon, c.color AS categoryColor
        FROM transactions t
        JOIN categories c ON c.id = t.category_id
@@ -1293,7 +1374,7 @@ export async function getTransactions(search?: string): Promise<Transaction[]> {
     `SELECT t.id, t.label, t.amount, t.type, t.date, t.category_id AS categoryId,
             t.transaction_icon AS transactionIcon, t.receipt_uri AS receiptUri,
             t.receipt_status AS receiptStatus, t.note, t.sync_status AS syncStatus,
-            t.wealth_asset_id AS wealthAssetId,
+            t.wealth_asset_id AS wealthAssetId, t.savings_goal_id AS savingsGoalId,
             c.name AS categoryName, c.icon AS categoryIcon, c.color AS categoryColor
      FROM transactions t
      JOIN categories c ON c.id = t.category_id
@@ -1508,12 +1589,51 @@ export async function deleteCategoryBudget(categoryId: string): Promise<void> {
   dataEvents.emit();
 }
 
-export async function isDatabaseEmpty(): Promise<boolean> {
+/** Raw row count in `transactions` (includes rows hidden from history by a missing category). */
+export async function getTransactionCount(): Promise<number> {
   const db = await getDb();
   const row = await db.getFirstAsync<{ count: number }>(
-    'SELECT COUNT(*) AS count FROM categories',
+    'SELECT COUNT(*) AS count FROM transactions',
   );
-  return (row?.count ?? 0) === 0;
+  return row?.count ?? 0;
+}
+
+/** Rows returned by `getTransactions()` (requires a matching category JOIN). */
+export async function getVisibleTransactionCount(): Promise<number> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) AS count
+     FROM transactions t
+     INNER JOIN categories c ON c.id = t.category_id`,
+  );
+  return row?.count ?? 0;
+}
+
+/** True when Historique would be empty — gates demo transaction seeding. */
+export async function isDatabaseEmpty(): Promise<boolean> {
+  return (await getVisibleTransactionCount()) === 0;
+}
+
+/**
+ * Rows with a category_id that no longer exists are invisible to getTransactions()
+ * (INNER JOIN categories). Re-link them to the internal uncategorized placeholder.
+ */
+export async function repairOrphanTransactionCategories(uncategorizedCategoryId: string): Promise<number> {
+  const trimmed = uncategorizedCategoryId.trim();
+  if (!trimmed) return 0;
+
+  const db = await getDb();
+  const result = await db.runAsync(
+    `UPDATE transactions
+     SET category_id = ?
+     WHERE category_id NOT IN (SELECT id FROM categories)`,
+    [trimmed],
+  );
+  const repaired = result.changes ?? 0;
+  if (repaired > 0) {
+    dataEvents.emit();
+  }
+  return repaired;
 }
 
 /** Local calendar month bounds (same convention as `getDashboard` month start). */
@@ -1564,4 +1684,28 @@ export async function getAccountMonthlyFlow(accountId: string, yearMonth: string
   const { startInclusiveIso, endExclusiveIso } = calendarMonthBounds(y, mo - 1);
   const txs = await getTransactionsInDateRange(startInclusiveIso, endExclusiveIso);
   return accumulateAccountMoneyFlows(txs).get(trimmedId) ?? { moneyIn: 0, moneyOut: 0 };
+}
+
+/**
+ * Returns unique article names from all past transactions, ordered by most
+ * recent occurrence. Used to power autocomplete suggestions in the article
+ * add sheet.
+ */
+export async function getArticleNameHistory(): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ note: string }>(
+    `SELECT note FROM transactions WHERE note LIKE '%articles:%' ORDER BY datetime(date) DESC LIMIT 300`,
+  );
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const row of rows) {
+    for (const item of parseItemizedNote(row.note)) {
+      const key = item.name.trim().toLowerCase();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        names.push(item.name.trim());
+      }
+    }
+  }
+  return names;
 }

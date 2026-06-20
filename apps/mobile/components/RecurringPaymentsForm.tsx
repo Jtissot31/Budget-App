@@ -22,6 +22,8 @@ import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
 import { MdiIconPicker } from '@/components/MdiIconPicker';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import { GhostNumpad } from '@/components/GhostNumpad';
+import { formatMoneyAmountInput } from '@/lib/formatMoneyAmountInput';
+import { parseFormattedNumber, sanitizeNumericInput } from '@/lib/formatNumber';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import { getCategoryIconName } from '@/constants/categoryOptions';
 import { EXPENSE_MDI_ICON, type MdiIconName } from '@/lib/mdiIconCatalog';
@@ -46,14 +48,19 @@ import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
 import {
   getCategories,
   getCategoryBudgets,
+  getLoans,
   getSimulatedAccounts,
   upsertRecurringPayment,
 } from '@/lib/db';
+import { getChildSupportSalaryNotices } from '@/lib/childSupportLoan';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { getMerchantLogoUrl, RECURRING_SERVICE_LOGO_OPTIONS } from '@/lib/merchantLogo';
+import { resolveRecurringPaymentDisplayIcon } from '@/lib/recurringPaymentPresentation';
 import { useAppTheme } from '@/lib/themeContext';
+import { TransactionAmountLabel, recurringPaymentAmountDirection } from '@/components/TransactionAmountLabel';
 import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
-import type { Category, CategoryBudget, RecurringPayment, RecurringPaymentFrequency, RecurringPaymentKind, SimulatedAccount } from '@/types';
+import type { AccountKind, Category, CategoryBudget, Loan, RecurringPayment, RecurringPaymentFrequency, RecurringPaymentKind, SimulatedAccount } from '@/types';
+import { PaymentMethodField, type PaymentMethodAccount } from '@/components/PaymentMethodField';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type LogoSelectionMode = 'auto' | 'logo' | 'icon';
@@ -62,6 +69,7 @@ export type AccountOption = {
   id: string;
   label: string;
   tint: string;
+  kind?: AccountKind;
 };
 
 type RecurringCategoryRule = {
@@ -261,6 +269,12 @@ function PaymentFormModal({
   const { colors: themeColors, isLight } = useAppTheme();
   const [showLogoPicker, setShowLogoPicker] = useState(false);
   const [showAllCategories, setShowAllCategories] = useState(false);
+  const [loans, setLoans] = useState<Loan[]>([]);
+
+  useEffect(() => {
+    if (!visible) return;
+    void getLoans().then(setLoans);
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) {
@@ -273,6 +287,20 @@ function PaymentFormModal({
     setShowAllCategories(false);
     setShowLogoPicker(false);
   }, [form?.id, form?.kind]);
+
+  const paymentMethodAccounts = useMemo<PaymentMethodAccount[]>(
+    () =>
+      accounts.map((a) => {
+        const parts = a.label.split(' • ');
+        return {
+          id: a.id,
+          name: parts[0] ?? a.label,
+          last4: parts[1],
+          kind: a.kind ?? 'checking',
+        };
+      }),
+    [accounts],
+  );
 
   const themed = useMemo(
     () => ({
@@ -313,7 +341,7 @@ function PaymentFormModal({
   );
 
   if (!form) return null;
-  const displayAmount = `${form.kind === 'income' ? '+' : '−'}${form.amount || '0'} $`;
+  const displayAmount = `${formatMoneyAmountInput(form.amount || '0')} $`;
   const canSubmit = Boolean(form.name.trim()) && parseAmount(form.amount) > 0 && Boolean(form.accountId) && Boolean(form.nextDate.trim());
   const visibleCategories = getRecurringCategoryBase(categories, form.kind);
   const suggestedCategories = getRelevantRecurringCategoryChoices(form.name, visibleCategories, form.categoryId, form.kind);
@@ -328,6 +356,13 @@ function PaymentFormModal({
     form.kind === 'payment' && form.categoryId
       ? categoryBudgets.find((item) => item.categoryId === form.categoryId) ?? null
       : null;
+  const childSupportSalaryNotices = useMemo(
+    () =>
+      form.kind === 'income'
+        ? getChildSupportSalaryNotices(loans, form.accountId, form.name)
+        : [],
+    [form.accountId, form.kind, form.name, loans],
+  );
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -336,7 +371,7 @@ function PaymentFormModal({
           <View style={[styles.sheet, themed.sheet]}>
             <ScrollView
               style={styles.sheetScroller}
-              keyboardShouldPersistTaps="handled"
+              keyboardShouldPersistTaps="always"
               showsVerticalScrollIndicator={false}
               contentContainerStyle={[styles.sheetContent, { paddingBottom: Math.max(bottomInset, 20) }]}
             >
@@ -526,14 +561,14 @@ function PaymentFormModal({
             </View>
 
             <View style={styles.amountWrap}>
-              <Text
-                style={[styles.amountText, themed.text, { fontSize: amountFontSize(form.amount) }]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.35}
-              >
-                {displayAmount}
-              </Text>
+              <TransactionAmountLabel
+                amount={displayAmount}
+                direction={recurringPaymentAmountDirection(form.kind)}
+                color={themed.text.color ?? colors.text}
+                textStyle={[styles.amountText, themed.text, { fontSize: amountFontSize(form.amount) }]}
+                iconSize={Math.max(18, Math.round(amountFontSize(form.amount) * 0.38))}
+                containerStyle={{ justifyContent: 'center' }}
+              />
             </View>
 
             <MotiView from={{ opacity: 0, translateY: 8 }} animate={{ opacity: 1, translateY: 0 }} transition={{ type: 'timing', duration: 260 }}>
@@ -609,33 +644,31 @@ function PaymentFormModal({
             />
 
             <View style={styles.section}>
-              <DashboardSectionLabel>{form.kind === 'income' ? 'Compte de dépôt' : 'Compte utilisé comme paiement'}</DashboardSectionLabel>
-              <View style={styles.accountRow}>
-                {accounts.map((account) => {
-                  const on = form.accountId === account.id;
-                  return (
-                    <Pressable
-                      key={account.id}
-                      onPress={() => {
-                        tapHaptic();
-                        onChange((current) => (current ? { ...current, accountId: account.id, accountLabel: account.label } : current));
-                      }}
-                      style={[styles.accountChip, themed.control, styles.chipShell, on && themed.selected]}
-                    >
-                      <Text
-                        style={[styles.accountText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                        numberOfLines={2}
-                        ellipsizeMode="tail"
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.78}
-                      >
-                        {account.label.replace(' • ', '\n')}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <PaymentMethodField
+                label={form.kind === 'income' ? 'Compte de dépôt' : 'Méthode de paiement'}
+                accounts={paymentMethodAccounts}
+                selectedAccountId={form.accountId}
+                onSelectAccount={(accountId) => {
+                  tapHaptic();
+                  const account = accounts.find((a) => a.id === accountId);
+                  if (!account) return;
+                  onChange((current) => (current ? { ...current, accountId: account.id, accountLabel: account.label } : current));
+                }}
+                chipControlStyle={themed.control}
+                chipSelectedStyle={themed.selected}
+                selectedTextStyle={themed.selectedText}
+                textSecondaryStyle={themed.textSecondary}
+              />
             </View>
+
+            {childSupportSalaryNotices.map((notice) => (
+              <ThemedFormMessage
+                key={`${notice.variant}-${notice.title}`}
+                variant={notice.variant}
+                title={notice.title}
+                message={notice.message}
+              />
+            ))}
 
             {visibleCategories.length ? (
               <View style={styles.section}>
@@ -777,7 +810,15 @@ export function toAccountOptions(accounts: SimulatedAccount[]): AccountOption[] 
   return accounts.map((account) => ({
     id: account.id,
     label: account.last4 ? `${account.name} • ${account.last4}` : account.name,
-    tint: account.kind === 'checking' ? ghost.mint : account.kind === 'credit' ? '#d4d4d8' : '#A78BFA',
+    kind: account.kind,
+    tint:
+      account.kind === 'checking'
+        ? ghost.mint
+        : account.kind === 'cash'
+          ? '#4ADE80'
+          : account.kind === 'credit'
+            ? '#d4d4d8'
+            : '#A78BFA',
   }));
 }
 
@@ -786,6 +827,7 @@ export function manualAccountOptions(): AccountOption[] {
     id: account.id,
     label: account.label,
     tint: account.tint,
+    kind: account.id as AccountKind,
   }));
 }
 
@@ -1001,8 +1043,7 @@ function defaultIconForKind(kind: RecurringPaymentKind): string {
 }
 
 function resolvePaymentIcon(payment: RecurringPayment): string {
-  if (payment.icon?.trim()) return payment.icon;
-  return defaultIconForKind(payment.kind === 'income' ? 'income' : 'payment');
+  return resolveRecurringPaymentDisplayIcon(payment);
 }
 
 function inferLogoMode(payment: RecurringPayment): LogoSelectionMode {
@@ -1099,11 +1140,11 @@ function createLocalId() {
 }
 
 function sanitizeAmount(value: string) {
-  return value.replace(/[^0-9.,]/g, '').replace(',', '.');
+  return sanitizeNumericInput(value);
 }
 
 function parseAmount(value: string) {
-  return Number.parseFloat(sanitizeAmount(value));
+  return parseFormattedNumber(value);
 }
 
 function formatPercent(value: number) {

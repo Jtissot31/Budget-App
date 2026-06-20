@@ -1,57 +1,147 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ProfileSelector } from '@/components/ProfileSelector';
-import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
+import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { PageTransition } from '@/components/PageTransition';
-import { SurfaceCard } from '@/components/SurfaceCard';
-import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
-import { FLOATING_NAV_CONTENT_PADDING, PAGE_TITLE_CONTENT_GAP, radius, spacing, typography, type AppColors } from '@/constants/theme';
-import { getProfile, setProfile, type ProfileType } from '@/lib/profile';
+import { SegmentedTabs } from '@/components/SegmentedTabs';
+import { RegionPickerSheet } from '@/components/RegionPickerSheet';
+import { SettingsPickerSheet } from '@/components/SettingsPickerSheet';
+import { SettingsSection } from '@/components/SettingsSection';
 import {
-  getApiBaseUrl,
-  getUseMockOnly,
-  setApiBaseUrl,
-  setUseMockOnly,
+  SettingsCustomRow,
+  SettingsNavigationRow,
+  SettingsToggleRow,
+} from '@/components/SettingsRow';
+import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
+import {
+  CURRENCY_OPTIONS,
+  DATE_FORMAT_OPTIONS,
+  LANGUAGE_OPTIONS,
+  NUMPAD_MODE_OPTIONS,
+  labelForOption,
+} from '@/constants/settingsOptions';
+import { formatRegionLabel } from '@/constants/regions';
+import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
+import {
+  destructiveTextActionStyle,
+  FLOATING_NAV_CONTENT_PADDING,
+  PAGE_PADDING_HORIZONTAL,
+  PAGE_TITLE_CONTENT_GAP,
+  spacing,
+  subtleDeleteButtonStyle,
+  typographyKit,
+  type AppColors,
+  type ThemePreference,
+} from '@/constants/theme';
+import {
+  deleteCloudData,
+  getAutocompleteEnabled,
+  getCloudAccountConnected,
+  getCountryRegion,
+  getDateFormatPreference,
+  getDisplayCurrency,
+  getDisplayLanguage,
+  getHapticFeedbackEnabled,
+  getNumpadDefaultMode,
+  setAutocompleteEnabled,
+  setCloudAccountConnected,
+  applyRegionSettings,
+  setDateFormatPreference,
+  setDisplayCurrency,
+  setDisplayLanguage,
+  setHapticFeedbackEnabled,
+  setNumpadDefaultMode,
+  type CountryRegion,
+  type CurrencyCode,
+  type DateFormatPreference,
+  type DisplayLanguage,
+  type NumpadDefaultMode,
 } from '@/lib/settings';
-import { syncWithServer } from '@/lib/sync';
+import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
+import { clearChatHistory, getChatQuotaState, getDataModeLabel } from '@/lib/ai/chatService';
+import { isAnthropicApiKeyConfigured } from '@/lib/ai/env';
 import { useAppTheme } from '@/lib/themeContext';
+
+type PickerKind = 'currency' | 'language' | 'region' | null;
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
-  const { colors, isLight, toggleLightMode } = useAppTheme();
+  const { colors, isLight, mode, setMode } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const scrollRef = useRef<ScrollView>(null);
-  const [apiUrl, setApiUrl] = useState('https://localhost:7080');
-  const [mockOnly, setMockOnly] = useState(true);
-  const [profile, setProfileState] = useState<ProfileType>('student');
-  const [syncing, setSyncing] = useState(false);
-  const [confirmVisible, setConfirmVisible] = useState(false);
-  const [confirmTitle, setConfirmTitle] = useState('');
-  const [confirmMessage, setConfirmMessage] = useState('');
-  const [confirmVariant, setConfirmVariant] = useState<'success' | 'error' | 'warning'>('success');
 
-  const showConfirmation = (title: string, message: string, variant: 'success' | 'error' | 'warning' = 'success') => {
-    setConfirmTitle(title);
-    setConfirmMessage(message);
-    setConfirmVariant(variant);
-    setConfirmVisible(true);
+  const [currency, setCurrency] = useState<CurrencyCode>('CAD');
+  const [language, setLanguage] = useState<DisplayLanguage>('fr-CA');
+  const [region, setRegion] = useState<CountryRegion>('CA-QC');
+  const [dateFormat, setDateFormat] = useState<DateFormatPreference>('friendly');
+  const [numpadMode, setNumpadMode] = useState<NumpadDefaultMode>('decimal');
+  const [hapticEnabled, setHapticEnabled] = useState(true);
+  const [autocompleteEnabled, setAutocompleteEnabledState] = useState(true);
+  const [cloudConnected, setCloudConnected] = useState(false);
+  const [aiDataModeLabel, setAiDataModeLabel] = useState('Saisie manuelle');
+  const [aiQuotaLabel, setAiQuotaLabel] = useState<string | undefined>(undefined);
+  const [anthropicApiKeyConfigured, setAnthropicApiKeyConfigured] = useState(false);
+  const [clearingChatHistory, setClearingChatHistory] = useState(false);
+
+  const [activePicker, setActivePicker] = useState<PickerKind>(null);
+  const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
+  const [deletingCloud, setDeletingCloud] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+
+  const [feedbackVisible, setFeedbackVisible] = useState(false);
+  const [feedbackTitle, setFeedbackTitle] = useState('');
+  const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [feedbackVariant, setFeedbackVariant] = useState<'success' | 'error' | 'warning' | 'info'>('success');
+
+  const showFeedback = (
+    title: string,
+    message: string,
+    variant: 'success' | 'error' | 'warning' | 'info' = 'success',
+  ) => {
+    setFeedbackTitle(title);
+    setFeedbackMessage(message);
+    setFeedbackVariant(variant);
+    setFeedbackVisible(true);
   };
 
   const load = useCallback(async () => {
-    setApiUrl(await getApiBaseUrl());
-    setMockOnly(await getUseMockOnly());
-    setProfileState(await getProfile());
+    const [
+      storedCurrency,
+      storedLanguage,
+      storedRegion,
+      storedDateFormat,
+      storedNumpadMode,
+      storedHaptic,
+      storedAutocomplete,
+      storedCloud,
+      dataModeLabel,
+      quota,
+    ] = await Promise.all([
+      getDisplayCurrency(),
+      getDisplayLanguage(),
+      getCountryRegion(),
+      getDateFormatPreference(),
+      getNumpadDefaultMode(),
+      getHapticFeedbackEnabled(),
+      getAutocompleteEnabled(),
+      getCloudAccountConnected(),
+      getDataModeLabel(),
+      getChatQuotaState(),
+    ]);
+
+    setCurrency(storedCurrency);
+    setLanguage(storedLanguage);
+    setRegion(storedRegion);
+    setDateFormat(storedDateFormat);
+    setNumpadMode(storedNumpadMode);
+    setHapticEnabled(storedHaptic);
+    setAutocompleteEnabledState(storedAutocomplete);
+    setCloudConnected(storedCloud);
+    setAiDataModeLabel(dataModeLabel);
+    setAiQuotaLabel(`${quota.messagesThisMonth}/${quota.monthlyLimit} messages ce mois`);
+    setAnthropicApiKeyConfigured(isAnthropicApiKeyConfigured());
   }, []);
 
   useRefreshOnFocus(load);
@@ -61,165 +151,415 @@ export default function SettingsScreen() {
     }, []),
   );
 
-  const save = async () => {
-    await setApiBaseUrl(apiUrl);
-    await setUseMockOnly(mockOnly);
-    await setProfile(profile);
-    showConfirmation('Enregistré', 'Paramètres mis à jour.');
+  const handleThemeChange = (next: ThemePreference) => {
+    void setMode(next);
   };
 
-  const sync = async () => {
-    setSyncing(true);
-    const result = await syncWithServer();
-    setSyncing(false);
-    showConfirmation(result.ok ? 'Sync' : 'Hors ligne', result.message, result.ok ? 'success' : 'warning');
+  const handleConnectAccount = async () => {
+    if (cloudConnected) {
+      await setCloudAccountConnected(false);
+      setCloudConnected(false);
+      showFeedback('Déconnecté', 'Ton compte a été déconnecté de cet appareil.', 'info');
+      return;
+    }
+
+    setConnecting(true);
+    tapHaptic();
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    await setCloudAccountConnected(true);
+    setCloudConnected(true);
+    setConnecting(false);
+    successHaptic();
+    showFeedback(
+      'Compte connecté',
+      'La connexion cloud est simulée pour l’instant. Tes données locales restent disponibles hors ligne.',
+      'success',
+    );
   };
+
+  const handleConfirmDeleteCloud = async () => {
+    setDeletingCloud(true);
+    const result = await deleteCloudData();
+    setDeletingCloud(false);
+    setConfirmDeleteVisible(false);
+    setCloudConnected(false);
+    showFeedback(result.ok ? 'Données cloud' : 'Impossible', result.message, result.ok ? 'warning' : 'error');
+  };
+
+  const handleClearChatHistory = async () => {
+    setClearingChatHistory(true);
+    await clearChatHistory();
+    setClearingChatHistory(false);
+    successHaptic();
+    showFeedback('Historique effacé', 'Les conversations avec Fyn ont été supprimées de cet appareil.', 'success');
+  };
+
+  const themeTabs = useMemo(
+    () => [
+      { id: 'light' as const, label: 'Clair', icon: 'sunny-outline' as const },
+      { id: 'dark' as const, label: 'Sombre', icon: 'moon-outline' as const },
+    ],
+    [],
+  );
 
   return (
     <PageTransition>
-    <View style={styles.screen}>
-    <ScrollView
-      ref={scrollRef}
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + SCREEN_TOP_GUTTER },
-      ]}
-    >
-      <Text style={styles.title}>Réglages</Text>
+      <View style={styles.screen}>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.screen}
+          contentContainerStyle={[
+            styles.content,
+            { paddingTop: insets.top + SCREEN_TOP_GUTTER },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.title}>Réglages</Text>
 
-      <SurfaceCard padding={spacing.lg} style={styles.accountCard}>
-        <View style={styles.accountHeader}>
-          <View style={styles.accountIcon}>
-            <Ionicons name="person-outline" size={18} color={colors.primary} />
-          </View>
-          <View style={styles.accountCopy}>
-            <Text style={styles.accountTitle}>Compte utilisateur</Text>
-            <Text style={styles.accountHint}>Gère ton profil et personnalise les conseils du tableau de bord.</Text>
-          </View>
-        </View>
-        <ProfileSelector
-          selected={profile}
-          onChange={(p) => {
-            setProfileState(p);
-            void setProfile(p);
+          <SettingsSection title="Compte">
+            <SettingsNavigationRow
+              label={cloudConnected ? 'Compte connecté' : 'Se connecter'}
+              hint={
+                cloudConnected
+                  ? 'Synchronisation cloud activée sur cet appareil.'
+                  : 'Lie ton compte pour sauvegarder dans le cloud.'
+              }
+              icon={cloudConnected ? 'person' : 'person-outline'}
+              value={cloudConnected ? 'Actif' : connecting ? 'Connexion…' : undefined}
+              onPress={() => void handleConnectAccount()}
+              accessory={
+                cloudConnected ? (
+                  <View style={[styles.statusBadge, { backgroundColor: colors.successMuted }]}>
+                    <Text style={[styles.statusBadgeText, { color: colors.primary }]}>Connecté</Text>
+                  </View>
+                ) : undefined
+              }
+              isLast
+            />
+          </SettingsSection>
+
+          <SettingsSection title="Apparence">
+            <SettingsCustomRow
+              label="Thème"
+              hint="Choisis l’ambiance visuelle de l’application."
+              icon="color-palette-outline"
+              isLast
+            >
+              <SegmentedTabs
+                tabs={themeTabs}
+                active={mode}
+                onChange={handleThemeChange}
+                size="section"
+                variant="section"
+                showDivider={false}
+              />
+            </SettingsCustomRow>
+          </SettingsSection>
+
+          <SettingsSection title="Région">
+            <SettingsNavigationRow
+              label="Région"
+              hint="Conventions fiscales et régionales."
+              icon="earth-outline"
+              value={formatRegionLabel(region)}
+              onPress={() => setActivePicker('region')}
+              isLast
+            />
+          </SettingsSection>
+
+          <SettingsSection title="Monnaie">
+            <SettingsNavigationRow
+              label="Devise"
+              hint="Symbole et format des montants dans l’app."
+              icon="cash-outline"
+              value={labelForOption(CURRENCY_OPTIONS, currency)}
+              onPress={() => setActivePicker('currency')}
+              isLast
+            />
+          </SettingsSection>
+
+          <SettingsSection title="Langue">
+            <SettingsNavigationRow
+              label="Langue"
+              hint="Libellés et formats textuels de l’interface."
+              icon="language-outline"
+              value={labelForOption(LANGUAGE_OPTIONS, language)}
+              onPress={() => setActivePicker('language')}
+              isLast
+            />
+          </SettingsSection>
+
+          <SettingsSection title="Saisie">
+            <SettingsToggleRow
+              label="Haptique"
+              hint="Vibration légère lors des actions tactiles."
+              icon="phone-portrait-outline"
+              value={hapticEnabled}
+              onValueChange={(enabled) => {
+                setHapticEnabled(enabled);
+                void setHapticFeedbackEnabled(enabled);
+              }}
+            />
+            <SettingsToggleRow
+              label="Suggestions"
+              hint="Propositions de marchands, contacts et libellés."
+              icon="sparkles-outline"
+              value={autocompleteEnabled}
+              onValueChange={(enabled) => {
+                setAutocompleteEnabledState(enabled);
+                void setAutocompleteEnabled(enabled);
+              }}
+            />
+            <SettingsCustomRow
+              label="Date"
+              hint="Affichage des dates dans les formulaires."
+              icon="calendar-outline"
+            >
+              <SegmentedTabs
+                tabs={DATE_FORMAT_OPTIONS.map((option) => ({
+                  id: option.id,
+                  label: option.label,
+                }))}
+                active={dateFormat}
+                onChange={(next) => {
+                  setDateFormat(next);
+                  void setDateFormatPreference(next);
+                }}
+                size="section"
+                variant="section"
+                showDivider={false}
+              />
+            </SettingsCustomRow>
+            <SettingsCustomRow
+              label="Pavé"
+              hint="Comportement par défaut lors de la saisie des montants."
+              icon="keypad-outline"
+              isLast
+            >
+              <SegmentedTabs
+                tabs={NUMPAD_MODE_OPTIONS.map((option) => ({
+                  id: option.id,
+                  label: option.label,
+                }))}
+                active={numpadMode}
+                onChange={(next) => {
+                  setNumpadMode(next);
+                  void setNumpadDefaultMode(next);
+                }}
+                size="section"
+                variant="section"
+                showDivider={false}
+              />
+            </SettingsCustomRow>
+          </SettingsSection>
+
+          <SettingsSection title="Fyn">
+            <SettingsNavigationRow
+              label="Clé Anthropic"
+              hint="Anthropic (Claude) — requise pour le chat IA complet."
+              icon="key-outline"
+              value={anthropicApiKeyConfigured ? 'Active' : 'Absente'}
+              onPress={() => {
+                tapHaptic();
+                showFeedback(
+                  anthropicApiKeyConfigured ? 'Clé Anthropic active' : 'Clé Anthropic absente',
+                  anthropicApiKeyConfigured
+                    ? 'La clé Anthropic est chargée. Si le chat reste en mode démo, redémarre Expo avec le cache vidé : npx expo start -c'
+                    : '1. Copie apps/mobile/.env.example vers apps/mobile/.env\n2. Colle ta clé dans EXPO_PUBLIC_ANTHROPIC_API_KEY=\n3. Redémarre Expo : npx expo start -c\n\nSans .env, l\'app reste en mode démo.',
+                  anthropicApiKeyConfigured ? 'success' : 'warning',
+                );
+              }}
+              accessory={
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      backgroundColor: anthropicApiKeyConfigured
+                        ? colors.successMuted
+                        : colors.surfaceElevated,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusBadgeText,
+                      { color: anthropicApiKeyConfigured ? colors.primary : colors.textMuted },
+                    ]}
+                  >
+                    {anthropicApiKeyConfigured ? 'OK' : '—'}
+                  </Text>
+                </View>
+              }
+            />
+            <SettingsNavigationRow
+              label="Mode de données"
+              hint="Plaid (sync bancaire) ou saisie manuelle — influence les conseils de l'IA."
+              icon="analytics-outline"
+              value={aiDataModeLabel}
+              onPress={() => {
+                tapHaptic();
+                showFeedback(
+                  'Mode de données',
+                  aiDataModeLabel,
+                  'info',
+                );
+              }}
+            />
+            <SettingsNavigationRow
+              label="Quota mensuel"
+              hint="Suivi local des messages envoyés à Fyn."
+              icon="chatbubble-ellipses-outline"
+              value={aiQuotaLabel}
+              onPress={() => {
+                tapHaptic();
+                if (aiQuotaLabel) {
+                  showFeedback('Quota mensuel', aiQuotaLabel, 'info');
+                }
+              }}
+            />
+            <SettingsNavigationRow
+              label="Effacer l'historique"
+              hint="Supprime les conversations IA stockées sur cet appareil."
+              icon="trash-outline"
+              value={clearingChatHistory ? 'Effacement…' : undefined}
+              onPress={() => void handleClearChatHistory()}
+              isLast
+            />
+          </SettingsSection>
+
+          <SettingsSection title="Données cloud">
+            <View style={styles.dangerBlock}>
+              <Text style={[styles.dangerHint, { color: colors.textMuted }]}>
+                Supprime définitivement les données hébergées sur le serveur. Les données locales de cet appareil ne sont pas effacées.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Supprimer les données cloud"
+                disabled={deletingCloud}
+                onPress={() => {
+                  tapHaptic();
+                  setConfirmDeleteVisible(true);
+                }}
+                style={({ pressed }) => [
+                  subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
+                  pressed && styles.pressed,
+                  deletingCloud && styles.disabled,
+                ]}
+              >
+                <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                <Text style={destructiveTextActionStyle(isLight)}>
+                  {deletingCloud ? 'Suppression…' : 'Supprimer les données cloud'}
+                </Text>
+              </Pressable>
+            </View>
+          </SettingsSection>
+
+          <Text style={[styles.footer, { color: colors.textMuted }]}>Budget Tracker · v1.0</Text>
+        </ScrollView>
+
+        <SettingsPickerSheet
+          visible={activePicker === 'currency'}
+          title="Devise"
+          options={CURRENCY_OPTIONS}
+          selectedId={currency}
+          onClose={() => setActivePicker(null)}
+          onSelect={(id) => {
+            setCurrency(id);
+            void setDisplayCurrency(id);
           }}
         />
-      </SurfaceCard>
 
-      <SurfaceCard padding={spacing.lg}>
-        <View style={styles.row}>
-          <View style={styles.rowCopy}>
-            <Text style={styles.rowLabel}>Thème clair</Text>
-            <Text style={styles.rowHint}>Active une interface douce et lumineuse.</Text>
-          </View>
-          <Switch
-            value={isLight}
-            onValueChange={(enabled) => void toggleLightMode(enabled)}
-            trackColor={{ false: colors.borderStrong, true: colors.primary }}
-            thumbColor={isLight ? colors.surfaceSolid : undefined}
-          />
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>Mode démo</Text>
-          <Switch
-            value={mockOnly}
-            onValueChange={setMockOnly}
-            trackColor={{ false: colors.borderStrong, true: colors.primary }}
-            thumbColor={mockOnly ? colors.surfaceSolid : undefined}
-          />
-        </View>
-        <Text style={styles.label}>URL API</Text>
-        <TextInput
-          style={styles.input}
-          value={apiUrl}
-          onChangeText={setApiUrl}
-          autoCapitalize="none"
-          keyboardType="url"
-          placeholderTextColor={colors.textMuted}
+        <SettingsPickerSheet
+          visible={activePicker === 'language'}
+          title="Langue"
+          options={LANGUAGE_OPTIONS}
+          selectedId={language}
+          onClose={() => setActivePicker(null)}
+          onSelect={(id) => {
+            setLanguage(id);
+            void setDisplayLanguage(id);
+          }}
         />
-        <Pressable style={styles.btn} onPress={() => void save()}>
-          <Text style={styles.btnText}>Enregistrer</Text>
-        </Pressable>
-        <Pressable style={styles.btnGhost} onPress={() => void sync()} disabled={syncing}>
-          <Text style={styles.btnGhostText}>{syncing ? 'Sync…' : 'Synchroniser'}</Text>
-        </Pressable>
-      </SurfaceCard>
 
-      <Pressable style={styles.linkRow}>
-        <Ionicons name="help-circle-outline" size={18} color={colors.textMuted} />
-        <Text style={styles.link}>Aide</Text>
-      </Pressable>
+        <RegionPickerSheet
+          visible={activePicker === 'region'}
+          selectedId={region}
+          onClose={() => setActivePicker(null)}
+          onSelect={(id) => {
+            void applyRegionSettings(id).then((linked) => {
+              setRegion(linked.region);
+              setCurrency(linked.currency);
+              setDateFormat(linked.dateFormat);
+              setNumpadMode(linked.numpadMode);
+            });
+          }}
+        />
 
-      <Text style={styles.footer}>v1.0</Text>
-    </ScrollView>
+        <ConfirmDeleteModal
+          visible={confirmDeleteVisible}
+          title="Supprimer les données cloud ?"
+          message="Cette action est irréversible. Toutes les données synchronisées sur le serveur seront effacées. Tes données locales restent sur cet appareil."
+          confirmLabel="Supprimer"
+          onConfirm={() => void handleConfirmDeleteCloud()}
+          onCancel={() => setConfirmDeleteVisible(false)}
+        />
 
-    <ThemedConfirmModal
-      visible={confirmVisible}
-      title={confirmTitle}
-      message={confirmMessage}
-      variant={confirmVariant}
-      confirmLabel="OK"
-      onConfirm={() => setConfirmVisible(false)}
-      onCancel={() => setConfirmVisible(false)}
-    />
-    </View>
+        <ThemedConfirmModal
+          visible={feedbackVisible}
+          title={feedbackTitle}
+          message={feedbackMessage}
+          variant={feedbackVariant}
+          confirmLabel="OK"
+          onConfirm={() => setFeedbackVisible(false)}
+          onCancel={() => setFeedbackVisible(false)}
+        />
+      </View>
     </PageTransition>
   );
 }
 
-const createStyles = (colors: AppColors) => StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  content: { paddingHorizontal: spacing.lg, paddingBottom: FLOATING_NAV_CONTENT_PADDING, gap: PAGE_TITLE_CONTENT_GAP },
-  title: { color: colors.text, fontSize: typography.title, fontWeight: '800', letterSpacing: -0.5 },
-  accountCard: { gap: spacing.md },
-  accountHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  accountIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surfaceElevated,
-  },
-  accountCopy: { flex: 1, minWidth: 0 },
-  accountTitle: { color: colors.text, fontSize: typography.body, fontWeight: '800' },
-  accountHint: { color: colors.textMuted, fontSize: typography.micro, marginTop: 3, lineHeight: 15 },
-  label: { color: colors.textMuted, fontSize: typography.micro, marginBottom: spacing.xs, marginTop: spacing.md },
-  input: {
-    backgroundColor: 'transparent',
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    color: colors.text,
-    padding: spacing.md,
-    fontSize: typography.body,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  rowCopy: { flex: 1, minWidth: 0 },
-  rowLabel: { color: colors.text, fontSize: typography.body },
-  rowHint: { color: colors.textMuted, fontSize: typography.micro, marginTop: 3, lineHeight: 15 },
-  btn: {
-    marginTop: spacing.lg,
-    backgroundColor: colors.text,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    alignItems: 'center',
-  },
-  btnText: { color: colors.background, fontWeight: '800', fontSize: typography.body },
-  btnGhost: { marginTop: spacing.sm, padding: spacing.sm, alignItems: 'center' },
-  btnGhostText: { color: colors.primary, fontWeight: '800' },
-  linkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
-  link: { color: colors.textMuted, fontSize: typography.body },
-  footer: { color: colors.textMuted, fontSize: typography.micro, textAlign: 'center' },
-});
+const createStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    content: {
+      paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+      paddingBottom: FLOATING_NAV_CONTENT_PADDING,
+      gap: PAGE_TITLE_CONTENT_GAP,
+    },
+    title: {
+      ...typographyKit.pageTitle,
+      color: colors.text,
+    },
+    dangerBlock: {
+      padding: spacing.lg,
+      gap: spacing.md,
+    },
+    dangerHint: {
+      ...typographyKit.metaMedium,
+      lineHeight: typographyKit.metaMedium.fontSize + 6,
+    },
+    statusBadge: {
+      borderRadius: 999,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 3,
+    },
+    statusBadgeText: {
+      ...typographyKit.microMedium,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    footer: {
+      ...typographyKit.microMedium,
+      textAlign: 'center',
+      marginTop: spacing.sm,
+    },
+    pressed: {
+      opacity: 0.82,
+    },
+    disabled: {
+      opacity: 0.55,
+    },
+  });

@@ -140,6 +140,7 @@ export { EmailMdi } from "./EmailMdi";
 export { ShareMdi } from "./ShareMdi";
 export { ThumbUp } from "./ThumbUp";
 export { Favorite } from "./Favorite";
+export { FavoriteBorder } from "./FavoriteBorder";
 // Education
 export { AutoStories } from "./AutoStories";
 export { Science } from "./Science";

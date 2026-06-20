@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import { GoalSparkChartCarousel } from '@/components/GoalSparkChartCarousel';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
+import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import { formValidationError, type FormFeedback, type FormSaveResult } from '@/lib/formFeedback';
 import { ProgressBar } from '@/components/ProgressBar';
@@ -41,6 +42,7 @@ import { savingsGoalIncrementalProgress } from '@/lib/savingsGoalProgress';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { parseFormattedNumber, sanitizeNumericInput, formatNumberDisplay } from '@/lib/formatNumber';
 import type { CategoryBudget, DashboardSummary, RecurringPayment, SavingsGoal } from '@/types';
 
 export type GoalForm = {
@@ -325,11 +327,12 @@ function FormField({
   onChangeText: (value: string) => void;
 }) {
   const { colors, ghost } = useAppTheme();
+  const InputComponent = keyboardType === 'decimal-pad' ? NumericAmountInput : TextInput;
 
   return (
     <View style={styles.field}>
       <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>{label}</Text>
-      <TextInput
+      <InputComponent
         style={[
           styles.input,
           { backgroundColor: ghost.obsidianSoft, borderColor: colors.borderStrong, color: colors.text },
@@ -773,17 +776,20 @@ function matchesAny(value: string, terms: string[]) {
 }
 
 function sanitizeAmount(value: string) {
-  return value.replace(/[^0-9.,]/g, '').replace(',', '.');
+  return sanitizeNumericInput(value);
 }
 
 function parseAmount(value: string) {
-  return Number.parseFloat(value.replace(',', '.'));
+  return parseFormattedNumber(value);
 }
 
 function formatSuggestedAmount(value: number) {
   if (!Number.isFinite(value)) return '0';
   const rounded = Math.round(value * 100) / 100;
-  return Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(2);
+  if (Number.isInteger(rounded)) {
+    return formatNumberDisplay(rounded, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+  return formatNumberDisplay(rounded, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatPercent(value: number) {

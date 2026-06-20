@@ -66,6 +66,17 @@ type Props = {
 
   merchantLabel?: string | null;
 
+  /** Full-bleed cover image (contact photos in transaction rows). */
+
+  coverImageUri?: string | null;
+
+  /**
+   * When true the well container becomes invisible (transparent background, no
+   * border) while keeping the same dimensions and borderRadius so the logo/icon
+   * is still clipped to the frame bounds via overflow:hidden.
+   */
+  noBackground?: boolean;
+
   style?: StyleProp<ViewStyle>;
 
 };
@@ -90,11 +101,27 @@ export function UserPickedIconWell({
 
   merchantLabel,
 
+  coverImageUri,
+
+  noBackground = false,
+
   style,
 
 }: Props) {
 
   const { colors, isLight } = useAppTheme();
+
+  const trimmedCover = coverImageUri?.trim() ?? '';
+
+  const [coverFailed, setCoverFailed] = useState(false);
+
+
+
+  useEffect(() => {
+
+    setCoverFailed(false);
+
+  }, [trimmedCover]);
 
   const chainUrls = useMemo(
 
@@ -152,13 +179,42 @@ export function UserPickedIconWell({
 
   const bagSize = Math.round(size * 0.4);
 
+  const showCover = Boolean(trimmedCover) && !coverFailed;
 
+  const wellStyle = useMemo(() => {
+    const base = userPickedIconWellStyle(size, isLight);
+    const withCover = showCover ? { ...base, borderRadius: size / 2 } : base;
+    if (noBackground) {
+      return { ...withCover, backgroundColor: 'transparent' as const };
+    }
+    return withCover;
+  }, [size, isLight, showCover, noBackground]);
 
   return (
 
-    <View style={[userPickedIconWellStyle(size, isLight), styles.wrap, style]}>
+    <View style={[wellStyle, styles.wrap, style]}>
 
-      {showRemote && uri ? (
+      {showCover ? (
+
+        <Image
+
+          source={{ uri: trimmedCover }}
+
+          style={{ width: size, height: size, borderRadius: size / 2 }}
+
+          contentFit="cover"
+
+          transition={150}
+
+          cachePolicy="memory-disk"
+
+          recyclingKey={trimmedCover}
+
+          onError={() => setCoverFailed(true)}
+
+        />
+
+      ) : showRemote && uri ? (
 
         <Image
 
@@ -200,7 +256,7 @@ export function UserPickedIconWell({
 
           name={mdiName}
 
-          size={mdiName === EXPENSE_MDI_ICON ? bagSize : computedIconSize}
+          size={mdiName === EXPENSE_MDI_ICON || mdiName === 'SwapHoriz' ? bagSize : computedIconSize}
 
           color={glyphColor}
 

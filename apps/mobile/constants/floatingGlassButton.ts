@@ -1,4 +1,4 @@
-import { StyleSheet, type ViewStyle } from 'react-native';
+import { type ViewStyle } from 'react-native';
 
 import type { AppColors } from '@/constants/theme';
 
@@ -23,6 +23,13 @@ export const FLOATING_FAB_RADIUS = FLOATING_FAB_SIZE / 2;
 /** Keeps ~same icon-to-button ratio as scroll buttons (21 / 44). */
 
 export const FLOATING_FAB_ICON_SIZE = Math.round((FLOATING_SCROLL_ICON_SIZE * FLOATING_FAB_SIZE) / FLOATING_SCROLL_SIZE);
+
+/**
+ * Distance above the safe-area bottom edge for absolute-positioned FABs in
+ * full-screen contexts (e.g. modals without a tab bar). Equivalent thumb-reach
+ * zone as the add-transaction FAB in the tab-bar stack.
+ */
+export const FLOATING_FAB_BOTTOM_OFFSET = 24;
 
 
 

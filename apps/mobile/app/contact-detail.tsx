@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -10,33 +11,34 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionRow } from '@/components/TransactionRow';
-import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import { PageTransition } from '@/components/PageTransition';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   accountDetailHeroBlockStyle,
   accountDetailSectionDividerStyle,
   accountDetailStatementStatColStyle,
-  accountDetailStatementStatLabelStyle,
   accountDetailStatementStatsRowStyle,
-  accountDetailStatementStatValueStyle,
   interExtraBoldText,
-  interMediumText,
+  moneyAmountTypography,
   radius,
   spacing,
   typography,
 } from '@/constants/theme';
-import { getContactByNormalizedName, getTransactions, sortTransactionsNewestFirst, updateContactEmployer } from '@/lib/db';
+import { typographyKit } from '@/constants/typographyKit';
+import { getContactByNormalizedName, getTransactions, sortTransactionsNewestFirst, updateContactEmployer, updateContactPhoto, upsertContactByName } from '@/lib/db';
 import { isContactIncomeTx, parseRaisonFromNote } from '@/lib/accountTransactionFlow';
 import { getContactTransactions } from '@/lib/contactHistory';
 import { dataEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
+import { captureReceiptPhoto, pickReceiptFromGallery } from '@/lib/receiptCapture';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
+import { EMPTY_DETAIL_VALUE } from '@/lib/detailDisplay';
 import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
 import { UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import {
@@ -83,7 +85,7 @@ function formatDateRange(transactions: Transaction[]) {
   const days = transactions.map((tx) => getLocalDayKey(tx.date)).sort();
   const first = days[0];
   const last = days[days.length - 1];
-  if (!first || !last) return 'Aucune date';
+  if (!first || !last) return EMPTY_DETAIL_VALUE;
   if (first === last) return formatDate(first);
   return `${formatDate(first)} - ${formatDate(last)}`;
 }
@@ -124,9 +126,41 @@ function DetailRow({
       ]}
     >
       <Text style={[styles.detailLabel, { color: colors.textMuted }]}>{label}</Text>
-      <Text style={[styles.detailValue, { color: valueColor ?? colors.text }]} numberOfLines={1}>
+      <Text
+        style={[styles.detailValue, { color: valueColor ?? colors.text }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.85}
+      >
         {value}
       </Text>
+    </View>
+  );
+}
+
+function EmployerToggleRow({
+  isEmployer,
+  onChange,
+}: {
+  isEmployer: boolean;
+  onChange: (enabled: boolean) => void;
+}) {
+  const { colors } = useAppTheme();
+
+  return (
+    <View style={styles.detailRow}>
+      <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Employeur</Text>
+      <Switch
+        accessibilityLabel="Marquer comme employeur"
+        value={isEmployer}
+        onValueChange={(enabled) => {
+          tapHaptic();
+          onChange(enabled);
+        }}
+        trackColor={{ false: colors.borderStrong, true: colors.primary }}
+        thumbColor={isEmployer ? colors.surfaceSolid : undefined}
+        ios_backgroundColor={colors.borderStrong}
+      />
     </View>
   );
 }
@@ -150,23 +184,25 @@ function StatementStatColumn({
   return (
     <View style={accountDetailStatementStatColStyle({ align, prominent })}>
       <Text
+        style={[styles.statLabel, { color: colors.textMuted, textAlign }]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+      <Text
         style={[
-          accountDetailStatementStatValueStyle(prominent),
+          moneyAmountTypography(
+            prominent
+              ? { tier: 'hero', fontSize: 32, letterSpacing: -0.6 }
+              : { tier: 'hero' },
+          ),
           { color: valueColor ?? colors.text, textAlign },
         ]}
         numberOfLines={1}
         adjustsFontSizeToFit
+        minimumFontScale={0.72}
       >
         {value}
-      </Text>
-      <Text
-        style={[
-          accountDetailStatementStatLabelStyle(),
-          { color: colors.textMuted, textAlign },
-        ]}
-        numberOfLines={1}
-      >
-        {label}
       </Text>
     </View>
   );
@@ -211,6 +247,103 @@ function FlowDivider() {
   return <View style={accountDetailSectionDividerStyle(isLight)} />;
 }
 
+function promptContactPhotoSource(
+  onGallery: () => void,
+  onCamera: () => void,
+  onRemove?: () => void,
+) {
+  const buttons: Array<{ text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }> = [
+    { text: 'Galerie', onPress: onGallery },
+    { text: 'Caméra', onPress: onCamera },
+  ];
+  if (onRemove) {
+    buttons.push({ text: 'Retirer la photo', onPress: onRemove, style: 'destructive' });
+  }
+  buttons.push({ text: 'Annuler', style: 'cancel' });
+  Alert.alert('Photo du contact', 'Choisis une source.', buttons);
+}
+
+function ContactHeroIdentity({
+  contactName,
+  savedContact,
+  onPhotoChange,
+}: {
+  contactName: string;
+  savedContact: Contact | null;
+  onPhotoChange: (photoUri: string | null) => Promise<void>;
+}) {
+  const { colors } = useAppTheme();
+  const photoUri = savedContact?.photoUri?.trim() ?? '';
+
+  const pickPhoto = async (fromGallery: boolean) => {
+    try {
+      const result = fromGallery ? await pickReceiptFromGallery() : await captureReceiptPhoto();
+      if (!result.cancelled && result.uri) {
+        await onPhotoChange(result.uri);
+      }
+    } catch {
+      Alert.alert('Erreur', 'Impossible d’accéder à la photo.');
+    }
+  };
+
+  const handleEditPhoto = () => {
+    tapHaptic();
+    promptContactPhotoSource(
+      () => {
+        void pickPhoto(true);
+      },
+      () => {
+        void pickPhoto(false);
+      },
+      photoUri
+        ? () => {
+            void onPhotoChange(null);
+          }
+        : undefined,
+    );
+  };
+
+  return (
+    <View style={styles.heroIdentityColumn}>
+      <View style={styles.avatarWrap}>
+        <View
+          style={[
+            styles.avatarFrame,
+            { backgroundColor: colors.surfaceElevated, borderColor: colors.border },
+          ]}
+        >
+          {photoUri ? (
+            <Image
+              source={{ uri: photoUri }}
+              style={styles.avatarImage}
+              contentFit="cover"
+              accessibilityLabel={`Photo de ${contactName}`}
+            />
+          ) : (
+            <Ionicons name="person" size={40} color={colors.textSecondary} />
+          )}
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Modifier la photo du contact"
+          hitSlop={8}
+          onPress={handleEditPhoto}
+          style={({ pressed }) => [
+            styles.avatarEditButton,
+            { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
+            pressed && styles.pressed,
+          ]}
+        >
+          <Ionicons name="pencil-outline" size={14} color={colors.text} />
+        </Pressable>
+      </View>
+      <Text style={[styles.heroContactName, { color: colors.text }]} numberOfLines={2}>
+        {contactName}
+      </Text>
+    </View>
+  );
+}
+
 export default function ContactDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ contact?: string; name?: string }>();
@@ -220,7 +353,6 @@ export default function ContactDetailScreen() {
   const contactName = typeof params.name === 'string' && params.name.trim() ? params.name.trim() : contactKey;
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [savedContact, setSavedContact] = useState<Contact | null>(null);
-  const [selected, setSelected] = useState<Transaction | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [historyTypeFilter, setHistoryTypeFilter] = useState<ContactHistoryTypeFilter>('all');
@@ -275,6 +407,27 @@ export default function ContactDetailScreen() {
   );
   const historyHasActiveFilters = search.trim().length > 0 || historyTypeFilter !== 'all';
 
+  const handleContactPhotoChange = useCallback(
+    async (photoUri: string | null) => {
+      let contact = savedContact;
+      if (!contact) {
+        contact = await upsertContactByName(contactName);
+      }
+      await updateContactPhoto(contact.id, photoUri);
+      setSavedContact({ ...contact, photoUri });
+    },
+    [contactName, savedContact],
+  );
+
+  const handleEmployerChange = useCallback(
+    async (enabled: boolean) => {
+      if (!savedContact) return;
+      await updateContactEmployer(savedContact.id, enabled);
+      setSavedContact({ ...savedContact, isEmployer: enabled });
+    },
+    [savedContact],
+  );
+
   return (
     <PageTransition>
       <View style={styles.screen}>
@@ -317,26 +470,11 @@ export default function ContactDetailScreen() {
           }
         >
           <View style={accountDetailHeroBlockStyle()}>
-            <View style={styles.heroIdentityRow}>
-              <View style={[styles.avatar, { backgroundColor: colors.surfaceElevated }]}>
-                <Ionicons name="person" size={22} color={colors.textSecondary} />
-              </View>
-              <View style={styles.heroIdentityCopy}>
-                <Text style={[styles.heroContactName, { color: colors.text }]} numberOfLines={2}>
-                  {contactName}
-                </Text>
-                {savedContact?.isEmployer ? (
-                  <View
-                    style={[
-                      styles.employerBadge,
-                      { backgroundColor: colors.successMuted, borderColor: colors.primary },
-                    ]}
-                  >
-                    <Text style={[styles.employerBadgeText, { color: colors.primary }]}>Employeur</Text>
-                  </View>
-                ) : null}
-              </View>
-            </View>
+            <ContactHeroIdentity
+              contactName={contactName}
+              savedContact={savedContact}
+              onPhotoChange={handleContactPhotoChange}
+            />
           </View>
 
           <ContactTransferStatsRow
@@ -351,34 +489,15 @@ export default function ContactDetailScreen() {
             label="Opérations"
             value={`${visibleTransactions.length} opération${visibleTransactions.length > 1 ? 's' : ''}`}
           />
-          <DetailRow label="Période" value={dateRange} isLast />
+          <DetailRow label="Période" value={dateRange} isLast={!savedContact} />
 
           {savedContact ? (
-            <>
-              <FlowDivider />
-              <View style={styles.employerToggleRow}>
-                <View style={styles.employerToggleCopy}>
-                  <Text style={[styles.employerToggleLabel, { color: colors.text }]}>
-                    Marquer comme employeur
-                  </Text>
-                  <Text style={[styles.employerToggleHint, { color: colors.textMuted }]}>
-                    Suggéré en priorité lors de la saisie d'un revenu.
-                  </Text>
-                </View>
-                <Switch
-                  value={savedContact.isEmployer === true}
-                  onValueChange={(enabled) => {
-                    tapHaptic();
-                    void updateContactEmployer(savedContact.id, enabled).then(() => {
-                      setSavedContact((current) => (current ? { ...current, isEmployer: enabled } : current));
-                    });
-                  }}
-                  trackColor={{ false: colors.borderStrong, true: colors.primary }}
-                  thumbColor={savedContact.isEmployer ? colors.surfaceSolid : undefined}
-                  ios_backgroundColor={colors.borderStrong}
-                />
-              </View>
-            </>
+            <EmployerToggleRow
+              isEmployer={savedContact.isEmployer === true}
+              onChange={(enabled) => {
+                void handleEmployerChange(enabled);
+              }}
+            />
           ) : null}
 
           <FlowDivider />
@@ -459,10 +578,7 @@ export default function ContactDetailScreen() {
                       <TransactionRow
                         key={tx.id}
                         transaction={{ ...tx, label: getTransactionTitle(tx, contactName) }}
-                        onPress={() => {
-                          tapHaptic();
-                          setSelected(tx);
-                        }}
+                        onPress={() => { tapHaptic(); router.push({ pathname: '/transaction-detail', params: { transactionId: tx.id } }); }}
                       />
                     ))}
                   </View>
@@ -478,13 +594,6 @@ export default function ContactDetailScreen() {
           </View>
         </ScrollView>
 
-        <TransactionDetailSheet
-          transaction={selected}
-          onClose={() => setSelected(null)}
-          onDeleted={() => {
-            void load();
-          }}
-        />
       </View>
     </PageTransition>
   );
@@ -520,39 +629,44 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     gap: spacing.lg,
   },
-  heroIdentityRow: {
-    flexDirection: 'row',
+  heroIdentityColumn: {
     alignItems: 'center',
     gap: spacing.md,
   },
-  heroIdentityCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: spacing.xs,
+  avatarWrap: {
+    position: 'relative',
+    width: 104,
+    height: 104,
+  },
+  avatarFrame: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarEditButton: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   heroContactName: {
     ...interExtraBoldText,
     fontSize: typography.dashboardGreeting,
     letterSpacing: -0.4,
-  },
-  employerBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  employerBadgeText: {
-    fontSize: typography.micro,
-    fontWeight: '800',
-    letterSpacing: 0.1,
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    textAlign: 'center',
   },
   detailRow: {
     flexDirection: 'row',
@@ -563,40 +677,20 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   detailLabel: {
-    ...interMediumText,
+    ...typographyKit.eyebrow,
     fontSize: 10,
     letterSpacing: 0.8,
-    textTransform: 'uppercase',
     flexShrink: 0,
   },
   detailValue: {
-    ...interExtraBoldText,
-    fontSize: typography.meta,
-    fontVariant: ['tabular-nums'],
+    ...moneyAmountTypography({ tier: 'row' }),
     flex: 1,
     textAlign: 'right',
   },
-  employerToggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    minHeight: 56,
-  },
-  employerToggleCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  employerToggleLabel: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-    lineHeight: 18,
-  },
-  employerToggleHint: {
-    fontSize: typography.micro,
-    lineHeight: 15,
+  statLabel: {
+    ...typographyKit.eyebrow,
+    fontSize: 10,
+    letterSpacing: 0.8,
   },
   transactionList: {
     gap: spacing.md,

@@ -1,9 +1,15 @@
 import { useRef } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { interExtraBoldText, radius } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'] as const;
+
+/** Expands touch area into key gaps without changing layout. */
+const KEY_HIT_SLOP = { top: 10, bottom: 10, left: 8, right: 8 } as const;
+
+/** Keeps the press active when the finger drifts slightly off the key. */
+const KEY_PRESS_RETENTION = { top: 24, bottom: 24, left: 16, right: 16 } as const;
 
 type Props = {
   value: string;
@@ -34,6 +40,7 @@ export function GhostNumpad({ value, onChange }: Props) {
 
 function AnimatedKey({ label, onPress }: { label: string; onPress: () => void }) {
   const scale = useRef(new Animated.Value(1)).current;
+  const handledOnPressIn = useRef(false);
   const { colors } = useAppTheme();
 
   const animateTo = (value: number) => {
@@ -47,9 +54,29 @@ function AnimatedKey({ label, onPress }: { label: string; onPress: () => void })
 
   return (
     <Pressable
-      onPress={onPress}
-      onPressIn={() => animateTo(0.94)}
-      onPressOut={() => animateTo(1)}
+      accessibilityRole="button"
+      accessibilityLabel={label === '⌫' ? 'Effacer' : label}
+      delayPressIn={0}
+      delayLongPress={500}
+      hitSlop={KEY_HIT_SLOP}
+      pressRetentionOffset={KEY_PRESS_RETENTION}
+      onPressIn={() => {
+        handledOnPressIn.current = true;
+        animateTo(0.94);
+        onPress();
+      }}
+      onPress={() => {
+        if (!handledOnPressIn.current) onPress();
+      }}
+      onPressOut={() => {
+        handledOnPressIn.current = false;
+        animateTo(1);
+      }}
+      android_ripple={
+        Platform.OS === 'android'
+          ? { color: 'rgba(128,128,128,0.18)', borderless: false }
+          : undefined
+      }
       style={styles.keyWrap}
     >
       <Animated.View
@@ -78,7 +105,9 @@ const styles = StyleSheet.create({
   },
   keyWrap: {
     width: '30%',
+    minWidth: 88,
     maxWidth: 120,
+    minHeight: 56,
     height: 56,
   },
   key: {

@@ -4,10 +4,14 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
 
+import { MdiIcon } from '@/components/MdiIcon';
+
 import { getCategoryIconName } from '@/constants/categoryOptions';
 
-import { CHIP_BORDER_WIDTH, CHIP_PADDING_HORIZONTAL, interBoldText, radius, spacing, typography } from '@/constants/theme';
-import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
+import { resolveStoredIconToMdi } from '@/lib/mdiIconCatalog';
+
+import { CHIP_PADDING_HORIZONTAL, interBoldText, radius, spacing, typography } from '@/constants/theme';
+import { singleLineLabelStyle } from '@/lib/textLayout';
 
 import { typographyKit } from '@/constants/typographyKit';
 
@@ -53,6 +57,12 @@ function CategoryChip({ category, selected, onPress }: CategoryChipProps) {
 
   const { colors } = useAppTheme();
 
+  const ionName = getCategoryIconName(category);
+
+  const mdiName = resolveStoredIconToMdi(ionName);
+
+  const iconColor = selected ? colors.primary : colors.textSecondary;
+
 
 
   return (
@@ -83,17 +93,19 @@ function CategoryChip({ category, selected, onPress }: CategoryChipProps) {
 
     >
 
-      <Ionicons
+      {mdiName ? (
 
-        name={getCategoryIconName(category)}
+        <View style={styles.chipIcon}>
 
-        size={14}
+          <MdiIcon name={mdiName} size={14} color={iconColor} />
 
-        color={selected ? colors.primary : colors.textSecondary}
+        </View>
 
-        style={styles.chipIcon}
+      ) : (
 
-      />
+        <Ionicons name={ionName} size={14} color={iconColor} style={styles.chipIcon} />
+
+      )}
 
       <Text
 

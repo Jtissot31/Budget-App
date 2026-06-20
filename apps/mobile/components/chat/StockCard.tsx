@@ -7,6 +7,7 @@ import {
   spacing,
 } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
+import { formatNumberDisplay } from '@/lib/formatNumber';
 import type { StockPayload } from './types';
 
 type Props = {
@@ -14,7 +15,7 @@ type Props = {
 };
 
 function formatPrice(value: number, currency = '$') {
-  return `${value.toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+  return `${formatNumberDisplay(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 }
 
 function formatChangePercent(value: number) {

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { GhostTokens } from '@/constants/ghostUi';
 import { radius, spacing, typography, type AppColors } from '@/constants/theme';
@@ -14,9 +14,16 @@ type DatePickerFieldProps = {
   onChangeDate: (value: string) => void;
   allowClear?: boolean;
   variant?: 'compact' | 'sheet';
+  labelStyle?: import('react-native').TextStyle;
 };
 
 const DAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+const CALENDAR_WEEKS = 6;
+const CALENDAR_CELLS = CALENDAR_WEEKS * 7;
+const NAV_BACKDROP_GUARD_MS = 350;
+const YEAR_RANGE_OFFSET = 50;
+
+type PickerViewMode = 'month' | 'year';
 
 export function DatePickerField({
   label,
@@ -25,6 +32,7 @@ export function DatePickerField({
   onChangeDate,
   allowClear = false,
   variant = 'compact',
+  labelStyle,
 }: DatePickerFieldProps) {
   const { colors, ghost } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, ghost), [colors, ghost]);
@@ -33,7 +41,7 @@ export function DatePickerField({
 
   return (
     <View style={styles.field}>
-      <Text style={[styles.label, variant === 'sheet' && styles.sheetLabel]}>{label}</Text>
+      <Text style={[styles.label, variant === 'sheet' && styles.sheetLabel, labelStyle]}>{label}</Text>
       <Pressable
         onPress={() => {
           tapHaptic();
@@ -79,81 +87,216 @@ function MinimalDatePicker({ visible, value, allowClear, onCancel, onConfirm }: 
   const initialDate = useMemo(() => parseIsoDate(value) ?? startOfToday(), [value]);
   const [visibleMonth, setVisibleMonth] = useState(() => monthStart(initialDate));
   const [selectedDate, setSelectedDate] = useState(initialDate);
+  const [viewMode, setViewMode] = useState<PickerViewMode>('month');
+  const navGuardUntilRef = useRef(0);
+  const yearScrollRef = useRef<ScrollView>(null);
+
+  const yearOptions = useMemo(() => getYearOptions(), []);
+  const calendarBodyHeight = useMemo(
+    () => CALENDAR_WEEKS * 44 + (CALENDAR_WEEKS - 1) * spacing.xs,
+    [],
+  );
 
   useEffect(() => {
     if (!visible) return;
     const nextDate = parseIsoDate(value) ?? startOfToday();
     setSelectedDate(nextDate);
     setVisibleMonth(monthStart(nextDate));
+    setViewMode('month');
   }, [value, visible]);
+
+  useEffect(() => {
+    if (!visible || viewMode !== 'year') return;
+
+    const selectedYear = visibleMonth.getFullYear();
+    const selectedIndex = yearOptions.indexOf(selectedYear);
+    if (selectedIndex < 0) return;
+
+    const row = Math.floor(selectedIndex / 4);
+    const rowHeight = 44 + spacing.xs;
+    const offset = Math.max(0, row * rowHeight - calendarBodyHeight / 2 + rowHeight / 2);
+
+    const frame = requestAnimationFrame(() => {
+      yearScrollRef.current?.scrollTo({ y: offset, animated: false });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [calendarBodyHeight, viewMode, visible, visibleMonth, yearOptions]);
+
+  const guardNavigation = useCallback(() => {
+    navGuardUntilRef.current = Date.now() + NAV_BACKDROP_GUARD_MS;
+  }, []);
+
+  const handleBackdropPress = useCallback(() => {
+    if (Date.now() < navGuardUntilRef.current) return;
+    onCancel();
+  }, [onCancel]);
+
+  const goToPreviousMonth = useCallback(() => {
+    tapHaptic();
+    guardNavigation();
+    setVisibleMonth((current) => addMonths(current, -1));
+  }, [guardNavigation]);
+
+  const goToNextMonth = useCallback(() => {
+    tapHaptic();
+    guardNavigation();
+    setVisibleMonth((current) => addMonths(current, 1));
+  }, [guardNavigation]);
+
+  const openYearPicker = useCallback(() => {
+    tapHaptic();
+    guardNavigation();
+    setViewMode('year');
+  }, [guardNavigation]);
+
+  const closeYearPicker = useCallback(() => {
+    tapHaptic();
+    guardNavigation();
+    setViewMode('month');
+  }, [guardNavigation]);
+
+  const selectYear = useCallback(
+    (year: number) => {
+      tapHaptic();
+      guardNavigation();
+      setVisibleMonth((current) => new Date(year, current.getMonth(), 1));
+      setViewMode('month');
+    },
+    [guardNavigation],
+  );
 
   const days = useMemo(() => getMonthCells(visibleMonth), [visibleMonth]);
   const selectedIso = formatIsoDate(selectedDate);
+  const visibleYear = visibleMonth.getFullYear();
 
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onCancel}>
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={handleBackdropPress}>
       <View style={styles.modalBackdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} />
-        <View style={styles.pickerCard}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={handleBackdropPress} accessibilityLabel="Fermer" />
+        <View style={styles.pickerCard} onStartShouldSetResponder={() => true}>
           <View style={styles.pickerHeader}>
-            <Pressable
-              onPress={() => {
-                tapHaptic();
-                setVisibleMonth(addMonths(visibleMonth, -1));
-              }}
-              hitSlop={10}
-              style={({ pressed }) => [styles.monthButton, pressed && styles.pressed]}
+            {viewMode === 'month' ? (
+              <Pressable
+                onPress={goToPreviousMonth}
+                hitSlop={{ top: 14, bottom: 14, right: 12, left: 0 }}
+                style={({ pressed }) => [styles.monthButton, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Mois précédent"
+              >
+                <Ionicons name="chevron-back" size={20} color={ghost.mutedSoft} />
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={closeYearPicker}
+                hitSlop={{ top: 14, bottom: 14, right: 12, left: 0 }}
+                style={({ pressed }) => [styles.monthButton, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Retour au calendrier"
+              >
+                <Ionicons name="chevron-back" size={20} color={ghost.mutedSoft} />
+              </Pressable>
+            )}
+            {viewMode === 'month' ? (
+              <Pressable
+                onPress={openYearPicker}
+                hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                style={({ pressed }) => [styles.monthTitleButton, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={`Choisir l'année, ${visibleYear}`}
+              >
+                <Text style={styles.monthTitle}>{formatMonthLabel(visibleMonth)}</Text>
+              </Pressable>
+            ) : (
+              <View style={styles.monthTitleButton}>
+                <Text style={styles.monthTitle}>Choisir l'année</Text>
+              </View>
+            )}
+            {viewMode === 'month' ? (
+              <Pressable
+                onPress={goToNextMonth}
+                hitSlop={{ top: 14, bottom: 14, left: 12, right: 0 }}
+                style={({ pressed }) => [styles.monthButton, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Mois suivant"
+              >
+                <Ionicons name="chevron-forward" size={20} color={ghost.mutedSoft} />
+              </Pressable>
+            ) : (
+              <View style={styles.monthButtonSpacer} />
+            )}
+          </View>
+
+          {viewMode === 'month' ? (
+            <>
+              <View style={styles.weekRow}>
+                {DAY_LABELS.map((day, index) => (
+                  <Text key={`${day}-${index}`} style={styles.weekLabel}>
+                    {day}
+                  </Text>
+                ))}
+              </View>
+
+              <View style={[styles.dayGrid, { minHeight: calendarBodyHeight }]}>
+                {days.map((day, index) => {
+                  if (!day) return <View key={`empty-${index}`} style={styles.dayCell} />;
+
+                  const iso = formatIsoDate(day);
+                  const selected = iso === selectedIso;
+                  const today = iso === formatIsoDate(startOfToday());
+
+                  return (
+                    <Pressable
+                      key={iso}
+                      onPress={() => {
+                        tapHaptic();
+                        setSelectedDate(day);
+                      }}
+                      style={({ pressed }) => [
+                        styles.dayCell,
+                        today && styles.todayCell,
+                        selected && styles.selectedDayCell,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text style={[styles.dayText, selected && styles.selectedDayText]}>{day.getDate()}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : (
+            <ScrollView
+              ref={yearScrollRef}
+              style={[styles.yearScroll, { height: calendarBodyHeight }]}
+              contentContainerStyle={styles.yearGrid}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             >
-              <Ionicons name="chevron-back" size={20} color={ghost.mutedSoft} />
-            </Pressable>
-            <Text style={styles.monthTitle}>{formatMonthLabel(visibleMonth)}</Text>
-            <Pressable
-              onPress={() => {
-                tapHaptic();
-                setVisibleMonth(addMonths(visibleMonth, 1));
-              }}
-              hitSlop={10}
-              style={({ pressed }) => [styles.monthButton, pressed && styles.pressed]}
-            >
-              <Ionicons name="chevron-forward" size={20} color={ghost.mutedSoft} />
-            </Pressable>
-          </View>
+              {yearOptions.map((year) => {
+                const selected = year === visibleYear;
+                const current = year === startOfToday().getFullYear();
 
-          <View style={styles.weekRow}>
-            {DAY_LABELS.map((day, index) => (
-              <Text key={`${day}-${index}`} style={styles.weekLabel}>
-                {day}
-              </Text>
-            ))}
-          </View>
-
-          <View style={styles.dayGrid}>
-            {days.map((day, index) => {
-              if (!day) return <View key={`empty-${index}`} style={styles.dayCell} />;
-
-              const iso = formatIsoDate(day);
-              const selected = iso === selectedIso;
-              const today = iso === formatIsoDate(startOfToday());
-
-              return (
-                <Pressable
-                  key={iso}
-                  onPress={() => {
-                    tapHaptic();
-                    setSelectedDate(day);
-                  }}
-                  style={({ pressed }) => [
-                    styles.dayCell,
-                    today && styles.todayCell,
-                    selected && styles.selectedDayCell,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={[styles.dayText, selected && styles.selectedDayText]}>{day.getDate()}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+                return (
+                  <Pressable
+                    key={year}
+                    onPress={() => selectYear(year)}
+                    style={({ pressed }) => [
+                      styles.yearCell,
+                      current && styles.todayCell,
+                      selected && styles.selectedDayCell,
+                      pressed && styles.pressed,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Année ${year}`}
+                    accessibilityState={{ selected }}
+                  >
+                    <Text style={[styles.yearText, selected && styles.selectedDayText]}>{year}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
 
           <View style={styles.actions}>
             {allowClear ? (
@@ -237,16 +380,29 @@ function getMonthCells(month: Date) {
     cells.push(new Date(month.getFullYear(), month.getMonth(), day));
   }
 
-  while (cells.length % 7 !== 0) {
+  while (cells.length < CALENDAR_CELLS) {
     cells.push(null);
   }
 
-  return cells;
+  return cells.slice(0, CALENDAR_CELLS);
 }
 
 function formatMonthLabel(date: Date) {
   const label = date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
   return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function getYearOptions() {
+  const currentYear = startOfToday().getFullYear();
+  const startYear = currentYear - YEAR_RANGE_OFFSET;
+  const endYear = currentYear + YEAR_RANGE_OFFSET;
+  const years: number[] = [];
+
+  for (let year = startYear; year <= endYear; year += 1) {
+    years.push(year);
+  }
+
+  return years;
 }
 
 function createStyles(colors: AppColors, ghost: GhostTokens) {
@@ -317,15 +473,26 @@ function createStyles(colors: AppColors, ghost: GhostTokens) {
       gap: spacing.sm,
     },
     monthButton: {
-      width: 38,
-      height: 38,
+      width: 44,
+      height: 44,
       borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: 'rgba(255,255,255,0.06)',
     },
-    monthTitle: {
+    monthButtonSpacer: {
+      width: 44,
+      height: 44,
+    },
+    monthTitleButton: {
       flex: 1,
+      minHeight: 44,
+      borderRadius: radius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: spacing.sm,
+    },
+    monthTitle: {
       color: ghost.text,
       fontSize: typography.dashboardGreeting,
       fontWeight: '800',
@@ -347,6 +514,30 @@ function createStyles(colors: AppColors, ghost: GhostTokens) {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: spacing.xs,
+    },
+    yearScroll: {
+      borderRadius: radius.md,
+    },
+    yearGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.xs,
+      paddingBottom: spacing.xs,
+    },
+    yearCell: {
+      width: `${(100 - 3 * 1.25) / 4}%`,
+      minHeight: 44,
+      borderRadius: radius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'transparent',
+    },
+    yearText: {
+      color: ghost.text,
+      fontSize: typography.caption,
+      fontWeight: '800',
+      fontVariant: ['tabular-nums'],
     },
     dayCell: {
       width: `${(100 - 6 * 1.25) / 7}%`,

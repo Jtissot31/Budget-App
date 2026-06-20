@@ -50,9 +50,10 @@ function formatMaskedCardNumber(last4: string | null) {
   return '···· ···· ···· ····';
 }
 
-function institutionFooterLabel(account: SimulatedAccount) {
+function accountFooterLabel(account: SimulatedAccount) {
   const institution = account.institution?.trim();
-  return institution ? institution.toUpperCase() : '';
+  if (institution) return institution.toUpperCase();
+  return account.name.trim();
 }
 
 function kindBadgeLabel(kind: AccountKind, account: SimulatedAccount) {
@@ -63,8 +64,15 @@ function kindBadgeLabel(kind: AccountKind, account: SimulatedAccount) {
 
 function creditNetworkBadge(account: SimulatedAccount): string {
   const haystack = `${account.name} ${account.institution ?? ''}`.toLowerCase();
-  if (/\bvisa\b/.test(haystack)) return 'Visa';
-  if (/\bmaster\s*card\b|\bmastercard\b/.test(haystack)) return 'MC';
+  const hasVisa = /\bvisa\b/.test(haystack);
+  const hasMc =
+    /\bmaster\s*card\b/.test(haystack) ||
+    /\bmastercard\b/.test(haystack) ||
+    /\bvisa\s*mc\b/.test(haystack) ||
+    /\bmc\b/.test(haystack);
+  if (hasVisa && hasMc) return 'Visa MC';
+  if (hasVisa) return 'Visa';
+  if (hasMc) return 'MC';
   return 'Crédit';
 }
 
@@ -101,7 +109,7 @@ function resolveBalanceDisplay(account: SimulatedAccount) {
   return {
     label: creditUsed > 0 ? 'Solde dû' : 'Solde',
     amount: creditUsed > 0 ? -creditUsed : creditUsed,
-    color: creditUsed > 0 ? CARD.negative : CARD.text,
+    color: CARD.text,
   };
 }
 
@@ -167,15 +175,15 @@ export function BankAccountCard({ account, logoUrl }: BankAccountCardProps) {
       </View>
 
       <View style={styles.footer}>
-        <View style={styles.footerTopRow}>
-          <Text style={styles.cardNumber} numberOfLines={1}>
-            {formatMaskedCardNumber(resolveCardLast4(account))}
+        <Text style={styles.cardNumber} numberOfLines={1}>
+          {formatMaskedCardNumber(resolveCardLast4(account))}
+        </Text>
+        <View style={styles.footerNameRow}>
+          <Text style={styles.cardholder} numberOfLines={1}>
+            {accountFooterLabel(account)}
           </Text>
           <Text style={styles.kindLabel}>{badgeLabel}</Text>
         </View>
-        <Text style={styles.cardholder} numberOfLines={1}>
-          {institutionFooterLabel(account)}
-        </Text>
       </View>
     </View>
   );
@@ -254,7 +262,7 @@ const styles = StyleSheet.create({
   footer: {
     gap: 6,
   },
-  footerTopRow: {
+  footerNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -262,8 +270,6 @@ const styles = StyleSheet.create({
   },
   cardNumber: {
     ...interSemiboldText,
-    flex: 1,
-    minWidth: 0,
     fontSize: 14,
     letterSpacing: 2.2,
     color: CARD.number,
@@ -279,6 +285,8 @@ const styles = StyleSheet.create({
   },
   cardholder: {
     ...interSemiboldText,
+    flex: 1,
+    minWidth: 0,
     fontSize: 10,
     letterSpacing: 0.6,
     textTransform: 'uppercase',

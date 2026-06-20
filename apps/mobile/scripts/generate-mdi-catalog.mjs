@@ -149,6 +149,7 @@ const FRENCH_LABELS = {
   ShareMdi: 'Partager',
   ThumbUp: 'Aimer',
   Favorite: 'Favori',
+  FavoriteBorder: 'Cœur contour',
   // Education
   AutoStories: 'Lecture',
   Science: 'Science',

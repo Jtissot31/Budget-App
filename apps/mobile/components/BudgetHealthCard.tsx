@@ -1,28 +1,45 @@
 import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  useSharedValue,
-  withTiming,
+  cancelAnimation,
   Easing,
+  interpolate,
   useAnimatedProps,
-  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle, Defs, FeDropShadow, Filter } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 import { DashboardCard } from '@/components/DashboardCard';
-import { dashboardPalette, interBoldText, interMediumText, spacing, typography } from '@/constants/theme';
+import { DashboardStatLegendItem } from '@/components/DashboardStatCard';
+import {
+  dashboardPalette,
+  DASHBOARD_VALUE_GREEN,
+  DASHBOARD_VALUE_RED,
+  interBoldText,
+  interMediumText,
+  moneyAmountTypography,
+  spacing,
+  typography,
+} from '@/constants/theme';
+import { typographyKit } from '@/constants/typographyKit';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
-import { singleLineAmountProps } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-const RING_SIZE = 148;
-const RING_R = 60;
+const RING_SIZE = 132;
+const RING_R = 54;
 const RING_CX = RING_SIZE / 2;
 const RING_CY = RING_SIZE / 2;
 const RING_CIRC = 2 * Math.PI * RING_R;
-const STROKE_W = 8;
+const STROKE_W = 10;
 const ANIMATE_MS = 900;
+const SHIMMER_DURATION_MS = 2600;
+const SHIMMER_SEGMENT = 20;
+
+const BUDGET_SPENT_COLOR = DASHBOARD_VALUE_RED;
+const BUDGET_PROGRESS_COLOR = DASHBOARD_VALUE_GREEN;
 
 type HealthStatus = 'safe' | 'warning' | 'danger';
 
@@ -39,36 +56,17 @@ function getStatusLabel(status: HealthStatus): string {
 }
 
 function getAccentColor(status: HealthStatus, isLight: boolean): string {
-  if (status === 'danger') return isLight ? '#CF222E' : '#ef4444';
+  if (status === 'danger') return isLight ? '#CF222E' : DASHBOARD_VALUE_RED;
   if (status === 'warning') return isLight ? '#D97706' : '#f59e0b';
-  return isLight ? '#00A854' : '#22c55e';
+  return isLight ? '#00A854' : DASHBOARD_VALUE_GREEN;
 }
 
-function StatRow({
-  label,
-  value,
-  valueColor,
-}: {
-  label: string;
-  value: string;
-  valueColor?: string;
-}) {
+function HealthRing({ pct }: { pct: number }) {
   const { colors, isLight } = useAppTheme();
-  const muted = isLight ? colors.textMuted : '#7a7a7a';
-  return (
-    <View style={styles.statRow}>
-      <Text style={[styles.statLabel, { color: muted }]}>{label}</Text>
-      <Text style={[styles.statValue, { color: valueColor ?? colors.text }]} {...singleLineAmountProps}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-function HealthRing({ pct, accent }: { pct: number; accent: string }) {
-  const { colors, isLight } = useAppTheme();
-  const track = isLight ? colors.border : dashboardPalette.iconBox;
+  const track = isLight ? colors.border : dashboardPalette.scopeTrack;
+  const inProgress = pct > 0 && pct < 100;
   const progress = useSharedValue(0);
+  const shimmer = useSharedValue(0);
 
   useEffect(() => {
     progress.value = withTiming(Math.min(pct, 100), {
@@ -77,46 +75,74 @@ function HealthRing({ pct, accent }: { pct: number; accent: string }) {
     });
   }, [pct, progress]);
 
-  const animatedArc = useAnimatedProps(() => {
+  useEffect(() => {
+    if (inProgress) {
+      shimmer.value = withRepeat(
+        withTiming(1, {
+          duration: SHIMMER_DURATION_MS,
+          easing: Easing.inOut(Easing.quad),
+        }),
+        -1,
+        false,
+      );
+    } else {
+      cancelAnimation(shimmer);
+      shimmer.value = 0;
+    }
+
+    return () => cancelAnimation(shimmer);
+  }, [inProgress, shimmer]);
+
+  const spentArc = useAnimatedProps(() => {
     const dash = (progress.value / 100) * RING_CIRC;
     const gap = RING_CIRC - dash;
     return {
       strokeDasharray: `${dash} ${gap}`,
-      strokeDashoffset: RING_CIRC / 4,
+    };
+  });
+
+  const shimmerArc = useAnimatedProps(() => {
+    const filled = (progress.value / 100) * RING_CIRC;
+    const travel = Math.max(filled - SHIMMER_SEGMENT, 0);
+    const active = filled > 0 && filled < RING_CIRC;
+    const offset = interpolate(shimmer.value, [0, 1], [0, travel]);
+
+    return {
+      strokeDasharray: `${SHIMMER_SEGMENT} ${RING_CIRC - SHIMMER_SEGMENT}`,
+      strokeDashoffset: -offset,
+      opacity:
+        active && travel > 0
+          ? interpolate(shimmer.value, [0, 0.12, 0.88, 1], [0, 0.55, 0.55, 0])
+          : 0,
     };
   });
 
   return (
     <Svg width={RING_SIZE} height={RING_SIZE} viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}>
-      <Defs>
-        <Filter id="ringGlow" x="-40%" y="-40%" width="180%" height="180%">
-          <FeDropShadow dx={0} dy={0} stdDeviation={5} floodColor={accent} floodOpacity={0.55} />
-        </Filter>
-      </Defs>
-      {/* track */}
       <Circle cx={RING_CX} cy={RING_CY} r={RING_R} fill="none" stroke={track} strokeWidth={STROKE_W} />
-      {/* glow arc */}
       <AnimatedCircle
         cx={RING_CX}
         cy={RING_CY}
         r={RING_R}
         fill="none"
-        stroke={accent}
-        strokeWidth={STROKE_W + 2}
-        strokeLinecap="round"
-        filter="url(#ringGlow)"
-        animatedProps={animatedArc}
-      />
-      {/* main arc */}
-      <AnimatedCircle
-        cx={RING_CX}
-        cy={RING_CY}
-        r={RING_R}
-        fill="none"
-        stroke={accent}
+        stroke={BUDGET_PROGRESS_COLOR}
         strokeWidth={STROKE_W}
         strokeLinecap="round"
-        animatedProps={animatedArc}
+        rotation={-90}
+        origin={`${RING_CX}, ${RING_CY}`}
+        animatedProps={spentArc}
+      />
+      <AnimatedCircle
+        cx={RING_CX}
+        cy={RING_CY}
+        r={RING_R}
+        fill="none"
+        stroke="rgba(255,255,255,0.34)"
+        strokeWidth={STROKE_W}
+        strokeLinecap="round"
+        rotation={-90}
+        origin={`${RING_CX}, ${RING_CY}`}
+        animatedProps={shimmerArc}
       />
     </Svg>
   );
@@ -129,70 +155,50 @@ type Props = {
 
 export function BudgetHealthCard({ spent, limit }: Props) {
   const { colors, isLight } = useAppTheme();
-  const muted = isLight ? colors.textMuted : '#7a7a7a';
-  const dividerColor = isLight ? colors.border : '#2a2a2a';
+  const muted = colors.textMuted;
 
   const hasLimit = limit > 0;
   const rawPct = hasLimit ? Math.round((spent / limit) * 100) : 0;
   const arcPct = Math.min(rawPct, 100);
-  const available = limit - spent;
   const status = getStatus(rawPct);
   const accent = getAccentColor(status, isLight);
   const statusLabel = getStatusLabel(status);
 
-  const barWidth = useSharedValue(0);
-  useEffect(() => {
-    barWidth.value = withTiming(arcPct, {
-      duration: ANIMATE_MS + 100,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [arcPct, barWidth]);
-
-  const barStyle = useAnimatedStyle(() => ({
-    width: `${barWidth.value}%` as `${number}%`,
-  }));
-
   return (
     <DashboardCard style={styles.card} padding={spacing.lg}>
-      {/* header */}
       <View style={styles.header}>
         <Text style={[styles.headerLabel, { color: muted }]}>SANTÉ DU BUDGET</Text>
-        {hasLimit && (
-          <Text style={[styles.statusBadge, { color: accent }]}>{statusLabel}</Text>
-        )}
+        {hasLimit ? <Text style={[styles.statusBadge, { color: accent }]}>{statusLabel}</Text> : null}
       </View>
 
-      {/* ring + stats */}
       <View style={styles.body}>
         <View style={styles.ringWrap}>
-          <HealthRing pct={arcPct} accent={accent} />
+          <HealthRing pct={arcPct} />
           <View style={styles.ringCenter} pointerEvents="none">
-            <Text style={[styles.ringPct, { color: accent }]} {...singleLineAmountProps}>
+            <Text
+              style={[styles.ringPct, moneyAmountTypography({ tier: 'stat', fontSize: 24, lineHeight: 28 }), { color: accent }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
               {hasLimit ? `${rawPct > 999 ? '999+' : rawPct}%` : '—'}
             </Text>
             <Text style={[styles.ringPctLabel, { color: muted }]}>utilisé</Text>
           </View>
         </View>
 
-        <View style={styles.statsCol}>
-          <StatRow label="Dépensé" value={formatDisplayMoneyAbsolute(spent)} />
-          <View style={[styles.divider, { backgroundColor: dividerColor }]} />
-          <StatRow label="Limite" value={hasLimit ? formatDisplayMoneyAbsolute(limit) : '—'} />
-          <View style={[styles.divider, { backgroundColor: dividerColor }]} />
-          <StatRow
-            label="Disponible"
-            value={hasLimit ? formatDisplayMoneyAbsolute(Math.max(0, available)) : '—'}
-            valueColor={hasLimit ? (available < 0 ? (isLight ? '#CF222E' : '#ef4444') : accent) : undefined}
+        <View style={styles.legendCol}>
+          <DashboardStatLegendItem
+            color={BUDGET_SPENT_COLOR}
+            label="Dépensé"
+            value={formatDisplayMoneyAbsolute(spent)}
+          />
+          <DashboardStatLegendItem
+            color={isLight ? colors.border : dashboardPalette.scopeTrack}
+            label="total prévu"
+            value={hasLimit ? formatDisplayMoneyAbsolute(limit) : '—'}
           />
         </View>
       </View>
-
-      {/* bottom bar */}
-      {hasLimit && (
-        <View style={[styles.barTrack, { backgroundColor: isLight ? colors.border : dashboardPalette.iconBox }]}>
-          <Animated.View style={[styles.barFill, { backgroundColor: accent }, barStyle]} />
-        </View>
-      )}
     </DashboardCard>
   );
 }
@@ -206,8 +212,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   headerLabel: {
-    ...interBoldText,
-    fontSize: typography.micro,
+    ...typographyKit.eyebrow,
+    fontSize: typography.micro - 1,
     letterSpacing: 0.8,
   },
   statusBadge: {
@@ -217,7 +223,7 @@ const styles = StyleSheet.create({
   body: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.lg,
   },
   ringWrap: {
     width: RING_SIZE,
@@ -225,55 +231,25 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.xs,
   },
   ringCenter: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 2,
   },
   ringPct: {
-    ...interBoldText,
-    fontSize: 26,
-    lineHeight: 30,
+    textAlign: 'center',
   },
   ringPctLabel: {
     ...interMediumText,
     fontSize: typography.micro,
-    marginTop: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
-  statsCol: {
+  legendCol: {
     flex: 1,
     minWidth: 0,
-    gap: spacing.sm,
-  },
-  statRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    paddingVertical: 3,
-  },
-  statLabel: {
-    ...interMediumText,
-    fontSize: typography.caption,
-  },
-  statValue: {
-    ...interBoldText,
-    fontSize: typography.caption,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginVertical: 2,
-  },
-  barTrack: {
-    height: 2,
-    borderRadius: 1,
-    overflow: 'hidden',
-    marginTop: spacing.lg,
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: 2,
+    gap: spacing.md,
   },
 });

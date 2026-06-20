@@ -6,6 +6,9 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { DMSerifDisplay_400Regular } from '@expo-google-fonts/dm-serif-display';
+import { DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans';
+import { DMMono_400Regular, DMMono_500Medium } from '@expo-google-fonts/dm-mono';
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -55,6 +58,11 @@ function RootLayoutContent() {
     Inter_600SemiBold,
     Inter_700Bold,
     Inter_800ExtraBold,
+    DMSerifDisplay_400Regular,
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMMono_400Regular,
+    DMMono_500Medium,
   });
 
   useEffect(() => {
@@ -133,7 +141,9 @@ function RootLayoutContent() {
             <Stack.Screen name="merchant-receipts" options={{ headerShown: false }} />
             <Stack.Screen name="wealth-asset-detail" options={{ headerShown: false }} />
             <Stack.Screen name="loan-detail" options={{ headerShown: false }} />
+            <Stack.Screen name="transaction-detail" options={{ headerShown: false }} />
             <Stack.Screen name="wealth-asset-transactions" options={{ headerShown: false }} />
+            <Stack.Screen name="goal-detail" options={{ headerShown: false }} />
             <Stack.Screen name="savings-goal-transactions" options={{ headerShown: false }} />
             <Stack.Screen name="budget-category-transactions" options={{ headerShown: false }} />
             <Stack.Screen name="scan" options={{ title: 'Scanner', presentation: 'modal' }} />
@@ -143,6 +153,16 @@ function RootLayoutContent() {
                 headerShown: false,
                 presentation: 'fullScreenModal',
                 animation: 'none',
+                gestureEnabled: true,
+                contentStyle: { flex: 1, backgroundColor: 'transparent' },
+              }}
+            />
+            <Stack.Screen
+              name="ai-advisor"
+              options={{
+                headerShown: false,
+                presentation: 'fullScreenModal',
+                animation: 'fade_from_bottom',
                 gestureEnabled: true,
                 contentStyle: { flex: 1, backgroundColor: 'transparent' },
               }}

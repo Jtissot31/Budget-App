@@ -21,7 +21,32 @@
       },
       "package": "com.budgettracker.app"
     },
-    "plugins": ["expo-router", "expo-sqlite"],
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Budget Tracker utilise ta position pour pré-sélectionner ton pays et ta région."
+        }
+      ],
+      [
+        "expo-router",
+        {
+          "headers": {
+            "Cross-Origin-Embedder-Policy": "credentialless",
+            "Cross-Origin-Opener-Policy": "same-origin"
+          }
+        }
+      ],
+      "expo-sqlite",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Budget Tracker enregistre vos reçus dans votre photothèque.",
+          "savePhotosPermission": "Budget Tracker enregistre vos reçus dans votre photothèque."
+        }
+      ],
+      "expo-secure-store"
+    ],
     "experiments": {
       "typedRoutes": true
     }

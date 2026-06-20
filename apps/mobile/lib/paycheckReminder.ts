@@ -51,8 +51,7 @@ export async function loadAlertUiState(alertIds: string[]) {
   await Promise.all(
     alertIds.map(async (id) => {
       reminders[id] = await isPaycheckReminderEnabled(id);
-      const storedCollapsed = await isAlertCollapsed(id);
-      collapsed[id] = reminders[id] && storedCollapsed;
+      collapsed[id] = await isAlertCollapsed(id);
     }),
   );
   return { reminders, collapsed };
@@ -78,7 +77,6 @@ export async function enablePaycheckReminder(alertId: string, schedule?: Paychec
 
 export async function disablePaycheckReminder(alertId: string) {
   await setSetting(reminderKey(alertId), '0');
-  await setSetting(collapsedKey(alertId), '0');
   await clearPaycheckReminderSchedule(alertId);
 }
 

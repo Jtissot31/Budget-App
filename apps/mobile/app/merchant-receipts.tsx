@@ -6,13 +6,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassContainer } from '@/components/GlassContainer';
 import { PageTransition } from '@/components/PageTransition';
-import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { radius, spacing, typography } from '@/constants/theme';
 import { getMerchantOverrides, getTransactions, sortTransactionsNewestFirst } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
-import { tapHaptic } from '@/lib/haptics';
 import { normalizeArticleSearch, parseItemizedNote } from '@/lib/itemizedNote';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
@@ -50,7 +48,6 @@ export default function MerchantReceiptsScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [overrides, setOverrides] = useState<Awaited<ReturnType<typeof getMerchantOverrides>>>([]);
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Transaction | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
@@ -176,14 +173,7 @@ export default function MerchantReceiptsScreen() {
             </Text>
           }
           renderItem={({ item }) => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Voir ${item.articleName}`}
-              onPress={() => {
-                tapHaptic();
-                setSelected(item.transaction);
-              }}
-            >
+            <View>
               <GlassContainer borderRadius={radius.lg} padding={spacing.md} innerStyle={styles.rowInner}>
                 {isPreviewableReceipt(item.receiptUri) ? (
                   <Image source={{ uri: item.receiptUri ?? '' }} style={styles.thumbnail} contentFit="cover" />
@@ -204,16 +194,11 @@ export default function MerchantReceiptsScreen() {
                   {formatDisplayMoneyAbsolute(item.price)}
                 </Text>
               </GlassContainer>
-            </Pressable>
+            </View>
           )}
           ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
         />
 
-        <TransactionDetailSheet
-          transaction={selected}
-          onClose={() => setSelected(null)}
-          onDeleted={() => { void load(); }}
-        />
       </View>
     </PageTransition>
   );

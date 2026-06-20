@@ -7,7 +7,13 @@ import { typographyKit } from '@/constants/typographyKit';
 import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
 import { getCategorySearchChoices, inferCategoryId } from '@/lib/categoryInference';
 import { tapHaptic } from '@/lib/haptics';
+import {
+  formatNumberDisplay,
+  formatNumberInputFromValue,
+  parseFormattedNumberOrZero,
+} from '@/lib/formatNumber';
 import { useAppTheme } from '@/lib/themeContext';
+import { NumericAmountInput } from '@/components/NumericAmountInput';
 import type { Category } from '@/types';
 
 export type ItemizedRow = {
@@ -28,12 +34,11 @@ type Props = {
 };
 
 function parseMoney(raw: string): number {
-  const parsed = parseFloat(raw.replace(',', '.'));
-  return Number.isFinite(parsed) ? parsed : 0;
+  return parseFormattedNumberOrZero(raw);
 }
 
 function formatMoneyInput(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, '');
+  return formatNumberInputFromValue(value);
 }
 
 export function ItemizedArticlesEditor({
@@ -143,12 +148,12 @@ export function ItemizedArticlesEditor({
                 onChangeText={(value) => updateItem(item.id, { name: value })}
               />
               <View style={[styles.priceWrap, { backgroundColor: colors.input, borderColor: colors.border }]}>
-                <TextInput
+                <NumericAmountInput
                   style={[styles.priceInput, { color: colors.text }]}
                   placeholder="0.00"
                   placeholderTextColor={colors.textMuted}
                   value={item.price}
-                  onChangeText={(value) => updateItem(item.id, { price: value.replace(/[^0-9.,]/g, '') })}
+                  onChangeText={(value) => updateItem(item.id, { price: value })}
                   keyboardType="decimal-pad"
                 />
                 <Text style={[styles.currency, { color: colors.textMuted }]}>$</Text>
@@ -284,7 +289,7 @@ export function ItemizedArticlesEditor({
 
       {showTotal && total > 0 ? (
         <Text style={[styles.total, { color: colors.textMuted }]}>
-          Total indicatif : {formatMoneyInput(total)} $
+          Total indicatif : {formatNumberDisplay(total)} $
         </Text>
       ) : null}
     </View>

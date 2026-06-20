@@ -28,21 +28,24 @@ export function GlassContainer({
   const surface = containerSurfaceStyle(isLight);
   const fillColor = innerBackgroundColor ?? surface.backgroundColor;
 
-  return (
-    <View
-      style={[
-        {
-          borderRadius,
-          backgroundColor: fillColor,
-          borderWidth: surface.borderWidth,
-          borderColor: surface.borderColor,
-          padding,
-        },
-        innerStyle,
-        style,
-      ]}
-    >
-      {children}
-    </View>
-  );
+  const shellStyle = [
+    {
+      borderRadius,
+      backgroundColor: fillColor,
+      borderWidth: surface.borderWidth,
+      borderColor: surface.borderColor,
+      padding,
+    },
+    style,
+  ];
+
+  if (innerStyle) {
+    return (
+      <View style={shellStyle}>
+        <View style={innerStyle}>{children}</View>
+      </View>
+    );
+  }
+
+  return <View style={shellStyle}>{children}</View>;
 }

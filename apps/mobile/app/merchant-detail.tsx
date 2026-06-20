@@ -13,15 +13,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MerchantEditModal, type MerchantEditTarget } from '@/components/MerchantEditModal';
+import { ModifierButton } from '@/components/ModifierButton';
 import { MerchantLogo } from '@/components/MerchantLogo';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionRow } from '@/components/TransactionRow';
-import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import { PageTransition } from '@/components/PageTransition';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
-  accountDetailHeroActionLinkStyle,
-  accountDetailHeroActionMutedTextStyle,
   accountDetailHeroActionsStyle,
   accountDetailHeroBlockStyle,
   accountDetailRecurringHeaderStyle,
@@ -42,6 +40,7 @@ import { tapHaptic } from '@/lib/haptics';
 import { parseItemizedNote } from '@/lib/itemizedNote';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
+import { EMPTY_DETAIL_VALUE } from '@/lib/detailDisplay';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import {
@@ -154,7 +153,6 @@ export default function MerchantDetailScreen() {
   const merchantKey = typeof params.merchant === 'string' ? params.merchant : '';
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [overrides, setOverrides] = useState<MerchantOverride[]>([]);
-  const [selected, setSelected] = useState<Transaction | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [editTarget, setEditTarget] = useState<MerchantEditTarget | null>(null);
   const [search, setSearch] = useState('');
@@ -285,14 +283,7 @@ export default function MerchantDetailScreen() {
         >
           <View style={accountDetailHeroBlockStyle()}>
             <View style={accountDetailHeroActionsStyle()}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Modifier le marchand"
-                style={({ pressed }) => [accountDetailHeroActionLinkStyle(), pressed && styles.pressed]}
-                onPress={openEditor}
-              >
-                <Text style={accountDetailHeroActionMutedTextStyle(isLight)}>Modifier</Text>
-              </Pressable>
+              <ModifierButton accessibilityLabel="Modifier le marchand" onPress={openEditor} />
             </View>
 
             <View style={styles.heroIdentityRow}>
@@ -330,7 +321,7 @@ export default function MerchantDetailScreen() {
             />
             <StatementStatColumn
               label="Panier moyen"
-              value={averageBasket != null ? formatMoney(averageBasket) : '—'}
+              value={averageBasket != null ? formatMoney(averageBasket) : EMPTY_DETAIL_VALUE}
               align="right"
             />
           </View>
@@ -361,21 +352,14 @@ export default function MerchantDetailScreen() {
                 contentContainerStyle={styles.receiptThumbnailRow}
               >
                 {receiptPreviews.slice(0, 12).map((entry, index) => (
-                  <Pressable
+                  <View
                     key={entry.id}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Voir ${entry.articleName}`}
-                    onPress={() => {
-                      tapHaptic();
-                      setSelected(entry.transaction);
-                    }}
-                    style={({ pressed }) => [
+                    style={[
                       styles.receiptThumbnailWrap,
                       index > 0 && [
                         styles.receiptThumbnailDivider,
                         { borderLeftColor: colors.border },
                       ],
-                      pressed && styles.pressed,
                     ]}
                   >
                     {isPreviewableReceipt(entry.receiptUri) ? (
@@ -392,7 +376,7 @@ export default function MerchantDetailScreen() {
                     <Text style={[styles.receiptThumbnailLabel, { color: colors.textMuted }]} numberOfLines={1}>
                       {entry.articleName}
                     </Text>
-                  </Pressable>
+                  </View>
                 ))}
               </ScrollView>
             ) : (
@@ -475,10 +459,7 @@ export default function MerchantDetailScreen() {
                       <TransactionRow
                         key={tx.id}
                         transaction={{ ...tx, label: getTransactionTitle(tx, merchantName) }}
-                        onPress={() => {
-                          tapHaptic();
-                          setSelected(tx);
-                        }}
+                        onPress={() => { tapHaptic(); router.push({ pathname: '/transaction-detail', params: { transactionId: tx.id } }); }}
                       />
                     ))}
                   </View>
@@ -496,7 +477,6 @@ export default function MerchantDetailScreen() {
           </View>
         </ScrollView>
 
-        <TransactionDetailSheet transaction={selected} onClose={() => setSelected(null)} onDeleted={() => { void load(); }} />
         <MerchantEditModal
           visible={Boolean(editTarget)}
           merchant={editTarget}

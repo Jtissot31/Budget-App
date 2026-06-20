@@ -1,5 +1,7 @@
 import type { EstimatedPaycheck } from '@/lib/estimatedPaycheck';
 
+import { formatPersonDirectedPaymentLabel } from '@/lib/loanPresentation';
+
 export type CheckingFundsAlertOutcome =
   | 'covered_after_paycheck'
   | 'shortfall_before_and_after_pay'
@@ -76,7 +78,7 @@ export function buildInsufficientFundsAlertCopy(
   tone: 'success' | 'warning';
   riskBeforePay: boolean;
 } {
-  const quotedName = `« ${paymentName} »`;
+  const quotedName = `« ${formatPersonDirectedPaymentLabel(paymentName)} »`;
   const pay = alert.resolvedPaycheck;
   const payPhrase = pay
     ? `${paycheckLabel(pay)} de ${formatMoney(pay.amount)} (${formatPayDate(pay.date)})`
@@ -93,8 +95,9 @@ export function buildInsufficientFundsAlertCopy(
   }
 
   if (alert.outcome === 'shortfall_before_and_after_pay' && alert.shortfallAfterPaycheck != null) {
+    const displayName = formatPersonDirectedPaymentLabel(paymentName);
     return {
-      forecastMessage: `Il manque ${formatMoney(alert.currentShortfall)} pour le paiement de ${paymentName}.`,
+      forecastMessage: `Il manque ${formatMoney(alert.currentShortfall)} pour le paiement de ${displayName}.`,
       paymentLine: `Manque ${formatMoney(alert.currentShortfall)} · ${daysUntilPaymentLabel}`,
       tone: 'warning',
       riskBeforePay: false,
@@ -102,9 +105,10 @@ export function buildInsufficientFundsAlertCopy(
   }
 
   const noPayFragment = !alert.paycheckArrivesBeforePayment ? " Paie après l'échéance." : '';
+  const displayName = formatPersonDirectedPaymentLabel(paymentName);
 
   return {
-    forecastMessage: `Il manque ${formatMoney(alert.currentShortfall)} pour le paiement de ${paymentName}.${noPayFragment}`.trim(),
+    forecastMessage: `Il manque ${formatMoney(alert.currentShortfall)} pour le paiement de ${displayName}.${noPayFragment}`.trim(),
     paymentLine: `Manque ${formatMoney(alert.currentShortfall)} · ${daysUntilPaymentLabel}`,
     tone: 'warning',
     riskBeforePay: !alert.paycheckArrivesBeforePayment,

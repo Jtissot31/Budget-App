@@ -1,51 +1,67 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomSheet } from '@/components/BottomSheet';
-import { PageTransition } from '@/components/PageTransition';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
+import { DetailSectionsCard } from '@/components/DetailSectionRows';
+import { GlassContainer } from '@/components/GlassContainer';
+import { OverflowMenuButton } from '@/components/OverflowMenuButton';
+import { PageTransition } from '@/components/PageTransition';
 import { SurfaceCard } from '@/components/SurfaceCard';
-import { WealthAssetValueSparkline } from '@/components/WealthAssetValueSparkline';
-import { ghostCardShadow } from '@/constants/ghostUi';
+import { TransactionRow } from '@/components/TransactionRow';
+import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
-  destructiveIconColor,
-  destructiveTextActionStyle,
+  detailProgressBarStyle,
+  detailSectionLabelStyle,
+  detailSectionsCardStyle,
+  interBoldText,
+  interExtraBoldText,
+  interMediumText,
   radius,
   spacing,
-  subtleDeleteButtonStyle,
   typography,
-  type AppColors,
 } from '@/constants/theme';
-import { userPickedIconGlyphSize, userPickedIconWellStyle } from '@/lib/userPickedIcon';
-import { buildWealthSixMonthIndicativeSeries } from '@/lib/buildWealthSixMonthIndicativeSeries';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
-import { deleteWealthAsset, getWealthAssetById } from '@/lib/db';
-import { dataEvents } from '@/lib/events';
-import { formatCompactGainDollars } from '@/lib/formatCompactGainDollars';
-import { tapHaptic, successHaptic } from '@/lib/haptics';
-import { useAppTheme } from '@/lib/themeContext';
-import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import {
-  getWealthValuationAsOfDisplay,
-  valuationSourceLabel,
-  wealthAssetHeroSubtitle,
+  deleteWealthAsset,
+  getLoanById,
+  getTransactionsForWealthAsset,
+  getWealthAssetById,
+  sortTransactionsNewestFirst,
+} from '@/lib/db';
+import { dataEvents } from '@/lib/events';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { tapHaptic, successHaptic } from '@/lib/haptics';
+import { parseItemizedNote } from '@/lib/itemizedNote';
+import { formatLoanDisplayTitle } from '@/lib/loanPresentation';
+import { useAppTheme } from '@/lib/themeContext';
+import {
+  formatTransactionGroupDateLabel,
+  groupTransactionsByDay,
+} from '@/lib/transactionListUtils';
+import { buildWealthAssetDetailSections } from '@/lib/wealthAssetDetailSections';
+import {
+  computeRealEstateNetEquity,
+  getWealthAssetDisplayValue,
 } from '@/lib/wealthAssetPresentation';
-import type { WealthAsset } from '@/types';
+import type { Loan, Transaction, WealthAsset } from '@/types';
+import { Image } from 'expo-image';
 
-/** Match `TransactionDetailSheet` / detail modals — unified sheet silhouette + backdrop. */
-const DETAIL_SHEET_TOP_RADIUS = 22;
+function getTransactionTitle(tx: Transaction, fallbackTitle: string) {
+  const itemized = parseItemizedNote(tx.note);
+  if (itemized.length === 0) return fallbackTitle;
 
-function formatMoney(value: number) {
-  return formatDisplayMoneyAbsolute(value);
-}
-
-function formatShortDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('fr-CA', { month: 'short', day: 'numeric', year: 'numeric' });
+  const names = itemized.slice(0, 2).map((item) => item.name);
+  const suffix = itemized.length > names.length ? ` + ${itemized.length - names.length}` : '';
+  return `${names.join(', ')}${suffix}`;
 }
 
 export default function WealthAssetDetailScreen() {
@@ -53,466 +69,458 @@ export default function WealthAssetDetailScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const assetId = typeof params.id === 'string' ? params.id.trim() : '';
   const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
   const { colors, isLight } = useAppTheme();
   const [asset, setAsset] = useState<WealthAsset | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [confirmVisible, setConfirmVisible] = useState(false);
-  /** When `last_valuation_at` is absent, exposes an honest timestamp for captions. */
-  const [openedAtByLoadId, setOpenedAtByLoadId] = useState<{ id: string; at: Date } | null>(null);
+  const [linkedLoan, setLinkedLoan] = useState<Loan | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
+  const [openedAt, setOpenedAt] = useState<Date | null>(null);
 
-  const loadAsset = useCallback(async () => {
+  const load = useCallback(async () => {
     if (!assetId) {
       setAsset(null);
-      setOpenedAtByLoadId(null);
-      setLoading(false);
+      setLinkedLoan(null);
+      setTransactions([]);
+      setOpenedAt(null);
       return;
     }
-    setLoading(true);
-    try {
-      const next = await getWealthAssetById(assetId);
-      setAsset(next);
-      if (next) setOpenedAtByLoadId({ id: next.id, at: new Date() });
-      else setOpenedAtByLoadId(null);
-    } finally {
-      setLoading(false);
-    }
+    const [nextAsset, nextTxs] = await Promise.all([
+      getWealthAssetById(assetId),
+      getTransactionsForWealthAsset(assetId),
+    ]);
+    const loanId = nextAsset?.linkedLoanId?.trim();
+    const nextLoan = loanId ? await getLoanById(loanId) : null;
+    setAsset(nextAsset);
+    setLinkedLoan(nextLoan);
+    setTransactions(sortTransactionsNewestFirst(nextTxs));
+    if (nextAsset) setOpenedAt(new Date());
+    else setOpenedAt(null);
   }, [assetId]);
 
   useEffect(() => {
-    void loadAsset();
-  }, [loadAsset]);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    void load();
+  }, [assetId, load]);
 
-  useEffect(() => dataEvents.subscribe(loadAsset), [loadAsset]);
+  useRefreshOnFocus(load);
+  useEffect(() => dataEvents.subscribe(load), [load]);
 
-  useRefreshOnFocus(loadAsset);
-
+  const isRealEstate = asset?.type === 'real_estate';
+  const displayTitle = asset?.name?.trim() || 'Patrimoine';
   const gain = asset ? asset.currentValue - asset.purchaseCost : 0;
-  const gainPercent =
-    asset && asset.purchaseCost > 0 ? ((asset.currentValue - asset.purchaseCost) / asset.purchaseCost) * 100 : 0;
+  const gainTone = gain >= 0 ? colors.success : colors.danger;
+  const trackColor = isLight ? '#E8EDF3' : '#08090B';
 
-  const valuationAsOf = useMemo(
-    () =>
-      getWealthValuationAsOfDisplay(
-        asset,
-        openedAtByLoadId?.id === asset?.id ? (openedAtByLoadId?.at ?? null) : null,
-      ),
-    [asset, openedAtByLoadId],
+  const realEstateEquity = useMemo(
+    () => (asset && isRealEstate ? computeRealEstateNetEquity(asset, linkedLoan) : null),
+    [asset, isRealEstate, linkedLoan],
   );
 
-  const indicativeSeries = useMemo(() => (asset ? buildWealthSixMonthIndicativeSeries(asset) : []), [asset]);
+  const detailSections = useMemo(
+    () =>
+      asset
+        ? buildWealthAssetDetailSections(asset, linkedLoan, gain, gainTone, openedAt)
+        : [],
+    [asset, linkedLoan, gain, gainTone, openedAt],
+  );
 
-  const chartAreaTint = useMemo(() => {
-    return isLight ? 'rgba(0, 168, 112, 0.12)' : 'rgba(0, 245, 160, 0.10)';
-  }, [isLight]);
+  const groupedTransactions = useMemo(
+    () => groupTransactionsByDay(transactions),
+    [transactions],
+  );
 
-  const stylesMemo = useMemo(() => createStyles(colors, isLight), [colors, isLight]);
+  const gainPct = asset && asset.purchaseCost > 0
+    ? ((asset.currentValue - asset.purchaseCost) / asset.purchaseCost) * 100
+    : 0;
+  const isGainLoss = !isRealEstate && gain < 0;
 
-  const navigateToEditModal = () => {
+  const progressPct = useMemo(() => {
+    if (!asset) return 0;
+    if (isRealEstate && realEstateEquity && realEstateEquity.propertyValue > 0) {
+      return (realEstateEquity.netEquity / realEstateEquity.propertyValue) * 100;
+    }
+    if (asset.purchaseCost > 0) {
+      return Math.abs(gainPct);
+    }
+    return 0;
+  }, [asset, isRealEstate, realEstateEquity, gainPct]);
+
+  const showProgressCard =
+    (isRealEstate && realEstateEquity && realEstateEquity.propertyValue > 0) ||
+    (!isRealEstate && (asset?.purchaseCost ?? 0) > 0);
+
+  const showValueHero = !showProgressCard && asset && asset.currentValue > 0;
+
+  const progressPaidAmount = isRealEstate && realEstateEquity
+    ? realEstateEquity.netEquity
+    : Math.abs(gain);
+
+  const progressTotalAmount = isRealEstate && realEstateEquity
+    ? realEstateEquity.propertyValue
+    : asset?.purchaseCost ?? 0;
+
+  const navigateToEdit = () => {
     if (!asset) return;
     tapHaptic();
-    /** Replace stack screen — do not `push` + `back` (that can pop the tab stack to Accueil). */
     router.replace({ pathname: '/accounts', params: { editWealthAssetId: asset.id } });
   };
 
   const confirmDelete = () => {
-    if (!asset) return;
     tapHaptic();
-    setConfirmVisible(true);
+    setConfirmDeleteVisible(true);
   };
 
-  const sheetVisible = true;
+  const openLinkedMortgage = () => {
+    if (!linkedLoan) return;
+    tapHaptic();
+    router.push({ pathname: '/loan-detail', params: { loanId: linkedLoan.id } });
+  };
 
-  /** Single horizontal gutter from safe area — avoids stacking with BottomSheet + body padding */
-  const sheetHorizontalGutter = Math.max(insets.left, insets.right, spacing.md);
+  const progressBar = detailProgressBarStyle();
+
+  const valueHeroCard = showValueHero ? (
+    <GlassContainer
+      style={styles.valueHeroShell}
+      innerStyle={styles.valueHeroInner}
+      padding={spacing.md}
+      borderRadius={radius.lg}
+    >
+      <View style={styles.progressHeader}>
+        <Text style={[styles.progressLabel, { color: colors.textMuted }]}>Valeur actuelle</Text>
+        <Text style={[styles.valueHeroAmount, { color: colors.primary }]}>
+          {formatDisplayMoneyAbsolute(getWealthAssetDisplayValue(asset!, linkedLoan))}
+        </Text>
+      </View>
+    </GlassContainer>
+  ) : null;
+
+  const progressCard = showProgressCard ? (
+    <GlassContainer
+      style={styles.progressCardShell}
+      innerStyle={styles.progressCardInner}
+      padding={spacing.md}
+      borderRadius={radius.lg}
+    >
+      <View style={styles.progressHeader}>
+        <Text style={[styles.progressLabel, { color: colors.textMuted }]}>
+          {isRealEstate ? 'Équité' : gain >= 0 ? 'Plus-value' : 'Perte'}
+        </Text>
+        <Text
+          style={[styles.progressPct, { color: isGainLoss ? colors.danger : colors.primary }]}
+        >
+          {isGainLoss ? '−' : ''}{progressPct.toFixed(0)} %
+        </Text>
+      </View>
+      <View style={[progressBar.track, { backgroundColor: trackColor }]}>
+        <View
+          style={[
+            progressBar.fill,
+            {
+              width: `${Math.max(Math.min(progressPct, 100), 3)}%`,
+              backgroundColor: isGainLoss ? colors.danger : colors.primary,
+            },
+          ]}
+        />
+      </View>
+      <View style={styles.progressFooter}>
+        <Text style={[styles.progressFootnote, { color: colors.textMuted }]}>
+          {isRealEstate ? 'Équité nette' : gain >= 0 ? 'Plus-value' : 'Perte'} ·{' '}
+          {formatDisplayMoneyAbsolute(isRealEstate ? progressPaidAmount : Math.abs(gain))}
+        </Text>
+        <Text style={[styles.progressFootnote, { color: colors.textMuted }]}>
+          {isRealEstate ? 'Valeur' : 'Achat'} · {formatDisplayMoneyAbsolute(progressTotalAmount)}
+        </Text>
+      </View>
+    </GlassContainer>
+  ) : null;
 
   return (
     <PageTransition>
-    <View style={[stylesMemo.screenRoot, { backgroundColor: 'transparent' }]}>
-      <BottomSheet
-        visible={sheetVisible}
-        onClose={() => router.back()}
-        scrollContentContainerStyle={{ paddingHorizontal: sheetHorizontalGutter }}
-        sheetStyle={[
-          stylesMemo.sheetSurface,
-          {
-            backgroundColor: colors.containerBackground,
-            borderTopLeftRadius: DETAIL_SHEET_TOP_RADIUS,
-            borderTopRightRadius: DETAIL_SHEET_TOP_RADIUS,
-          },
-        ]}
-      >
-        <View style={[stylesMemo.sheetHeader, { paddingTop: Math.max(insets.top * 0.35, spacing.xs) }]}>
+      <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
+        <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.lg + spacing.md }]}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Retour"
             hitSlop={12}
             style={({ pressed }) => [
-              stylesMemo.headerIconBtn,
-              { backgroundColor: colors.surfaceSolid, borderColor: colors.borderStrong },
-              pressed && stylesMemo.pressed,
+              styles.backButton,
+              { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
+              pressed && styles.pressed,
             ]}
             onPress={() => router.back()}
           >
             <Ionicons name="chevron-back" size={22} color={colors.text} />
           </Pressable>
-          <Text style={[stylesMemo.sheetTitle, { color: colors.text }]} numberOfLines={1}>
-            {asset?.linkedLoanId && asset.address?.trim() ? asset.address.trim() : 'Patrimoine'}
+          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+            {displayTitle}
           </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Modifier ce patrimoine"
-            disabled={!asset || loading}
-            hitSlop={12}
-            style={({ pressed }) => [
-              stylesMemo.headerIconBtn,
-              {
-                backgroundColor: colors.surfaceSolid,
-                borderColor: colors.borderStrong,
-                opacity: !asset || loading ? 0.45 : pressed ? 0.76 : 1,
-              },
-            ]}
-            onPress={navigateToEditModal}
-          >
-            <Ionicons name="create-outline" size={20} color={colors.text} />
-          </Pressable>
+          {asset ? (
+            <OverflowMenuButton
+              accessibilityLabel="Options du patrimoine"
+              items={[
+                {
+                  key: 'edit',
+                  label: 'Modifier',
+                  onPress: navigateToEdit,
+                },
+                {
+                  key: 'delete',
+                  label: 'Supprimer',
+                  icon: 'trash-outline',
+                  destructive: true,
+                  onPress: confirmDelete,
+                },
+              ]}
+            />
+          ) : (
+            <View style={styles.topBarSpacer} />
+          )}
         </View>
 
-        <View style={stylesMemo.sheetBody}>
-          {loading ? (
-            <Text style={[stylesMemo.mutedCenter, { color: colors.textMuted }]}>Chargement…</Text>
-          ) : !assetId || !asset ? (
-            <Text style={[stylesMemo.mutedCenter, { color: colors.textMuted }]}>Actif introuvable.</Text>
-          ) : (
+        <ScrollView
+          ref={scrollRef}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom + spacing.xl, 56) }]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={async () => {
+                setRefreshing(true);
+                await load();
+                setRefreshing(false);
+              }}
+              tintColor={colors.primary}
+            />
+          }
+        >
+          {asset ? (
             <>
+              {progressCard ?? valueHeroCard}
+
+              <DetailSectionsCard sections={detailSections} colors={colors} />
+
+              {isRealEstate && linkedLoan ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Voir l'hypothèque liée"
+                  android_ripple={null}
+                  onPress={openLinkedMortgage}
+                >
+                  <GlassContainer
+                    borderRadius={radius.lg}
+                    padding={spacing.md}
+                    innerStyle={styles.linkedCardInner}
+                  >
+                    <View style={styles.linkedCopy}>
+                      <Text style={[styles.sectionTitle, { color: colors.text }]}>Hypothèque liée</Text>
+                      <Text style={[styles.sectionMeta, { color: colors.textMuted }]}>
+                        {formatLoanDisplayTitle(linkedLoan)} · Solde{' '}
+                        {formatDisplayMoneyAbsolute(linkedLoan.balanceRemaining)}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                  </GlassContainer>
+                </Pressable>
+              ) : null}
+
+              <SurfaceCard style={detailSectionsCardStyle()}>
+                <Text style={[detailSectionLabelStyle(), { color: colors.textMuted }]}>TRANSACTIONS</Text>
+                {groupedTransactions.length > 0 ? (
+                  <View style={styles.transactionGroups}>
+                    {groupedTransactions.map(([date, txs]) => (
+                      <View key={date} style={styles.transactionGroup}>
+                        <Text style={[styles.transactionGroupLabel, { color: colors.textMuted }]}>
+                          {formatTransactionGroupDateLabel(date)}
+                        </Text>
+                        <View style={styles.groupTransactions}>
+                          {txs.map((tx) => (
+                            <TransactionRow
+                              key={tx.id}
+                              transaction={{
+                                ...tx,
+                                label: getTransactionTitle(tx, tx.categoryName?.trim() || displayTitle),
+                              }}
+                              onPress={() => { tapHaptic(); router.push({ pathname: '/transaction-detail', params: { transactionId: tx.id } }); }}
+                            />
+                          ))}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={[styles.emptyInline, { color: colors.textMuted }]}>
+                    Aucune transaction liée à cet actif.
+                  </Text>
+                )}
+              </SurfaceCard>
+
               {asset.photoUri?.trim() ? (
-                <View style={stylesMemo.bannerWrap}>
+                <View style={styles.bannerWrap}>
                   <Image
                     source={{ uri: asset.photoUri.trim() }}
-                    style={stylesMemo.bannerImage}
+                    style={styles.bannerImage}
                     contentFit="cover"
-                    accessibilityLabel={`Photo de ${asset.name}`}
+                    accessibilityLabel="Photo du bien"
                   />
                 </View>
               ) : null}
-
-              <View
-                style={[
-                  stylesMemo.heroCard,
-                  ghostCardShadow,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor: isLight ? colors.surfaceSolid : colors.surfaceElevated,
-                  },
-                ]}
-              >
-                <View style={userPickedIconWellStyle(48, isLight)}>
-                  {asset.type === 'precious_material' && asset.material ? (
-                    <Ionicons
-                      name={asset.material === 'diamond' ? 'diamond-outline' : 'disc-outline'}
-                      size={userPickedIconGlyphSize(48)}
-                      color={colors.primary}
-                    />
-                  ) : (
-                    <Ionicons name="home-outline" size={userPickedIconGlyphSize(48)} color={colors.primaryAlt} />
-                  )}
-                </View>
-                <View style={stylesMemo.heroCopy}>
-                  <Text style={[stylesMemo.assetName, { color: colors.text }]} numberOfLines={3}>
-                    {asset.name}
-                  </Text>
-                  <Text style={[stylesMemo.assetMeta, { color: colors.textMuted }]}>{wealthAssetHeroSubtitle(asset)}</Text>
-                </View>
-              </View>
-
-              <SurfaceCard style={stylesMemo.amountCard}>
-                <Text style={[stylesMemo.amountEyebrow, { color: colors.textMuted }]}>Valeur actuelle</Text>
-                <Text style={[stylesMemo.amountHuge, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit>
-                  {formatMoney(asset.currentValue)}
-                </Text>
-                <View style={[stylesMemo.valuationPreface, { borderColor: colors.border }]}>
-                  <Text style={[stylesMemo.valuationPrefaceLead, { color: colors.primary }]}>
-                    Source · {valuationSourceLabel(asset)}
-                  </Text>
-                  <Text style={[stylesMemo.valuationPrefaceBody, { color: colors.textSecondary }]}>
-                    {valuationAsOf.title}
-                  </Text>
-                  {valuationAsOf.subtitle ? (
-                    <Text style={[stylesMemo.valuationPrefaceNote, { color: colors.textMuted }]}>
-                      {valuationAsOf.subtitle}
-                    </Text>
-                  ) : null}
-                </View>
-                <Text style={[stylesMemo.purchaseLine, { color: colors.textSecondary }]}>
-                  Coût d’achat · {formatMoney(asset.purchaseCost)}
-                </Text>
-                <View style={stylesMemo.gainBlock}>
-                  <Text style={[stylesMemo.statLabel, { color: colors.textMuted }]}>
-                    {gain >= 0 ? 'Profit' : 'Perte'}
-                  </Text>
-                  <View style={stylesMemo.gainValueRow}>
-                    <Text
-                      style={[
-                        stylesMemo.statAmount,
-                        { color: gain >= 0 ? colors.success : colors.danger },
-                      ]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.82}
-                    >
-                      {formatCompactGainDollars(gain, { leadingPlusWhenPositive: true })}
-                    </Text>
-                    <View
-                      style={[
-                        stylesMemo.percentPill,
-                        {
-                          backgroundColor: isLight ? `${colors.surface}` : 'rgba(255,255,255,0.08)',
-                          borderWidth: StyleSheet.hairlineWidth,
-                          borderColor: gain >= 0 ? `${colors.success}55` : `${colors.danger}55`,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          stylesMemo.percentText,
-                          { color: gain >= 0 ? colors.success : colors.danger },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {gain >= 0 ? '+' : '−'}
-                        {Math.abs(gainPercent).toFixed(1)}%
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-                <View style={[stylesMemo.sparkDivider, { backgroundColor: colors.border }]} />
-                <Text style={[stylesMemo.sparkHeading, { color: colors.textMuted }]}>Tendance indicative (6 mois)</Text>
-                <WealthAssetValueSparkline
-                  points={indicativeSeries}
-                  stroke={colors.primary}
-                  areaFill={chartAreaTint}
-                  gridColor={colors.border}
-                  labelColor={colors.textMuted}
-                />
-              </SurfaceCard>
-
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Voir l’historique des transactions de cet actif"
-                hitSlop={12}
-                style={({ pressed }) => [
-                  stylesMemo.historyWide,
-                  {
-                    backgroundColor: isLight ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.08)',
-                    borderColor: colors.border,
-                  },
-                  pressed && stylesMemo.pressed,
-                ]}
-                onPress={() => {
-                  tapHaptic();
-                  router.push({ pathname: '/wealth-asset-transactions', params: { id: asset.id } });
-                }}
-              >
-                <Ionicons name="list-outline" size={18} color={colors.primary} />
-                <Text style={[stylesMemo.historyWideText, { color: colors.text }]}>
-                  Voir historique de transaction
-                </Text>
-              </Pressable>
-
-              <View style={[stylesMemo.metaGrid, { borderColor: colors.border }]}>
-                <MetaCell icon="calendar-outline" label="Achat" value={purchaseLabel(asset)} colors={colors} />
-                {asset.type === 'real_estate' && asset.address?.trim() ? (
-                  <MetaCell icon="location-outline" label="Adresse" value={asset.address.trim()} colors={colors} />
-                ) : null}
-                {asset.notes?.trim() ? (
-                  <MetaCell icon="document-text-outline" label="Notes" value={asset.notes.trim()} colors={colors} />
-                ) : null}
-              </View>
-
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Supprimer ce patrimoine"
-                style={({ pressed }) => [
-                  subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
-                  pressed && { opacity: 0.72 },
-                ]}
-                onPress={confirmDelete}
-              >
-                <Ionicons name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
-                <Text style={destructiveTextActionStyle(isLight)}>Supprimer ce patrimoine</Text>
-              </Pressable>
-
-              <View style={{ height: Math.max(insets.bottom + spacing.md, spacing.xl) }} />
             </>
+          ) : (
+            <Text style={[styles.empty, { color: colors.textMuted }]}>
+              {assetId ? 'Actif introuvable.' : 'Aucun actif sélectionné.'}
+            </Text>
           )}
-        </View>
-      </BottomSheet>
-      <ConfirmDeleteModal
-        visible={confirmVisible}
-        title="Supprimer ce patrimoine ?"
-        message={asset?.name}
-        onConfirm={async () => {
-          if (!asset) return;
-          setConfirmVisible(false);
-          try {
+        </ScrollView>
+
+        <ConfirmDeleteModal
+          visible={confirmDeleteVisible}
+          title="Supprimer ce patrimoine ?"
+          message={asset ? `Supprimer ${displayTitle} ?` : undefined}
+          onConfirm={async () => {
+            if (!asset) return;
+            setConfirmDeleteVisible(false);
             await deleteWealthAsset(asset.id);
             successHaptic();
             router.back();
-          } catch {
-            // silently ignore
-          }
-        }}
-        onCancel={() => setConfirmVisible(false)}
-      />
-    </View>
+          }}
+          onCancel={() => setConfirmDeleteVisible(false)}
+        />
+      </View>
     </PageTransition>
   );
 }
 
-function purchaseLabel(asset: WealthAsset) {
-  const d = asset.purchaseDate?.trim();
-  if (!d) return formatMoney(asset.purchaseCost);
-  return `${formatShortDate(d)} · ${formatMoney(asset.purchaseCost)}`;
-}
-
-function MetaCell({
-  icon,
-  label,
-  value,
-  colors,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
-  colors: Pick<AppColors, 'text' | 'textMuted'>;
-}) {
-  return (
-    <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start', paddingVertical: spacing.md }}>
-      <Ionicons name={icon} size={18} color={colors.textMuted} style={{ marginTop: 2 }} />
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: typography.micro, fontWeight: '900', letterSpacing: 0.55, color: colors.textMuted }}>
-          {label}
-        </Text>
-        <Text style={{ marginTop: 4, fontSize: typography.body, fontWeight: '700', color: colors.text }}>{value}</Text>
-      </View>
-    </View>
-  );
-}
-
-function createStyles(colors: AppColors, isLight: boolean) {
-  return StyleSheet.create({
-    screenRoot: { flex: 1 },
-    sheetSurface: { paddingBottom: 0 },
-    sheetHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 0,
-      gap: spacing.md,
-      marginBottom: spacing.sm,
-    },
-    headerIconBtn: {
-      width: 42,
-      height: 42,
-      borderRadius: radius.lg,
-      borderWidth: StyleSheet.hairlineWidth,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    sheetTitle: { flex: 1, fontSize: typography.dashboardGreeting, fontWeight: '800', letterSpacing: -0.4 },
-    sheetBody: {
-      paddingHorizontal: 0,
-      gap: spacing.lg,
-    },
-    bannerWrap: {
-      borderRadius: radius.xxl,
-      overflow: 'hidden',
-      height: 180,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-    },
-    bannerImage: {
-      width: '100%',
-      height: '100%',
-    },
-    mutedCenter: {
-      textAlign: 'center',
-      paddingVertical: spacing.xl,
-      fontSize: typography.caption,
-    },
-    pressed: { opacity: 0.76 },
-    heroCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-      borderRadius: radius.xxl,
-      borderWidth: StyleSheet.hairlineWidth,
-      padding: spacing.lg,
-    },
-    heroCopy: { flex: 1, gap: spacing.xs },
-    assetName: { fontSize: typography.screenTitle, fontWeight: '900', letterSpacing: -0.6 },
-    assetMeta: { fontSize: typography.caption, lineHeight: typography.caption + 5, fontWeight: '700' },
-    amountCard: { gap: spacing.sm },
-    amountEyebrow: {
-      fontSize: typography.micro,
-      fontWeight: '900',
-      textTransform: 'uppercase',
-      letterSpacing: 0.58,
-    },
-    amountHuge: { fontSize: 36, fontWeight: '900', letterSpacing: -1 },
-    valuationPreface: {
-      marginTop: spacing.sm,
-      gap: 4,
-      paddingVertical: spacing.sm,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-    },
-    valuationPrefaceLead: { fontSize: typography.caption, fontWeight: '900', letterSpacing: 0.2 },
-    valuationPrefaceBody: { fontSize: typography.caption, fontWeight: '700', lineHeight: typography.caption + 4 },
-    valuationPrefaceNote: { fontSize: typography.meta, fontWeight: '600', lineHeight: typography.meta + 4 },
-    purchaseLine: { fontSize: typography.caption, fontWeight: '700' },
-    gainBlock: { marginTop: spacing.md, gap: 4 },
-    statLabel: {
-      fontSize: typography.micro,
-      fontWeight: '900',
-      textTransform: 'uppercase',
-      letterSpacing: 0.52,
-    },
-    gainValueRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
-      minWidth: 0,
-    },
-    statAmount: { flexShrink: 1, fontSize: typography.dashboardGreeting, fontWeight: '900', letterSpacing: -0.4 },
-    percentPill: { borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 1 },
-    percentText: { fontWeight: '900', fontSize: typography.meta },
-    sparkDivider: { height: StyleSheet.hairlineWidth, marginTop: spacing.md, opacity: 0.85 },
-    sparkHeading: {
-      fontSize: typography.micro,
-      fontWeight: '900',
-      textTransform: 'uppercase',
-      letterSpacing: 0.52,
-      marginTop: spacing.xs,
-    },
-    metaGrid: {
-      borderRadius: radius.xxl,
-      overflow: 'hidden',
-      paddingHorizontal: spacing.md,
-      backgroundColor: isLight ? 'rgba(15,23,42,0.03)' : 'rgba(255,255,255,0.04)',
-      borderWidth: StyleSheet.hairlineWidth,
-    },
-    historyWide: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.sm,
-      minHeight: 52,
-      borderRadius: radius.xl,
-      borderWidth: StyleSheet.hairlineWidth,
-    },
-    historyWideText: {
-      fontSize: typography.body,
-      fontWeight: '800',
-    },
-  });
-}
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: 'transparent' },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: spacing.sm,
+    ...interExtraBoldText,
+    fontSize: typography.body,
+    letterSpacing: -0.2,
+  },
+  topBarSpacer: { width: 38 },
+  content: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.lg,
+  },
+  bannerWrap: {
+    borderRadius: radius.xl,
+    overflow: 'hidden',
+    height: 168,
+  },
+  bannerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  valueHeroShell: {
+    borderRadius: radius.lg,
+  },
+  valueHeroInner: {
+    gap: spacing.sm,
+  },
+  valueHeroAmount: {
+    ...interBoldText,
+    flexShrink: 0,
+    textAlign: 'right',
+    fontSize: typography.meta,
+  },
+  progressCardShell: {
+    borderRadius: radius.lg,
+  },
+  progressCardInner: {
+    gap: spacing.sm,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  progressLabel: {
+    ...interBoldText,
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    fontSize: typography.micro,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  progressPct: {
+    ...interBoldText,
+    flexShrink: 0,
+    minWidth: 44,
+    textAlign: 'right',
+    fontSize: typography.meta,
+  },
+  progressFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  progressFootnote: {
+    ...interMediumText,
+    fontSize: typography.meta,
+  },
+  linkedCardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  linkedCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  sectionTitle: {
+    fontSize: typography.caption,
+    fontWeight: '800',
+  },
+  sectionMeta: {
+    fontSize: typography.micro,
+    fontWeight: '700',
+  },
+  transactionGroups: {
+    gap: spacing.md,
+  },
+  transactionGroup: {
+    gap: spacing.sm,
+  },
+  transactionGroupLabel: {
+    fontSize: typography.caption,
+    textTransform: 'capitalize',
+  },
+  groupTransactions: {
+    gap: spacing.md,
+  },
+  empty: {
+    fontSize: typography.caption,
+    lineHeight: 20,
+    textAlign: 'center',
+    paddingVertical: spacing.lg,
+  },
+  emptyInline: {
+    fontSize: typography.caption,
+    lineHeight: 20,
+    paddingVertical: spacing.sm,
+  },
+  pressed: { opacity: 0.78 },
+});

@@ -1,127 +1,356 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+
+import { Ionicons } from '@expo/vector-icons';
+
+import {
+
+  interBoldText,
+
+  interMediumText,
+
+  radius,
+
+  spacing,
+
+  typography,
+
+} from '@/constants/theme';
+
 import { useAppTheme } from '@/lib/themeContext';
 
+
+
 type Props = {
+
   visible: boolean;
+
   title: string;
+
   message?: string;
+
   confirmLabel?: string;
+
+  cancelLabel?: string;
+
+  /** Render as an in-modal overlay (e.g. inside another `Modal`) instead of a nested `Modal`. */
+
+  embedded?: boolean;
+
   onConfirm: () => void;
+
   onCancel: () => void;
+
 };
 
-export function ConfirmDeleteModal({
-  visible,
+
+
+function ConfirmDeleteDialog({
+
   title,
+
   message,
+
   confirmLabel = 'Supprimer',
+
+  cancelLabel = 'Annuler',
+
   onConfirm,
+
   onCancel,
-}: Props) {
+
+}: Omit<Props, 'visible' | 'embedded'>) {
+
   const { colors } = useAppTheme();
 
+
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} />
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.containerBackground,
-              borderColor: colors.containerBorder,
-              borderWidth: 1,
-            },
-          ]}
-        >
-          <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
-          {message ? (
-            <Text style={[styles.message, { color: colors.textMuted }]}>{message}</Text>
-          ) : null}
-          <View style={styles.buttons}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Annuler"
-              style={({ pressed }) => [
-                styles.button,
-                styles.cancelButton,
-                { borderColor: colors.textMuted },
-                pressed && styles.pressed,
-              ]}
-              onPress={onCancel}
-            >
-              <Text style={[styles.buttonText, { color: colors.textMuted }]}>Annuler</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={confirmLabel}
-              style={({ pressed }) => [
-                styles.button,
-                styles.confirmButton,
-                { backgroundColor: colors.danger },
-                pressed && styles.pressed,
-              ]}
-              onPress={onConfirm}
-            >
-              <Text style={[styles.buttonText, styles.confirmText]}>
-                {confirmLabel}
-              </Text>
-            </Pressable>
-          </View>
+
+    <View style={styles.backdrop}>
+
+      <Pressable
+
+        style={StyleSheet.absoluteFill}
+
+        onPress={onCancel}
+
+        accessibilityRole="button"
+
+        accessibilityLabel="Fermer"
+
+      />
+
+      <View
+
+        style={[
+
+          styles.card,
+
+          {
+
+            backgroundColor: colors.containerBackground,
+
+            borderColor: colors.containerBorder,
+
+          },
+
+        ]}
+
+      >
+
+        <View style={[styles.iconWrap, { backgroundColor: colors.surfaceElevated }]}>
+
+          <Ionicons name="trash-outline" size={20} color={colors.textSecondary} />
+
         </View>
+
+        <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
+
+        {message ? (
+
+          <Text style={[styles.message, { color: colors.textMuted }]}>{message}</Text>
+
+        ) : null}
+
+        <View style={styles.actions}>
+
+          <Pressable
+
+            accessibilityRole="button"
+
+            accessibilityLabel={confirmLabel}
+
+            style={({ pressed }) => [
+
+              styles.actionBtn,
+
+              {
+
+                backgroundColor: colors.input,
+
+                borderColor: colors.containerBorder,
+
+              },
+
+              pressed && styles.pressed,
+
+            ]}
+
+            onPress={onConfirm}
+
+          >
+
+            <Text style={[styles.confirmText, { color: colors.danger }]}>{confirmLabel}</Text>
+
+          </Pressable>
+
+          <Pressable
+
+            accessibilityRole="button"
+
+            accessibilityLabel={cancelLabel}
+
+            style={({ pressed }) => [
+
+              styles.actionBtn,
+
+              {
+
+                backgroundColor: colors.input,
+
+                borderColor: colors.containerBorder,
+
+              },
+
+              pressed && styles.pressed,
+
+            ]}
+
+            onPress={onCancel}
+
+          >
+
+            <Text style={[styles.cancelText, { color: colors.textSecondary }]}>{cancelLabel}</Text>
+
+          </Pressable>
+
+        </View>
+
       </View>
-    </Modal>
+
+    </View>
+
   );
+
 }
 
+
+
+export function ConfirmDeleteModal({
+
+  visible,
+
+  embedded = false,
+
+  ...dialogProps
+
+}: Props) {
+
+  if (!visible) return null;
+
+
+
+  if (embedded) {
+
+    return <ConfirmDeleteDialog {...dialogProps} />;
+
+  }
+
+
+
+  return (
+
+    <Modal
+
+      visible={visible}
+
+      transparent
+
+      animationType="fade"
+
+      onRequestClose={dialogProps.onCancel}
+
+    >
+
+      <ConfirmDeleteDialog {...dialogProps} />
+
+    </Modal>
+
+  );
+
+}
+
+
+
 const styles = StyleSheet.create({
+
   backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+
+    ...StyleSheet.absoluteFillObject,
+
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+
     alignItems: 'center',
+
     justifyContent: 'center',
+
+    paddingHorizontal: spacing.xl,
+
   },
+
   card: {
-    marginHorizontal: 32,
-    borderRadius: 20,
-    padding: 24,
+
     width: '100%',
-    maxWidth: 360,
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  message: {
-    fontSize: 14,
-    marginTop: 6,
-    lineHeight: 20,
-  },
-  buttons: {
-    flexDirection: 'row',
-    marginTop: 20,
-    gap: 12,
-  },
-  button: {
-    flex: 1,
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelButton: {
+
+    maxWidth: 340,
+
+    borderRadius: radius.card + 4,
+
     borderWidth: 1,
+
+    padding: spacing.xl,
+
+    alignItems: 'center',
+
+    gap: spacing.md,
+
   },
-  confirmButton: {},
-  buttonText: {
-    fontSize: 15,
-    fontWeight: '600',
+
+  iconWrap: {
+
+    width: 48,
+
+    height: 48,
+
+    borderRadius: 16,
+
+    alignItems: 'center',
+
+    justifyContent: 'center',
+
   },
+
+  title: {
+
+    ...interBoldText,
+
+    fontSize: typography.body,
+
+    textAlign: 'center',
+
+  },
+
+  message: {
+
+    ...interMediumText,
+
+    fontSize: typography.caption,
+
+    lineHeight: typography.caption + 6,
+
+    textAlign: 'center',
+
+  },
+
+  actions: {
+
+    alignSelf: 'stretch',
+
+    gap: spacing.sm,
+
+    marginTop: spacing.sm,
+
+  },
+
+  actionBtn: {
+
+    alignSelf: 'stretch',
+
+    minHeight: 44,
+
+    borderRadius: radius.lg,
+
+    borderWidth: StyleSheet.hairlineWidth,
+
+    alignItems: 'center',
+
+    justifyContent: 'center',
+
+    paddingVertical: spacing.md,
+
+  },
+
   confirmText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
+
+    ...interBoldText,
+
+    fontSize: typography.caption,
+
   },
+
+  cancelText: {
+
+    ...interMediumText,
+
+    fontSize: typography.caption,
+
+  },
+
   pressed: {
-    opacity: 0.76,
+
+    opacity: 0.82,
+
   },
+
 });
+

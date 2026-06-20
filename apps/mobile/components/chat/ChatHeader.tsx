@@ -61,7 +61,7 @@ export function ChatHeader({ status, topInset }: Props) {
       </Pressable>
 
       <View style={styles.center}>
-        <Text style={[styles.title, { color: colors.text }, interMediumText]}>Assistant IA</Text>
+        <Text style={[styles.title, { color: colors.text }, interMediumText]}>Fyn</Text>
         <View style={styles.statusRow}>
           <View style={[styles.statusDot, { backgroundColor: colors.primary }]} />
           <Text style={[styles.status, { color: colors.textMuted }, interRegularText]}>

@@ -32,13 +32,13 @@ export type QuickSuggestion = {
 };
 
 export const QUICK_SUGGESTIONS: readonly QuickSuggestion[] = [
-  { label: 'Résumé portefeuille', message: 'Donne-moi un résumé de mon portefeuille.' },
-  { label: 'Marchés aujourd\'hui', message: 'Comment vont les marchés aujourd\'hui ?' },
-  { label: 'Analyse de risque', message: 'Quelle est mon exposition au risque ?' },
+  { label: 'Résumé financier', message: 'Donne-moi un résumé de ma situation financière.' },
+  { label: 'Réduire mes dettes', message: 'Comment puis-je réduire mes dettes plus vite ?' },
+  { label: 'Mon budget', message: 'Suis-je dans mon budget ce mois-ci ?' },
 ];
 
 export const EMPTY_STATE_SUGGESTIONS: readonly QuickSuggestion[] = [
-  { label: 'Résumé portefeuille', message: 'Donne-moi un résumé de mon portefeuille.' },
-  { label: 'Marchés aujourd\'hui', message: 'Comment vont les marchés aujourd\'hui ?' },
-  { label: 'Analyse de risque', message: 'Quelle est mon exposition au risque ?' },
+  { label: 'Résumé financier', message: 'Donne-moi un résumé de ma situation financière.' },
+  { label: 'Réduire mes dettes', message: 'Comment puis-je réduire mes dettes plus vite ?' },
+  { label: 'Fonds d\'urgence', message: 'Combien devrais-je mettre de côté pour mon fonds d\'urgence ?' },
 ];

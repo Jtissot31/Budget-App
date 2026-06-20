@@ -1,4 +1,6 @@
-const LOCALE = 'fr-CA';
+import { FR_CA_NUMBER_LOCALE, formatNumberDisplay } from '@/lib/formatNumber';
+
+const LOCALE = FR_CA_NUMBER_LOCALE;
 
 /** Full fr-CA amounts below this use space thousands and comma decimals. */
 export const COMPACT_K_THRESHOLD = 100_000;
@@ -21,7 +23,7 @@ function hasFractionalCents(abs: number): boolean {
 
 function formatFullFrCaAmount(abs: number): string {
   const hasCents = hasFractionalCents(abs);
-  return abs.toLocaleString(LOCALE, {
+  return formatNumberDisplay(abs, {
     minimumFractionDigits: hasCents ? 2 : 0,
     maximumFractionDigits: hasCents ? 2 : 0,
   });
@@ -95,11 +97,10 @@ export function formatSignedDisplayMoney(
   return `${sign}${formatDisplayMoneyAbsolute(Math.abs(value))}`;
 }
 
-/** Prefix recurring payment amounts: `+` for income, `−` for expense/payment. */
+/** Recurring payment amount without direction prefix (use {@link TransactionAmountLabel} for +/−). */
 export function formatRecurringPaymentAmount(
   amount: number,
-  kind?: 'payment' | 'income' | null,
+  _kind?: 'payment' | 'income' | null,
 ): string {
-  const prefix = kind === 'income' ? '+' : kind === 'payment' ? '−' : '';
-  return `${prefix}${formatDisplayMoneyAbsolute(amount)}`;
+  return formatDisplayMoneyAbsolute(amount);
 }

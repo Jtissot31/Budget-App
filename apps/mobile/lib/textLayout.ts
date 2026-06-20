@@ -129,3 +129,9 @@ export const rowTitleTextProps = {
   numberOfLines: 2 as const,
   ellipsizeMode: 'tail' as const,
 };
+
+/** Single-line list row titles — tail ellipsis only, no font scaling. */
+export const singleLineRowTitleTextProps = {
+  numberOfLines: 1 as const,
+  ellipsizeMode: 'tail' as const,
+};

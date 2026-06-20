@@ -24,6 +24,7 @@ import {
 } from '@/lib/receiptScan';
 import { useAppTheme } from '@/lib/themeContext';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { parseFormattedNumberOrZero } from '@/lib/formatNumber';
 import type { Category } from '@/types';
 import type { ItemizedNote } from '@/lib/itemizedNote';
 
@@ -45,7 +46,7 @@ export default function ScanScreen() {
   const merchantHint =
     (typeof params.merchant === 'string' ? params.merchant : '') ||
     (typeof params.label === 'string' ? params.label : '');
-  const totalHint = typeof params.amount === 'string' ? parseFloat(params.amount.replace(',', '.')) : 0;
+  const totalHint = typeof params.amount === 'string' ? parseFormattedNumberOrZero(params.amount) : 0;
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [phase, setPhase] = useState<ScanPhase>('idle');

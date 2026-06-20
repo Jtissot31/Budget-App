@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Dimensions,
   InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
@@ -15,46 +16,49 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AddArticleSheet } from '@/components/AddArticleSheet';
+import { PaymentMethodField, type PaymentMethodAccount } from '@/components/PaymentMethodField';
 import { BudgetCategoryPicker } from '@/components/BudgetCategoryPicker';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { GhostNumpad } from '@/components/GhostNumpad';
-import {
-  ItemizedArticlesEditor,
-  itemizedRowsToNotePayload,
-  type ItemizedRow,
-} from '@/components/ItemizedArticlesEditor';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { TransferModePicker, type TransferMode } from '@/components/TransferModePicker';
-import { ReceiptCaptureActions } from '@/components/ReceiptCaptureActions';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import { formValidationError, type FormFeedback } from '@/lib/formFeedback';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import {
+  articlesReceiptTypography,
   CHIP_BORDER_WIDTH,
   CHIP_PADDING_HORIZONTAL,
   TYPE_TRANSACTION_CHIP_MIN_WIDTH,
   ICON_WELL_SIZE,
+  chipSelectableShellStyle,
+  colors,
+  containerSurfaceStyle,
+  detailSectionLabelStyle,
+  detailSubSectionHeaderStyle,
   interBoldText,
   interExtraBoldText,
   interMediumText,
   radius,
   spacing,
+  tagContainerStyle,
+  tagTypography,
   typography,
+  typographyKit,
 } from '@/constants/theme';
 import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
 import { hasMerchantLogoCandidate } from '@/components/TransactionAvatar';
-import { LogoIconFrame } from '@/components/IconFrame';
-import { MdiIconPicker } from '@/components/MdiIconPicker';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import {
   TRANSFER_CATEGORY,
   getCategoryIconName,
   type IconName,
 } from '@/constants/categoryOptions';
-import { EXPENSE_DEFAULT_ICON, isExpenseDefaultIcon, type ExpenseFallbackIcon } from '@/lib/expenseIcon';
-import { EXPENSE_MDI_ICON, type MdiIconName } from '@/lib/mdiIconCatalog';
+import { EXPENSE_DEFAULT_ICON, isExpenseDefaultIcon } from '@/lib/expenseIcon';
+import { EXPENSE_MDI_ICON } from '@/lib/mdiIconCatalog';
 import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
-import { getMerchantLogoUrl, KNOWN_MERCHANT_NAMES } from '@/lib/merchantLogo';
+import { KNOWN_MERCHANT_NAMES } from '@/lib/merchantLogo';
 import { useAppTheme } from '@/lib/themeContext';
 import {
   adjustSavingsGoalCurrentAmount,
@@ -63,6 +67,7 @@ import {
   getCategories,
   getCategoryBudgets,
   getContacts,
+  getLoans,
   getSavingsGoals,
   getSimulatedAccounts,
   getTransactionById,
@@ -89,32 +94,74 @@ import {
 import {
   buildContactDirectoryRows,
   findContactByName,
+  isRegisteredEmployerName,
+  resemblesExistingContact,
   resolveContactIdForName,
   searchContactSuggestions,
+  searchIncomeSourceSuggestions,
 } from '@/lib/contactHistory';
+import { TransactionAmountLabel, type TransactionAmountDirection } from '@/components/TransactionAmountLabel';
 import { formatMoneyAmountInput } from '@/lib/formatMoneyAmountInput';
+import {
+  formatNumberDisplay,
+  formatNumberInputFromValue,
+  parseFormattedNumberOrZero,
+} from '@/lib/formatNumber';
 import {
   inferCategoryId,
   inferCategoryIdFromTransferReason,
   normalizeSearch,
 } from '@/lib/categoryInference';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
-import { createEmptyItemizedRow, parseItemizedRowsFromNote } from '@/lib/itemizedNote';
-import { captureReceiptPhoto, pickReceiptFromGallery } from '@/lib/receiptCapture';
-import {
-  mapScannedItemsToCategories,
-  parseScanItemsFromRoute,
-  scanReceiptImage,
-} from '@/lib/receiptScan';
+import { buildArticlesNoteLine, parseItemizedNote, type ItemizedNote } from '@/lib/itemizedNote';
+import { parseScanItemsFromRoute } from '@/lib/receiptScan';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { getLocalDateInputValue, toLocalDateInputValue } from '@/lib/localDateInput';
 import { createLocalTransaction, syncWithServer } from '@/lib/sync';
-import type { Category, Contact, SavingsGoal, SimulatedAccount, Transaction, TransactionType } from '@/types';
+import {
+  getIncomeReasonSuggestions,
+  resolveIncomeReasonForSelectedContact,
+  saveIncomeReasonSuggestion,
+} from '@/lib/incomeReasonSuggestions';
+import {
+  getEmployerIncomeAccountMap,
+  resolveIncomeAccountForSelectedContact,
+  saveEmployerIncomeAccount,
+  type EmployerIncomeAccountMap,
+} from '@/lib/incomeAccountPreferences';
+import {
+  getTransferReasonSuggestions,
+  saveTransferReasonSuggestion,
+} from '@/lib/transferReasonSuggestions';
+import type { AccountKind, Category, Contact, Loan, SavingsGoal, SimulatedAccount, Transaction, TransactionType } from '@/types';
+import { getChildSupportSalaryNotices } from '@/lib/childSupportLoan';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+
+type TransferEntryStep = 'reason' | 'amount';
+
+/** Tracks whether an income source was picked from the suggestion list (not typed or created). */
+type IncomeContactPickStatus = 'none' | 'employer' | 'contact';
+
+type FormFieldKey =
+  | 'label'
+  | 'transferReason'
+  | 'incomeReason'
+  | 'amount'
+  | 'category'
+  | 'sourceAccount'
+  | 'destinationAccount';
 
 type PaymentAccountOption = {
   id: string;
   label: string;
   isSimulated: boolean;
 };
+
+function manualAccountKind(accountId: string): AccountKind {
+  if (accountId === 'credit') return 'credit';
+  if (accountId === 'savings') return 'savings';
+  return 'checking';
+}
 type TransferEndpoint = {
   id: string;
   label: string;
@@ -130,12 +177,11 @@ function amountFontSize(raw: string) {
 }
 
 function parseMoney(raw: string): number {
-  const parsed = parseFloat(raw.replace(',', '.'));
-  return Number.isFinite(parsed) ? parsed : 0;
+  return parseFormattedNumberOrZero(raw);
 }
 
 function formatMoneyInput(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, '');
+  return formatNumberInputFromValue(value);
 }
 
 function toDateInputValue(value: string): string {
@@ -148,12 +194,33 @@ function toTransactionDate(value: string): string {
   return new Date(`${day}T12:00:00`).toISOString();
 }
 
+function resolveExpenseCategoryId(
+  articles: ItemizedNote[],
+  merchantLabel: string,
+  categories: Category[],
+  inferredId: string | null,
+  manualCategoryId: string | null,
+  categoryManuallySelected: boolean,
+): string | null {
+  const fromArticle = articles.find((article) => article.categoryId)?.categoryId ?? null;
+  if (fromArticle) return fromArticle;
+  if (categoryManuallySelected && manualCategoryId) return manualCategoryId;
+  if (inferredId) return inferredId;
+  if (manualCategoryId) return manualCategoryId;
+  const trimmedMerchant = merchantLabel.trim();
+  if (trimmedMerchant) {
+    const fromMerchant = inferCategoryId(trimmedMerchant, categories, null);
+    if (fromMerchant) return fromMerchant;
+  }
+  return categories[0]?.id ?? null;
+}
+
 function isIconName(value?: string | null): value is IconName {
   return Boolean(value && value in Ionicons.glyphMap);
 }
 
-const TRANSFER_GOAL_ICON_WELL_SIZE = 28;
-const TRANSFER_GOAL_ICON_GLYPH_SIZE = 15;
+const TRANSFER_GOAL_ICON_WELL_SIZE = 22;
+const TRANSFER_GOAL_ICON_GLYPH_SIZE = 13;
 
 function TransferGoalChipIcon({
   icon,
@@ -203,7 +270,6 @@ export default function AddTransactionScreen() {
     label?: string;
     accountId?: string;
     scanItems?: string;
-    receiptUri?: string;
     merchant?: string;
     amount?: string;
   }>();
@@ -214,18 +280,19 @@ export default function AddTransactionScreen() {
   const routeLabel = typeof params.label === 'string' ? params.label : '';
   const routeAccountId = typeof params.accountId === 'string' ? params.accountId : '';
   const routeScanItems = typeof params.scanItems === 'string' ? params.scanItems : '';
-  const routeReceiptUri = typeof params.receiptUri === 'string' ? params.receiptUri : '';
   const routeScanAmount = typeof params.amount === 'string' ? params.amount : '';
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgetCategoryIds, setBudgetCategoryIds] = useState<Set<string>>(new Set());
   const [savedContacts, setSavedContacts] = useState<Contact[]>([]);
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [simulatedAccounts, setSimulatedAccounts] = useState<SimulatedAccount[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [prefilledEditId, setPrefilledEditId] = useState<string | null>(null);
   const [type, setType] = useState<TransactionType>('expense');
   const [label, setLabel] = useState('');
+  const debouncedLabel = useDebouncedValue(label, 200);
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(getLocalDateInputValue);
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -234,33 +301,48 @@ export default function AddTransactionScreen() {
   const [destinationAccountId, setDestinationAccountId] = useState<string>(MANUAL_ENTRY_ACCOUNTS[1].id);
   const [transferMode, setTransferMode] = useState<TransferMode>('accounts');
   const [transferReason, setTransferReason] = useState('');
+  const [transferReasonSuggestions, setTransferReasonSuggestions] = useState<string[]>([]);
+  const [transferEntryStep, setTransferEntryStep] = useState<TransferEntryStep>('reason');
+  const [incomeReason, setIncomeReason] = useState('');
+  const [incomeReasonSuggestions, setIncomeReasonSuggestions] = useState<string[]>([]);
+  const [employerIncomeAccountMap, setEmployerIncomeAccountMap] = useState<EmployerIncomeAccountMap>({});
   const [linkedContactId, setLinkedContactId] = useState<string | null>(null);
+  const [incomeContactPickStatus, setIncomeContactPickStatus] = useState<IncomeContactPickStatus>('none');
   const [creatingContact, setCreatingContact] = useState(false);
   const [fallbackIcon, setFallbackIcon] = useState<string>(EXPENSE_MDI_ICON);
-  const [itemizedExpenses, setItemizedExpenses] = useState<ItemizedRow[]>([]);
-  const [receiptUri, setReceiptUri] = useState('');
-  const [receiptStatus, setReceiptStatus] = useState<Transaction['receiptStatus'] | null>(null);
-  const [scanningReceipt, setScanningReceipt] = useState(false);
+  const [articles, setArticles] = useState<ItemizedNote[]>([]);
+  const [inlineArticleExpanded, setInlineArticleExpanded] = useState(false);
   const [scanPrefillApplied, setScanPrefillApplied] = useState(false);
-  const [showLogoPicker, setShowLogoPicker] = useState(false);
   const [iconPickedManually, setIconPickedManually] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formFeedback, setFormFeedback] = useState<FormFeedback | null>(null);
+  const [invalidFields, setInvalidFields] = useState<Set<FormFieldKey>>(() => new Set());
   const labelInputRef = useRef<TextInput>(null);
+  const transferReasonInputRef = useRef<TextInput>(null);
   const sheetScrollRef = useRef<ScrollView>(null);
   const amountSectionYRef = useRef(0);
   const nameSectionYRef = useRef(0);
+  const incomeSourceFieldBottomYRef = useRef(0);
+  const transferReasonSectionYRef = useRef(0);
+  const incomeReasonSectionYRef = useRef(0);
+  const categorySectionYRef = useRef(0);
+  const sourceAccountSectionYRef = useRef(0);
+  const destinationAccountSectionYRef = useRef(0);
+  const articlesSectionYRef = useRef(0);
+  const inlineArticleLocalYRef = useRef(0);
+  const lastAutocompleteScrollKeyRef = useRef('');
+  const pendingIncomeContactScrollRef = useRef(false);
 
   const merchantSuggestions = useMemo(() => {
     if (type !== 'expense') return [];
-    const query = normalizeSearch(label);
+    const query = normalizeSearch(debouncedLabel);
     if (query.length < 2) return [];
 
     return KNOWN_MERCHANT_NAMES.filter((merchant) => {
       const normalized = normalizeSearch(merchant);
       return normalized !== query && (normalized.startsWith(query) || normalized.includes(query));
     }).slice(0, 5);
-  }, [label, type]);
+  }, [debouncedLabel, type]);
 
   const contactDirectoryRows = useMemo(
     () => buildContactDirectoryRows(allTransactions, savedContacts),
@@ -272,9 +354,29 @@ export default function AddTransactionScreen() {
       type === 'income' ||
       (type === 'transfer' && (transferMode === 'person' || transferMode === 'person_from'));
     if (!isContactField) return [];
-    if (label.length < 3) return [];
-    return searchContactSuggestions(savedContacts, label, 5, contactDirectoryRows);
-  }, [contactDirectoryRows, label, savedContacts, transferMode, type]);
+    if (type === 'income' && incomeContactPickStatus !== 'none') return [];
+    if (type === 'income') {
+      return searchIncomeSourceSuggestions(savedContacts, debouncedLabel, contactDirectoryRows, 8);
+    }
+    if (debouncedLabel.length < 3) return [];
+    return searchContactSuggestions(savedContacts, debouncedLabel, 5, contactDirectoryRows);
+  }, [contactDirectoryRows, debouncedLabel, incomeContactPickStatus, savedContacts, transferMode, type]);
+
+  const incomeContactActions = useMemo(() => {
+    if (type !== 'income' || !label.trim()) {
+      return { showAddEmployer: false, showAddContact: false, isRegisteredEmployer: false };
+    }
+
+    const trimmed = label.trim();
+    const resembles = resemblesExistingContact(savedContacts, trimmed, contactDirectoryRows);
+    const isRegisteredEmployer = isRegisteredEmployerName(savedContacts, trimmed, contactDirectoryRows);
+
+    return {
+      showAddEmployer: !isRegisteredEmployer,
+      showAddContact: !resembles,
+      isRegisteredEmployer,
+    };
+  }, [contactDirectoryRows, label, savedContacts, type]);
 
   useEffect(() => {
     void getCategories().then((cats) => {
@@ -320,22 +422,18 @@ export default function AddTransactionScreen() {
     if (scanned.length === 0) return;
 
     setType('expense');
-    setItemizedExpenses(
-      scanned.map((item, index) => ({
-        id: `${Date.now()}-scan-${index}`,
+    setArticles(
+      scanned.map((item) => ({
         name: item.name,
-        price: formatMoneyInput(item.price),
+        price: item.price,
         categoryId: item.categoryId ?? null,
+        categoryName: null,
       })),
     );
-    if (routeReceiptUri) {
-      setReceiptUri(routeReceiptUri);
-      setReceiptStatus('attached');
-    }
     const scanTotal = scanned.reduce((sum, item) => sum + item.price, 0);
     if (scanTotal > 0) setAmount(formatMoneyInput(scanTotal));
     setScanPrefillApplied(true);
-  }, [routeReceiptUri, routeScanItems, scanPrefillApplied]);
+  }, [routeScanItems, scanPrefillApplied]);
 
   useEffect(() => {
     void getSimulatedAccounts().then(setSimulatedAccounts);
@@ -360,14 +458,32 @@ export default function AddTransactionScreen() {
   }, []);
 
   useEffect(() => {
-    if (type !== 'expense') return;
-    setItemizedExpenses((rows) => (rows.length > 0 ? rows : [createEmptyItemizedRow()]));
+    void getLoans().then(setLoans);
+  }, []);
+
+  useEffect(() => {
+    if (type !== 'income') return;
+    void getIncomeReasonSuggestions().then(setIncomeReasonSuggestions);
+    void getEmployerIncomeAccountMap().then(setEmployerIncomeAccountMap);
   }, [type]);
 
   useEffect(() => {
-    if (type === 'expense') return;
-    setReceiptUri('');
-    setReceiptStatus(null);
+    if (type !== 'transfer') return;
+    void getTransferReasonSuggestions().then(setTransferReasonSuggestions);
+  }, [type]);
+
+  useEffect(() => {
+    setInvalidFields((current) => (current.size === 0 ? current : new Set()));
+    setFormFeedback((current) => (current === null ? current : null));
+    setIncomeContactPickStatus((current) => (current === 'none' ? current : 'none'));
+    pendingIncomeContactScrollRef.current = false;
+    lastAutocompleteScrollKeyRef.current = '';
+  }, [type, transferMode]);
+
+  useEffect(() => {
+    if (type !== 'expense') {
+      setArticles((current) => (current.length === 0 ? current : []));
+    }
   }, [type]);
 
   useEffect(() => {
@@ -378,33 +494,6 @@ export default function AddTransactionScreen() {
     }
     setFallbackIcon((current) => (current === EXPENSE_DEFAULT_ICON ? 'receipt-outline' : current));
   }, [editId, type]);
-
-  useEffect(() => {
-    if (type === 'transfer' && (transferMode === 'person' || transferMode === 'person_from')) return;
-
-    let focusTimer: ReturnType<typeof setTimeout> | undefined;
-    const interaction = InteractionManager.runAfterInteractions(() => {
-      focusTimer = setTimeout(() => labelInputRef.current?.focus(), 180);
-    });
-
-    return () => {
-      interaction.cancel();
-      if (focusTimer) clearTimeout(focusTimer);
-    };
-  }, [transferMode, type]);
-
-  // When autocomplete suggestions appear while the keyboard is open, scroll the
-  // sheet so the suggestion chips are visible above the keyboard.
-  useEffect(() => {
-    if (merchantSuggestions.length === 0 && contactSuggestions.length === 0) return;
-    requestAnimationFrame(() => {
-      sheetScrollRef.current?.scrollTo({
-        y: Math.max(nameSectionYRef.current - 16, 0),
-        animated: true,
-      });
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contactSuggestions.length, merchantSuggestions.length]);
 
   const visibleCats = useMemo(() => {
     if (type === 'transfer' && transferMode === 'person') {
@@ -440,6 +529,33 @@ export default function AddTransactionScreen() {
     }));
   }, [simulatedAccounts]);
 
+  const paymentMethodAccounts = useMemo<PaymentMethodAccount[]>(() => {
+    if (simulatedAccounts.length > 0) {
+      return simulatedAccounts.map((account) => ({
+        id: account.id,
+        name: account.name,
+        last4: account.last4,
+        kind: account.kind,
+      }));
+    }
+
+    return MANUAL_ENTRY_ACCOUNTS.map((account) => ({
+      id: account.id,
+      name: account.label,
+      kind: manualAccountKind(account.id),
+    }));
+  }, [simulatedAccounts]);
+
+  const destinationPaymentMethodAccounts = useMemo(
+    () => paymentMethodAccounts.filter((account) => account.id !== accountId),
+    [accountId, paymentMethodAccounts],
+  );
+
+  const destinationSavingsGoals = useMemo(
+    () => savingsGoals.filter((goal) => goal.id !== accountId),
+    [accountId, savingsGoals],
+  );
+
   const transferEndpoints = useMemo<TransferEndpoint[]>(() => {
     const accountEntries: TransferEndpoint[] = accountOptions.map((a) => ({
       id: a.id,
@@ -453,7 +569,7 @@ export default function AddTransactionScreen() {
     const goalEntries: TransferEndpoint[] = savingsGoals.map((g) => ({
       id: g.id,
       label: g.name,
-      sublabel: `${Math.round(g.currentAmount).toLocaleString('fr-CA')} $`,
+      sublabel: `${formatNumberDisplay(Math.round(g.currentAmount))} $`,
       kind: 'goal',
       isSimulated: false,
       icon: (g.icon as string) || 'flag-outline',
@@ -495,21 +611,25 @@ export default function AddTransactionScreen() {
 
       setEditingTransaction(tx);
       setLinkedContactId(existingContactId);
+      setIncomeContactPickStatus('none');
       if (destinataire) {
         setType('transfer');
         setTransferMode('person');
         setLabel(destinataire);
         setTransferReason(parseRaisonFromNote(tx.note) ?? '');
+        setIncomeReason('');
       } else if (expediteur) {
         setType('transfer');
         setTransferMode('person_from');
         setLabel(expediteur);
         setTransferReason(parseRaisonFromNote(tx.note) ?? '');
+        setIncomeReason('');
       } else if (tx.type === 'income' && (incomeSource || existingContactId)) {
         setType('income');
         setTransferMode('accounts');
         setLabel(incomeSource ?? tx.label);
         setTransferReason('');
+        setIncomeReason(parseRaisonFromNote(tx.note) ?? '');
       } else {
         setType(tx.type);
         setTransferMode('accounts');
@@ -521,9 +641,11 @@ export default function AddTransactionScreen() {
               : tx.label,
           );
           setLabel('');
+          setIncomeReason('');
         } else {
           setLabel(tx.label);
           setTransferReason('');
+          setIncomeReason(tx.type === 'income' ? parseRaisonFromNote(tx.note) ?? '' : '');
         }
       }
       setAmount(formatMoneyInput(tx.amount));
@@ -544,34 +666,28 @@ export default function AddTransactionScreen() {
           ? Boolean(tx.transactionIcon && !isExpenseDefaultIcon(tx.transactionIcon))
           : Boolean(tx.transactionIcon),
       );
-      setShowLogoPicker(false);
       if (routeScanItems) {
         const scanned = parseScanItemsFromRoute(routeScanItems);
-        setItemizedExpenses(
-          scanned.map((item, index) => ({
-            id: `${Date.now()}-scan-${index}`,
+        const catsById = new Map(categories.map((category) => [category.id, category]));
+        setArticles(
+          scanned.map((item) => ({
             name: item.name,
-            price: formatMoneyInput(item.price),
+            price: item.price,
             categoryId: item.categoryId ?? null,
+            categoryName: item.categoryId ? catsById.get(item.categoryId)?.name ?? null : null,
           })),
         );
-        if (routeReceiptUri) {
-          setReceiptUri(routeReceiptUri);
-          setReceiptStatus('attached');
-        }
         setScanPrefillApplied(true);
       } else {
-        setItemizedExpenses(tx.type === 'expense' ? parseItemizedRowsFromNote(tx.note) : []);
+        setArticles(tx.type === 'expense' ? parseItemizedNote(tx.note) : []);
       }
-      setReceiptUri(tx.receiptUri ?? '');
-      setReceiptStatus(tx.receiptStatus ?? null);
       setPrefilledEditId(editId);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [accountOptions, categories.length, editId, prefilledEditId, routeReceiptUri, routeScanItems, savingsGoals, transferEndpoints]);
+  }, [accountOptions, categories, editId, prefilledEditId, routeScanItems, savingsGoals, transferEndpoints]);
 
   useEffect(() => {
     if (accountOptions.length === 0) return;
@@ -590,13 +706,16 @@ export default function AddTransactionScreen() {
   }, [accountOptions]);
 
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
-  const hasItemizedItems = type === 'expense' && itemizedExpenses.some((item) => item.name.trim() || parseMoney(item.price) > 0);
+  const articlesTotal = useMemo(
+    () => articles.reduce((sum, article) => sum + article.price, 0),
+    [articles],
+  );
   const categorySearchText = useMemo(() => {
     if (type === 'transfer' && (transferMode === 'person' || transferMode === 'person_from')) {
       return [transferReason, label].filter(Boolean).join(' ');
     }
-    return [label, ...itemizedExpenses.map((item) => item.name)].filter(Boolean).join(' ');
-  }, [itemizedExpenses, label, transferMode, transferReason, type]);
+    return [label, ...articles.map((item) => item.name)].filter(Boolean).join(' ');
+  }, [articles, label, transferMode, transferReason, type]);
   const inferredExpenseCategoryId = useMemo(() => {
     if (type === 'transfer' && transferMode === 'person') {
       return inferCategoryIdFromTransferReason(transferReason, visibleCats, inferCategoryId(label, visibleCats, null));
@@ -612,88 +731,44 @@ export default function AddTransactionScreen() {
     setCategoryId(inferredExpenseCategoryId);
   }, [categoryId, categoryManuallySelected, inferredExpenseCategoryId]);
 
-  const applyScannedItems = (uri: string, scannedItems: ReturnType<typeof mapScannedItemsToCategories>) => {
-    setReceiptUri(uri);
-    setReceiptStatus('attached');
-    setItemizedExpenses(
-      scannedItems.map((item, index) => ({
-        id: `${Date.now()}-scan-${index}`,
-        name: item.name,
-        price: formatMoneyInput(item.price),
-        categoryId: item.categoryId ?? null,
-      })),
-    );
-    const total = scannedItems.reduce((sum, item) => sum + item.price, 0);
-    if (total > 0) setAmount(formatMoneyInput(total));
-  };
+  const handleAddArticle = useCallback(
+    (name: string, price: string, articleCategoryId: string | null, categoryName: string | null) => {
+      const priceValue = Number(price) || 0;
+      setArticles((current) => [
+        ...current,
+        {
+          name,
+          price: priceValue,
+          categoryId: articleCategoryId,
+          categoryName,
+        },
+      ]);
+    },
+    [],
+  );
 
-  const processReceiptImage = async (uri: string) => {
-    if (!uri) return;
-    setScanningReceipt(true);
-    setFormFeedback(null);
-    try {
-      const result = await scanReceiptImage(uri, {
-        merchantHint: label.trim() || routeLabel,
-        totalHint: parseMoney(amount) || parseMoney(routeScanAmount),
-      });
-      const mapped = mapScannedItemsToCategories(result.items, visibleCats, label.trim() || routeLabel);
-      applyScannedItems(uri, mapped);
-    } catch {
-      setFormFeedback(formValidationError('Scan impossible', 'Réessaie avec une photo plus nette.'));
-    } finally {
-      setScanningReceipt(false);
-    }
-  };
-
-  const openDedicatedScan = () => {
+  const handleRemoveArticle = useCallback((index: number) => {
     tapHaptic();
-    router.push({
-      pathname: '/scan',
-      params: {
-        editId: editId || undefined,
-        merchant: label.trim() || routeLabel || undefined,
-        amount: amount || routeScanAmount || undefined,
-      },
-    });
-  };
-
-  const pickReceiptImage = async () => {
-    try {
-      const result = await pickReceiptFromGallery();
-      if (result.cancelled || !result.uri) return;
-      await processReceiptImage(result.uri);
-    } catch (err) {
-      setFormFeedback(
-        formValidationError('Permission requise', err instanceof Error ? err.message : 'Accès galerie refusé.'),
-      );
-    }
-  };
-
-  const captureReceiptImage = async () => {
-    try {
-      const result = await captureReceiptPhoto();
-      if (result.cancelled || !result.uri) return;
-      await processReceiptImage(result.uri);
-    } catch (err) {
-      setFormFeedback(
-        formValidationError('Permission requise', err instanceof Error ? err.message : 'Accès caméra refusé.'),
-      );
-    }
-  };
+    setArticles((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }, []);
 
   const displayAmount = useMemo(() => {
     const amt = amount.length ? formatMoneyAmountInput(amount) : '0';
-    const sign =
-      type === 'transfer' && transferMode === 'accounts'
-        ? ''
-        : type === 'income'
-          ? '+'
-          : '−';
-    return `${sign}${amt} $`;
-  }, [amount, transferMode, type]);
+    return `${amt} $`;
+  }, [amount]);
+  const amountDirection = useMemo((): TransactionAmountDirection => {
+    if (type === 'income') return 'income';
+    if (type === 'transfer' && transferMode === 'accounts') return 'neutral';
+    return 'expense';
+  }, [transferMode, type]);
+  const childSupportSalaryNotices = useMemo(
+    () =>
+      type === 'income'
+        ? getChildSupportSalaryNotices(loans, accountId, label, incomeReason)
+        : [],
+    [accountId, incomeReason, label, loans, type],
+  );
   const labelHasLogo = useMemo(() => hasMerchantLogoCandidate(label), [label]);
-  const autoLogoUrl = useMemo(() => getMerchantLogoUrl(label.trim()), [label]);
-  const fallbackIconColor = colors.textSecondary;
   const fallbackSourceAccount = accountOptions[0] ?? { id: 'checking', label: 'Chèques', isSimulated: false };
   const sourceAccount = accountOptions.find((account) => account.id === accountId) ?? fallbackSourceAccount;
   const destinationAccount =
@@ -708,17 +783,36 @@ export default function AddTransactionScreen() {
   const isStandardTransfer = isTransfer && transferMode === 'accounts';
   const hasAccountOptions = accountOptions.length > 0;
   const hasSavingsGoalsList = savingsGoals.length > 0;
+  const hasDestinationSavingsGoals = destinationSavingsGoals.length > 0;
   const hasTransferEndpoints = transferEndpoints.length > 0;
+
+  useEffect(() => {
+    if (!isStandardTransfer || accountId !== destinationAccountId) return;
+
+    const nextDestinationId =
+      destinationPaymentMethodAccounts[0]?.id ?? destinationSavingsGoals[0]?.id ?? null;
+    if (nextDestinationId && nextDestinationId !== destinationAccountId) {
+      setDestinationAccountId(nextDestinationId);
+    }
+  }, [
+    accountId,
+    destinationAccountId,
+    destinationPaymentMethodAccounts,
+    destinationSavingsGoals,
+    isStandardTransfer,
+  ]);
   const hasMerchantSuggestions = merchantSuggestions.length > 0;
   const hasContactSuggestions = contactSuggestions.length > 0;
-  const hasNameSuggestions = hasMerchantSuggestions || hasContactSuggestions;
+  const incomeContactSelected = type === 'income' && incomeContactPickStatus !== 'none';
+  const hasNameSuggestions =
+    (hasMerchantSuggestions || hasContactSuggestions) && !incomeContactSelected;
   const isEditing = Boolean(editingTransaction);
   const sheetTitle = isEditing
     ? 'Modifier la transaction'
     : type === 'income'
       ? 'Nouveau revenu'
       : isTransfer
-        ? 'Nouveau transfert'
+        ? 'Nouveau virement'
         : 'Nouvelle dépense';
   const themed = useMemo(
     () => ({
@@ -752,16 +846,119 @@ export default function AddTransactionScreen() {
     [colors, isLight],
   );
 
-  const canSubmit =
-    (isAnyPersonTransfer || isStandardTransfer || Boolean(label.trim())) &&
-    Boolean(amount) &&
-    parseMoney(amount) > 0 &&
-    Boolean(categoryId) &&
-    (!isPersonTransferTo || Boolean(transferReason.trim())) &&
-    (!isStandardTransfer || accountId !== destinationAccountId);
+  const inputSurface = containerSurfaceStyle(isLight);
+  const isTransferAmountStep = isTransfer && transferEntryStep === 'amount';
+  const isTransferReasonStep = isTransfer && transferEntryStep === 'reason';
+  const fieldHasError = useCallback((field: FormFieldKey) => invalidFields.has(field), [invalidFields]);
+  const fieldErrorBorder = useMemo(
+    () => ({ borderColor: colors.danger, borderWidth: 1.5 }),
+    [colors.danger],
+  );
+
+  const clearFieldError = useCallback((field: FormFieldKey) => {
+    setInvalidFields((current) => {
+      if (!current.has(field)) return current;
+      const next = new Set(current);
+      next.delete(field);
+      return next;
+    });
+  }, []);
+
+  const scrollToField = useCallback((field: FormFieldKey) => {
+    const yByField: Record<FormFieldKey, number> = {
+      label: nameSectionYRef.current,
+      transferReason: transferReasonSectionYRef.current,
+      incomeReason: incomeReasonSectionYRef.current,
+      amount: amountSectionYRef.current,
+      category: categorySectionYRef.current,
+      sourceAccount: sourceAccountSectionYRef.current,
+      destinationAccount: destinationAccountSectionYRef.current,
+    };
+
+    requestAnimationFrame(() => {
+      sheetScrollRef.current?.scrollTo({
+        y: Math.max(yByField[field] - 16, 0),
+        animated: true,
+      });
+    });
+  }, []);
+
+  const scrollToInlineArticle = useCallback((localY: number, offset = 16) => {
+    requestAnimationFrame(() => {
+      sheetScrollRef.current?.scrollTo({
+        y: Math.max(articlesSectionYRef.current + inlineArticleLocalYRef.current + localY - offset, 0),
+        animated: true,
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isTransfer) return;
+    setTransferEntryStep('reason');
+  }, [isTransfer, transferMode]);
+
+  useEffect(() => {
+    if (!isTransfer || !isTransferReasonStep) return;
+    if (isAnyPersonTransfer && !label.trim()) return;
+
+    const timer = setTimeout(() => transferReasonInputRef.current?.focus(), 200);
+    return () => clearTimeout(timer);
+  }, [isAnyPersonTransfer, isTransfer, isTransferReasonStep, label, transferMode]);
+
+  useEffect(() => {
+    if (editId) return;
+
+    let focusTimer: ReturnType<typeof setTimeout> | undefined;
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      focusTimer = setTimeout(() => {
+        if (isTransfer) {
+          if (isAnyPersonTransfer) {
+            labelInputRef.current?.focus();
+            return;
+          }
+          if (isStandardTransfer) {
+            setTransferEntryStep('reason');
+            transferReasonInputRef.current?.focus();
+            return;
+          }
+        }
+        labelInputRef.current?.focus();
+      }, 180);
+    });
+
+    return () => {
+      interaction.cancel();
+      if (focusTimer) clearTimeout(focusTimer);
+    };
+  }, [editId, isAnyPersonTransfer, isStandardTransfer, isTransfer, transferMode, type]);
+
+  const advanceToTransferAmountStep = useCallback(() => {
+    Keyboard.dismiss();
+    transferReasonInputRef.current?.blur();
+    setTransferEntryStep('amount');
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        sheetScrollRef.current?.scrollTo({
+          y: Math.max(amountSectionYRef.current - 16, 0),
+          animated: true,
+        });
+      }, 120);
+    });
+  }, []);
+
+  const focusTransferReasonStep = useCallback(() => {
+    setTransferEntryStep('reason');
+    Keyboard.dismiss();
+    requestAnimationFrame(() => {
+      setTimeout(() => transferReasonInputRef.current?.focus(), 180);
+    });
+  }, []);
 
   const scrollToAmountSection = () => {
-    if (isStandardTransfer) return;
+    if (isTransfer) {
+      advanceToTransferAmountStep();
+      return;
+    }
 
     Keyboard.dismiss();
     requestAnimationFrame(() => {
@@ -774,8 +971,111 @@ export default function AddTransactionScreen() {
     });
   };
 
+  const scrollToIncomeContactSelectedSection = useCallback(() => {
+    Keyboard.dismiss();
+    labelInputRef.current?.blur();
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        const viewportHeight = Dimensions.get('window').height;
+        const hideNameScrollY = Math.max(incomeSourceFieldBottomYRef.current + 8, 0);
+        const keepReasonScrollY = Math.max(incomeReasonSectionYRef.current - 16, 0);
+        const numpadRevealY = Math.max(amountSectionYRef.current - viewportHeight * 0.55, 0);
+        const scrollY = Math.min(keepReasonScrollY, Math.max(hideNameScrollY, numpadRevealY));
+        sheetScrollRef.current?.scrollTo({
+          y: scrollY,
+          animated: true,
+        });
+      }, 220);
+    });
+  }, []);
+
+  const applyIncomeContactSelectedFlow = useCallback(
+    (contactName: string, isEmployer: boolean) => {
+      const nextReason = resolveIncomeReasonForSelectedContact(allTransactions, contactName, isEmployer);
+      const nextStatus: IncomeContactPickStatus = isEmployer ? 'employer' : 'contact';
+      const validAccountIds = accountOptions.map((account) => account.id);
+      const nextAccount = resolveIncomeAccountForSelectedContact(
+        allTransactions,
+        employerIncomeAccountMap,
+        contactName,
+        validAccountIds,
+      );
+      setIncomeReason((current) => (current === nextReason ? current : nextReason));
+      if (nextAccount) {
+        setAccountId((current) => (current === nextAccount ? current : nextAccount));
+      }
+      setIncomeContactPickStatus((current) => {
+        if (current === nextStatus) return current;
+        pendingIncomeContactScrollRef.current = true;
+        return nextStatus;
+      });
+    },
+    [accountOptions, allTransactions, employerIncomeAccountMap],
+  );
+
+  // When autocomplete suggestions appear while the keyboard is open, scroll the
+  // sheet so the suggestion list stays visible above the keyboard.
+  useEffect(() => {
+    if (!hasNameSuggestions) {
+      lastAutocompleteScrollKeyRef.current = '';
+      return;
+    }
+    const scrollKey = `${type}:${merchantSuggestions.length}:${contactSuggestions.length}`;
+    if (lastAutocompleteScrollKeyRef.current === scrollKey) return;
+    lastAutocompleteScrollKeyRef.current = scrollKey;
+    requestAnimationFrame(() => {
+      sheetScrollRef.current?.scrollTo({
+        y: Math.max(nameSectionYRef.current - 16, 0),
+        animated: true,
+      });
+    });
+  }, [contactSuggestions.length, hasNameSuggestions, merchantSuggestions.length, type]);
+
+  useEffect(() => {
+    if (type !== 'income' || incomeContactPickStatus === 'none' || !pendingIncomeContactScrollRef.current) {
+      return;
+    }
+    pendingIncomeContactScrollRef.current = false;
+    scrollToIncomeContactSelectedSection();
+  }, [incomeContactPickStatus, scrollToIncomeContactSelectedSection, type]);
+
+  const selectTransferReasonSuggestion = (reason: string) => {
+    tapHaptic();
+    setTransferReason(reason);
+    if (isPersonTransferTo) {
+      setCategoryManuallySelected(false);
+    }
+    advanceToTransferAmountStep();
+  };
+
+  const handleTransferReasonSubmit = () => {
+    if (isPersonTransferTo && !transferReason.trim()) return;
+    advanceToTransferAmountStep();
+  };
+
+  const handleIncomeSourceSubmit = () => {
+    if (type !== 'income' || !label.trim()) return;
+    Keyboard.dismiss();
+    labelInputRef.current?.blur();
+  };
+
+  const selectIncomeReasonSuggestion = (reason: string) => {
+    tapHaptic();
+    setIncomeReason(reason);
+    scrollToAmountSection();
+  };
+
+  const handleIncomeReasonSubmit = () => {
+    if (type !== 'income' || !incomeReason.trim()) return;
+    scrollToAmountSection();
+  };
+
   const updateContactLabel = (value: string) => {
     setLabel(value);
+    clearFieldError('label');
+    if (type === 'income') {
+      setIncomeContactPickStatus('none');
+    }
     if (!usesContactField) return;
     setLinkedContactId(findContactByName(savedContacts, value)?.id ?? null);
   };
@@ -792,10 +1092,65 @@ export default function AddTransactionScreen() {
     if (usesContactField) {
       setLinkedContactId(resolveContactIdForName(savedContacts, name));
     }
+    if (isAnyPersonTransfer) {
+      focusTransferReasonStep();
+      return;
+    }
+    if (type === 'income') {
+      const isEmployer = isRegisteredEmployerName(savedContacts, name, contactDirectoryRows);
+      applyIncomeContactSelectedFlow(name, isEmployer);
+      return;
+    }
     scrollToAmountSection();
   };
 
-  const handleCreateContact = async () => {
+  const handleAddEmployer = async () => {
+    const name = label.trim();
+    if (!name || isRegisteredEmployerName(savedContacts, name, contactDirectoryRows)) return;
+
+    setCreatingContact(true);
+    setFormFeedback(null);
+    try {
+      const contact = await upsertContactByName(name, { isEmployer: true });
+      setSavedContacts((current) => {
+        const key = contact.normalizedName;
+        const without = current.filter((item) => item.normalizedName !== key);
+        return [...without, contact].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+      });
+      setLinkedContactId(contact.id);
+      successHaptic();
+      applyIncomeContactSelectedFlow(name, true);
+    } catch {
+      setFormFeedback(formValidationError('Erreur', 'Impossible d’ajouter cet employeur.'));
+    } finally {
+      setCreatingContact(false);
+    }
+  };
+
+  const handleAddContact = async () => {
+    const name = label.trim();
+    if (!name || resemblesExistingContact(savedContacts, name, contactDirectoryRows)) return;
+
+    setCreatingContact(true);
+    setFormFeedback(null);
+    try {
+      const contact = await upsertContactByName(name);
+      setSavedContacts((current) => {
+        const key = contact.normalizedName;
+        const without = current.filter((item) => item.normalizedName !== key);
+        return [...without, contact].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+      });
+      setLinkedContactId(contact.id);
+      successHaptic();
+      applyIncomeContactSelectedFlow(name, false);
+    } catch {
+      setFormFeedback(formValidationError('Erreur', 'Impossible d’ajouter ce contact.'));
+    } finally {
+      setCreatingContact(false);
+    }
+  };
+
+  const handleCreateTransferContact = async () => {
     const name = label.trim();
     if (!name || isKnownContactName(name) || linkedContactId) return;
 
@@ -810,6 +1165,7 @@ export default function AddTransactionScreen() {
       });
       setLinkedContactId(contact.id);
       successHaptic();
+      focusTransferReasonStep();
     } catch {
       setFormFeedback(formValidationError('Erreur', 'Impossible de créer ce contact.'));
     } finally {
@@ -827,35 +1183,83 @@ export default function AddTransactionScreen() {
         ? 'income'
         : type;
 
+    const nextInvalidFields = new Set<FormFieldKey>();
+    let firstInvalidField: FormFieldKey | null = null;
+    let validationFeedback: FormFeedback | null = null;
+
+    const markInvalid = (field: FormFieldKey, feedback: FormFeedback) => {
+      nextInvalidFields.add(field);
+      if (!firstInvalidField) {
+        firstInvalidField = field;
+        validationFeedback = feedback;
+      }
+    };
+
     if (isAnyPersonTransfer && !label.trim()) {
-      setFormFeedback(formValidationError('Champ requis', 'Indique le nom du contact.'));
-      return;
+      markInvalid('label', formValidationError('Champ requis', 'Indique le nom du contact.'));
     }
     if (saveAsPersonTransferTo && !transferReason.trim()) {
-      setFormFeedback(formValidationError('Champ requis', 'Indique la raison du transfert.'));
-      return;
+      markInvalid('transferReason', formValidationError('Champ requis', 'Indique la raison du virement.'));
     }
     if (!isAnyPersonTransfer && !saveAsStandardTransfer && !label.trim()) {
-      setFormFeedback(formValidationError('Champ requis', 'Indiquez un marchand ou une description.'));
-      return;
+      markInvalid(
+        'label',
+        formValidationError(
+          'Champ requis',
+          type === 'income' ? 'Indique ton employeur ou la source du revenu.' : 'Indiquez un marchand ou une description.',
+        ),
+      );
     }
-    const itemNotes =
-      persistedType === 'expense' && !saveAsPersonTransferTo
-        ? itemizedRowsToNotePayload(itemizedExpenses, categoryById, categoryId, label.trim())
-        : [];
+
     const parsed = parseMoney(amount);
     if (!parsed || parsed <= 0) {
-      setFormFeedback(formValidationError('Montant invalide', 'Saisissez un montant positif.'));
-      return;
+      markInvalid('amount', formValidationError('Montant invalide', 'Saisissez un montant positif.'));
     }
-    if (!categoryId) {
-      setFormFeedback(formValidationError('Catégorie', 'Choisissez une catégorie.'));
-      return;
+
+    const isExpenseSave = persistedType === 'expense' && !saveAsPersonTransferTo;
+    const resolvedCategoryId = saveAsStandardTransfer
+      ? TRANSFER_CATEGORY.id
+      : isExpenseSave
+        ? resolveExpenseCategoryId(
+            articles,
+            label.trim(),
+            visibleCats,
+            inferredExpenseCategoryId,
+            categoryId,
+            categoryManuallySelected,
+          )
+        : categoryId;
+
+    if (!resolvedCategoryId) {
+      markInvalid(
+        'category',
+        formValidationError('Catégorie', 'Choisissez une catégorie.'),
+      );
     }
     if (saveAsStandardTransfer && accountId === destinationAccountId) {
-      setFormFeedback(formValidationError('Transfert invalide', 'Choisis deux comptes différents.'));
+      markInvalid('sourceAccount', formValidationError('Virement invalide', 'Choisis deux comptes différents.'));
+      markInvalid('destinationAccount', formValidationError('Virement invalide', 'Choisis deux comptes différents.'));
+    }
+
+    if (nextInvalidFields.size > 0) {
+      setInvalidFields(nextInvalidFields);
+      if (validationFeedback) setFormFeedback(validationFeedback);
+      if (firstInvalidField) scrollToField(firstInvalidField);
       return;
     }
+
+    setInvalidFields(new Set());
+    const articleNotes: ItemizedNote[] =
+      persistedType === 'expense' && !saveAsPersonTransferTo
+        ? articles
+            .filter((item) => item.name.trim())
+            .map((item) => ({
+              name: item.name.trim(),
+              price: Math.round(item.price * 100) / 100,
+              categoryId: item.categoryId ?? null,
+              categoryName: item.categoryName ?? (item.categoryId ? categoryById.get(item.categoryId)?.name ?? null : null),
+            }))
+        : [];
 
     let note = saveAsPersonTransferTo
       ? `compte:${accountId}\ndestinataire:${label.trim()}\nraison:${transferReason.trim()}`
@@ -872,9 +1276,22 @@ export default function AddTransactionScreen() {
             ? `transfert:${accountId}->${destinationAccountId}\nmotif:${transferReason.trim()}`
             : `transfert:${accountId}->${destinationAccountId}`
           : type === 'income' && label.trim()
-            ? `compte:${accountId}\nsource:${label.trim()}`
-            : itemNotes.length > 0
-              ? `compte:${accountId}\narticles:${JSON.stringify(itemNotes)}`
+            ? [
+                `compte:${accountId}`,
+                `source:${label.trim()}`,
+                incomeReason.trim() ? `raison:${incomeReason.trim()}` : null,
+              ]
+                .filter(Boolean)
+                .join('\n')
+            : type === 'income'
+              ? [
+                  `compte:${accountId}`,
+                  incomeReason.trim() ? `raison:${incomeReason.trim()}` : null,
+                ]
+                  .filter(Boolean)
+                  .join('\n')
+            : articleNotes.length > 0
+              ? `compte:${accountId}\n${buildArticlesNoteLine(articleNotes)}`
               : `compte:${accountId}`;
 
     const resolvedContactId =
@@ -921,22 +1338,15 @@ export default function AddTransactionScreen() {
     const transactionDate = toTransactionDate(date);
     const transactionIcon = saveAsStandardTransfer
       ? 'SwapHoriz'
-      : iconPickedManually
-        ? fallbackIcon
-        : labelHasLogo
-          ? null
-          : persistedType === 'expense' && isExpenseDefaultIcon(fallbackIcon)
+      : persistedType === 'expense'
+        ? null
+        : iconPickedManually
+          ? fallbackIcon
+          : labelHasLogo
             ? null
             : fallbackIcon;
-    const normalizedReceiptUri = persistedType === 'expense' && !saveAsPersonTransferTo ? receiptUri.trim() : '';
-    const normalizedReceiptStatus =
-      persistedType === 'expense' && !saveAsPersonTransferTo
-        ? receiptStatus === 'scan_pending'
-          ? receiptStatus
-          : normalizedReceiptUri
-            ? 'attached'
-            : null
-        : null;
+    const preservedReceiptUri = isExpenseSave && editingTransaction ? editingTransaction.receiptUri ?? null : null;
+    const preservedReceiptStatus = isExpenseSave && editingTransaction ? editingTransaction.receiptStatus ?? null : null;
 
     const tx = editingTransaction
       ? {
@@ -945,10 +1355,10 @@ export default function AddTransactionScreen() {
           amount: parsed,
           type: persistedType,
           date: transactionDate,
-          categoryId: saveAsStandardTransfer ? TRANSFER_CATEGORY.id : categoryId,
+          categoryId: resolvedCategoryId!,
           transactionIcon,
-          receiptUri: normalizedReceiptUri || (normalizedReceiptStatus === 'scan_pending' ? receiptUri : null),
-          receiptStatus: normalizedReceiptStatus,
+          receiptUri: preservedReceiptUri,
+          receiptStatus: preservedReceiptStatus,
           note,
         }
       : createLocalTransaction({
@@ -956,10 +1366,10 @@ export default function AddTransactionScreen() {
       amount: parsed,
       type: persistedType,
       date: transactionDate,
-      categoryId: saveAsStandardTransfer ? TRANSFER_CATEGORY.id : categoryId,
+      categoryId: resolvedCategoryId!,
       transactionIcon,
-      receiptUri: normalizedReceiptUri || (normalizedReceiptStatus === 'scan_pending' ? receiptUri : null),
-      receiptStatus: normalizedReceiptStatus,
+      receiptUri: null,
+      receiptStatus: null,
       note,
     });
     await insertTransaction({
@@ -1012,6 +1422,18 @@ export default function AddTransactionScreen() {
       await adjustSimulatedAccountBalance(sourceAccount.id, persistedType === 'income' ? parsed : -parsed);
     }
     await syncWithServer();
+    if (type === 'income' && incomeReason.trim()) {
+      await saveIncomeReasonSuggestion(incomeReason);
+      setIncomeReasonSuggestions(await getIncomeReasonSuggestions());
+    }
+    if (type === 'income' && label.trim()) {
+      await saveEmployerIncomeAccount(label.trim(), accountId);
+      setEmployerIncomeAccountMap(await getEmployerIncomeAccountMap());
+    }
+    if (isTransfer && transferReason.trim()) {
+      await saveTransferReasonSuggestion(transferReason);
+      setTransferReasonSuggestions(await getTransferReasonSuggestions());
+    }
     setSaving(false);
     successHaptic();
     router.back();
@@ -1026,7 +1448,7 @@ export default function AddTransactionScreen() {
         <ScrollView
               ref={sheetScrollRef}
               style={[styles.sheet, themed.sheet]}
-              keyboardShouldPersistTaps="handled"
+              keyboardShouldPersistTaps="always"
               showsVerticalScrollIndicator={false}
               contentContainerStyle={[styles.sheetContent, { paddingBottom: Math.max(insets.bottom, 20) }]}
             >
@@ -1056,7 +1478,11 @@ export default function AddTransactionScreen() {
                               setTransferMode('accounts');
                               setTransferReason('');
                             }
+                            if (t !== 'income') {
+                              setIncomeReason('');
+                            }
                             setLinkedContactId(null);
+                            setIncomeContactPickStatus('none');
                             setType(t);
                           }}
                           style={[styles.chip, themed.control, styles.chipShell, on && themed.selected]}
@@ -1065,7 +1491,7 @@ export default function AddTransactionScreen() {
                             style={[styles.chipText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
                             {...chipLabelTextProps()}
                           >
-                            {t === 'expense' ? 'Dépense' : t === 'income' ? 'Revenu' : 'Transfert'}
+                            {t === 'expense' ? 'Dépense' : t === 'income' ? 'Revenu' : 'Virement'}
                           </Text>
                         </Pressable>
                       );
@@ -1095,7 +1521,7 @@ export default function AddTransactionScreen() {
                 >
                   <DashboardSectionLabel>
                     {type === 'income'
-                      ? 'Source du revenu'
+                      ? 'Employeur / Client'
                       : isPersonTransferFrom
                         ? 'Contact (expéditeur)'
                         : isPersonTransferTo
@@ -1104,28 +1530,55 @@ export default function AddTransactionScreen() {
                   </DashboardSectionLabel>
                   <TextInput
                     ref={labelInputRef}
-                    style={[styles.input, themed.controlStrong, themed.text]}
+                    style={[
+                      styles.input,
+                      themed.controlStrong,
+                      themed.text,
+                      fieldHasError('label') && fieldErrorBorder,
+                    ]}
                     placeholder={
                       type === 'income'
-                        ? 'Ex. Paie, pension, employeur...'
+                        ? 'Ex. Desjardins, Employeur Inc....'
                         : isAnyPersonTransfer
                           ? 'Ex. Marie, Jean, loyer à un ami...'
                           : 'Ex. Starbucks, loyer, épicerie...'
                     }
                     placeholderTextColor={colors.textMuted}
                     value={label}
-                    onChangeText={usesContactField ? updateContactLabel : setLabel}
+                    onLayout={(e) => {
+                      const { y, height } = e.nativeEvent.layout;
+                      incomeSourceFieldBottomYRef.current = nameSectionYRef.current + y + height;
+                    }}
+                    onChangeText={(value) => {
+                      clearFieldError('label');
+                      if (usesContactField) {
+                        updateContactLabel(value);
+                        return;
+                      }
+                      setLabel(value);
+                    }}
+                    returnKeyType={type === 'income' ? 'next' : 'done'}
+                    blurOnSubmit={type === 'income'}
+                    onSubmitEditing={type === 'income' ? handleIncomeSourceSubmit : undefined}
                   />
                   {hasNameSuggestions ? (
                     <View style={styles.suggestionRow}>
-                      {(usesContactField ? contactSuggestions : merchantSuggestions).map((name) => (
+                      {(type === 'income' ? contactSuggestions : usesContactField ? contactSuggestions : merchantSuggestions).map((name) => (
                         <Pressable
                           key={name}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Sélectionner ${name}`}
                           onPress={() => selectNameSuggestion(name)}
                           style={({ pressed }) => [styles.suggestionChip, themed.control, pressed && styles.pressed]}
                         >
                           <Ionicons
-                            name={usesContactField ? 'person-outline' : 'sparkles-outline'}
+                            name={
+                              type === 'income'
+                                ? 'business-outline'
+                                : usesContactField
+                                  ? 'person-outline'
+                                  : 'sparkles-outline'
+                            }
                             size={13}
                             color={colors.textMuted}
                           />
@@ -1136,11 +1589,54 @@ export default function AddTransactionScreen() {
                       ))}
                     </View>
                   ) : null}
-                  {usesContactField && label.trim() && !linkedContactId && !isKnownContactName(label) ? (
+                  {type === 'income' &&
+                  (incomeContactActions.showAddEmployer || incomeContactActions.showAddContact) ? (
+                    <View style={styles.createContactActionsColumn}>
+                      {incomeContactActions.showAddEmployer ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Ajouter un employeur"
+                          onPress={() => void handleAddEmployer()}
+                          disabled={creatingContact}
+                          style={({ pressed }) => [
+                            styles.createContactButton,
+                            themed.control,
+                            pressed && styles.pressed,
+                            creatingContact && styles.createContactButtonDisabled,
+                          ]}
+                        >
+                          <Ionicons name="business-outline" size={16} color={colors.primary} />
+                          <Text style={[styles.createContactButtonText, themed.selectedText]}>
+                            {creatingContact ? 'Ajout...' : 'Ajouter un employeur'}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                      {incomeContactActions.showAddContact ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Ajouter un contact"
+                          onPress={() => void handleAddContact()}
+                          disabled={creatingContact}
+                          style={({ pressed }) => [
+                            styles.createContactButton,
+                            themed.control,
+                            pressed && styles.pressed,
+                            creatingContact && styles.createContactButtonDisabled,
+                          ]}
+                        >
+                          <Ionicons name="person-add-outline" size={16} color={colors.primary} />
+                          <Text style={[styles.createContactButtonText, themed.selectedText]}>
+                            {creatingContact ? 'Création...' : 'Ajouter un contact'}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ) : null}
+                  {usesContactField && type !== 'income' && label.trim() && !linkedContactId && !isKnownContactName(label) ? (
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel="Créer le contact"
-                      onPress={() => void handleCreateContact()}
+                      accessibilityLabel="Ajouter un contact"
+                      onPress={() => void handleCreateTransferContact()}
                       disabled={creatingContact}
                       style={({ pressed }) => [
                         styles.createContactButton,
@@ -1151,11 +1647,21 @@ export default function AddTransactionScreen() {
                     >
                       <Ionicons name="person-add-outline" size={16} color={colors.primary} />
                       <Text style={[styles.createContactButtonText, themed.selectedText]}>
-                        {creatingContact ? 'Création...' : 'Créer le contact'}
+                        {creatingContact ? 'Création...' : 'Ajouter un contact'}
                       </Text>
                     </Pressable>
                   ) : null}
-                  {usesContactField && linkedContactId ? (
+                  {type === 'income' && incomeContactPickStatus === 'employer' ? (
+                    <Text style={[styles.linkedContactHint, themed.textMuted]}>
+                      Employeur existant sélectionné
+                    </Text>
+                  ) : null}
+                  {type === 'income' && incomeContactPickStatus === 'contact' ? (
+                    <Text style={[styles.linkedContactHint, themed.textMuted]}>
+                      Contact existant sélectionné
+                    </Text>
+                  ) : null}
+                  {usesContactField && type !== 'income' && linkedContactId ? (
                     <Text style={[styles.linkedContactHint, themed.textMuted]}>
                       Lié au contact existant — aucun doublon ne sera créé.
                     </Text>
@@ -1163,58 +1669,175 @@ export default function AddTransactionScreen() {
                 </View>
               ) : null}
 
-              {isPersonTransferTo ? (
-                <View style={styles.section}>
-                  <DashboardSectionLabel>Raison du transfert</DashboardSectionLabel>
+              {isTransfer ? (
+                <View
+                  style={styles.section}
+                  onLayout={(e) => { transferReasonSectionYRef.current = e.nativeEvent.layout.y; }}
+                >
+                  <DashboardSectionLabel>
+                    {isPersonTransferFrom ? 'Description (optionnel)' : 'Raison du virement'}
+                  </DashboardSectionLabel>
                   <TextInput
-                    style={[styles.input, themed.controlStrong, themed.text]}
-                    placeholder="Ex. remboursement repas, cadeau anniversaire, part du loyer..."
+                    ref={transferReasonInputRef}
+                    style={[
+                      styles.input,
+                      themed.controlStrong,
+                      themed.text,
+                      fieldHasError('transferReason') && fieldErrorBorder,
+                    ]}
+                    placeholder={
+                      isPersonTransferFrom
+                        ? 'Ex. remboursement, cadeau, partage de frais...'
+                        : isStandardTransfer
+                          ? 'Motif (optionnel) — ex. épargne vacances, remboursement...'
+                          : 'Ex. remboursement repas, cadeau anniversaire, part du loyer...'
+                    }
                     placeholderTextColor={colors.textMuted}
                     value={transferReason}
                     onChangeText={(value) => {
+                      clearFieldError('transferReason');
                       setTransferReason(value);
-                      setCategoryManuallySelected(false);
+                      if (isPersonTransferTo) {
+                        setCategoryManuallySelected(false);
+                      }
+                      if (isTransferAmountStep) {
+                        setTransferEntryStep('reason');
+                      }
                     }}
+                    onFocus={() => setTransferEntryStep('reason')}
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                    onSubmitEditing={handleTransferReasonSubmit}
                   />
+                  {transferReasonSuggestions.length > 0 ? (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      keyboardShouldPersistTaps="always"
+                      style={styles.transferReasonChipsScroll}
+                      contentContainerStyle={styles.transferReasonChipsContent}
+                    >
+                      {transferReasonSuggestions.map((reason) => {
+                        const selected =
+                          transferReason.trim().toLowerCase() === reason.trim().toLowerCase();
+                        return (
+                          <Pressable
+                            key={reason}
+                            onPress={() => selectTransferReasonSuggestion(reason)}
+                            style={({ pressed }) => [
+                              tagContainerStyle({
+                                backgroundColor: selected ? colors.successMuted : colors.surfaceElevated,
+                                borderColor: selected ? colors.primary : colors.border,
+                                bordered: true,
+                                pill: true,
+                              }),
+                              chipSelectableShellStyle(selected ? colors.primary : colors.border),
+                              pressed && styles.pressed,
+                            ]}
+                          >
+                            <Text style={tagTypography({ color: selected ? colors.primary : colors.text })}>
+                              {reason}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  ) : null}
                 </View>
               ) : null}
 
-              {isPersonTransferFrom ? (
-                <View style={styles.section}>
-                  <DashboardSectionLabel>Description (optionnel)</DashboardSectionLabel>
+              {type === 'income' ? (
+                <View
+                  style={styles.section}
+                  onLayout={(e) => { incomeReasonSectionYRef.current = e.nativeEvent.layout.y; }}
+                >
+                  <DashboardSectionLabel>Raison du revenu</DashboardSectionLabel>
                   <TextInput
                     style={[styles.input, themed.controlStrong, themed.text]}
-                    placeholder="Ex. remboursement, cadeau, partage de frais..."
+                    placeholder="Ex. travail, vente, don, prime..."
                     placeholderTextColor={colors.textMuted}
-                    value={transferReason}
-                    onChangeText={setTransferReason}
+                    value={incomeReason}
+                    onChangeText={setIncomeReason}
+                    returnKeyType="next"
+                    blurOnSubmit
+                    onSubmitEditing={handleIncomeReasonSubmit}
                   />
+                  {incomeReasonSuggestions.length > 0 ? (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      keyboardShouldPersistTaps="always"
+                      style={styles.transferReasonChipsScroll}
+                      contentContainerStyle={styles.transferReasonChipsContent}
+                    >
+                      {incomeReasonSuggestions.map((reason) => {
+                        const selected =
+                          incomeReason.trim().toLowerCase() === reason.trim().toLowerCase();
+                        return (
+                          <Pressable
+                            key={reason}
+                            onPress={() => selectIncomeReasonSuggestion(reason)}
+                            style={({ pressed }) => [
+                              tagContainerStyle({
+                                backgroundColor: selected ? colors.successMuted : colors.surfaceElevated,
+                                borderColor: selected ? colors.primary : colors.border,
+                                bordered: true,
+                                pill: true,
+                              }),
+                              chipSelectableShellStyle(selected ? colors.primary : colors.border),
+                              pressed && styles.pressed,
+                            ]}
+                          >
+                            <Text style={tagTypography({ color: selected ? colors.primary : colors.text })}>
+                              {reason}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  ) : null}
                 </View>
               ) : null}
 
               <View
-                style={styles.amountWrap}
+                style={[
+                  fieldHasError('amount') ? styles.amountValidationSection : styles.amountSection,
+                  fieldHasError('amount') && {
+                    backgroundColor: inputSurface.backgroundColor,
+                    borderColor: colors.danger,
+                    borderWidth: 1.5,
+                  },
+                ]}
                 onLayout={(event) => {
                   amountSectionYRef.current = event.nativeEvent.layout.y;
                 }}
               >
-                <Text
-                  style={[styles.amountText, themed.text, { fontSize: amountFontSize(amount) }]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.35}
-                >
-                  {displayAmount}
-                </Text>
-              </View>
+                <View style={styles.amountWrap}>
+                  <TransactionAmountLabel
+                    amount={displayAmount}
+                    direction={amountDirection}
+                    color={themed.text.color ?? colors.text}
+                    textStyle={[styles.amountText, themed.text, { fontSize: amountFontSize(amount) }]}
+                    iconSize={Math.max(18, Math.round(amountFontSize(amount) * 0.38))}
+                    containerStyle={{ justifyContent: 'center' }}
+                    showDirectionIcon={amountDirection !== 'neutral'}
+                  />
+                </View>
 
-              <MotiView
-                from={{ opacity: 0, translateY: 8 }}
-                animate={{ opacity: 1, translateY: 0 }}
-                transition={{ type: 'timing', duration: 260 }}
-              >
-                <GhostNumpad value={amount} onChange={setAmount} />
-              </MotiView>
+                <MotiView
+                  from={{ opacity: 0, translateY: 8 }}
+                  animate={{ opacity: 1, translateY: 0 }}
+                  transition={{ type: 'timing', duration: 260 }}
+                >
+                  <GhostNumpad
+                    value={amount}
+                    onChange={(value) => {
+                      clearFieldError('amount');
+                      setAmount(value);
+                    }}
+                  />
+                </MotiView>
+              </View>
 
               <DatePickerField
                 label="Date"
@@ -1226,43 +1849,39 @@ export default function AddTransactionScreen() {
 
               {type === 'expense' ? (
                 <View style={styles.section}>
-                  <DashboardSectionLabel>Compte utilisé comme paiement</DashboardSectionLabel>
-                  <View style={styles.accountRow}>
-                    {accountOptions.map((a) => {
-                      const on = accountId === a.id;
-                      return (
-                        <Pressable
-                          key={a.id}
-                          onPress={() => {
-                            tapHaptic();
-                            setAccountId(a.id);
-                          }}
-                          style={[styles.accountChip, themed.control, styles.chipShell, on && themed.selected]}
-                        >
-                          <Text
-                            style={[styles.accountText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                            numberOfLines={2}
-                            ellipsizeMode="tail"
-                            adjustsFontSizeToFit
-                            minimumFontScale={0.78}
-                          >
-                            {a.label.replace(' • ', '\n')}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+                  <PaymentMethodField
+                    accounts={paymentMethodAccounts}
+                    selectedAccountId={accountId}
+                    onSelectAccount={(id) => {
+                      tapHaptic();
+                      setAccountId(id);
+                    }}
+                    chipControlStyle={themed.control}
+                    chipSelectedStyle={themed.selected}
+                    selectedTextStyle={themed.selectedText}
+                    textSecondaryStyle={{ color: colors.textSecondary }}
+                  />
                 </View>
               ) : null}
 
-              {type === 'expense' && !hasItemizedItems ? (
-                <View style={styles.section}>
+              {type === 'expense' ? (
+                <View
+                  style={[
+                    styles.section,
+                    fieldHasError('category') && styles.validationOutline,
+                    fieldHasError('category') && fieldErrorBorder,
+                  ]}
+                  onLayout={(event) => {
+                    categorySectionYRef.current = event.nativeEvent.layout.y;
+                  }}
+                >
                   <DashboardSectionLabel>Catégorie</DashboardSectionLabel>
                   <BudgetCategoryPicker
                     categories={visibleCats}
                     searchText={categorySearchText}
                     selectedId={categoryId}
                     onSelect={(id) => {
+                      clearFieldError('category');
                       setCategoryManuallySelected(true);
                       setCategoryId(id);
                     }}
@@ -1270,107 +1889,40 @@ export default function AddTransactionScreen() {
                 </View>
               ) : null}
 
-              {!isTransfer ? (
-                <View style={[styles.logoSection, themed.control]}>
-                  <View style={styles.logoHeader}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Changer le logo ou l'icône"
-                      onPress={() => {
-                        tapHaptic();
-                        setShowLogoPicker((visible) => !visible);
-                      }}
-                    >
-                      {autoLogoUrl && !iconPickedManually ? (
-                        <LogoIconFrame uri={autoLogoUrl} size={52} />
-                      ) : (
-                        <UserPickedIconBadge icon={fallbackIcon} color={fallbackIconColor} size={52} iconSize={22} />
-                      )}
-                    </Pressable>
-                    <View style={styles.logoCopy}>
-                      <DashboardSectionLabel>Logo</DashboardSectionLabel>
-                      <Text style={[styles.logoHint, themed.textMuted]}>
-                        {autoLogoUrl && !iconPickedManually
-                          ? 'Logo automatique trouvé avec le nom.'
-                          : 'Touche l\'icône pour choisir dans la bibliothèque MDI.'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {showLogoPicker ? (
-                    <View style={styles.logoPicker}>
-                      {autoLogoUrl ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Utiliser le logo automatique"
-                          onPress={() => {
-                            tapHaptic();
-                            setIconPickedManually(false);
-                            setShowLogoPicker(false);
-                          }}
-                          style={({ pressed }) => [styles.logoOption, themed.control, pressed && styles.pressed]}
-                        >
-                          <LogoIconFrame uri={autoLogoUrl} size={40} />
-                          <Text style={[styles.logoPickerHint, themed.textMuted]}>Auto</Text>
-                        </Pressable>
-                      ) : null}
-                      <Text style={[styles.logoPickerHint, themed.textMuted]}>Icônes MDI</Text>
-                      <MdiIconPicker
-                        selectedIcon={fallbackIcon}
-                        onSelect={(icon: MdiIconName) => {
-                          setFallbackIcon(icon);
-                          setIconPickedManually(true);
-                          setShowLogoPicker(false);
-                        }}
-                      />
-                    </View>
-                  ) : null}
-                </View>
-              ) : null}
 
               {type !== 'expense' && !isTransfer ? (
                 <View style={styles.section}>
-                  <DashboardSectionLabel>Compte de dépôt</DashboardSectionLabel>
-                  <View style={styles.accountRow}>
-                    {accountOptions.map((a) => {
-                      const on = accountId === a.id;
-                      return (
-                        <Pressable
-                          key={a.id}
-                          onPress={() => { tapHaptic(); setAccountId(a.id); }}
-                          style={[styles.accountChip, themed.control, styles.chipShell, on && themed.selected]}
-                        >
-                          <Text
-                            style={[styles.accountText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                            numberOfLines={2}
-                            ellipsizeMode="tail"
-                            adjustsFontSizeToFit
-                            minimumFontScale={0.78}
-                          >
-                            {a.label.replace(' • ', '\n')}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              ) : null}
-
-              {isStandardTransfer ? (
-                <View style={styles.section}>
-                  <DashboardSectionLabel>Raison du transfert</DashboardSectionLabel>
-                  <TextInput
-                    style={[styles.input, themed.controlStrong, themed.text]}
-                    placeholder="Motif (optionnel) — ex. épargne vacances, remboursement..."
-                    placeholderTextColor={colors.textMuted}
-                    value={transferReason}
-                    onChangeText={setTransferReason}
+                  <PaymentMethodField
+                    label="Compte de dépôt"
+                    accounts={paymentMethodAccounts}
+                    selectedAccountId={accountId}
+                    onSelectAccount={(id) => { tapHaptic(); setAccountId(id); }}
+                    chipControlStyle={themed.control}
+                    chipSelectedStyle={themed.selected}
+                    selectedTextStyle={themed.selectedText}
+                    textSecondaryStyle={{ color: colors.textSecondary }}
                   />
                 </View>
               ) : null}
 
+              {childSupportSalaryNotices.map((notice) => (
+                <ThemedFormMessage
+                  key={`${notice.variant}-${notice.title}`}
+                  variant={notice.variant}
+                  title={notice.title}
+                  message={notice.message}
+                />
+              ))}
+
               {isPersonTransferTo ? (
-                <View style={styles.section}>
+                <View
+                  style={[
+                    styles.section,
+                    fieldHasError('category') && styles.validationOutline,
+                    fieldHasError('category') && fieldErrorBorder,
+                  ]}
+                  onLayout={(e) => { categorySectionYRef.current = e.nativeEvent.layout.y; }}
+                >
                   <DashboardSectionLabel>Catégorie</DashboardSectionLabel>
                   <BudgetCategoryPicker
                     categories={visibleCats}
@@ -1378,6 +1930,7 @@ export default function AddTransactionScreen() {
                     selectedId={categoryId}
                     transferReason={transferReason}
                     onSelect={(id) => {
+                      clearFieldError('category');
                       setCategoryManuallySelected(true);
                       setCategoryId(id);
                     }}
@@ -1387,34 +1940,28 @@ export default function AddTransactionScreen() {
 
               {isPersonTransferFrom ? (
                 <View style={styles.section}>
-                  <DashboardSectionLabel>Compte de dépôt</DashboardSectionLabel>
-                  <View style={styles.accountRow}>
-                    {accountOptions.map((a) => {
-                      const on = accountId === a.id;
-                      return (
-                        <Pressable
-                          key={a.id}
-                          onPress={() => { tapHaptic(); setAccountId(a.id); }}
-                          style={[styles.accountChip, themed.control, styles.chipShell, on && themed.selected]}
-                        >
-                          <Text
-                            style={[styles.accountText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                            numberOfLines={2}
-                            ellipsizeMode="tail"
-                            adjustsFontSizeToFit
-                            minimumFontScale={0.78}
-                          >
-                            {a.label.replace(' • ', '\n')}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+                  <PaymentMethodField
+                    label="Compte de dépôt"
+                    accounts={paymentMethodAccounts}
+                    selectedAccountId={accountId}
+                    onSelectAccount={(id) => { tapHaptic(); setAccountId(id); }}
+                    chipControlStyle={themed.control}
+                    chipSelectedStyle={themed.selected}
+                    selectedTextStyle={themed.selectedText}
+                    textSecondaryStyle={{ color: colors.textSecondary }}
+                  />
                 </View>
               ) : null}
 
               {isPersonTransferFrom ? (
-                <View style={styles.section}>
+                <View
+                  style={[
+                    styles.section,
+                    fieldHasError('category') && styles.validationOutline,
+                    fieldHasError('category') && fieldErrorBorder,
+                  ]}
+                  onLayout={(e) => { categorySectionYRef.current = e.nativeEvent.layout.y; }}
+                >
                   <DashboardSectionLabel>Catégorie</DashboardSectionLabel>
                   <View style={styles.wrapRow}>
                     {visibleCats.map((c) => {
@@ -1424,6 +1971,7 @@ export default function AddTransactionScreen() {
                           key={c.id}
                           onPress={() => {
                             tapHaptic();
+                            clearFieldError('category');
                             setCategoryManuallySelected(true);
                             setCategoryId(c.id);
                           }}
@@ -1452,37 +2000,34 @@ export default function AddTransactionScreen() {
               ) : null}
 
               {isStandardTransfer ? (
-                <View style={styles.section}>
+                <View
+                  style={[
+                    styles.section,
+                    fieldHasError('sourceAccount') && styles.validationOutline,
+                    fieldHasError('sourceAccount') && fieldErrorBorder,
+                  ]}
+                  onLayout={(e) => { sourceAccountSectionYRef.current = e.nativeEvent.layout.y; }}
+                >
                   <DashboardSectionLabel>De</DashboardSectionLabel>
                   {!hasTransferEndpoints ? (
                     <Text style={[styles.sectionHint, themed.textMuted]}>Aucun compte ou objectif trouvé.</Text>
                   ) : null}
                   {hasAccountOptions ? (
-                    <>
-                      <Text style={[styles.transferGroupLabel, themed.textMuted]}>Comptes</Text>
-                      <View style={styles.accountRow}>
-                        {accountOptions.map((a) => {
-                          const on = accountId === a.id;
-                          return (
-                            <Pressable
-                              key={a.id}
-                              onPress={() => { tapHaptic(); setAccountId(a.id); }}
-                              style={[styles.accountChip, themed.control, styles.chipShell, on && themed.selected]}
-                            >
-                              <Text
-                                style={[styles.accountText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                                numberOfLines={2}
-                                ellipsizeMode="tail"
-                                adjustsFontSizeToFit
-                                minimumFontScale={0.78}
-                              >
-                                {a.label.replace(' • ', '\n')}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    </>
+                    <PaymentMethodField
+                      label="Comptes"
+                      accounts={paymentMethodAccounts}
+                      selectedAccountId={accountId}
+                      onSelectAccount={(id) => {
+                        tapHaptic();
+                        clearFieldError('sourceAccount');
+                        clearFieldError('destinationAccount');
+                        setAccountId(id);
+                      }}
+                      chipControlStyle={themed.control}
+                      chipSelectedStyle={themed.selected}
+                      selectedTextStyle={themed.selectedText}
+                      textSecondaryStyle={{ color: colors.textSecondary }}
+                    />
                   ) : null}
                   {hasSavingsGoalsList ? (
                     <>
@@ -1493,8 +2038,13 @@ export default function AddTransactionScreen() {
                           return (
                             <Pressable
                               key={g.id}
-                              onPress={() => { tapHaptic(); setAccountId(g.id); }}
-                              style={[styles.transferGoalChip, themed.control, styles.chipShell, on && themed.selected]}
+                              onPress={() => {
+                                tapHaptic();
+                                clearFieldError('sourceAccount');
+                                clearFieldError('destinationAccount');
+                                setAccountId(g.id);
+                              }}
+                              style={[styles.transferGoalChip, on ? themed.selected : themed.control]}
                             >
                               <TransferGoalChipIcon
                                 icon={g.icon}
@@ -1503,16 +2053,13 @@ export default function AddTransactionScreen() {
                                 mutedColor={colors.textSecondary}
                               />
                               <Text
-                                style={[styles.transferGoalName, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                                {...chipLabelTextProps()}
+                                style={[
+                                  styles.transferGoalChipText,
+                                  on ? themed.selectedText : { color: colors.textSecondary },
+                                ]}
+                                numberOfLines={1}
                               >
-                                {g.name}
-                              </Text>
-                              <Text
-                                style={[styles.transferGoalBalance, singleLineLabelStyle, on ? themed.selectedText : themed.textMuted]}
-                                {...chipLabelTextProps()}
-                              >
-                                {Math.round(g.currentAmount).toLocaleString('fr-CA')} $
+                                {g.name} • {formatNumberDisplay(Math.round(g.currentAmount))} $
                               </Text>
                             </Pressable>
                           );
@@ -1524,78 +2071,75 @@ export default function AddTransactionScreen() {
               ) : null}
 
               {isPersonTransferTo ? (
-                <View style={styles.section}>
-                  <DashboardSectionLabel>Compte source</DashboardSectionLabel>
-                  {!hasAccountOptions ? (
-                    <Text style={[styles.sectionHint, themed.textMuted]}>Aucun compte trouvé.</Text>
-                  ) : (
-                    <View style={styles.accountRow}>
-                      {accountOptions.map((a) => {
-                        const on = accountId === a.id;
-                        return (
-                          <Pressable
-                            key={a.id}
-                            onPress={() => { tapHaptic(); setAccountId(a.id); }}
-                            style={[styles.accountChip, themed.control, styles.chipShell, on && themed.selected]}
-                          >
-                            <Text
-                              style={[styles.accountText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                              numberOfLines={2}
-                              ellipsizeMode="tail"
-                              adjustsFontSizeToFit
-                              minimumFontScale={0.78}
-                            >
-                              {a.label.replace(' • ', '\n')}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  )}
+                <View
+                  style={[
+                    styles.section,
+                    fieldHasError('sourceAccount') && styles.validationOutline,
+                    fieldHasError('sourceAccount') && fieldErrorBorder,
+                  ]}
+                  onLayout={(e) => { sourceAccountSectionYRef.current = e.nativeEvent.layout.y; }}
+                >
+                  <PaymentMethodField
+                    label="Compte source"
+                    accounts={paymentMethodAccounts}
+                    selectedAccountId={accountId}
+                    onSelectAccount={(id) => {
+                      tapHaptic();
+                      clearFieldError('sourceAccount');
+                      setAccountId(id);
+                    }}
+                    chipControlStyle={themed.control}
+                    chipSelectedStyle={themed.selected}
+                    selectedTextStyle={themed.selectedText}
+                    textSecondaryStyle={{ color: colors.textSecondary }}
+                    emptyHint="Aucun compte trouvé."
+                  />
                 </View>
               ) : null}
 
               {isStandardTransfer ? (
-                <View style={styles.section}>
+                <View
+                  style={[
+                    styles.section,
+                    fieldHasError('destinationAccount') && styles.validationOutline,
+                    fieldHasError('destinationAccount') && fieldErrorBorder,
+                  ]}
+                  onLayout={(e) => { destinationAccountSectionYRef.current = e.nativeEvent.layout.y; }}
+                >
                   <DashboardSectionLabel>Vers</DashboardSectionLabel>
-                  {hasAccountOptions ? (
-                    <>
-                      <Text style={[styles.transferGroupLabel, themed.textMuted]}>Comptes</Text>
-                      <View style={styles.accountRow}>
-                        {accountOptions.map((a) => {
-                          const on = destinationAccountId === a.id;
-                          return (
-                            <Pressable
-                              key={a.id}
-                              onPress={() => { tapHaptic(); setDestinationAccountId(a.id); }}
-                              style={[styles.accountChip, themed.control, styles.chipShell, on && themed.selected]}
-                            >
-                              <Text
-                                style={[styles.accountText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                                numberOfLines={2}
-                                ellipsizeMode="tail"
-                                adjustsFontSizeToFit
-                                minimumFontScale={0.78}
-                              >
-                                {a.label.replace(' • ', '\n')}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    </>
+                  {destinationPaymentMethodAccounts.length > 0 ? (
+                    <PaymentMethodField
+                      label="Comptes"
+                      accounts={destinationPaymentMethodAccounts}
+                      selectedAccountId={destinationAccountId}
+                      onSelectAccount={(id) => {
+                        tapHaptic();
+                        clearFieldError('sourceAccount');
+                        clearFieldError('destinationAccount');
+                        setDestinationAccountId(id);
+                      }}
+                      chipControlStyle={themed.control}
+                      chipSelectedStyle={themed.selected}
+                      selectedTextStyle={themed.selectedText}
+                      textSecondaryStyle={{ color: colors.textSecondary }}
+                    />
                   ) : null}
-                  {hasSavingsGoalsList ? (
+                  {hasDestinationSavingsGoals ? (
                     <>
                       <Text style={[styles.transferGroupLabel, themed.textMuted]}>{'Objectifs d\u2019épargne'}</Text>
                       <View style={styles.accountRow}>
-                        {savingsGoals.map((g) => {
+                        {destinationSavingsGoals.map((g) => {
                           const on = destinationAccountId === g.id;
                           return (
                             <Pressable
                               key={g.id}
-                              onPress={() => { tapHaptic(); setDestinationAccountId(g.id); }}
-                              style={[styles.transferGoalChip, themed.control, styles.chipShell, on && themed.selected]}
+                              onPress={() => {
+                                tapHaptic();
+                                clearFieldError('sourceAccount');
+                                clearFieldError('destinationAccount');
+                                setDestinationAccountId(g.id);
+                              }}
+                              style={[styles.transferGoalChip, on ? themed.selected : themed.control]}
                             >
                               <TransferGoalChipIcon
                                 icon={g.icon}
@@ -1604,16 +2148,13 @@ export default function AddTransactionScreen() {
                                 mutedColor={colors.textSecondary}
                               />
                               <Text
-                                style={[styles.transferGoalName, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                                {...chipLabelTextProps()}
+                                style={[
+                                  styles.transferGoalChipText,
+                                  on ? themed.selectedText : { color: colors.textSecondary },
+                                ]}
+                                numberOfLines={1}
                               >
-                                {g.name}
-                              </Text>
-                              <Text
-                                style={[styles.transferGoalBalance, singleLineLabelStyle, on ? themed.selectedText : themed.textMuted]}
-                                {...chipLabelTextProps()}
-                              >
-                                {Math.round(g.currentAmount).toLocaleString('fr-CA')} $
+                                {g.name} • {formatNumberDisplay(Math.round(g.currentAmount))} $
                               </Text>
                             </Pressable>
                           );
@@ -1628,7 +2169,14 @@ export default function AddTransactionScreen() {
               ) : null}
 
               {type === 'income' ? (
-                <View style={styles.section}>
+                <View
+                  style={[
+                    styles.section,
+                    fieldHasError('category') && styles.validationOutline,
+                    fieldHasError('category') && fieldErrorBorder,
+                  ]}
+                  onLayout={(e) => { categorySectionYRef.current = e.nativeEvent.layout.y; }}
+                >
                   <DashboardSectionLabel>Catégorie</DashboardSectionLabel>
                   <View style={styles.wrapRow}>
                     {visibleCats.map((c) => {
@@ -1638,6 +2186,7 @@ export default function AddTransactionScreen() {
                           key={c.id}
                           onPress={() => {
                             tapHaptic();
+                            clearFieldError('category');
                             setCategoryManuallySelected(true);
                             setCategoryId(c.id);
                           }}
@@ -1666,43 +2215,217 @@ export default function AddTransactionScreen() {
               ) : null}
 
               {type === 'expense' ? (
-                <View style={styles.section}>
-                  <ItemizedArticlesEditor
-                    items={itemizedExpenses}
-                    categories={visibleCats}
-                    merchantHint={label}
-                    onChange={(next) => {
-                      const cleaned = next.filter((item, index) => index === 0 || item.name.trim() || item.price.trim());
-                      setItemizedExpenses(cleaned.length > 0 ? cleaned : [createEmptyItemizedRow()]);
-                    }}
-                  />
-                </View>
-              ) : null}
+                <View
+                  style={[
+                    styles.articlesSectionCard,
+                    {
+                      backgroundColor: isLight ? '#FAFAFA' : '#0F0F10',
+                      borderColor: colors.containerBorder,
+                    },
+                  ]}
+                  onLayout={(event) => {
+                    articlesSectionYRef.current = event.nativeEvent.layout.y;
+                  }}
+                >
+                    <View style={styles.articlesHeaderRow}>
+                      <View style={styles.articlesHeaderLeft}>
+                        <View style={[styles.articlesIconWell, { backgroundColor: colors.successMuted }]}>
+                          <Ionicons name="receipt-outline" size={14} color={colors.primary} />
+                        </View>
+                        <Text style={[detailSectionLabelStyle(), { color: colors.text }]}>Articles</Text>
+                        {articles.length > 0 ? (
+                          <View style={[styles.articlesCountBadge, { backgroundColor: colors.successMuted }]}>
+                            <Text style={[styles.articlesCountBadgeText, { color: colors.primary }]}>
+                              {articles.length}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      {!inlineArticleExpanded && articles.length > 0 ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Ajouter un article"
+                          hitSlop={8}
+                          onPress={() => {
+                            tapHaptic();
+                            setInlineArticleExpanded(true);
+                          }}
+                          style={({ pressed }) => [
+                            styles.articlesAddButton,
+                            {
+                              backgroundColor: colors.successMuted,
+                              borderColor: colors.primary,
+                            },
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <Ionicons name="add" size={14} color={colors.primary} />
+                          <Text style={[styles.articlesAddButtonText, { color: colors.primary }]}>Ajouter</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
 
-              {type === 'expense' ? (
-                <View style={styles.section}>
-                  <View style={styles.sectionTitleRow}>
-                    <DashboardSectionLabel>Reçu (optionnel)</DashboardSectionLabel>
-                    {receiptUri.trim() || receiptStatus ? (
-                      <View style={[styles.receiptStatusPill, themed.control]}>
-                        <Ionicons name="receipt-outline" size={13} color={colors.textMuted} />
-                        <Text style={[styles.receiptStatusText, themed.textMuted]}>
-                          {receiptStatus === 'scan_pending' ? 'À scanner' : 'Joint'}
+                    <View
+                      style={[
+                        styles.articlesTearLine,
+                        { borderColor: isLight ? 'rgba(0,0,0,0.11)' : 'rgba(255,255,255,0.11)' },
+                      ]}
+                    />
+
+                    {!inlineArticleExpanded && articles.length === 0 ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Ajouter un article"
+                        onPress={() => {
+                          tapHaptic();
+                          setInlineArticleExpanded(true);
+                        }}
+                        style={({ pressed }) => [
+                          styles.articlesPrimaryAddButton,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Ionicons name="add-circle-outline" size={18} color={colors.textSecondary} />
+                        <Text style={styles.articlesPrimaryAddButtonText}>
+                          Ajouter un article
                         </Text>
+                      </Pressable>
+                    ) : null}
+
+                    {inlineArticleExpanded ? (
+                      <View
+                        style={styles.articlesInlineFormWrap}
+                        onLayout={(event) => {
+                          inlineArticleLocalYRef.current = event.nativeEvent.layout.y;
+                        }}
+                      >
+                        <AddArticleSheet
+                          variant="inline"
+                          visible={inlineArticleExpanded}
+                          defaultCategoryId={categoryId}
+                          merchantHint={label}
+                          scrollToOffset={scrollToInlineArticle}
+                          onAdd={(name, price, articleCategoryId, categoryName) =>
+                            handleAddArticle(name, price, articleCategoryId, categoryName)
+                          }
+                          onClose={() => setInlineArticleExpanded(false)}
+                        />
                       </View>
                     ) : null}
-                  </View>
 
-                  <ReceiptCaptureActions
-                    variant="premium"
-                    onScan={openDedicatedScan}
-                    onCapture={() => void captureReceiptImage()}
-                    onImport={() => void pickReceiptImage()}
-                  />
-
-                  {scanningReceipt ? (
-                    <Text style={[styles.sectionHint, themed.textMuted]}>Analyse du reçu en cours…</Text>
-                  ) : null}
+                    {articles.length > 0 ? (
+                      <View
+                        style={[
+                          styles.articlesBlock,
+                          {
+                            backgroundColor: isLight ? '#FFFFFF' : colors.surfaceElevated,
+                            borderColor: isLight ? 'rgba(0,0,0,0.06)' : colors.border,
+                          },
+                        ]}
+                      >
+                        <View style={styles.articlesTableHead}>
+                          <Text
+                            style={[
+                              detailSubSectionHeaderStyle(),
+                              styles.articlesTableHeadLabel,
+                              { color: colors.textMuted },
+                            ]}
+                          >
+                            Article
+                          </Text>
+                          <Text
+                            style={[
+                              detailSubSectionHeaderStyle(),
+                              styles.articlesTableHeadAmount,
+                              { color: colors.textMuted },
+                            ]}
+                          >
+                            Montant
+                          </Text>
+                          <View style={styles.articlesTableHeadAction} />
+                        </View>
+                        {articles.map((article, index) => (
+                          <View
+                            key={`${article.name}-${index}`}
+                            style={[
+                              styles.articleRow,
+                              index > 0 && {
+                                borderTopWidth: StyleSheet.hairlineWidth,
+                                borderTopColor: isLight ? 'rgba(0,0,0,0.06)' : colors.border,
+                              },
+                            ]}
+                          >
+                            <View style={styles.articleCopy}>
+                              <Text
+                                style={[styles.articleName, articlesReceiptTypography('regular'), themed.text]}
+                                numberOfLines={1}
+                              >
+                                {article.name}
+                              </Text>
+                              {article.categoryName ? (
+                                <Text
+                                  style={[
+                                    styles.articleCategory,
+                                    articlesReceiptTypography('regular'),
+                                    themed.textMuted,
+                                  ]}
+                                  numberOfLines={1}
+                                >
+                                  {article.categoryName}
+                                </Text>
+                              ) : null}
+                            </View>
+                            <Text style={[styles.articlePrice, articlesReceiptTypography('medium'), themed.text]}>
+                              {formatDisplayMoneyAbsolute(article.price)}
+                            </Text>
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel={`Retirer ${article.name}`}
+                              hitSlop={8}
+                              onPress={() => handleRemoveArticle(index)}
+                              style={({ pressed }) => [styles.articleRemoveBtn, pressed && styles.pressed]}
+                            >
+                              <Ionicons name="close" size={13} color={colors.textMuted} />
+                            </Pressable>
+                          </View>
+                        ))}
+                        {articlesTotal > 0 ? (
+                          <View
+                            style={[
+                              styles.articleTotalRow,
+                              {
+                                borderTopColor: isLight ? 'rgba(0,0,0,0.11)' : 'rgba(255,255,255,0.11)',
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.articleTotalLabel,
+                                articlesReceiptTypography('medium'),
+                                themed.textMuted,
+                              ]}
+                            >
+                              TOTAL
+                            </Text>
+                            <Text
+                              style={[styles.articleTotalValue, articlesReceiptTypography('medium'), themed.text]}
+                            >
+                              {formatDisplayMoneyAbsolute(articlesTotal)}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    ) : !inlineArticleExpanded ? (
+                      <Text
+                        style={[
+                          styles.articlesEmptyText,
+                          articlesReceiptTypography('regular'),
+                          themed.textMuted,
+                        ]}
+                      >
+                        Détaillez votre achat article par article
+                      </Text>
+                    ) : null}
                 </View>
               ) : null}
 
@@ -1717,7 +2440,7 @@ export default function AddTransactionScreen() {
               <PrimarySaveButton
                 label={saving ? 'Enregistrement...' : isEditing ? 'Enregistrer les modifications' : 'Enregistrer'}
                 onPress={() => void save()}
-                disabled={saving || !canSubmit}
+                disabled={saving}
               />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -1779,12 +2502,32 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 2,
   },
+  amountSection: {
+    gap: spacing.sm,
+  },
+  amountValidationSection: {
+    gap: spacing.sm,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+  },
+  transferReasonChipsScroll: {
+    marginTop: 2,
+  },
+  transferReasonChipsContent: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingRight: spacing.sm,
+  },
   amountText: {
     ...interExtraBoldText,
     letterSpacing: -2,
     fontVariant: ['tabular-nums'],
   },
   section: { gap: spacing.sm },
+  validationOutline: {
+    borderRadius: radius.lg,
+    padding: spacing.sm,
+  },
   sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1825,6 +2568,10 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+  },
+  createContactActionsColumn: {
+    flexDirection: 'column',
+    gap: spacing.sm,
   },
   createContactButtonDisabled: {
     opacity: 0.6,
@@ -2023,62 +2770,167 @@ const styles = StyleSheet.create({
     ...interExtraBoldText,
     fontSize: typography.meta,
   },
-  receiptStatusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
+  articlesSectionCard: {
+    gap: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: spacing.md,
   },
-  receiptStatusText: {
-    ...interExtraBoldText,
-    fontSize: typography.micro,
-  },
-  receiptAttachButton: {
-    minHeight: 42,
+  articlesHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
+    gap: spacing.sm,
   },
-  receiptActionGrid: {
+  articlesHeaderLeft: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 7,
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+    minWidth: 0,
   },
-  receiptAction: {
-    flexGrow: 1,
-    flexBasis: '31%',
-    minHeight: 42,
+  articlesIconWell: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  articlesCountBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
+  },
+  articlesCountBadgeText: {
+    ...interExtraBoldText,
+    fontSize: typography.micro,
+    lineHeight: 14,
+  },
+  articlesTearLine: {
+    borderTopWidth: 1,
+    borderStyle: 'dashed',
+  },
+  articlesPrimaryAddButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
+    gap: spacing.sm,
+    minHeight: 48,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  receiptActionText: {
-    ...interExtraBoldText,
-    fontSize: typography.meta,
-    textAlign: 'center',
+  articlesPrimaryAddButtonText: {
+    ...interMediumText,
+    fontSize: typography.caption,
+    letterSpacing: 0.2,
+    color: colors.textSecondary,
   },
-  premiumBadge: {
+  articlesAddButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
     borderRadius: radius.pill,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    marginLeft: 2,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
-  premiumBadgeText: {
+  articlesAddButtonText: {
     ...interExtraBoldText,
+    fontSize: typography.micro,
+    letterSpacing: 0.2,
+  },
+  articlesInlineFormWrap: {
+    gap: spacing.sm,
+  },
+  articlesBlock: {
+    gap: spacing.xs,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  articlesTableHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: spacing.xs,
+  },
+  articlesTableHeadLabel: {
+    flex: 1,
+    minWidth: 0,
+  },
+  articlesTableHeadAmount: {
+    textAlign: 'right',
+    minWidth: 72,
+  },
+  articlesTableHeadAction: {
+    width: 26,
+    flexShrink: 0,
+  },
+  articleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
+  articleCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  articleName: {
+    fontSize: 13,
+    letterSpacing: 0.3,
+    lineHeight: 18,
+  },
+  articleCategory: {
     fontSize: 10,
+    letterSpacing: 0.4,
+    lineHeight: 14,
+  },
+  articlePrice: {
+    fontSize: 13,
+    letterSpacing: 0.3,
+    flexShrink: 0,
+    minWidth: 72,
+    textAlign: 'right',
+  },
+  articleRemoveBtn: {
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  articleTotalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: spacing.sm,
+    marginTop: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  articleTotalLabel: {
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+  articleTotalValue: {
+    fontSize: 13,
+    letterSpacing: 0.4,
+  },
+  articlesEmptyText: {
+    fontSize: 12,
+    textAlign: 'center',
+    paddingVertical: spacing.sm,
+    letterSpacing: 0.4,
   },
   logoSection: {
     borderRadius: radius.lg,
@@ -2173,7 +3025,7 @@ const styles = StyleSheet.create({
   accountRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 7,
+    gap: spacing.sm,
   },
   accountChip: {
     flexGrow: 1,
@@ -2198,35 +3050,19 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   transferGroupLabel: {
-    ...interMediumText,
-    fontSize: typography.micro,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    marginTop: spacing.xs,
-    marginBottom: 2,
+    ...typographyKit.eyebrow,
   },
   transferGoalChip: {
-    flexGrow: 1,
-    flexBasis: '45%',
-    minHeight: 66,
-    borderRadius: radius.lg,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
+    gap: 6,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    gap: spacing.xs,
   },
-  transferGoalName: {
-    textAlign: 'center',
-    ...interBoldText,
-    fontSize: typography.micro,
-    lineHeight: 15,
+  transferGoalChipText: {
+    ...typographyKit.metaMedium,
     flexShrink: 1,
-  },
-  transferGoalBalance: {
-    textAlign: 'center',
-    ...interMediumText,
-    fontSize: typography.micro,
-    lineHeight: 14,
   },
 });

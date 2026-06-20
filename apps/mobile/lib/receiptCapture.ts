@@ -13,7 +13,7 @@ export async function pickReceiptFromGallery(): Promise<ReceiptImageResult> {
 
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'],
-    quality: 0.85,
+    quality: 1,
     allowsEditing: false,
   });
 
@@ -29,7 +29,7 @@ export async function captureReceiptPhoto(): Promise<ReceiptImageResult> {
 
   const result = await ImagePicker.launchCameraAsync({
     mediaTypes: ['images'],
-    quality: 0.85,
+    quality: 1,
     allowsEditing: false,
   });
 

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -18,7 +19,6 @@ import { MerchantDirectory } from '@/components/MerchantDirectory';
 import { MerchantEditModal, type MerchantEditTarget } from '@/components/MerchantEditModal';
 import { DashboardCard } from '@/components/DashboardCard';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
-import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import { type FormFeedback } from '@/lib/formFeedback';
 import {
   createNewRecurringPaymentForm,
@@ -50,6 +50,7 @@ import {
 } from '@/constants/theme';
 import { listDayTotal } from '@/lib/textLayout';
 import { getContacts, getMerchantOverrides, getTransactions, sortTransactionsNewestFirst, getCategories, getCategoryBudgets, getSimulatedAccounts } from '@/lib/db';
+import { ensureDbReady } from '@/lib/init';
 import { isContactTransferTx } from '@/lib/accountTransactionFlow';
 import { buildContactDirectoryRows } from '@/lib/contactHistory';
 import { dataEvents, uiEvents } from '@/lib/events';
@@ -58,9 +59,11 @@ import {
   UNIFORM_ACTION_BUTTON_MIN_HEIGHT,
   UNIFORM_SECTION_HEADER_MIN_HEIGHT,
 } from '@/lib/uniformGroupStyles';
+import { useContactPhotoMap } from '@/hooks/useContactPhotoMap';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
+import { useSavingsGoals } from '@/hooks/useSavingsGoals';
 import { useAppTheme } from '@/lib/themeContext';
-import type { Category, CategoryBudget, Contact, MerchantOverride, RecurringPayment, Transaction } from '@/types';
+import type { Category, CategoryBudget, Contact, MerchantOverride, RecurringPayment, SimulatedAccount, Transaction } from '@/types';
 
 type ViewTab = 'history' | 'agenda' | 'merchants';
 type HistoryTypeFilter = 'all' | 'expense' | 'income';
@@ -124,6 +127,48 @@ const HISTORY_FILTER_OPTIONS: { id: HistoryTypeFilter; label: string }[] = [
   { id: 'income', label: 'Revenus' },
 ];
 
+type HistoryDayGroupProps = {
+  date: string;
+  txs: Transaction[];
+  accounts: SimulatedAccount[];
+  savingsGoals: readonly { id: string; name: string }[];
+  contactPhotoByKey: ReadonlyMap<string, string>;
+  mutedColor: string;
+  onPressTransaction: (transactionId: string) => void;
+};
+
+const HistoryDayGroup = memo(function HistoryDayGroup({
+  date,
+  txs,
+  accounts,
+  savingsGoals,
+  contactPhotoByKey,
+  mutedColor,
+  onPressTransaction,
+}: HistoryDayGroupProps) {
+  return (
+    <View style={styles.group}>
+      <View style={styles.groupHeaderRow}>
+        <Text style={[styles.groupLabel, { color: mutedColor }]}>
+          {new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
+        </Text>
+      </View>
+      <View style={styles.groupTransactions}>
+        {txs.map((tx) => (
+          <TransactionRow
+            key={tx.id}
+            transaction={tx}
+            accounts={accounts}
+            savingsGoals={savingsGoals}
+            contactPhotoByKey={contactPhotoByKey}
+            onPress={() => onPressTransaction(tx.id)}
+          />
+        ))}
+      </View>
+    </View>
+  );
+});
+
 export default function TransactionsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ view?: string }>();
@@ -137,6 +182,7 @@ export default function TransactionsScreen() {
   const agendaRef = useRef<AgendaViewRef>(null);
   const hasBlurredRef = useRef(false);
   const [items, setItems] = useState<Transaction[]>([]);
+  const [simulatedAccounts, setSimulatedAccounts] = useState<SimulatedAccount[]>([]);
   const [merchantOverrides, setMerchantOverrides] = useState<MerchantOverride[]>([]);
   const [savedContacts, setSavedContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState('');
@@ -144,7 +190,6 @@ export default function TransactionsScreen() {
   const [historyFiltersExpanded, setHistoryFiltersExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [activeView, setActiveView] = useState<ViewTab>(params.view === 'agenda' ? 'agenda' : params.view === 'merchants' ? 'merchants' : 'history');
-  const [selected, setSelected] = useState<Transaction | null>(null);
   const [editingMerchant, setEditingMerchant] = useState<MerchantEditTarget | null>(null);
   const [isEditingMerchants, setIsEditingMerchants] = useState(false);
   const [showContactForm, setShowContactForm] = useState(false);
@@ -155,6 +200,8 @@ export default function TransactionsScreen() {
   const [recurringSaving, setRecurringSaving] = useState(false);
   const [recurringFeedback, setRecurringFeedback] = useState<FormFeedback | null>(null);
   const requestedView = getRequestedView(params.view);
+  const savingsGoals = useSavingsGoals();
+  const contactPhotoByKey = useContactPhotoMap();
 
   const setCurrentView = useCallback(
     (view: ViewTab) => {
@@ -177,15 +224,18 @@ export default function TransactionsScreen() {
   }, []);
 
   const load = useCallback(async () => {
-    const [transactions, overrides, contacts] = await Promise.all([
-      getTransactions(search),
+    await ensureDbReady();
+    const [transactions, accounts, overrides, contacts] = await Promise.all([
+      getTransactions(),
+      getSimulatedAccounts(),
       getMerchantOverrides(),
       getContacts(),
     ]);
     setItems(transactions);
+    setSimulatedAccounts(accounts);
     setMerchantOverrides(overrides);
     setSavedContacts(contacts);
-  }, [search]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -329,10 +379,20 @@ export default function TransactionsScreen() {
     setEditingMerchant(null);
   };
 
+  const searchFilteredItems = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return items;
+    return items.filter(
+      (tx) =>
+        tx.label.toLowerCase().includes(query) ||
+        (tx.categoryName?.toLowerCase().includes(query) ?? false),
+    );
+  }, [items, search]);
+
   const historyFilteredItems = useMemo(() => {
-    if (historyTypeFilter === 'all') return items;
-    return items.filter((tx) => tx.type === historyTypeFilter);
-  }, [historyTypeFilter, items]);
+    if (historyTypeFilter === 'all') return searchFilteredItems;
+    return searchFilteredItems.filter((tx) => tx.type === historyTypeFilter);
+  }, [historyTypeFilter, searchFilteredItems]);
 
   const grouped = useMemo(() => {
     const g: Record<string, Transaction[]> = {};
@@ -347,6 +407,29 @@ export default function TransactionsScreen() {
   }, [historyFilteredItems]);
 
   const historyHasActiveFilters = search.trim().length > 0 || historyTypeFilter !== 'all';
+
+  const handlePressTransaction = useCallback(
+    (transactionId: string) => {
+      tapHaptic();
+      router.push({ pathname: '/transaction-detail', params: { transactionId } });
+    },
+    [router],
+  );
+
+  const renderHistoryDayGroup = useCallback(
+    ({ item: [date, txs] }: { item: [string, Transaction[]] }) => (
+      <HistoryDayGroup
+        date={date}
+        txs={txs}
+        accounts={simulatedAccounts}
+        savingsGoals={savingsGoals}
+        contactPhotoByKey={contactPhotoByKey}
+        mutedColor={colors.textMuted}
+        onPressTransaction={handlePressTransaction}
+      />
+    ),
+    [colors.textMuted, contactPhotoByKey, handlePressTransaction, savingsGoals, simulatedAccounts],
+  );
 
   const pageHeader = (
     <View style={{ paddingTop: insets.top + SCREEN_TOP_GUTTER }}>
@@ -383,10 +466,24 @@ export default function TransactionsScreen() {
             style={[styles.listViewport, { backgroundColor: contentCanvas }]}
             data={grouped}
             keyExtractor={([date]) => date}
-            removeClippedSubviews
+            extraData={`${search}:${historyTypeFilter}:${simulatedAccounts.length}`}
+            initialNumToRender={8}
+            maxToRenderPerBatch={6}
+            windowSize={7}
+            removeClippedSubviews={Platform.OS !== 'web'}
             ListHeaderComponent={
-              <View>
-                <View style={[styles.searchRow, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder, borderWidth: 1 }]}>
+              <View style={styles.historyListHeader}>
+                <View
+                  style={[
+                    styles.searchRow,
+                    {
+                      backgroundColor: colors.containerBackground,
+                      borderColor: colors.containerBorder,
+                      borderWidth: 1,
+                      marginBottom: historyFiltersExpanded ? spacing.md : spacing.lg,
+                    },
+                  ]}
+                >
                   <Ionicons name="search-outline" size={18} color={colors.textMuted} />
                   <TextInput
                     style={[styles.search, { color: colors.text }]}
@@ -394,7 +491,6 @@ export default function TransactionsScreen() {
                     placeholderTextColor={colors.textMuted}
                     value={search}
                     onChangeText={setSearch}
-                    onSubmitEditing={() => void load()}
                   />
                   <Pressable
                     accessibilityRole="button"
@@ -480,26 +576,7 @@ export default function TransactionsScreen() {
                 ) : null}
               </DashboardCard>
             }
-            renderItem={({ item: [date, txs] }) => {
-              return (
-                <View style={styles.group}>
-                  <View style={styles.groupHeaderRow}>
-                    <Text style={[styles.groupLabel, { color: colors.textMuted }]}>
-                      {new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
-                    </Text>
-                  </View>
-                  <View style={styles.groupTransactions}>
-                    {txs.map((tx) => (
-                      <TransactionRow
-                        key={tx.id}
-                        transaction={tx}
-                        onPress={() => setSelected(tx)}
-                      />
-                    ))}
-                  </View>
-                </View>
-              );
-            }}
+            renderItem={renderHistoryDayGroup}
           />
         </View>
       ) : null}
@@ -561,7 +638,6 @@ export default function TransactionsScreen() {
         onClose={() => setShowContactForm(false)}
         onSaved={load}
       />
-      <TransactionDetailSheet transaction={selected} onClose={() => setSelected(null)} onDeleted={() => { void load(); }} />
       <RecurringPaymentFormModal
         visible={recurringForm != null}
         form={recurringForm}
@@ -606,7 +682,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginBottom: spacing.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     minHeight: 44,
@@ -622,6 +697,9 @@ const styles = StyleSheet.create({
   },
   historyFilterWrap: {
     marginBottom: spacing.xl,
+  },
+  historyListHeader: {
+    marginTop: spacing.lg,
   },
   historyEmptyInner: {
     alignItems: 'center',
@@ -665,7 +743,7 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    paddingTop: spacing.md,
+    paddingTop: spacing.xxl,
     paddingBottom: FLOATING_NAV_CONTENT_PADDING,
   },
   listViewport: { flex: 1 },
@@ -678,7 +756,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
   group: {
-    marginBottom: spacing.xxl,
+    marginBottom: spacing.xl,
   },
   groupHeaderRow: {
     flexDirection: 'row',

@@ -1,5 +1,6 @@
 import type { Loan, RecurringPayment, SimulatedAccount } from '@/types';
 import { deleteRecurringPayment, upsertRecurringPayment } from '@/lib/db';
+import { shouldSyncChildSupportRecurringPayment } from '@/lib/childSupportLoan';
 import { formatLoanDisplayTitle } from '@/lib/loanPresentation';
 import { resolveLoanIcon } from '@/lib/loanIcons';
 
@@ -9,7 +10,9 @@ export function shouldLoanSyncRecurringPayment(
   monthlyPayment: number,
   nextPaymentDate: string,
   paymentAccount: SimulatedAccount | null | undefined,
+  loan?: Pick<Loan, 'type' | 'paymentDebitType'>,
 ) {
+  if (loan && !shouldSyncChildSupportRecurringPayment(loan)) return false;
   return monthlyPayment > 0 && nextPaymentDate.trim().length > 0 && Boolean(paymentAccount);
 }
 
@@ -31,7 +34,12 @@ export function buildLoanRecurringPayment(
       : paymentAccount.name,
     categoryId: null,
     frequency: loan.paymentFrequency,
-    dueDay: null,
+    dueDay:
+      loan.type === 'child_support' &&
+      loan.durationAmount >= 1 &&
+      loan.durationAmount <= 31
+        ? loan.durationAmount
+        : null,
     nextDate: loan.nextPaymentDate,
     endDate: loan.endDate || null,
     active: true,
@@ -51,6 +59,7 @@ export async function syncLoanRecurringPayment(
     loan.monthlyPayment,
     loan.nextPaymentDate,
     paymentAccount,
+    loan,
   );
 
   if (shouldSync && paymentAccount && loan.recurringPaymentId) {

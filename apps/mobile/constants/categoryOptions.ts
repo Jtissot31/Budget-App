@@ -25,6 +25,14 @@ export const TRANSFER_CATEGORY: Category = {
   color: '#64748B',
 };
 
+/** Internal placeholder for transactions without a user-selected category (SQLite FK only). */
+export const UNCATEGORIZED_TRANSACTION_CATEGORY: Category = {
+  id: 'cat-uncategorized',
+  name: '',
+  icon: 'ellipse-outline',
+  color: '#64748B',
+};
+
 export const CATEGORY_COLOR_OPTIONS = [
   '#34D399',
   '#14B8A6',

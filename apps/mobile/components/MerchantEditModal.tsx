@@ -11,7 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
-import { GlassContainer } from '@/components/GlassContainer';
+import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
 import { MdiIconGlyph } from '@/components/MdiIconGlyph';
 import { MdiIconPicker } from '@/components/MdiIconPicker';
@@ -352,49 +352,15 @@ export function MerchantEditModal({
           </ScrollView>
         </View>
 
-        {showDeleteConfirm ? (
-          <View style={styles.confirmOverlay}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Annuler le retrait du marchand"
-              style={StyleSheet.absoluteFill}
-              onPress={() => setShowDeleteConfirm(false)}
-            />
-            <GlassContainer style={styles.confirmCard} padding={spacing.lg} borderRadius={radius.card} innerStyle={styles.confirmCardInner}>
-              <View style={[styles.confirmIcon, { backgroundColor: colors.dangerMuted }]}>
-                <Ionicons name="trash-outline" size={20} color={colors.danger} />
-              </View>
-              <Text style={[styles.confirmTitle, { color: colors.text }]}>Retirer ce marchand ?</Text>
-              <Text style={[styles.confirmMessage, { color: colors.textMuted }]}>
-                {merchant.displayName} sera retiré de la liste Marchands. Les transactions existantes restent conservées.
-              </Text>
-              <View style={styles.confirmActions}>
-                <Pressable
-                  accessibilityRole="button"
-                  style={({ pressed }) => [
-                    styles.confirmSecondaryButton,
-                    { backgroundColor: colors.surface, borderColor: colors.border },
-                    pressed && styles.pressed,
-                  ]}
-                  onPress={() => setShowDeleteConfirm(false)}
-                >
-                  <Text style={[styles.confirmSecondaryText, { color: colors.textSecondary }]}>Annuler</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  style={({ pressed }) => [
-                    styles.confirmDestructiveButton,
-                    { backgroundColor: colors.danger, borderColor: colors.danger },
-                    pressed && styles.pressed,
-                  ]}
-                  onPress={() => void hideMerchant()}
-                >
-                  <Text style={[styles.confirmDestructiveText, { color: colors.background }]}>Retirer</Text>
-                </Pressable>
-              </View>
-            </GlassContainer>
-          </View>
-        ) : null}
+        <ConfirmDeleteModal
+          embedded
+          visible={showDeleteConfirm}
+          title="Retirer ce marchand ?"
+          message={`${merchant.displayName} sera retiré de la liste Marchands. Les transactions existantes restent conservées.`}
+          confirmLabel="Retirer"
+          onConfirm={() => void hideMerchant()}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
       </View>
     </Modal>
   );
@@ -498,40 +464,5 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   saveText: { fontSize: typography.body, fontWeight: '800' },
-  confirmOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-  },
-  confirmCard: { width: '100%' },
-  confirmCardInner: { gap: spacing.md, alignItems: 'center' },
-  confirmIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  confirmTitle: { fontSize: typography.body, fontWeight: '800', textAlign: 'center' },
-  confirmMessage: { fontSize: typography.caption, textAlign: 'center', lineHeight: typography.caption + 4 },
-  confirmActions: { flexDirection: 'row', gap: spacing.sm, width: '100%' },
-  confirmSecondaryButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingVertical: spacing.md,
-  },
-  confirmSecondaryText: { fontSize: typography.caption, fontWeight: '800' },
-  confirmDestructiveButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingVertical: spacing.md,
-  },
-  confirmDestructiveText: { fontSize: typography.caption, fontWeight: '800' },
   pressed: { opacity: 0.78 },
 });

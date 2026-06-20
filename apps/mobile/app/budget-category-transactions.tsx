@@ -8,7 +8,6 @@ import { BottomSheet } from '@/components/BottomSheet';
 import { PageTransition } from '@/components/PageTransition';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { TransactionRow } from '@/components/TransactionRow';
-import { TransactionDetailSheet } from '@/components/TransactionDetailSheet';
 import { ghostCardShadow } from '@/constants/ghostUi';
 import { radius, spacing, typography, type AppColors } from '@/constants/theme';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
@@ -119,7 +118,6 @@ export default function BudgetCategoryTransactionsScreen() {
   const [category, setCategory] = useState<CategoryBudget | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<Transaction | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const stylesMemo = useMemo(() => createShellStyles(colors), [colors]);
@@ -302,10 +300,7 @@ export default function BudgetCategoryTransactionsScreen() {
                     <TransactionRow
                       key={tx.id}
                       transaction={{ ...tx, label: getTransactionTitle(tx) }}
-                      onPress={() => {
-                        tapHaptic();
-                        setSelected(tx);
-                      }}
+                      onPress={() => { tapHaptic(); router.push({ pathname: '/transaction-detail', params: { transactionId: tx.id } }); }}
                     />
                   ))}
                 </View>
@@ -315,7 +310,6 @@ export default function BudgetCategoryTransactionsScreen() {
         </View>
       </BottomSheet>
 
-      <TransactionDetailSheet transaction={selected} onClose={() => setSelected(null)} onDeleted={() => { void load(); }} />
     </View>
     </PageTransition>
   );

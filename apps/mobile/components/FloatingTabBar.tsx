@@ -89,9 +89,9 @@ const HISTORY_FAB_ADD_ACTIONS: {
 }[] = [
   {
     type: 'transfer',
-    label: 'Transfert',
+    label: 'Virement',
     icon: 'swap-horizontal-outline',
-    accessibilityLabel: 'Ajouter un transfert',
+    accessibilityLabel: 'Ajouter un virement',
   },
   {
     type: 'expense',
@@ -236,7 +236,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   );
 
   const openAiChat = () => {
-    router.push('/ai-chat');
+    router.push('/ai-advisor');
   };
 
   const handleAddPress = () => {
@@ -433,7 +433,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           ]}
           onPress={openAiChat}
           accessibilityRole="button"
-          accessibilityLabel="Assistant IA — conseils budget"
+          accessibilityLabel="Fyn — conseils budget"
         >
           <LinearGradient
             colors={isLight ? [...AI_CHAT_FAB_GRADIENT_LIGHT] : [...AI_CHAT_FAB_GRADIENT_DARK]}
