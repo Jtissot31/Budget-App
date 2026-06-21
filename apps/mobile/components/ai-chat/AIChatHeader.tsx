@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { interBoldText, interRegularText, PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
+import { jakartaBoldText, jakartaRegularText, PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { useAIChatColors } from './theme';
 
@@ -55,8 +55,8 @@ export function AIChatHeader({ status, statusLabel, topInset, onMenuPress }: Pro
           <View style={[styles.statusIndicator, { backgroundColor: palette.primary, borderColor: palette.background }]} />
         </View>
         <View>
-          <Text style={[styles.headerTitle, { color: palette.text }, interBoldText]}>Fyn</Text>
-          <Text style={[styles.headerStatus, { color: palette.primary }, interRegularText]}>
+          <Text style={[styles.headerTitle, { color: palette.text }, jakartaBoldText]}>Fyn</Text>
+          <Text style={[styles.headerStatus, { color: palette.primary }, jakartaRegularText]}>
             {statusLabel ?? STATUS_LABELS[status]}
           </Text>
         </View>

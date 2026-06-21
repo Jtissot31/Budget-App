@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { interBoldText, interMediumText, radius, spacing, typography } from '@/constants/theme';
+import { jakartaBoldText, jakartaMediumText, radius, spacing, typography } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 import type { FormFeedbackVariant } from '@/lib/formFeedback';
 
@@ -57,11 +57,11 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   title: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
   },
   message: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
     lineHeight: typography.meta + 5,
   },

@@ -64,6 +64,53 @@ function parseWidgetJson(json: string): AIWidgetData | null {
         }
         return parsed as unknown as AIWidgetData;
 
+      case 'line_chart':
+        if (
+          typeof parsed.label !== 'string' ||
+          !Array.isArray(parsed.data) ||
+          parsed.data.length < 2 ||
+          !parsed.data.every((point) => typeof point === 'number' && Number.isFinite(point))
+        ) {
+          return null;
+        }
+        return parsed as unknown as AIWidgetData;
+
+      case 'bar_chart':
+        if (
+          typeof parsed.label !== 'string' ||
+          !Array.isArray(parsed.items) ||
+          parsed.items.length < 1 ||
+          !parsed.items.every(
+            (item) =>
+              item &&
+              typeof item === 'object' &&
+              typeof (item as Record<string, unknown>).label === 'string' &&
+              typeof (item as Record<string, unknown>).value === 'number' &&
+              Number.isFinite((item as Record<string, unknown>).value as number),
+          )
+        ) {
+          return null;
+        }
+        return parsed as unknown as AIWidgetData;
+
+      case 'allocation_chart':
+        if (
+          typeof parsed.label !== 'string' ||
+          !Array.isArray(parsed.segments) ||
+          parsed.segments.length < 1 ||
+          !parsed.segments.every(
+            (segment) =>
+              segment &&
+              typeof segment === 'object' &&
+              typeof (segment as Record<string, unknown>).label === 'string' &&
+              typeof (segment as Record<string, unknown>).value === 'number' &&
+              Number.isFinite((segment as Record<string, unknown>).value as number),
+          )
+        ) {
+          return null;
+        }
+        return parsed as unknown as AIWidgetData;
+
       default:
         return null;
     }

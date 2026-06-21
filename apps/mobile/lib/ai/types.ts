@@ -716,6 +716,8 @@ export interface ChatAction {
 
 
 
+import type { MessageBlock } from '@/types/aiWidgets';
+
 export interface ChatMessage {
 
   id: string;
@@ -727,6 +729,9 @@ export interface ChatMessage {
   createdAt: string;
 
   actions?: ChatAction[];
+
+  /** Parsed text + widget blocks for assistant replies (widgets survive history reload). */
+  blocks?: MessageBlock[];
 
   /** Local URI when user attached an invoice photo. */
 

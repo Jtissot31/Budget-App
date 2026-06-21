@@ -1,10 +1,13 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { interRegularText } from '@/constants/theme';
+import { jakartaRegularText } from '@/constants/theme';
 import type { AIWidgetData } from '@/types/aiWidgets';
 import { useAIChatColors } from '@/components/ai-chat/theme';
 import { AlertCardWidget } from './widgets/AlertCardWidget';
+import { AllocationChartWidget } from './widgets/AllocationChartWidget';
+import { BarChartWidget } from './widgets/BarChartWidget';
 import { ComparisonCardWidget } from './widgets/ComparisonCardWidget';
 import { DebtTableWidget } from './widgets/DebtTableWidget';
+import { LineChartWidget } from './widgets/LineChartWidget';
 import { ProgressCardWidget } from './widgets/ProgressCardWidget';
 
 type Props = {
@@ -15,7 +18,7 @@ function UnknownWidgetFallback({ type }: { type: string }) {
   const palette = useAIChatColors();
   return (
     <View style={[styles.fallback, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-      <Text style={[styles.fallbackText, { color: palette.textMuted }, interRegularText]}>
+      <Text style={[styles.fallbackText, { color: palette.textMuted }, jakartaRegularText]}>
         Widget non pris en charge ({type})
       </Text>
     </View>
@@ -36,6 +39,15 @@ export function AIWidgetRenderer({ data }: Props) {
       break;
     case 'alert_card':
       content = <AlertCardWidget data={data} />;
+      break;
+    case 'line_chart':
+      content = <LineChartWidget data={data} />;
+      break;
+    case 'bar_chart':
+      content = <BarChartWidget data={data} />;
+      break;
+    case 'allocation_chart':
+      content = <AllocationChartWidget data={data} />;
       break;
     default: {
       const unknownType = (data as { type?: string }).type ?? 'inconnu';

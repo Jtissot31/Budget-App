@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getCategoryIconName } from '@/constants/categoryOptions';
-import { containerSurfaceStyle, interExtraBoldText, radius, spacing, typography } from '@/constants/theme';
+import { containerSurfaceStyle, jakartaExtraBoldText, radius, spacing, typography } from '@/constants/theme';
 import { typographyKit } from '@/constants/typographyKit';
 import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
 import { getCategorySearchChoices, inferCategoryId } from '@/lib/categoryInference';
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
     ...typographyKit.caption,
   },
   currency: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.micro,
     marginLeft: 2,
   },

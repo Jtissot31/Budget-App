@@ -65,11 +65,11 @@ import {
 
   detailSectionsCardStyle,
 
-  interBoldText,
+  jakartaBoldText,
 
-  interExtraBoldText,
+  jakartaExtraBoldText,
 
-  interMediumText,
+  jakartaMediumText,
 
   radius,
 
@@ -1636,7 +1636,7 @@ const styles = StyleSheet.create({
 
     marginHorizontal: spacing.sm,
 
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
 
     fontSize: typography.body,
 
@@ -1706,7 +1706,7 @@ const styles = StyleSheet.create({
 
   progressLabel: {
 
-    ...interBoldText,
+    ...jakartaBoldText,
 
     flex: 1,
 
@@ -1724,7 +1724,7 @@ const styles = StyleSheet.create({
 
   progressPct: {
 
-    ...interBoldText,
+    ...jakartaBoldText,
 
     flexShrink: 0,
 
@@ -1748,7 +1748,7 @@ const styles = StyleSheet.create({
 
   progressFootnote: {
 
-    ...interMediumText,
+    ...jakartaMediumText,
 
     fontSize: typography.meta,
 

@@ -3,7 +3,7 @@ import {
   PERIOD_DELTA_LABELS,
   type PortfolioChartCardPeriodData,
 } from '@/components/PortfolioChartCard';
-import { chartTokens, interMediumText, portfolioLight } from '@/constants/theme';
+import { chartTokens, jakartaMediumText, portfolioLight } from '@/constants/theme';
 import { formatDisplayMoney } from '@/lib/formatDisplayMoney';
 import { formatNumberDisplay } from '@/lib/formatNumber';
 import { useAppTheme } from '@/lib/themeContext';
@@ -37,7 +37,7 @@ export function HeroChartDelta({ periodData }: { periodData: PortfolioChartCardP
 
 const styles = StyleSheet.create({
   heroDeltaText: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: 13,
     marginTop: 8,
   },

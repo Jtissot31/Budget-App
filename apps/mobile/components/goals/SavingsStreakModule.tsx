@@ -6,8 +6,8 @@ import {
   GOAL_PROGRESS_FILL,
   detailProgressBarStyle,
   goalProgressTrackColor,
-  interBoldText,
-  interExtraBoldText,
+  jakartaBoldText,
+  jakartaExtraBoldText,
   spacing,
   typography,
 } from '@/constants/theme';
@@ -105,20 +105,20 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   statValue: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.title,
     letterSpacing: -0.4,
   },
   bestValue: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.meta,
   },
   statLabel: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
   },
   message: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
     lineHeight: 20,
   },
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   milestoneLabel: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
     letterSpacing: 0.2,
   },

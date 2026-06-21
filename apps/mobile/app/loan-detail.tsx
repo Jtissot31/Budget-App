@@ -25,9 +25,9 @@ import {
   detailSectionFootnoteStyle,
   detailSectionLabelStyle,
   detailSectionsCardStyle,
-  interBoldText,
-  interExtraBoldText,
-  interMediumText,
+  jakartaBoldText,
+  jakartaExtraBoldText,
+  jakartaMediumText,
   radius,
   spacing,
   typography,
@@ -401,7 +401,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     marginHorizontal: spacing.sm,
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.body,
     letterSpacing: -0.2,
   },
@@ -438,7 +438,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   progressLabel: {
-    ...interBoldText,
+    ...jakartaBoldText,
     flex: 1,
     flexShrink: 1,
     minWidth: 0,
@@ -447,7 +447,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   progressPct: {
-    ...interBoldText,
+    ...jakartaBoldText,
     flexShrink: 0,
     minWidth: 44,
     textAlign: 'right',
@@ -459,7 +459,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   progressFootnote: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
   },
   empty: {

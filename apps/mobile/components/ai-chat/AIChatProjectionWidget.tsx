@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { interBoldText, interRegularText, interSemiboldText } from '@/constants/theme';
+import { jakartaBoldText, jakartaRegularText, jakartaSemiboldText } from '@/constants/theme';
 import { useAIChatColors } from './theme';
 import type { EmergencyFundProjection } from './types';
 
@@ -19,15 +19,15 @@ export function AIChatProjectionWidget({ projection }: Props) {
       ]}
     >
       <View style={styles.widgetHeader}>
-        <Text style={[styles.widgetTitle, { color: palette.textMuted }, interBoldText]}>
+        <Text style={[styles.widgetTitle, { color: palette.textMuted }, jakartaBoldText]}>
           {projection.title ?? "PROJECTION FONDS D'URGENCE"}
         </Text>
         <MaterialCommunityIcons name="chart-timeline-variant" size={20} color={palette.primary} />
       </View>
       <View style={styles.widgetBody}>
         <View style={styles.widgetMainRow}>
-          <Text style={[styles.widgetValue, { color: palette.text }, interBoldText]}>{projection.value}</Text>
-          <Text style={[styles.widgetTargetLabel, { color: palette.primary }, interSemiboldText]}>
+          <Text style={[styles.widgetValue, { color: palette.text }, jakartaBoldText]}>{projection.value}</Text>
+          <Text style={[styles.widgetTargetLabel, { color: palette.primary }, jakartaSemiboldText]}>
             {projection.targetLabel}
           </Text>
         </View>
@@ -44,7 +44,7 @@ export function AIChatProjectionWidget({ projection }: Props) {
         </View>
         <View style={styles.widgetFooter}>
           <MaterialCommunityIcons name="check-circle-outline" size={16} color={palette.primary} />
-          <Text style={[styles.widgetFooterText, { color: palette.textMuted }, interRegularText]}>
+          <Text style={[styles.widgetFooterText, { color: palette.textMuted }, jakartaRegularText]}>
             {projection.footerText}
           </Text>
         </View>

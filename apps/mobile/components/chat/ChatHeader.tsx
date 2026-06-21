@@ -2,8 +2,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
-  interMediumText,
-  interRegularText,
+  jakartaMediumText,
+  jakartaRegularText,
   PAGE_PADDING_HORIZONTAL,
   radius,
   spacing,
@@ -61,10 +61,10 @@ export function ChatHeader({ status, topInset }: Props) {
       </Pressable>
 
       <View style={styles.center}>
-        <Text style={[styles.title, { color: colors.text }, interMediumText]}>Fyn</Text>
+        <Text style={[styles.title, { color: colors.text }, jakartaMediumText]}>Fyn</Text>
         <View style={styles.statusRow}>
           <View style={[styles.statusDot, { backgroundColor: colors.primary }]} />
-          <Text style={[styles.status, { color: colors.textMuted }, interRegularText]}>
+          <Text style={[styles.status, { color: colors.textMuted }, jakartaRegularText]}>
             {STATUS_LABELS[status]}
           </Text>
         </View>

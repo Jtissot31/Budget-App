@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { interMediumText, interRegularText } from '@/constants/theme';
+import { jakartaMediumText, jakartaRegularText } from '@/constants/theme';
 import { type ActivityPhase, getActivityPhaseLabel } from '@/lib/ai/activityPhases';
 import { tapHaptic } from '@/lib/haptics';
 import { useAIChatColors } from './theme';
@@ -41,7 +41,7 @@ export function AIChatActivitiesSummary({ phases, showSeparator = true }: Props)
         }}
         style={styles.toggleRow}
       >
-        <Text style={[styles.toggleLabel, { color: palette.textMuted }, interMediumText]}>
+        <Text style={[styles.toggleLabel, { color: palette.textMuted }, jakartaMediumText]}>
           Étapes effectuées
         </Text>
         <Ionicons
@@ -55,7 +55,7 @@ export function AIChatActivitiesSummary({ phases, showSeparator = true }: Props)
         <View style={styles.phaseList}>
           {visiblePhases.map((phase) => (
             <View key={phase} style={styles.phaseRow}>
-              <Text style={[styles.phaseLabel, { color: palette.textMuted }, interRegularText]}>
+              <Text style={[styles.phaseLabel, { color: palette.textMuted }, jakartaRegularText]}>
                 {getActivityPhaseLabel(phase, true)}
               </Text>
               <Text style={[styles.checkmark, { color: palette.textMuted }]}>✓</Text>

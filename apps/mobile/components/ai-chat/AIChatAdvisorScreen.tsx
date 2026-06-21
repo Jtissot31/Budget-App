@@ -15,7 +15,7 @@ import { useFocusEffect } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getFloatingTabBarOverlayInset,
-  interRegularText,
+  jakartaRegularText,
   PAGE_PADDING_HORIZONTAL,
   radius,
   spacing,
@@ -31,7 +31,6 @@ import {
   sendChatMessage,
 } from '@/lib/ai/chatService';
 import {
-  alertCardToAssistantContent,
   buildActionResultAlertCard,
   isTextConfirmation,
 } from '@/lib/ai/actionConfirmation';
@@ -295,7 +294,8 @@ export function AIChatAdvisorScreen({ tabBarVisible = true }: { tabBarVisible?: 
           const persistedAssistantMessage = {
             id: `assistant-confirm-${Date.now()}`,
             role: 'assistant' as const,
-            content: alertCardToAssistantContent(alertCard),
+            content: alertCard.message,
+            blocks: [alertCard],
             createdAt: now,
           };
 
@@ -567,21 +567,21 @@ export function AIChatAdvisorScreen({ tabBarVisible = true }: { tabBarVisible?: 
 
       {offlineMode ? (
         <View style={[styles.banner, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-          <Text style={[styles.bannerText, { color: palette.text }, interRegularText]}>
-            Clé API : absente — copie .env.example vers .env, ajoute EXPO_PUBLIC_ANTHROPIC_API_KEY, puis redémarre Expo (npx expo start -c).
+          <Text style={[styles.bannerText, { color: palette.textMuted }, jakartaRegularText]}>
+            Mode démo — configure la clé API dans Réglages pour activer Fyn.
           </Text>
         </View>
       ) : null}
 
       {quotaWarning ? (
         <View style={[styles.banner, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-          <Text style={[styles.bannerText, { color: palette.textMuted }, interRegularText]}>{quotaWarning}</Text>
+          <Text style={[styles.bannerText, { color: palette.textMuted }, jakartaRegularText]}>{quotaWarning}</Text>
         </View>
       ) : null}
 
       {pendingImageUri ? (
         <View style={[styles.banner, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-          <Text style={[styles.bannerText, { color: palette.textMuted }, interRegularText]}>
+          <Text style={[styles.bannerText, { color: palette.textMuted }, jakartaRegularText]}>
             Facture prête à envoyer — ajoute un message ou appuie sur Envoyer.
           </Text>
         </View>

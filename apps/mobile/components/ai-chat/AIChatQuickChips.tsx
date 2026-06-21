@@ -1,5 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
-import { interMediumText, PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
+import { jakartaMediumText, PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { useAIChatColors } from './theme';
 import type { AIQuickChip } from './types';
@@ -41,7 +41,7 @@ export function AIChatQuickChips({ chips, onChipPress, disabled = false }: Props
             disabled && styles.disabled,
           ]}
         >
-          <Text style={[styles.chipText, { color: palette.text }, interMediumText]} numberOfLines={1}>
+          <Text style={[styles.chipText, { color: palette.text }, jakartaMediumText]} numberOfLines={1}>
             {chip.label}
           </Text>
         </Pressable>

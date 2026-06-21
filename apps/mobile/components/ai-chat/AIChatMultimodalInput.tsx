@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { interRegularText, PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
+import { jakartaRegularText, PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { AIChatQuickChips } from './AIChatQuickChips';
 import { useAIChatColors } from './theme';
@@ -118,7 +118,7 @@ export function AIChatMultimodalInput({
           </Pressable>
 
           <TextInput
-            style={[styles.textInput, { color: palette.text }, interRegularText]}
+            style={[styles.textInput, { color: palette.text }, jakartaRegularText]}
             placeholder="Posez une question..."
             placeholderTextColor={palette.textMuted}
             value={value}

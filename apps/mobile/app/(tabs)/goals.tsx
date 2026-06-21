@@ -25,8 +25,8 @@ import {
   getGoalGreenShade,
   GOAL_PROGRESS_FILL,
   goalProgressTrackColor,
-  interBoldText,
-  interExtraBoldText,
+  jakartaBoldText,
+  jakartaExtraBoldText,
   PAGE_PADDING_HORIZONTAL,
   PORTFOLIO_SECTION_GAP,
   radius,
@@ -250,7 +250,6 @@ export default function GoalsHubScreen() {
                   goals={goals}
                   transactions={transactions}
                   accounts={accounts}
-                  onGoalPress={handleOpenDetail}
                 />
 
                 <View style={styles.goalsListSection}>
@@ -320,7 +319,7 @@ export default function GoalsHubScreen() {
                             { backgroundColor: goalProgressTrack },
                           ]}
                         >
-                          <GoalProgressFill pct={pct} />
+                          <GoalProgressFill pct={pct} animated={false} />
                         </View>
 
                         {showFooter ? (
@@ -398,7 +397,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   pageTitle: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: 32,
     letterSpacing: -0.8,
   },
@@ -418,7 +417,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
   },
   premiumAddCtaLabel: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.meta,
   },
   goalCardList: { gap: PORTFOLIO_SECTION_GAP },
@@ -452,7 +451,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   goalsCountBadgeLabel: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
   },
   goalCards: {
@@ -486,12 +485,12 @@ const styles = StyleSheet.create({
   },
   goalName: {
     ...rowLabel,
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     flex: 1,
     minWidth: 0,
   },
   goalMeta: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
     lineHeight: typography.micro + 4,
   },
@@ -536,12 +535,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   emptyTitle: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.body,
   },
   emptyHint: {
     textAlign: 'center',
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
     lineHeight: 20,
   },
@@ -552,7 +551,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
   },
   emptyCtaText: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.caption,
   },
 });

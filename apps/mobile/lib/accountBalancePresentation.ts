@@ -49,15 +49,16 @@ function kindLabel(kind: AccountKind, account: AccountBalanceDisplayAccount) {
   return 'Crédit';
 }
 
-/** Type de compte affiché en bas à droite des cartes dashboard. */
-export function accountKindDisplayLabel(account: AccountBalanceDisplayAccount): string {
-  return kindLabel(account.kind, account);
+/** Card / account kind badge — shown on the right of balance rows. */
+export function accountKindDisplayLabel(account: AccountBalanceDisplayAccount): string | undefined {
+  const label = kindLabel(account.kind, account);
+  if (subtitlePartRedundantWithName(label, account.name)) return undefined;
+  return label;
 }
 
-/** Subtitle under the balance — institution / last4 only (type → colonne trailing). */
+/** Subtitle under the balance — institution / last4 only (kind lives in trailing badge). */
 export function accountBalanceSubtitle(account: AccountBalanceDisplayAccount): string | undefined {
   const institution = institutionLabel(account);
-
   if (institution) return institution;
 
   if (account.last4) {

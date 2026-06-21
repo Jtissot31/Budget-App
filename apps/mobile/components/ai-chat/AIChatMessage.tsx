@@ -1,14 +1,12 @@
 import { Image, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
-import { interMediumText, interRegularText, spacing } from '@/constants/theme';
+import { jakartaMediumText, jakartaRegularText, spacing } from '@/constants/theme';
 
 import { AIWidgetRenderer } from '@/components/chat/AIWidgetRenderer';
 
 import { stripCodeFromAssistantText } from '@/lib/ai/messageBlocks';
 
 import type { MessageBlock } from '@/types/aiWidgets';
-
-import { AIChatActivitiesSummary } from './AIChatActivitiesSummary';
 
 import { AIChatActionCard } from './AIChatActionCard';
 
@@ -110,7 +108,7 @@ function renderMessageBlock(block: MessageBlock, index: number, palette: AIChatC
 
       <ChatBubble key={`text-${index}`} palette={palette} style={index > 0 ? styles.blockSpacing : undefined}>
 
-        <Text style={[styles.aiMessageText, { color: palette.text }, interRegularText]}>
+        <Text style={[styles.aiMessageText, { color: palette.text }, jakartaRegularText]}>
 
           {block.content}
 
@@ -174,8 +172,6 @@ export function AIChatMessage({
 
   const hasBlocks = assistantBlocks.length > 0;
 
-  const hasActivities = Boolean(message.activityPhases?.length);
-
   const hasActions = Boolean(message.actions?.length);
 
 
@@ -194,7 +190,7 @@ export function AIChatMessage({
 
           ) : null}
 
-          <Text style={[styles.userMessageText, { color: palette.userBubbleText }, interMediumText]}>
+          <Text style={[styles.userMessageText, { color: palette.userBubbleText }, jakartaMediumText]}>
 
             {message.text}
 
@@ -202,7 +198,7 @@ export function AIChatMessage({
 
         </View>
 
-        <Text style={[styles.timestamp, styles.timestampRight, { color: palette.textMuted }, interRegularText]}>
+        <Text style={[styles.timestamp, styles.timestampRight, { color: palette.textMuted }, jakartaRegularText]}>
 
           {formatTimestamp(message.createdAt)}
 
@@ -224,42 +220,17 @@ export function AIChatMessage({
 
         {assistantBlocks.map((block, index) => renderMessageBlock(block, index, palette))}
 
-        {hasActivities ? (
-
-          <View style={[styles.trailingSibling, hasBlocks ? styles.trailingSpacing : undefined]}>
-
-            <AIChatActivitiesSummary phases={message.activityPhases!} showSeparator={hasBlocks} />
-
-          </View>
-
-        ) : null}
-
         {hasActions
-
           ? message.actions!.map((action, index) => (
-
               <WidgetContainer
-
                 key={action.actionKey}
-
                 style={
-
                   index > 0
-
                     ? styles.actionSiblingSpacing
-
-                    : hasActivities
-
-                      ? styles.actionSiblingSpacing
-
-                      : hasBlocks
-
-                        ? undefined
-
-                        : styles.noTopSpacing
-
+                    : hasBlocks
+                      ? undefined
+                      : styles.noTopSpacing
                 }
-
               >
 
                 <AIChatActionCard
@@ -282,7 +253,7 @@ export function AIChatMessage({
 
       </View>
 
-      <Text style={[styles.timestamp, { color: palette.textMuted }, interRegularText]}>
+      <Text style={[styles.timestamp, { color: palette.textMuted }, jakartaRegularText]}>
 
         {formatTimestamp(message.createdAt)}
 

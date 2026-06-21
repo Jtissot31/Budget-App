@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -5,7 +6,7 @@ import { DashboardCard } from '@/components/DashboardCard';
 import { DashboardStatCard } from '@/components/DashboardStatCard';
 import {
   ICON_WELL_SIZE,
-  interSemiboldText,
+  jakartaSemiboldText,
   spacing,
   tagContainerStyle,
   tagTypography,
@@ -32,7 +33,12 @@ type Props = {
   accessibilityLabel?: string;
 };
 
-export function DashboardAccountBalanceCard({
+const LOGO_IMAGE_STYLE = {
+  width: userPickedIconLogoSize(ICON_WELL_SIZE),
+  height: userPickedIconLogoSize(ICON_WELL_SIZE),
+} as const;
+
+export const DashboardAccountBalanceCard = memo(function DashboardAccountBalanceCard({
   account,
   logoUrl,
   onPress,
@@ -47,6 +53,7 @@ export function DashboardAccountBalanceCard({
       : undefined;
   const balanceColor = accountBalanceValueColor(account, colors.text);
   const logoTone = accountBalanceIconTone(account.kind, colors);
+  const kindBadge = accountKindDisplayLabel(account);
 
   const card = (
     <DashboardCard style={[styles.shell, style]}>
@@ -55,10 +62,7 @@ export function DashboardAccountBalanceCard({
           logoUrl ? (
             <Image
               source={{ uri: logoUrl }}
-              style={{
-                width: userPickedIconLogoSize(ICON_WELL_SIZE),
-                height: userPickedIconLogoSize(ICON_WELL_SIZE),
-              }}
+              style={LOGO_IMAGE_STYLE}
               contentFit="contain"
               transition={150}
               cachePolicy="memory-disk"
@@ -90,16 +94,20 @@ export function DashboardAccountBalanceCard({
         valueColor={balanceColor}
         subtitle={accountBalanceSubtitle(account)}
         trailing={
-          <View style={styles.trailingColumn}>
-            {typeof creditUtilPct === 'number' ? (
-              <Text style={[styles.accountUsed, { color: muted }]}>
-                {`${Math.round(creditUtilPct)}% utilisé`}
-              </Text>
-            ) : null}
-            <Text style={[styles.accountKind, { color: muted }]} numberOfLines={1}>
-              {accountKindDisplayLabel(account)}
-            </Text>
-          </View>
+          kindBadge || typeof creditUtilPct === 'number' ? (
+            <View style={styles.trailingCol}>
+              {typeof creditUtilPct === 'number' ? (
+                <Text style={[styles.accountUsed, { color: muted }]}>
+                  {`${Math.round(creditUtilPct)}% utilisé`}
+                </Text>
+              ) : null}
+              {kindBadge ? (
+                <Text style={[styles.kindBadge, { color: muted }]} numberOfLines={1}>
+                  {kindBadge}
+                </Text>
+              ) : null}
+            </View>
+          ) : undefined
         }
       />
     </DashboardCard>
@@ -117,27 +125,28 @@ export function DashboardAccountBalanceCard({
       {card}
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   shell: {
     paddingVertical: spacing.lg,
   },
-  accountUsed: {
-    ...interSemiboldText,
-    fontSize: typography.micro,
-    marginBottom: spacing.xs,
-  },
-  trailingColumn: {
+  trailingCol: {
+    alignSelf: 'stretch',
     alignItems: 'flex-end',
     justifyContent: 'flex-end',
     gap: spacing.xs,
   },
-  accountKind: {
-    ...interSemiboldText,
+  kindBadge: {
+    ...jakartaSemiboldText,
     fontSize: typography.micro,
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    textAlign: 'right',
+  },
+  accountUsed: {
+    ...jakartaSemiboldText,
+    fontSize: typography.micro,
   },
   pressed: {
     opacity: 0.92,

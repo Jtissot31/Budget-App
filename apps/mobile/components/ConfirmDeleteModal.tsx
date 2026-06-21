@@ -4,9 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 
 import {
 
-  interBoldText,
+  jakartaBoldText,
 
-  interMediumText,
+  jakartaMediumText,
 
   radius,
 
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
 
   title: {
 
-    ...interBoldText,
+    ...jakartaBoldText,
 
     fontSize: typography.body,
 
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
 
   message: {
 
-    ...interMediumText,
+    ...jakartaMediumText,
 
     fontSize: typography.caption,
 
@@ -332,7 +332,7 @@ const styles = StyleSheet.create({
 
   confirmText: {
 
-    ...interBoldText,
+    ...jakartaBoldText,
 
     fontSize: typography.caption,
 
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
 
   cancelText: {
 
-    ...interMediumText,
+    ...jakartaMediumText,
 
     fontSize: typography.caption,
 

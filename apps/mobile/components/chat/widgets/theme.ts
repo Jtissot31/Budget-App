@@ -61,11 +61,11 @@ export function useAIWidgetColors(): AIWidgetColors {
   }, [colors, isLight]);
 }
 
-/** DM font families for generative widgets (loaded in app/_layout.tsx). */
+/** Widget font families — Plus Jakarta Sans UI + DM Mono figures (loaded in app/_layout.tsx). */
 export const aiWidgetFonts = {
-  title: 'DMSerifDisplay_400Regular',
-  label: 'DMSans_500Medium',
-  labelRegular: 'DMSans_400Regular',
+  title: 'PlusJakartaSans_800ExtraBold',
+  label: 'PlusJakartaSans_500Medium',
+  labelRegular: 'PlusJakartaSans_400Regular',
   mono: 'DMMono_500Medium',
   monoRegular: 'DMMono_400Regular',
 } as const;

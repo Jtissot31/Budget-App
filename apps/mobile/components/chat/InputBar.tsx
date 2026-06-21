@@ -3,8 +3,8 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
-  interMediumText,
-  interRegularText,
+  jakartaMediumText,
+  jakartaRegularText,
   PAGE_PADDING_HORIZONTAL,
   radius,
   spacing,
@@ -94,7 +94,7 @@ export function InputBar({
               disabled && styles.disabled,
             ]}
           >
-            <Text style={[styles.chipText, { color: colors.textMuted }, interMediumText]} numberOfLines={1}>
+            <Text style={[styles.chipText, { color: colors.textMuted }, jakartaMediumText]} numberOfLines={1}>
               {suggestion.label}
             </Text>
           </Pressable>
@@ -128,7 +128,7 @@ export function InputBar({
               backgroundColor: isLight ? colors.input : colors.surface,
               borderColor: colors.border,
             },
-            interRegularText,
+            jakartaRegularText,
           ]}
           placeholder="Posez votre question…"
           placeholderTextColor={colors.textMuted}

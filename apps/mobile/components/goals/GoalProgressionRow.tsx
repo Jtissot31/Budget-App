@@ -9,8 +9,8 @@ import {
   getGoalGreenShade,
   GOAL_PROGRESS_FILL,
   goalProgressTrackColor,
-  interBoldText,
-  interExtraBoldText,
+  jakartaBoldText,
+  jakartaExtraBoldText,
   radius,
   spacing,
   typography,
@@ -101,20 +101,20 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   name: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     flex: 1,
     minWidth: 0,
     fontSize: typography.caption,
   },
   pct: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
   },
   track: {
     alignSelf: 'stretch',
   },
   amounts: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
   },
   pressed: {

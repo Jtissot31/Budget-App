@@ -1,9 +1,9 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { GlassContainer } from '@/components/GlassContainer';
 import {
-  interBoldText,
-  interExtraBoldText,
-  interMediumText,
+  jakartaBoldText,
+  jakartaExtraBoldText,
+  jakartaMediumText,
   radius,
   spacing,
   typography,
@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   eyebrow: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   totalAmount: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.body,
     letterSpacing: -0.3,
     flexShrink: 0,
@@ -140,18 +140,18 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   legendLabel: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
     flex: 1,
     minWidth: 0,
   },
   legendMeta: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
     marginLeft: 11,
   },
   fixedNote: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
   },
 });

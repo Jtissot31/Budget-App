@@ -2,21 +2,21 @@ import { Platform, StyleSheet, type TextStyle, type ViewStyle } from 'react-nati
 import { typographyKit } from './typographyKit';
 import {
   fontFamilies,
-  interBoldText,
-  interExtraBoldText,
-  interMediumText,
-  interRegularText,
-  interSemiboldText,
-} from './interFonts';
+  jakartaBoldText,
+  jakartaExtraBoldText,
+  jakartaMediumText,
+  jakartaRegularText,
+  jakartaSemiboldText,
+} from './plusJakartaFonts';
 
 export {
   fontFamilies,
-  interBoldText,
-  interExtraBoldText,
-  interMediumText,
-  interRegularText,
-  interSemiboldText,
-} from './interFonts';
+  jakartaBoldText,
+  jakartaExtraBoldText,
+  jakartaMediumText,
+  jakartaRegularText,
+  jakartaSemiboldText,
+} from './plusJakartaFonts';
 
 /** Light app canvas — single smooth diagonal warm-grey gradient */
 export const appBackgroundGradientLight = {
@@ -514,7 +514,7 @@ export const PORTFOLIO_SECTION_BREAK = spacing.xxl;
 
 /** Small uppercase labels */
 export const labelText = {
-  ...interMediumText,
+  ...jakartaMediumText,
   textTransform: 'uppercase' as const,
   letterSpacing: 0.6,
 };
@@ -553,7 +553,7 @@ export function tagTypography(options?: {
   letterSpacing?: number;
 }): TextStyle {
   return {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: options?.fontSize ?? TAG_FONT_SIZE,
     letterSpacing: options?.letterSpacing ?? TAG_LETTER_SPACING,
     textTransform: 'uppercase',
@@ -598,7 +598,7 @@ export function tagContainerStyle(options?: {
 
 /** Static tag text baseline for `StyleSheet.create` — set `color` at use site. */
 export const uiTagTextStyle: TextStyle = {
-  ...interMediumText,
+  ...jakartaMediumText,
   fontSize: TAG_FONT_SIZE,
   letterSpacing: TAG_LETTER_SPACING,
   textTransform: 'uppercase',
@@ -614,11 +614,11 @@ export const uiTagContainerStyle: ViewStyle = {
   paddingVertical: TAG_PADDING_VERTICAL,
 };
 
-/** @deprecated Use interBoldText */
-export const manropeBoldText = interBoldText;
+/** @deprecated Use jakartaBoldText */
+export const manropeBoldText = jakartaBoldText;
 
-/** @deprecated Use interExtraBoldText */
-export const manropeExtraBoldText = interExtraBoldText;
+/** @deprecated Use jakartaExtraBoldText */
+export const manropeExtraBoldText = jakartaExtraBoldText;
 
 export const FLOATING_TABBAR_ANDROID_BOTTOM_EXTRA = spacing.sm;
 
@@ -843,7 +843,7 @@ export function accountDetailHeroActionLinkStyle(): ViewStyle {
 export function accountDetailHeroActionMutedTextStyle(isLight: boolean): TextStyle {
   const theme = isLight ? lightColors : darkColors;
   return {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
     color: theme.textMuted,
   };
@@ -853,7 +853,7 @@ export function accountDetailHeroActionMutedTextStyle(isLight: boolean): TextSty
 export function accountDetailHeroActionSeparatorStyle(isLight: boolean): TextStyle {
   const palette = dashboardPaletteForTheme(isLight);
   return {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
     color: palette.border,
   };
@@ -893,7 +893,7 @@ export function accountDetailStatementStatColStyle(options?: {
 /** Tabular hero stat value — 28px default, 32px when `prominent` (ex. « Solde »). */
 export function accountDetailStatementStatValueStyle(prominent?: boolean): TextStyle {
   return {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: prominent
       ? ACCOUNT_DETAIL_STATEMENT_COLUMNS.statValueProminentSize
       : ACCOUNT_DETAIL_STATEMENT_COLUMNS.statValueSize,
@@ -908,7 +908,7 @@ export function accountDetailStatementStatValueStyle(prominent?: boolean): TextS
 /** Muted label under a statement stat (ex. « Revenus », « Solde »). */
 export function accountDetailStatementStatLabelStyle(): TextStyle {
   return {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: ACCOUNT_DETAIL_STATEMENT_COLUMNS.statLabelSize,
     letterSpacing: ACCOUNT_DETAIL_STATEMENT_COLUMNS.statLabelLetterSpacing,
     textAlign: 'center',
@@ -1009,7 +1009,7 @@ export const detailCarouselPageMinHeight = 252;
 /** Eyebrow « DÉTAILS » (or « TRANSACTIONS ») on a SurfaceCard detail block. */
 export function detailSectionLabelStyle(): TextStyle {
   return {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
@@ -1029,7 +1029,7 @@ export function detailSectionsCardStyle(): ViewStyle {
  */
 export function detailSubSectionHeaderStyle(): TextStyle {
   return {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: 11,
     letterSpacing: 0.8,
     textTransform: 'uppercase',

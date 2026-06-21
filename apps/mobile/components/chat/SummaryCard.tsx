@@ -1,8 +1,8 @@
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  interMediumText,
-  interRegularText,
-  interSemiboldText,
+  jakartaMediumText,
+  jakartaRegularText,
+  jakartaSemiboldText,
   radius,
   spacing,
 } from '@/constants/theme';
@@ -39,7 +39,7 @@ export function SummaryCard({ title, rows }: Props) {
       ]}
     >
       {title ? (
-        <Text style={[styles.title, { color: colors.textMuted }, interMediumText]}>{title}</Text>
+        <Text style={[styles.title, { color: colors.textMuted }, jakartaMediumText]}>{title}</Text>
       ) : null}
       {rows.map((row, index) => (
         <View
@@ -49,12 +49,12 @@ export function SummaryCard({ title, rows }: Props) {
             index < rows.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
           ]}
         >
-          <Text style={[styles.label, { color: colors.textMuted }, interRegularText]}>{row.label}</Text>
+          <Text style={[styles.label, { color: colors.textMuted }, jakartaRegularText]}>{row.label}</Text>
           <Text
             style={[
               styles.value,
               { color: accentColor(row.accent, colors) },
-              interSemiboldText,
+              jakartaSemiboldText,
             ]}
           >
             {row.value}

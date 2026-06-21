@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
-  interMediumText,
-  interRegularText,
+  jakartaMediumText,
+  jakartaRegularText,
   PAGE_PADDING_HORIZONTAL,
   radius,
   spacing,
@@ -22,7 +22,7 @@ export function EmptyState({ suggestions, onSuggestionPress, disabled = false }:
 
   return (
     <View style={styles.container}>
-      <Text style={[styles.welcome, { color: colors.textMuted }, interRegularText]}>
+      <Text style={[styles.welcome, { color: colors.textMuted }, jakartaRegularText]}>
         Comment puis-je vous aider ?
       </Text>
 
@@ -47,7 +47,7 @@ export function EmptyState({ suggestions, onSuggestionPress, disabled = false }:
               disabled && styles.disabled,
             ]}
           >
-            <Text style={[styles.chipText, { color: colors.text }, interMediumText]}>
+            <Text style={[styles.chipText, { color: colors.text }, jakartaMediumText]}>
               {suggestion.label}
             </Text>
           </Pressable>

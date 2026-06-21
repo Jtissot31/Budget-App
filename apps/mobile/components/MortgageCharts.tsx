@@ -12,8 +12,8 @@ import Svg, { Circle, Rect, Text as SvgText } from 'react-native-svg';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import {
   detailCarouselPageMinHeight,
-  interBoldText,
-  interMediumText,
+  jakartaBoldText,
+  jakartaMediumText,
   spacing,
   typography,
 } from '@/constants/theme';
@@ -403,7 +403,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   eyebrow: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
@@ -413,11 +413,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   sectionMeta: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
   },
   sectionHint: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     marginTop: spacing.xs,
   },
@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   legendLabel: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: 10,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
@@ -461,7 +461,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   donutCaption: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: 10,
     letterSpacing: 0.4,
     textTransform: 'uppercase',

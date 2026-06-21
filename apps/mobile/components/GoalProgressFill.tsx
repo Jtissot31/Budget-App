@@ -24,12 +24,14 @@ const SHIMMER_BAND_WIDTH = 30;
 type Props = {
   pct: number;
   fillStyle?: StyleProp<ViewStyle>;
+  /** Shimmer animation — disable in long lists for smoother scrolling. */
+  animated?: boolean;
 };
 
 /** Unified savings-goal fill with a subtle in-progress shimmer sweep. */
-export const GoalProgressFill = memo(function GoalProgressFill({ pct, fillStyle }: Props) {
+export const GoalProgressFill = memo(function GoalProgressFill({ pct, fillStyle, animated = true }: Props) {
   const fillWidth = Math.min(100, pct > 0 ? Math.max(pct, 3) : 0);
-  const inProgress = pct > 0 && pct < 100;
+  const inProgress = animated && pct > 0 && pct < 100;
   const shimmer = useSharedValue(0);
   const fillWidthPx = useSharedValue(0);
 

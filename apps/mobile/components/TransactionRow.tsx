@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { StyleSheet } from 'react-native';
 import { PaymentListRow } from '@/components/PaymentListRow';
 import { TransactionAvatar } from '@/components/TransactionAvatar';
@@ -32,6 +32,8 @@ type Props = {
   /** Pass from list parent to avoid per-row store subscriptions. */
   contactPhotoByKey?: ReadonlyMap<string, string>;
   onPress?: () => void;
+  /** Stable list handler — preferred over inline `onPress` closures in virtualized lists. */
+  onPressId?: (transactionId: string) => void;
 };
 
 function isUnresolvedHistorySubtitle(transaction: Transaction, label: string): boolean {
@@ -80,11 +82,20 @@ const TransactionRowBase = memo(function TransactionRowBase({
   savingsGoals,
   contactPhotoByKey,
   onPress,
+  onPressId,
 }: TransactionRowBaseProps) {
   const { colors: themeColors } = useAppTheme();
   const styles = useMemo(() => createStyles(themeColors), [themeColors]);
   const isTransfer = transaction.type === 'transfer';
   const isIncome = transaction.type === 'income';
+
+  const handlePress = useCallback(() => {
+    if (onPressId) {
+      onPressId(transaction.id);
+      return;
+    }
+    onPress?.();
+  }, [onPress, onPressId, transaction.id]);
 
   const contactPhotoUri = useMemo(
     () => resolveContactPhotoUriForTransaction(transaction, contactPhotoByKey),
@@ -103,7 +114,7 @@ const TransactionRowBase = memo(function TransactionRowBase({
 
   return (
     <PaymentListRow
-      onPress={onPress}
+      onPress={onPress || onPressId ? handlePress : undefined}
       avatar={
         <TransactionAvatar
           transaction={transaction}

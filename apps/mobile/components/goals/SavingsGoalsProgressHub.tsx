@@ -3,13 +3,12 @@ import { StyleSheet, Text, View } from 'react-native';
 import { DashboardCard } from '@/components/DashboardCard';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { DiamondLevelBadge } from '@/components/goals/DiamondLevelBadge';
-import { GoalProgressionRow } from '@/components/goals/GoalProgressionRow';
 import { SavingsStreakModule } from '@/components/goals/SavingsStreakModule';
 import {
   GOAL_PROGRESS_FILL,
   PAGE_PADDING_HORIZONTAL,
-  interBoldText,
-  interExtraBoldText,
+  jakartaBoldText,
+  jakartaExtraBoldText,
   spacing,
   typography,
 } from '@/constants/theme';
@@ -23,18 +22,19 @@ type Props = {
   goals: readonly SavingsGoal[];
   transactions?: readonly Transaction[];
   accounts?: readonly SimulatedAccount[];
-  onGoalPress?: (goalId: string) => void;
 };
 
 export function SavingsGoalsProgressHub({
   goals,
   transactions = EMPTY_SAVINGS_TRANSACTIONS,
   accounts = EMPTY_SIMULATED_ACCOUNTS,
-  onGoalPress,
 }: Props) {
   const { colors, isLight } = useAppTheme();
 
-  const gamificationInputKey = buildSavingsGamificationInputsKey(goals, transactions, accounts);
+  const gamificationInputKey = useMemo(
+    () => buildSavingsGamificationInputsKey(goals, transactions, accounts),
+    [goals, transactions, accounts],
+  );
 
   const gamification = useMemo(
     () => computeSavingsGamification(goals, transactions, accounts),
@@ -48,8 +48,6 @@ export function SavingsGoalsProgressHub({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [gamificationInputKey],
   );
-
-  const completedCount = gamification.goalProgressions.filter((goal) => goal.completed).length;
 
   return (
     <View style={styles.wrapper}>
@@ -86,23 +84,6 @@ export function SavingsGoalsProgressHub({
             : 'Niveau max atteint pour l\'instant — continue d\'épargner !'}
         </Text>
       </DashboardCard>
-
-      <View style={styles.progressionsSection}>
-        <View style={styles.progressionsHeader}>
-          <DashboardSectionLabel>PROGRESSION PAR OBJECTIF</DashboardSectionLabel>
-          {completedCount > 0 ? (
-            <Text style={[styles.completedBadge, { color: GOAL_PROGRESS_FILL }]}>
-              {completedCount} atteint{completedCount > 1 ? 's' : ''}
-            </Text>
-          ) : null}
-        </View>
-
-        <View style={styles.progressionList}>
-          {gamification.goalProgressions.map((goal) => (
-            <GoalProgressionRow key={goal.goalId} goal={goal} onPress={onGoalPress} />
-          ))}
-        </View>
-      </View>
     </View>
   );
 }
@@ -121,12 +102,12 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   heroTitle: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.title,
     letterSpacing: -0.3,
   },
   heroSaved: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
   },
   hubCardInner: {
@@ -152,24 +133,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   levelHint: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
     lineHeight: 16,
-  },
-  progressionsSection: {
-    gap: spacing.sm,
-  },
-  progressionsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  completedBadge: {
-    ...interBoldText,
-    fontSize: typography.micro,
-  },
-  progressionList: {
-    gap: spacing.sm,
   },
 });

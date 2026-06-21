@@ -21,7 +21,7 @@ import {
   containerSurfaceStyle,
   detailSectionLabelStyle,
   detailSubSectionHeaderStyle,
-  interBoldText,
+  jakartaBoldText,
   radius,
   spacing,
   tagContainerStyle,
@@ -638,7 +638,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   articleCategoryChipText: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
     letterSpacing: 0.1,
   },

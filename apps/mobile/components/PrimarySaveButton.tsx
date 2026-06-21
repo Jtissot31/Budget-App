@@ -1,5 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
-import { interExtraBoldText, radius, typography } from '@/constants/theme';
+import { jakartaExtraBoldText, radius, typography } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
@@ -44,7 +44,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.45 },
   text: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.body,
   },
 });

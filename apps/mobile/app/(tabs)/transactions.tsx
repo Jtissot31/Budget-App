@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Platform,
@@ -43,7 +43,7 @@ import {
   PAGE_TITLE_CONTENT_GAP,
   PAGE_TITLE_STYLE,
   SECTION_TITLE_STYLE,
-  interBoldText,
+  jakartaBoldText,
   radius,
   spacing,
   typography,
@@ -161,7 +161,7 @@ const HistoryDayGroup = memo(function HistoryDayGroup({
             accounts={accounts}
             savingsGoals={savingsGoals}
             contactPhotoByKey={contactPhotoByKey}
-            onPress={() => onPressTransaction(tx.id)}
+            onPressId={onPressTransaction}
           />
         ))}
       </View>
@@ -186,6 +186,7 @@ export default function TransactionsScreen() {
   const [merchantOverrides, setMerchantOverrides] = useState<MerchantOverride[]>([]);
   const [savedContacts, setSavedContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [historyTypeFilter, setHistoryTypeFilter] = useState<HistoryTypeFilter>('all');
   const [historyFiltersExpanded, setHistoryFiltersExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -380,14 +381,14 @@ export default function TransactionsScreen() {
   };
 
   const searchFilteredItems = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query = deferredSearch.trim().toLowerCase();
     if (!query) return items;
     return items.filter(
       (tx) =>
         tx.label.toLowerCase().includes(query) ||
         (tx.categoryName?.toLowerCase().includes(query) ?? false),
     );
-  }, [items, search]);
+  }, [items, deferredSearch]);
 
   const historyFilteredItems = useMemo(() => {
     if (historyTypeFilter === 'all') return searchFilteredItems;
@@ -439,7 +440,7 @@ export default function TransactionsScreen() {
           <Ionicons name="scan-outline" size={22} color={colors.textMuted} />
         </Pressable>
       </View>
-      <View style={styles.tabsWrap}>
+      <View style={[styles.tabsWrap, activeView === 'history' && styles.tabsWrapHistory]}>
         <SegmentedTabs
           tabs={[
             { id: 'history', label: 'Historique' },
@@ -454,10 +455,71 @@ export default function TransactionsScreen() {
     </View>
   );
 
+  const historyToolbar =
+    activeView === 'history' ? (
+      <View style={styles.historyToolbar}>
+        <View
+          style={[
+            styles.searchRow,
+            {
+              backgroundColor: colors.containerBackground,
+              borderColor: colors.containerBorder,
+              borderWidth: 1,
+              marginBottom: historyFiltersExpanded ? spacing.md : 0,
+            },
+          ]}
+        >
+          <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+          <TextInput
+            style={[styles.search, { color: colors.text }]}
+            placeholder="Rechercher"
+            placeholderTextColor={colors.textMuted}
+            value={search}
+            onChangeText={setSearch}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Filtres"
+            accessibilityState={{ expanded: historyFiltersExpanded }}
+            hitSlop={8}
+            onPress={() => {
+              tapHaptic();
+              setHistoryFiltersExpanded((expanded) => !expanded);
+            }}
+            style={styles.filterIconBtn}
+          >
+            <Ionicons
+              name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
+              size={20}
+              color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
+            />
+          </Pressable>
+        </View>
+        {historyFiltersExpanded ? (
+          <View style={styles.historyFilterWrap}>
+            <SegmentedTabs
+              tabs={HISTORY_FILTER_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
+              active={historyTypeFilter}
+              onChange={(id) => {
+                tapHaptic();
+                setHistoryTypeFilter(id);
+              }}
+              showDivider={false}
+              trackBgColor="transparent"
+              activeBgColor="rgba(255,255,255,0.07)"
+              activeLabelColor="rgba(255,255,255,0.85)"
+              inactiveLabelColor="rgba(255,255,255,0.28)"
+            />
+          </View>
+        ) : null}
+      </View>
+    ) : null;
+
   return (
     <PageTransition>
     <View style={[styles.screen, { backgroundColor: contentCanvas }]}>
       {pageHeader}
+      {historyToolbar}
 
       {activeView === 'history' ? (
         <View style={[styles.flex, { backgroundColor: contentCanvas }]} collapsable={false}>
@@ -466,69 +528,11 @@ export default function TransactionsScreen() {
             style={[styles.listViewport, { backgroundColor: contentCanvas }]}
             data={grouped}
             keyExtractor={([date]) => date}
-            extraData={`${search}:${historyTypeFilter}:${simulatedAccounts.length}`}
+            extraData={`${deferredSearch}:${historyTypeFilter}:${simulatedAccounts.length}`}
             initialNumToRender={8}
             maxToRenderPerBatch={6}
             windowSize={7}
             removeClippedSubviews={Platform.OS !== 'web'}
-            ListHeaderComponent={
-              <View style={styles.historyListHeader}>
-                <View
-                  style={[
-                    styles.searchRow,
-                    {
-                      backgroundColor: colors.containerBackground,
-                      borderColor: colors.containerBorder,
-                      borderWidth: 1,
-                      marginBottom: historyFiltersExpanded ? spacing.md : spacing.lg,
-                    },
-                  ]}
-                >
-                  <Ionicons name="search-outline" size={18} color={colors.textMuted} />
-                  <TextInput
-                    style={[styles.search, { color: colors.text }]}
-                    placeholder="Rechercher"
-                    placeholderTextColor={colors.textMuted}
-                    value={search}
-                    onChangeText={setSearch}
-                  />
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Filtres"
-                    accessibilityState={{ expanded: historyFiltersExpanded }}
-                    hitSlop={8}
-                    onPress={() => {
-                      tapHaptic();
-                      setHistoryFiltersExpanded((expanded) => !expanded);
-                    }}
-                    style={styles.filterIconBtn}
-                  >
-                    <Ionicons
-                      name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
-                      size={20}
-                      color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
-                    />
-                  </Pressable>
-                </View>
-                {historyFiltersExpanded ? (
-                  <View style={styles.historyFilterWrap}>
-                    <SegmentedTabs
-                      tabs={HISTORY_FILTER_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
-                      active={historyTypeFilter}
-                      onChange={(id) => {
-                        tapHaptic();
-                        setHistoryTypeFilter(id);
-                      }}
-                      showDivider={false}
-                      trackBgColor="transparent"
-                      activeBgColor="rgba(255,255,255,0.07)"
-                      activeLabelColor="rgba(255,255,255,0.85)"
-                      inactiveLabelColor="rgba(255,255,255,0.28)"
-                    />
-                  </View>
-                ) : null}
-              </View>
-            }
             contentContainerStyle={[
               styles.list,
               { backgroundColor: contentCanvas, paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING },
@@ -678,6 +682,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     marginBottom: PAGE_TITLE_CONTENT_GAP,
   },
+  tabsWrapHistory: {
+    marginBottom: spacing.md,
+  },
+  historyToolbar: {
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+    marginBottom: spacing.lg,
+  },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -696,10 +707,7 @@ const styles = StyleSheet.create({
     marginLeft: spacing.xs,
   },
   historyFilterWrap: {
-    marginBottom: spacing.xl,
-  },
-  historyListHeader: {
-    marginTop: spacing.lg,
+    marginBottom: 0,
   },
   historyEmptyInner: {
     alignItems: 'center',
@@ -743,7 +751,7 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    paddingTop: spacing.xxl,
+    paddingTop: spacing.md,
     paddingBottom: FLOATING_NAV_CONTENT_PADDING,
   },
   listViewport: { flex: 1 },

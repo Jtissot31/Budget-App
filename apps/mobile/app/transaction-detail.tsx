@@ -45,9 +45,9 @@ import {
   detailSectionsCardStyle,
   detailSubSectionHeaderStyle,
   detailSubSectionsGap,
-  interBoldText,
-  interExtraBoldText,
-  interMediumText,
+  jakartaBoldText,
+  jakartaExtraBoldText,
+  jakartaMediumText,
   radius,
   spacing,
   typography,
@@ -699,7 +699,7 @@ function ShareInsightText({ text }: { text: string }) {
   return (
     <Text style={[shareCardStyles.insightText, { color: SHARE_THEME.text }]}>
       {segments.map((segment, index) => (
-        <Text key={`share-insight-${index}`} style={segment.bold ? interBoldText : undefined}>
+        <Text key={`share-insight-${index}`} style={segment.bold ? jakartaBoldText : undefined}>
           {segment.text}
         </Text>
       ))}
@@ -1606,7 +1606,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     marginHorizontal: spacing.sm,
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.body,
     letterSpacing: -0.2,
   },
@@ -1621,7 +1621,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   heroLabel: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.dashboardGreeting,
     letterSpacing: -0.4,
   },
@@ -1928,7 +1928,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   sheetCurrency: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.body,
     marginLeft: spacing.xs,
   },
@@ -1946,7 +1946,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   sheetSaveButtonText: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.body,
     letterSpacing: 0.2,
   },
@@ -2030,7 +2030,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   articleCategoryChipText: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
     letterSpacing: 0.1,
   },
@@ -2135,7 +2135,7 @@ const shareCardStyles = StyleSheet.create({
     gap: spacing.md,
   },
   heroLabel: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     flex: 1,
     minWidth: 0,
     fontSize: typography.dashboardGreeting,
@@ -2172,7 +2172,7 @@ const shareCardStyles = StyleSheet.create({
     minWidth: 0,
   },
   insightText: {
-    ...interMediumText,
+    ...jakartaMediumText,
     ...typographyKit.metaMedium,
     lineHeight: typography.meta + 6,
     marginTop: spacing.xs,
@@ -2279,7 +2279,7 @@ const shareCardStyles = StyleSheet.create({
     paddingTop: spacing.xs,
   },
   footerText: {
-    fontFamily: 'Inter_500Medium',
+    fontFamily: 'PlusJakartaSans_500Medium',
     fontWeight: 'normal' as const,
     fontSize: 11,
     letterSpacing: 0.3,

@@ -164,6 +164,7 @@ const styles = StyleSheet.create({
   trailing: {
     alignSelf: 'stretch',
     alignItems: 'flex-end',
+    alignSelf: 'stretch',
     flexShrink: 0,
     justifyContent: 'flex-end',
   },

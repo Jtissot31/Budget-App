@@ -1,9 +1,9 @@
 import { Fragment } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  interBoldText,
-  interRegularText,
-  interSemiboldText,
+  jakartaBoldText,
+  jakartaRegularText,
+  jakartaSemiboldText,
   radius,
   spacing,
   typography,
@@ -51,11 +51,11 @@ function RichTextBlock({ text, color }: { text: string; color: string }) {
         return (
           <View key={`line-${lineIndex}`} style={[styles.richLine, isBullet && styles.bulletLine]}>
             {isBullet ? <Text style={[styles.bullet, { color }]}>•</Text> : null}
-            <Text style={[styles.richText, { color }, interRegularText]}>
+            <Text style={[styles.richText, { color }, jakartaRegularText]}>
               {segments.map((segment, index) => (
                 <Text
                   key={`seg-${lineIndex}-${index}`}
-                  style={segment.bold ? [interBoldText, styles.boldNumbers] : undefined}
+                  style={segment.bold ? [jakartaBoldText, styles.boldNumbers] : undefined}
                 >
                   {segment.text}
                 </Text>
@@ -78,7 +78,7 @@ function ContentBlock({ content, isUser }: { content: MessageContent; isUser: bo
           style={[
             styles.plainText,
             { color: isUser ? (isLight ? '#FFFFFF' : '#111111') : colors.text },
-            interRegularText,
+            jakartaRegularText,
           ]}
         >
           {content.text}
@@ -92,7 +92,7 @@ function ContentBlock({ content, isUser }: { content: MessageContent; isUser: bo
       return (
         <View style={styles.sparklineBlock}>
           {content.caption ? (
-            <Text style={[styles.sparklineCaption, { color: colors.textMuted }, interSemiboldText]}>
+            <Text style={[styles.sparklineCaption, { color: colors.textMuted }, jakartaSemiboldText]}>
               {content.caption}
             </Text>
           ) : null}
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.xs,
   },
   bullet: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.body,
     lineHeight: typography.body + 6,
     marginRight: spacing.sm,

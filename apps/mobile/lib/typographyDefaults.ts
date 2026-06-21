@@ -3,28 +3,35 @@ import { fontFamilies } from '@/constants/theme';
 
 const defaultTextStyle = {
   fontFamily: fontFamilies.regular,
-  fontWeight: '400' as const,
+  fontWeight: 'normal' as const,
 };
 
 const systemTextStyle = {
-  fontWeight: '400' as const,
+  fontWeight: 'normal' as const,
 };
 
-function applyTextDefaults(style: typeof defaultTextStyle | typeof systemTextStyle) {
+let typographyDefaultsApplied: 'jakarta' | 'system' | null = null;
+
+function applyTextDefaults(mode: 'jakarta' | 'system') {
+  if (typographyDefaultsApplied === mode) return;
+
+  const style = mode === 'jakarta' ? defaultTextStyle : systemTextStyle;
   const text = Text as typeof Text & { defaultProps?: { style?: unknown } };
   text.defaultProps = text.defaultProps ?? {};
-  text.defaultProps.style = [style, text.defaultProps.style];
+  text.defaultProps.style = style;
 
   const textInput = TextInput as typeof TextInput & { defaultProps?: { style?: unknown } };
   textInput.defaultProps = textInput.defaultProps ?? {};
-  textInput.defaultProps.style = [style, textInput.defaultProps.style];
+  textInput.defaultProps.style = style;
+
+  typographyDefaultsApplied = mode;
 }
 
 export function configureTypographyDefaults() {
-  applyTextDefaults(defaultTextStyle);
+  applyTextDefaults('jakarta');
 }
 
-/** Used when Inter fails to load — omit fontFamily so RN uses the system face. */
+/** Used when Plus Jakarta Sans fails to load — omit fontFamily so RN uses the system face. */
 export function configureSystemTypographyDefaults() {
-  applyTextDefaults(systemTextStyle);
+  applyTextDefaults('system');
 }

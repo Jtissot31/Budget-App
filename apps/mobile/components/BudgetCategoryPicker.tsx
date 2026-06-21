@@ -10,7 +10,7 @@ import { getCategoryIconName } from '@/constants/categoryOptions';
 
 import { resolveStoredIconToMdi } from '@/lib/mdiIconCatalog';
 
-import { CHIP_PADDING_HORIZONTAL, interBoldText, radius, spacing, typography } from '@/constants/theme';
+import { CHIP_PADDING_HORIZONTAL, jakartaBoldText, radius, spacing, typography } from '@/constants/theme';
 import { singleLineLabelStyle } from '@/lib/textLayout';
 
 import { typographyKit } from '@/constants/typographyKit';
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
 
   chipText: {
 
-    ...interBoldText,
+    ...jakartaBoldText,
 
     fontSize: typography.meta,
 

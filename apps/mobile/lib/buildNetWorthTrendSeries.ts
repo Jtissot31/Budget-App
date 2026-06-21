@@ -164,6 +164,30 @@ function parseTxTime(date: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function sortTransactionsNewestFirst(transactions: readonly Transaction[]): Transaction[] {
+  return [...transactions].sort((a, b) => {
+    const byDate = parseTxTime(b.date) - parseTxTime(a.date);
+    return byDate !== 0 ? byDate : b.id.localeCompare(a.id);
+  });
+}
+
+function netWorthAtCutoff(
+  currentAccountsNetWorth: number,
+  sortedTransactionsNewestFirst: readonly Transaction[],
+  cutoffMs: number,
+  accountScope: AccountScope,
+): number {
+  let value = currentAccountsNetWorth;
+
+  for (const tx of sortedTransactionsNewestFirst) {
+    if (parseTxTime(tx.date) > cutoffMs) {
+      value -= getTransactionNetWorthDelta(tx, accountScope);
+    }
+  }
+
+  return value;
+}
+
 function monthAnchorDates(historicalMonthCount: number, futureMonthCount: number, now: Date): Date[] {
   const historical = Array.from({ length: historicalMonthCount }, (_, index) => {
     return new Date(now.getFullYear(), now.getMonth() - (historicalMonthCount - 1 - index), 1);
@@ -172,27 +196,6 @@ function monthAnchorDates(historicalMonthCount: number, futureMonthCount: number
     return new Date(now.getFullYear(), now.getMonth() + index + 1, 1);
   });
   return [...historical, ...future];
-}
-
-function netWorthAtCutoff(
-  currentAccountsNetWorth: number,
-  transactions: readonly Transaction[],
-  cutoffMs: number,
-  accountScope: AccountScope,
-): number {
-  let value = currentAccountsNetWorth;
-  const sorted = [...transactions].sort((a, b) => {
-    const byDate = parseTxTime(b.date) - parseTxTime(a.date);
-    return byDate !== 0 ? byDate : b.id.localeCompare(a.id);
-  });
-
-  for (const tx of sorted) {
-    if (parseTxTime(tx.date) > cutoffMs) {
-      value -= getTransactionNetWorthDelta(tx, accountScope);
-    }
-  }
-
-  return value;
 }
 
 function isSameCalendarDay(a: Date, b: Date): boolean {
@@ -268,6 +271,7 @@ export function buildNetWorthDailySeries(
   const nowMs = now.getTime();
 
   const scopedTransactions = transactions.filter((tx) => getTransactionNetWorthDelta(tx, accountScope) !== 0);
+  const sortedTransactions = sortTransactionsNewestFirst(transactions);
 
   const points = dayAnchors.map((day) => {
     const isToday = isSameCalendarDay(day, today);
@@ -275,7 +279,7 @@ export function buildNetWorthDailySeries(
     const dayEndMs = isToday ? nowMs : endOfDay(day).getTime();
     const startBalance = netWorthAtCutoff(
       currentAccountsNetWorth,
-      transactions,
+      sortedTransactions,
       dayStartMs - 1,
       accountScope,
     );
@@ -302,7 +306,7 @@ export function buildNetWorthDailySeries(
 
     const endBalance = isToday
       ? currentAccountsNetWorth
-      : netWorthAtCutoff(currentAccountsNetWorth, transactions, dayEndMs, accountScope);
+      : netWorthAtCutoff(currentAccountsNetWorth, sortedTransactions, dayEndMs, accountScope);
 
     low = Math.min(low, endBalance);
     high = Math.max(high, endBalance);
@@ -362,6 +366,7 @@ export function buildNetWorthWeeklySeriesForPeriod(
   const currentAccountsNetWorth = currentNetWorth - wealthOffset;
   const nowMs = now.getTime();
   const scopedTransactions = transactions.filter((tx) => getTransactionNetWorthDelta(tx, accountScope) !== 0);
+  const sortedTransactions = sortTransactionsNewestFirst(transactions);
 
   const points = weekAnchors.map((weekStart) => {
     const weekEnd = endOfWeekSunday(weekStart);
@@ -369,7 +374,7 @@ export function buildNetWorthWeeklySeriesForPeriod(
     const weekEndMs = isCurrentWeek ? nowMs : weekEnd.getTime();
     const startBalance = netWorthAtCutoff(
       currentAccountsNetWorth,
-      transactions,
+      sortedTransactions,
       weekStart.getTime() - 1,
       accountScope,
     );
@@ -405,7 +410,7 @@ export function buildNetWorthWeeklySeriesForPeriod(
 
     const endBalance = isCurrentWeek
       ? currentAccountsNetWorth
-      : netWorthAtCutoff(currentAccountsNetWorth, transactions, weekEndMs, accountScope);
+      : netWorthAtCutoff(currentAccountsNetWorth, sortedTransactions, weekEndMs, accountScope);
 
     low = Math.min(low, endBalance);
     high = Math.max(high, endBalance);
@@ -455,6 +460,7 @@ export function buildNetWorthTrendFromTransactions(
   const wealthOffset = scope === 'inclusive' ? offAccountAssetsBalance : 0;
   const currentAccountsNetWorth = currentNetWorth - wealthOffset;
   const nowMs = now.getTime();
+  const sortedTransactions = sortTransactionsNewestFirst(transactions);
 
   const trendPoints = anchors.map((anchor, index) => {
     const isFutureMonth = index > currentMonthIndex;
@@ -472,7 +478,7 @@ export function buildNetWorthTrendFromTransactions(
 
     const accountsValue = isCurrentMonth
       ? currentAccountsNetWorth
-      : netWorthAtCutoff(currentAccountsNetWorth, transactions, cutoffMs, accountScope);
+      : netWorthAtCutoff(currentAccountsNetWorth, sortedTransactions, cutoffMs, accountScope);
 
     return {
       label: monthLabelFr(anchor),

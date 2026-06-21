@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { interRegularText, PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
+import { jakartaRegularText, PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
 import { useAIChatColors } from './theme';
@@ -56,7 +56,7 @@ export function AIChatInputBar({ value, onChangeText, onSend, disabled = false, 
           </Pressable>
 
           <TextInput
-            style={[styles.textInput, { color: palette.text }, interRegularText]}
+            style={[styles.textInput, { color: palette.text }, jakartaRegularText]}
             placeholder="Posez une question..."
             placeholderTextColor={palette.textMuted}
             value={value}

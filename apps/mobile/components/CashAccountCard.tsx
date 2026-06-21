@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, Line, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
-import { interExtraBoldText, interMediumText, interSemiboldText } from '@/constants/theme';
+import { jakartaExtraBoldText, jakartaMediumText, jakartaSemiboldText } from '@/constants/theme';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
 import type { SimulatedAccount } from '@/types';
 
@@ -274,14 +274,14 @@ const styles = StyleSheet.create({
     paddingTop: 4,
   },
   balanceLabel: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: 9,
     letterSpacing: 1.1,
     textTransform: 'uppercase',
     color: C.label,
   },
   balanceAmount: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: 26,
     lineHeight: 30,
     letterSpacing: -0.5,
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   accountName: {
-    ...interSemiboldText,
+    ...jakartaSemiboldText,
     flex: 1,
     minWidth: 0,
     fontSize: 10,
@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
     color: C.name,
   },
   kindLabel: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: 9,
     letterSpacing: 1,
     textTransform: 'uppercase',

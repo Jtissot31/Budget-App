@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Dimensions, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, BackHandler, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { usePathname, useRouter } from 'expo-router';
@@ -16,7 +17,6 @@ import {
 import {
   getFloatingTabBarBottomInset,
   lightColors,
-  radius,
   spacing,
   typographyKit,
 } from '@/constants/theme';
@@ -24,17 +24,23 @@ import { tapHaptic } from '@/lib/haptics';
 import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsForm';
 import { uiEvents } from '@/lib/events';
 import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
-import { UNIFORM_CHIP_FONT_SIZE } from '@/lib/uniformGroupStyles';
 import { useAppTheme } from '@/lib/themeContext';
 
-/** Icônes plus actuelles (lignes fines, lecture type apps finance / iOS) */
-const ROUTE_ICONS: Record<string, { outline: keyof typeof Ionicons.glyphMap; filled: keyof typeof Ionicons.glyphMap }> = {
-  index: { outline: 'grid-outline', filled: 'grid' },
+/** Matches `radius.pill` (999) — literal avoids Hermes `radius` binding clashes in this module. */
+const PILL_BORDER_RADIUS = 999;
+
+const TAB_ICON_SIZE = 21;
+
+/** Material Community Icons — outline (inactive) / filled (active) */
+const ROUTE_ICONS: Record<
+  string,
+  { outline: keyof typeof MaterialCommunityIcons.glyphMap; filled: keyof typeof MaterialCommunityIcons.glyphMap }
+> = {
+  index: { outline: 'home-outline', filled: 'home' },
+  transactions: { outline: 'receipt-text-outline', filled: 'receipt-text' },
   accounts: { outline: 'wallet-outline', filled: 'wallet' },
-  goals: { outline: 'navigate-circle-outline', filled: 'navigate-circle' },
-  transactions: { outline: 'receipt-outline', filled: 'receipt' },
-  budgets: { outline: 'pie-chart-outline', filled: 'pie-chart' },
-  settings: { outline: 'options-outline', filled: 'options' },
+  goals: { outline: 'flag-outline', filled: 'flag' },
+  budgets: { outline: 'chart-pie-outline', filled: 'chart-pie' },
 };
 
 const ROUTE_LABELS: Record<string, string> = {
@@ -49,8 +55,8 @@ const ROUTE_LABELS: Record<string, string> = {
 const HIDDEN_ROUTES = new Set(['settings']);
 
 /** Brand green AI FAB gradients (expo-linear-gradient, 3-stop) */
-const AI_CHAT_FAB_GRADIENT_DARK = ['#003d1a', '#007a3d', '#00e664'] as const;
-const AI_CHAT_FAB_GRADIENT_LIGHT = [lightColors.primary, '#00a854', '#007a3d'] as const;
+const AI_CHAT_FAB_GRADIENT_DARK = ['#003d1a', '#007a3d', '#4ADE80'] as const;
+const AI_CHAT_FAB_GRADIENT_LIGHT = [lightColors.primary, '#34c976', '#1a7a45'] as const;
 const AI_CHAT_FAB_GRADIENT_LOCATIONS = [0, 0.5, 1] as const;
 
 /** `Plus` from src/icons — React Native SVG. */
@@ -149,11 +155,11 @@ const AGENDA_FAB_ADD_ACTIONS: {
   },
 ];
 
-function getHistoryFabArcOffsets(angleDeg: number, radius: number) {
+function getHistoryFabArcOffsets(angleDeg: number, arcRadius: number) {
   const rad = (angleDeg * Math.PI) / 180;
   return {
-    right: -radius * Math.cos(rad) - HISTORY_FAB_OPTION_PILL_WIDTH / 2,
-    bottom: radius * Math.sin(rad) - HISTORY_FAB_OPTION_ROW_HEIGHT / 2,
+    right: -arcRadius * Math.cos(rad) - HISTORY_FAB_OPTION_PILL_WIDTH / 2,
+    bottom: arcRadius * Math.sin(rad) - HISTORY_FAB_OPTION_ROW_HEIGHT / 2,
   };
 }
 
@@ -181,7 +187,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     [isLight],
   );
   const bottom = getFloatingTabBarBottomInset(insets.bottom);
-  const isAndroid = Platform.OS === 'android';
   const activeRouteName = state.routes[state.index]?.name;
   const activeRouteParams = state.routes[state.index]?.params as { view?: string } | undefined;
   const transactionsView = activeRouteName === 'transactions' ? (activeRouteParams?.view ?? 'history') : undefined;
@@ -201,10 +206,46 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const showAgendaFabOptions = isTransactionsAgendaView && isAgendaFabExpanded;
   const rightThumbFabBottom = bottom + FLOATING_FAB_SIZE;
 
-  useEffect(() => {
+  const collapseSpeedDials = useCallback(() => {
     setIsHistoryFabExpanded(false);
     setIsAgendaFabExpanded(false);
-  }, [activeRouteName, pathname, transactionsView]);
+  }, []);
+
+  // Stack push/pop above tabs: blur/focus on the tab navigator.
+  useFocusEffect(
+    useCallback(() => {
+      collapseSpeedDials();
+      return () => {
+        collapseSpeedDials();
+      };
+    }, [collapseSpeedDials]),
+  );
+
+  // Tab switch, pathname change, Historique ↔ Agenda sub-view: blur previous / focus next.
+  useEffect(() => {
+    collapseSpeedDials();
+    return () => {
+      collapseSpeedDials();
+    };
+  }, [state.index, pathname, transactionsView, collapseSpeedDials]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        collapseSpeedDials();
+      }
+    });
+    return () => subscription.remove();
+  }, [collapseSpeedDials]);
+
+  useEffect(() => {
+    if (!isHistoryFabExpanded && !isAgendaFabExpanded) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      collapseSpeedDials();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [collapseSpeedDials, isAgendaFabExpanded, isHistoryFabExpanded]);
 
   const collapseHistoryFab = useCallback(() => {
     setIsHistoryFabExpanded(false);
@@ -318,7 +359,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                   style={({ pressed }) => [
                     styles.historyFabOptionCard,
                     historyFabOptionsSurface,
-                    { borderRadius: radius.pill },
+                    { borderRadius: PILL_BORDER_RADIUS },
                     pressed && [
                       floatingGlassButtonPressed,
                       { backgroundColor: 'rgba(255, 255, 255, 0.08)' },
@@ -400,7 +441,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                   style={({ pressed }) => [
                     styles.historyFabOptionCard,
                     historyFabOptionsSurface,
-                    { borderRadius: radius.pill },
+                    { borderRadius: PILL_BORDER_RADIUS },
                     pressed && [
                       floatingGlassButtonPressed,
                       { backgroundColor: 'rgba(255, 255, 255, 0.08)' },
@@ -492,78 +533,68 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
       ) : null}
 
       <View
+        pointerEvents="box-none"
         style={[
-          styles.navShell,
+          styles.floatingNav,
           {
-            paddingBottom: bottom,
+            marginBottom: bottom + spacing.sm,
+            marginHorizontal: spacing.lg,
             backgroundColor: navShellBg,
-            borderTopColor: isLight ? colors.border : colors.border,
+            borderColor: colors.border,
+            borderRadius: PILL_BORDER_RADIUS,
           },
         ]}
       >
-        <View style={[styles.pill, isAndroid && styles.pillAndroid]}>
-          {state.routes.map((route, index) => {
-            if (HIDDEN_ROUTES.has(route.name)) return null;
-            const focused = state.index === index;
-            const icons = ROUTE_ICONS[route.name] ?? {
-              outline: 'ellipse-outline',
-              filled: 'ellipse',
-            };
-            const iconName = focused ? icons.filled : icons.outline;
+        {state.routes.map((route, index) => {
+          if (HIDDEN_ROUTES.has(route.name)) return null;
+          const focused = state.index === index;
+          const icons = ROUTE_ICONS[route.name] ?? {
+            outline: 'circle-outline',
+            filled: 'circle',
+          };
+          const iconName = focused ? icons.filled : icons.outline;
+          const tabLabel = ROUTE_LABELS[route.name] ?? route.name;
 
-            const onPress = () => {
-              const event = navigation.emit({
-                type: 'tabPress',
-                target: route.key,
-                canPreventDefault: true,
-              });
-              if (event.defaultPrevented) return;
+          const onPress = () => {
+            collapseSpeedDials();
 
-              if (route.name === 'transactions') {
-                const subView = (route.params as { view?: string } | undefined)?.view;
-                if (!focused || (subView && subView !== 'history')) {
-                  navigation.navigate('transactions', { view: 'history' });
-                }
-                return;
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+            if (event.defaultPrevented) return;
+
+            if (route.name === 'transactions') {
+              const subView = (route.params as { view?: string } | undefined)?.view;
+              if (!focused || (subView && subView !== 'history')) {
+                navigation.navigate('transactions', { view: 'history' });
               }
+              return;
+            }
 
-              if (!focused) {
-                navigation.navigate(route.name, route.params);
-              }
-            };
+            if (!focused) {
+              navigation.navigate(route.name, route.params);
+            }
+          };
 
-            return (
-              <Pressable
-                key={route.key}
-                onPress={onPress}
-                style={({ pressed }) => [styles.tab, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: focused }}
-              >
-                <MotiView
-                  animate={{
-                    scale: focused ? 1 : 0.98,
-                    opacity: focused ? 1 : 0.86,
-                  }}
-                  transition={{ type: 'timing', duration: 180 }}
-                  style={styles.tabContent}
-                >
-                  <Ionicons name={iconName} size={21} color={focused ? colors.primary : colors.textMuted} />
-                  <Text
-                    style={[
-                      styles.tabLabel,
-                      { color: focused ? colors.text : colors.textMuted },
-                    ]}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    {ROUTE_LABELS[route.name] ?? route.name}
-                  </Text>
-                </MotiView>
-              </Pressable>
-            );
-          })}
-        </View>
+          return (
+            <Pressable
+              key={route.key}
+              onPress={onPress}
+              style={({ pressed }) => [styles.tab, pressed && styles.pressed]}
+              accessibilityRole="tab"
+              accessibilityLabel={tabLabel}
+              accessibilityState={{ selected: focused }}
+            >
+              <MaterialCommunityIcons
+                name={iconName}
+                size={TAB_ICON_SIZE}
+                color={focused ? colors.text : colors.textMuted}
+              />
+            </Pressable>
+          );
+        })}
       </View>
     </View>
   );
@@ -578,9 +609,13 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     backgroundColor: 'transparent',
   },
-  navShell: {
-    width: '100%',
-    borderTopWidth: StyleSheet.hairlineWidth,
+  floatingNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
   },
   historyFabBackdrop: {
     position: 'absolute',
@@ -653,44 +688,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 1,
   },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    justifyContent: 'space-between',
-    width: '100%',
-    paddingVertical: 11,
-    paddingHorizontal: 4,
-  },
-  pillAndroid: {
-    paddingTop: 9,
-    paddingBottom: 7,
-  },
   tab: {
-    flex: 1,
-    alignSelf: 'stretch',
-    alignItems: 'stretch',
-    justifyContent: 'center',
-    paddingVertical: 1,
-    minWidth: 0,
-  },
-  tabContent: {
-    flex: 1,
-    width: '100%',
-    minHeight: 50,
+    minWidth: 44,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 1,
-    borderRadius: radius.pill,
-    paddingHorizontal: 3,
-  },
-  tabLabel: {
-    width: '100%',
-    minWidth: 0,
-    flexShrink: 1,
-    fontSize: UNIFORM_CHIP_FONT_SIZE,
-    lineHeight: UNIFORM_CHIP_FONT_SIZE + 2,
-    fontWeight: '600',
-    textAlign: 'center',
   },
   pressed: { opacity: 0.75 },
 });

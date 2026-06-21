@@ -37,9 +37,9 @@ import {
   containerSurfaceStyle,
   detailSectionLabelStyle,
   detailSubSectionHeaderStyle,
-  interBoldText,
-  interExtraBoldText,
-  interMediumText,
+  jakartaBoldText,
+  jakartaExtraBoldText,
+  jakartaMediumText,
   radius,
   spacing,
   tagContainerStyle,
@@ -2486,7 +2486,7 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     flex: 1,
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.title,
     letterSpacing: -0.4,
   },
@@ -2519,7 +2519,7 @@ const styles = StyleSheet.create({
     paddingRight: spacing.sm,
   },
   amountText: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     letterSpacing: -2,
     fontVariant: ['tabular-nums'],
   },
@@ -2539,7 +2539,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   sectionHint: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     lineHeight: 17,
     marginTop: 2,
@@ -2550,7 +2550,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.body,
   },
   suggestionRow: {
@@ -2577,12 +2577,12 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   createContactButtonText: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
     lineHeight: 18,
   },
   linkedContactHint: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     lineHeight: 15,
   },
@@ -2596,7 +2596,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   suggestionText: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.meta,
     maxWidth: 138,
   },
@@ -2612,7 +2612,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   addItemText: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.caption,
   },
   itemCard: {
@@ -2651,13 +2651,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
     flex: 1,
     paddingVertical: 9,
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
     textAlign: 'right',
   },
   priceCurrency: {
     marginLeft: spacing.xs,
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.meta,
   },
   removeItemBtn: {
@@ -2677,7 +2677,7 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   itemCategoryLabel: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.micro,
     paddingHorizontal: 2,
   },
@@ -2691,7 +2691,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   changeCategoryText: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.micro,
   },
   itemCategoryPicker: {
@@ -2703,7 +2703,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
   },
   itemCategoryChips: {
@@ -2724,7 +2724,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   itemCategoryChipText: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.micro,
     lineHeight: 15,
     flexShrink: 1,
@@ -2744,7 +2744,7 @@ const styles = StyleSheet.create({
     maxWidth: 150,
   },
   itemTotalText: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.meta,
     textAlign: 'right',
   },
@@ -2767,7 +2767,7 @@ const styles = StyleSheet.create({
   },
   inlineScanText: {
     flexShrink: 1,
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.meta,
   },
   articlesSectionCard: {
@@ -2806,7 +2806,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
   },
   articlesCountBadgeText: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.micro,
     lineHeight: 14,
   },
@@ -2828,7 +2828,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   articlesPrimaryAddButtonText: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.caption,
     letterSpacing: 0.2,
     color: colors.textSecondary,
@@ -2843,7 +2843,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   articlesAddButtonText: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.micro,
     letterSpacing: 0.2,
   },
@@ -2949,7 +2949,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   logoHint: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     lineHeight: 15,
   },
@@ -2965,7 +2965,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   logoPickerHint: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.micro,
     letterSpacing: 0.2,
   },
@@ -3010,14 +3010,14 @@ const styles = StyleSheet.create({
     marginRight: 5,
   },
   chipText: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
     lineHeight: 20,
     textAlign: 'center',
     maxWidth: '100%',
   },
   categoryChipText: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.meta,
     lineHeight: 16,
     flexShrink: 1,
@@ -3039,13 +3039,13 @@ const styles = StyleSheet.create({
   },
   accountText: {
     textAlign: 'center',
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
     lineHeight: 15,
     flexShrink: 1,
   },
   transferWarning: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
     lineHeight: 18,
   },

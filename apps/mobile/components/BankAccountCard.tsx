@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { StyleSheet, Text, View } from 'react-native';
-import { interExtraBoldText, interMediumText, interSemiboldText } from '@/constants/theme';
+import { jakartaExtraBoldText, jakartaMediumText, jakartaSemiboldText } from '@/constants/theme';
 import { creditUsedFromBalance } from '@/lib/creditLimitUtilization';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
 import type { AccountKind, SimulatedAccount } from '@/types';
@@ -236,14 +236,14 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   balanceLabel: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: 9,
     letterSpacing: 1.1,
     textTransform: 'uppercase',
     color: CARD.label,
   },
   balanceAmount: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: 27,
     lineHeight: 31,
     letterSpacing: -0.6,
@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   creditMeta: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: 9,
     letterSpacing: 0.2,
     color: CARD.creditMeta,
@@ -269,14 +269,14 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   cardNumber: {
-    ...interSemiboldText,
+    ...jakartaSemiboldText,
     fontSize: 14,
     letterSpacing: 2.2,
     color: CARD.number,
     fontVariant: ['tabular-nums'],
   },
   kindLabel: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: 9,
     letterSpacing: 1,
     textTransform: 'uppercase',
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   cardholder: {
-    ...interSemiboldText,
+    ...jakartaSemiboldText,
     flex: 1,
     minWidth: 0,
     fontSize: 10,

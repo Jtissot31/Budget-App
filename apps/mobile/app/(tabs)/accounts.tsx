@@ -56,10 +56,10 @@ import {
   FLOATING_NAV_CONTENT_PADDING,
   ICON_WELL_SIZE,
   MERCHANT_LOGO_SIZE,
-  interBoldText,
-  interExtraBoldText,
-  interMediumText,
-  interSemiboldText,
+  jakartaBoldText,
+  jakartaExtraBoldText,
+  jakartaMediumText,
+  jakartaSemiboldText,
   portfolioDark,
   portfolioLight,
   PAGE_PADDING_HORIZONTAL,
@@ -4145,7 +4145,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   pageTitle: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: 32,
     letterSpacing: -0.8,
   },
@@ -4392,7 +4392,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   wealthFinePrint: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
     lineHeight: 18,
   },
@@ -4477,7 +4477,7 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   accountVisualName: {
-    ...interBoldText,
+    ...jakartaBoldText,
     color: colors.text,
     minWidth: 0,
     fontSize: typography.meta,
@@ -4485,7 +4485,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   accountVisualMeta: {
-    ...interBoldText,
+    ...jakartaBoldText,
     color: colors.textMuted,
     fontSize: typography.micro,
     letterSpacing: 0.2,
@@ -4508,7 +4508,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   accountVisualStatusText: {
-    ...interSemiboldText,
+    ...jakartaSemiboldText,
     fontSize: typography.micro,
     letterSpacing: 0.2,
   },
@@ -4613,7 +4613,7 @@ const styles = StyleSheet.create({
   accountVisualLimitNearBannerText: {
     flex: 1,
     flexShrink: 1,
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.meta,
     letterSpacing: 0.12,
   },
@@ -5091,12 +5091,12 @@ const styles = StyleSheet.create({
   formHeadCopy: { flex: 1, minWidth: 0, gap: 4 },
   formTitle: {
     flex: 1,
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.title,
     letterSpacing: -0.4,
   },
   formHint: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
     lineHeight: 17,
   },
@@ -5186,7 +5186,7 @@ const styles = StyleSheet.create({
   loanDurationAmount: { flex: 1, minWidth: 110 },
   loanDurationUnitRow: { flex: 1, paddingBottom: 2 },
   typePickerSubtitle: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.body,
     lineHeight: 22,
     marginBottom: spacing.md,
@@ -5217,11 +5217,11 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   typePickerLabel: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.body,
   },
   typePickerDescription: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
     lineHeight: 18,
   },
@@ -5237,7 +5237,7 @@ const styles = StyleSheet.create({
   },
   typeChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   typeChipText: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
   },
   inputGroup: { gap: spacing.sm },
@@ -5245,7 +5245,7 @@ const styles = StyleSheet.create({
     ...typographyKit.eyebrow,
   },
   label: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
     lineHeight: 21,
   },
@@ -5254,7 +5254,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.body,
   },
   inputShell: {
@@ -5270,11 +5270,11 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.md,
     paddingRight: spacing.xs,
     paddingVertical: spacing.md,
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.body,
   },
   inputSuffix: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.body,
   },
   suggestionRow: {
@@ -5292,7 +5292,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   suggestionText: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
     lineHeight: 18,
   },
@@ -5311,12 +5311,12 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   createContactButtonText: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
     lineHeight: 18,
   },
   linkedContactHint: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     lineHeight: 15,
   },
@@ -5407,14 +5407,14 @@ const styles = StyleSheet.create({
     paddingTop: 1,
   },
   loanCardType: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     letterSpacing: 0.3,
     textTransform: 'uppercase',
     color: LOAN_CARD_SURFACE.label,
   },
   loanCardHeroLabel: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: 9,
     letterSpacing: 1.1,
     textTransform: 'uppercase',
@@ -5422,7 +5422,7 @@ const styles = StyleSheet.create({
     color: LOAN_CARD_SURFACE.label,
   },
   loanCardHeroAmount: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: 24,
     lineHeight: 28,
     letterSpacing: -0.4,
@@ -5437,7 +5437,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   loanCardSecondaryMetric: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     lineHeight: 16,
     color: LOAN_CARD_SURFACE.meta,
@@ -5445,7 +5445,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   loanCardSecondaryPayment: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     lineHeight: 16,
     color: LOAN_CARD_SURFACE.meta,
@@ -5464,12 +5464,12 @@ const styles = StyleSheet.create({
   },
   loanCardName: {
     ...rowLabel,
-    ...interBoldText,
+    ...jakartaBoldText,
     letterSpacing: -0.1,
     color: LOAN_CARD_SURFACE.text,
   },
   loanCardRecipient: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.caption,
     color: LOAN_CARD_SURFACE.meta,
     marginTop: 2,

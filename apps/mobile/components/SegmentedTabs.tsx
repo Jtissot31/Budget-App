@@ -10,8 +10,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import {
-  interBoldText,
-  interExtraBoldText,
+  jakartaBoldText,
+  jakartaExtraBoldText,
   liquidSegmentedSettleSpring,
   liquidSegmentedSpring,
   radius,
@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   label: {
-    ...interBoldText,
+    ...jakartaBoldText,
     textAlign: 'center',
     lineHeight: UNIFORM_CHIP_FONT_SIZE + 4,
     width: '100%',
@@ -317,6 +317,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   labelActive: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
   },
 });

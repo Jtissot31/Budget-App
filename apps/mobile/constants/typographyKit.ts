@@ -1,8 +1,8 @@
 /**
  * Typography kit — Portefeuille (`accounts.tsx`) is the reference template.
  *
- * Use only these presets (Inter named faces + `fontWeight: 'normal'`).
- * Do not mix `fontWeight: '700'/'800'` with Inter font files.
+ * Use only these presets (Plus Jakarta Sans named faces + `fontWeight: 'normal'`).
+ * Do not mix `fontWeight: '700'/'800'` with Plus Jakarta Sans font files.
  *
  * Hierarchy:
  * - pageTitle — screen titles (32px ExtraBold)
@@ -12,12 +12,12 @@
  * - rowTitle / listPrimary / rowMeta — list & card copy
  */
 import {
-  interBoldText,
-  interExtraBoldText,
-  interMediumText,
-  interRegularText,
-  interSemiboldText,
-} from '@/constants/interFonts';
+  jakartaBoldText,
+  jakartaExtraBoldText,
+  jakartaMediumText,
+  jakartaRegularText,
+  jakartaSemiboldText,
+} from '@/constants/plusJakartaFonts';
 
 /** Font sizes — keep in sync with `theme.typography` */
 const sizes = {
@@ -30,7 +30,7 @@ const sizes = {
 } as const;
 
 const labelText = {
-  ...interMediumText,
+  ...jakartaMediumText,
   textTransform: 'uppercase' as const,
   letterSpacing: 0.6,
 };
@@ -40,14 +40,14 @@ const tabular = { fontVariant: ['tabular-nums'] as const };
 export const typographyKit = {
   /** Portefeuille tab title, Transactions, Budgets… */
   pageTitle: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: 32,
     letterSpacing: -0.8,
   },
 
   /** Patrimoine, Prêts bancaires, Soldes des comptes, Mes soldes… */
   sectionTitle: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: 20,
     letterSpacing: -0.4,
     lineHeight: 24,
@@ -60,68 +60,68 @@ export const typographyKit = {
   },
 
   body: {
-    ...interRegularText,
+    ...jakartaRegularText,
     fontSize: sizes.body,
     lineHeight: sizes.body + 6,
   },
 
   bodyMedium: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: sizes.body,
     lineHeight: sizes.body + 6,
   },
 
   bodyBold: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: sizes.body,
     lineHeight: sizes.body + 6,
   },
 
   caption: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: sizes.caption,
     lineHeight: sizes.caption + 4,
   },
 
   captionSemibold: {
-    ...interSemiboldText,
+    ...jakartaSemiboldText,
     fontSize: sizes.caption,
     lineHeight: sizes.caption + 4,
   },
 
   /** Delta badge, secondary labels */
   meta: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: sizes.meta,
     lineHeight: sizes.meta + 5,
   },
 
   metaMedium: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: sizes.meta,
     lineHeight: sizes.meta + 5,
   },
 
   metaSemibold: {
-    ...interSemiboldText,
+    ...jakartaSemiboldText,
     fontSize: sizes.meta,
     lineHeight: sizes.meta + 5,
   },
 
   micro: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: sizes.micro,
     lineHeight: sizes.micro + 3,
   },
 
   microMedium: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: sizes.micro,
     lineHeight: sizes.micro + 3,
   },
 
   microUpper: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: sizes.micro,
     letterSpacing: 0.4,
     textTransform: 'uppercase' as const,
@@ -129,7 +129,7 @@ export const typographyKit = {
 
   /** List row title — Historique, transactions */
   rowTitle: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: sizes.caption,
     lineHeight: sizes.caption + 4,
     letterSpacing: -0.1,
@@ -137,21 +137,21 @@ export const typographyKit = {
 
   /** Account / asset name on Portefeuille cards */
   listPrimary: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: sizes.meta,
     lineHeight: sizes.meta + 5,
     letterSpacing: -0.2,
   },
 
   listSubtitle: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: sizes.meta,
     lineHeight: sizes.meta + 5,
   },
 
   /** Valeur nette headline */
   netWorthHero: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     ...tabular,
     fontSize: 42,
     letterSpacing: -1.6,
@@ -159,7 +159,7 @@ export const typographyKit = {
 
   /** Wealth card main value (Patrimoine carousel) */
   statHero: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     ...tabular,
     fontSize: 28,
     letterSpacing: -0.8,
@@ -168,7 +168,7 @@ export const typographyKit = {
 
   /** Budget disponible, medium hero stats */
   heroStat: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     ...tabular,
     fontSize: sizes.heroStat,
     letterSpacing: -0.5,
@@ -177,7 +177,7 @@ export const typographyKit = {
 
   /** Prochain paiement / agenda card amount */
   paymentAmount: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     ...tabular,
     fontSize: sizes.dashboardGreeting,
     letterSpacing: -0.45,
@@ -185,7 +185,7 @@ export const typographyKit = {
 
   /** Chart Actifs / Dettes pills */
   cardMetric: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     ...tabular,
     fontSize: 16,
     letterSpacing: -0.3,
@@ -193,7 +193,7 @@ export const typographyKit = {
 
   /** Standard list amount column */
   rowAmount: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     ...tabular,
     fontSize: sizes.caption,
     lineHeight: sizes.caption + 4,
@@ -202,7 +202,7 @@ export const typographyKit = {
 
   /** Detail sheet hero amount */
   detailHero: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     ...tabular,
     fontSize: 36,
     letterSpacing: -0.5,
@@ -211,7 +211,7 @@ export const typographyKit = {
 
   /** Budget ring % */
   percent: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     ...tabular,
     fontSize: sizes.dashboardGreeting,
     lineHeight: sizes.dashboardGreeting + 2,
@@ -220,14 +220,14 @@ export const typographyKit = {
 
   /** Date badge day numeral */
   dateBadgeDay: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     ...tabular,
     fontSize: sizes.dashboardGreeting,
     lineHeight: sizes.dashboardGreeting,
   },
 
   dateBadgeMonth: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: sizes.micro - 4,
     letterSpacing: 0.5,
   },

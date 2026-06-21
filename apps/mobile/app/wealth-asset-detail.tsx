@@ -22,9 +22,9 @@ import {
   detailProgressBarStyle,
   detailSectionLabelStyle,
   detailSectionsCardStyle,
-  interBoldText,
-  interExtraBoldText,
-  interMediumText,
+  jakartaBoldText,
+  jakartaExtraBoldText,
+  jakartaMediumText,
   radius,
   spacing,
   typography,
@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     marginHorizontal: spacing.sm,
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.body,
     letterSpacing: -0.2,
   },
@@ -438,7 +438,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   valueHeroAmount: {
-    ...interBoldText,
+    ...jakartaBoldText,
     flexShrink: 0,
     textAlign: 'right',
     fontSize: typography.meta,
@@ -456,7 +456,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   progressLabel: {
-    ...interBoldText,
+    ...jakartaBoldText,
     flex: 1,
     flexShrink: 1,
     minWidth: 0,
@@ -465,7 +465,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   progressPct: {
-    ...interBoldText,
+    ...jakartaBoldText,
     flexShrink: 0,
     minWidth: 44,
     textAlign: 'right',
@@ -477,7 +477,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   progressFootnote: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
   },
   linkedCardInner: {
@@ -491,12 +491,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   sectionTitle: {
+    ...jakartaExtraBoldText,
     fontSize: typography.caption,
-    fontWeight: '800',
   },
   sectionMeta: {
+    ...jakartaBoldText,
     fontSize: typography.micro,
-    fontWeight: '700',
   },
   transactionGroups: {
     gap: spacing.md,

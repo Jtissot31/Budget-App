@@ -5,7 +5,7 @@ import { DiamondLevelBadge } from '@/components/goals/DiamondLevelBadge';
 import { SavingsStreakModule } from '@/components/goals/SavingsStreakModule';
 import {
   GOAL_PROGRESS_FILL,
-  interBoldText,
+  jakartaBoldText,
   spacing,
   typography,
 } from '@/constants/theme';
@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   title: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
     letterSpacing: 0.2,
   },
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   levelHint: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
     lineHeight: 16,
   },

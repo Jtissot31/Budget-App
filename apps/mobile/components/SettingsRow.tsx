@@ -2,8 +2,8 @@ import { ReactNode } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  interMediumText,
-  interSemiboldText,
+  jakartaMediumText,
+  jakartaSemiboldText,
   spacing,
   typography,
   typographyKit,
@@ -229,11 +229,11 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   label: {
-    ...interSemiboldText,
+    ...jakartaSemiboldText,
     fontSize: typography.body,
   },
   hint: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     lineHeight: typography.micro + 4,
   },

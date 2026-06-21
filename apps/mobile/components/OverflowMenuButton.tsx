@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { MODIFIER_ICON_NAME, MODIFIER_ICON_SIZE } from '@/components/ModifierButton';
-import { destructiveTextActionStyle, interMediumText, radius, spacing, typography } from '@/constants/theme';
+import { destructiveTextActionStyle, jakartaMediumText, radius, spacing, typography } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   menuLabel: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.body,
     fontWeight: '700',
   },
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
   },
   cancelLabel: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.body,
     fontWeight: '700',
   },

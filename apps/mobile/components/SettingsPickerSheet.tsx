@@ -12,9 +12,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  interBoldText,
-  interMediumText,
-  interSemiboldText,
+  jakartaBoldText,
+  jakartaMediumText,
+  jakartaSemiboldText,
   radius,
   spacing,
   typography,
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   title: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.body,
     flex: 1,
   },
@@ -205,11 +205,11 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   optionLabel: {
-    ...interSemiboldText,
+    ...jakartaSemiboldText,
     fontSize: typography.body,
   },
   optionDescription: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     lineHeight: typography.micro + 4,
   },

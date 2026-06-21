@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { DashboardCard } from '@/components/DashboardCard';
-import { interMediumText, spacing, typography, type AppColors } from '@/constants/theme';
+import { jakartaMediumText, spacing, typography, type AppColors } from '@/constants/theme';
 import { listRowTitle } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -115,7 +115,7 @@ function createStyles(colors: AppColors) {
       minWidth: 0,
     },
     meta: {
-      ...interMediumText,
+      ...jakartaMediumText,
       fontSize: typography.micro,
       flex: 1,
       minWidth: 0,
@@ -144,7 +144,7 @@ function createStyles(colors: AppColors) {
       backgroundColor: 'rgba(0,230,100,0.1)',
     },
     badgeText: {
-      ...interMediumText,
+      ...jakartaMediumText,
       fontSize: 11,
       letterSpacing: 0.3,
     },

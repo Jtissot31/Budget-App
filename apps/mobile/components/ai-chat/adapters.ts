@@ -17,12 +17,17 @@ export function aiMessageToUiMessage(message: {
   content: string;
   createdAt: string;
   actions?: ChatAction[];
+  blocks?: import('@/types/aiWidgets').MessageBlock[];
   imageUri?: string;
   activityPhases?: import('@/lib/ai/activityPhases').ActivityPhase[];
 }): AIChatUiMessage {
   const blocks =
-    message.role === 'assistant' && message.content.trim()
-      ? parseMessageBlocks(message.content)
+    message.role === 'assistant'
+      ? message.blocks?.length
+        ? message.blocks
+        : message.content.trim()
+          ? parseMessageBlocks(message.content)
+          : undefined
       : undefined;
 
   const text =

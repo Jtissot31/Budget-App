@@ -1,6 +1,5 @@
 import type { MutableRefObject } from 'react';
 import { useCallback } from 'react';
-import { InteractionManager } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
 export function useRefreshOnFocus(refresh: () => void | Promise<void>) {
@@ -29,23 +28,10 @@ export function useScrollToTopOnFocus(
 
       scrollToTop();
 
-      const frames: number[] = [];
-      frames.push(requestAnimationFrame(scrollToTop));
-      frames.push(requestAnimationFrame(() => {
-        frames.push(requestAnimationFrame(scrollToTop));
-      }));
-      const timers = [
-        setTimeout(scrollToTop, 0),
-        setTimeout(scrollToTop, 50),
-        setTimeout(scrollToTop, 180),
-        setTimeout(scrollToTop, 360),
-      ];
-      const interaction = InteractionManager.runAfterInteractions(scrollToTop);
+      const frame = requestAnimationFrame(scrollToTop);
 
       return () => {
-        frames.forEach(cancelAnimationFrame);
-        timers.forEach(clearTimeout);
-        interaction.cancel();
+        cancelAnimationFrame(frame);
       };
     }, [scrollToTop, skipOnceRef]),
   );

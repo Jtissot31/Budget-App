@@ -64,11 +64,53 @@ export type AlertCardData = {
   action?: WidgetAction;
 };
 
+export type LineChartData = {
+  type: 'line_chart';
+  label: string;
+  /** Numeric series (min 2 points) — e.g. monthly net worth or spending. */
+  data: number[];
+  /** Optional formatted value for the latest point. */
+  value_label?: string;
+  caption?: string;
+  /** When false, trend colors treat decrease as positive. */
+  positive?: boolean;
+};
+
+export type BarChartItem = {
+  label: string;
+  value: number;
+  /** Pre-formatted display value (e.g. "420 $"). Falls back to value.toString(). */
+  value_label?: string;
+};
+
+export type BarChartData = {
+  type: 'bar_chart';
+  label: string;
+  items: BarChartItem[];
+  caption?: string;
+};
+
+export type AllocationSegment = {
+  label: string;
+  value: number;
+  percent?: number;
+};
+
+export type AllocationChartData = {
+  type: 'allocation_chart';
+  label: string;
+  segments: AllocationSegment[];
+  caption?: string;
+};
+
 export type AIWidgetData =
   | ProgressCardData
   | DebtTableData
   | ComparisonCardData
-  | AlertCardData;
+  | AlertCardData
+  | LineChartData
+  | BarChartData
+  | AllocationChartData;
 
 export type TextBlock = { type: 'text'; content: string };
 
@@ -79,6 +121,9 @@ export const AI_WIDGET_TYPES = [
   'debt_table',
   'comparison_card',
   'alert_card',
+  'line_chart',
+  'bar_chart',
+  'allocation_chart',
 ] as const;
 
 export type AIWidgetType = (typeof AI_WIDGET_TYPES)[number];

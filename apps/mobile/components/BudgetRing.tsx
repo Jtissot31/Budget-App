@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { interBoldText, interMediumText, typography } from '@/constants/theme';
+import { jakartaBoldText, jakartaMediumText, typography } from '@/constants/theme';
 import { portfolioNumericText } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   label: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -80,7 +80,7 @@ const styles = StyleSheet.create({
     fontSize: typography.heroAmount,
   },
   sub: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
     marginTop: 4,
   },

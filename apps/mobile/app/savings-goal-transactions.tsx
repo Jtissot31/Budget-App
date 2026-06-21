@@ -9,7 +9,7 @@ import { PageTransition } from '@/components/PageTransition';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { TransactionRow } from '@/components/TransactionRow';
 import { ghostCardShadow } from '@/constants/ghostUi';
-import { radius, spacing, typography, type AppColors } from '@/constants/theme';
+import { jakartaBoldText, jakartaExtraBoldText, radius, spacing, typography, type AppColors } from '@/constants/theme';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { getSavingsGoals, getTransactionsForSavingsGoal, sortTransactionsNewestFirst } from '@/lib/db';
 import { tapHaptic } from '@/lib/haptics';
@@ -298,8 +298,8 @@ function createShellStyles(colors: AppColors) {
       gap: spacing.md,
       marginBottom: spacing.xs,
     },
-    sheetTitle: { fontSize: typography.dashboardGreeting, fontWeight: '800', letterSpacing: -0.4 },
-    sheetSubtitle: { fontSize: typography.meta, fontWeight: '700', letterSpacing: 0.1 },
+    sheetTitle: { ...jakartaExtraBoldText, fontSize: typography.dashboardGreeting, letterSpacing: -0.4 },
+    sheetSubtitle: { ...jakartaBoldText, fontSize: typography.meta, letterSpacing: 0.1 },
     headerIconBtn: {
       width: 42,
       height: 42,
@@ -331,8 +331,8 @@ function createShellStyles(colors: AppColors) {
       borderColor: colors.border,
     },
     heroCopy: { flex: 1, gap: spacing.xs },
-    goalName: { fontSize: typography.screenTitle, fontWeight: '900', letterSpacing: -0.6 },
-    goalMeta: { fontSize: typography.caption, lineHeight: typography.caption + 5, fontWeight: '700' },
+    goalName: { ...jakartaExtraBoldText, fontSize: typography.screenTitle, letterSpacing: -0.6 },
+    goalMeta: { ...jakartaBoldText, fontSize: typography.caption, lineHeight: typography.caption + 5 },
     summaryWrap: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -342,14 +342,14 @@ function createShellStyles(colors: AppColors) {
       paddingHorizontal: spacing.md,
     },
     summaryEyebrow: {
+      ...jakartaBoldText,
       fontSize: typography.micro,
-      fontWeight: '700',
       letterSpacing: 0.25,
       textTransform: 'uppercase',
     },
     summaryAmount: {
+      ...jakartaExtraBoldText,
       fontSize: typography.heroStat,
-      fontWeight: '800',
       marginTop: 4,
     },
     summaryMeta: {
@@ -359,8 +359,8 @@ function createShellStyles(colors: AppColors) {
       gap: 2,
     },
     summaryCount: {
+      ...jakartaExtraBoldText,
       fontSize: typography.caption,
-      fontWeight: '800',
     },
     summaryDates: {
       fontSize: typography.meta,

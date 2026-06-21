@@ -16,8 +16,8 @@ import {
   dashboardPalette,
   DASHBOARD_VALUE_GREEN,
   DASHBOARD_VALUE_RED,
-  interBoldText,
-  interMediumText,
+  jakartaBoldText,
+  jakartaMediumText,
   moneyAmountTypography,
   spacing,
   typography,
@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   statusBadge: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
   },
   body: {
@@ -242,7 +242,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   ringPctLabel: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     textTransform: 'uppercase',
     letterSpacing: 0.6,

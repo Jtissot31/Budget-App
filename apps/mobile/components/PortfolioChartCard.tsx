@@ -20,7 +20,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
-import { interExtraBoldText } from '@/constants/theme';
+import { jakartaExtraBoldText } from '@/constants/theme';
 import { ThemeSegmentedControl } from '@/components/ThemeSegmentedControl';
 import { formatDisplayMoney } from '@/lib/formatDisplayMoney';
 import { useAppTheme } from '@/lib/themeContext';
@@ -798,7 +798,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   selectionAmountText: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: POINT_LABEL_FONT_SIZE,
     lineHeight: POINT_LABEL_FONT_SIZE + 2,
   },

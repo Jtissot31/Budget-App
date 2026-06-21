@@ -1,6 +1,6 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { interBoldText, interMediumText, radius, spacing, typography, type AppColors } from '@/constants/theme';
+import { jakartaBoldText, jakartaMediumText, radius, spacing, typography, type AppColors } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
 export type ThemedConfirmVariant = 'success' | 'error' | 'warning' | 'info';
@@ -136,12 +136,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.body,
     textAlign: 'center',
   },
   message: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.caption,
     lineHeight: typography.caption + 6,
     textAlign: 'center',
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   confirmText: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
   },
   cancelBtn: {
@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelText: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.caption,
   },
   pressed: {

@@ -1,12 +1,16 @@
 import { executeChatAction, isExecutableChatAction } from './actionExecutor';
 
 import {
-  alertCardToAssistantContent,
   buildActionResultAlertCard,
   isTextConfirmation,
 } from './actionConfirmation';
 
-import { findActionJsonBlocks, stripCodeFromAssistantText } from './messageBlocks';
+import {
+  findActionJsonBlocks,
+  messageBlocksToPlainText,
+  parseMessageBlocks,
+  stripCodeFromAssistantText,
+} from './messageBlocks';
 
 import type { ActivityPhase } from './activityPhases';
 
@@ -113,20 +117,33 @@ function buildWidgetCapabilitiesSection(): string {
     '{"type":"progress_card","label":"Fonds d\'urgence","value_label":"12 600,00 $","percent":70,"percent_label":"70 % de l\'objectif","status_line":"Paiement hypothèque sécurisé"}',
     '{"type":"debt_table","label":"Dettes actives","rows":[{"name":"Visa Desjardins","balance":"4 200 $","rate":"19,9 %","payment":"125 $"},{"name":"Prêt auto","balance":"8 500 $","rate":"6,5 %","payment":"320 $"}],"total":{"label":"Total","balance":"12 700 $","payment":"445 $"}}',
     '{"type":"comparison_card","label":"Scénarios de remboursement","items":[{"label":"Avalanche (intérêts)","value":"−1 240 $","highlight":true},{"label":"Boule de neige","value":"−980 $"}],"footer":"Économie d\'intérêts sur 12 mois"}',
+    '{"type":"line_chart","label":"Valeur nette (6 mois)","data":[14200,14550,14100,14800,15120,15480],"value_label":"15 480 $","caption":"Tendance haussière malgré le creux de mars"}',
+    '{"type":"bar_chart","label":"Dépenses par catégorie","items":[{"label":"Logement","value":1450,"value_label":"1 450 $"},{"label":"Épicerie","value":620,"value_label":"620 $"},{"label":"Transport","value":280,"value_label":"280 $"}],"caption":"Mois en cours"}',
+    '{"type":"allocation_chart","label":"Répartition du budget","segments":[{"label":"Essentiels","value":55,"percent":55},{"label":"Loisirs","value":20,"percent":20},{"label":"Épargne","value":25,"percent":25}],"caption":"Part du revenu net mensuel"}',
     '{"type":"alert_card","severity":"warning","title":"Budget restaurants dépassé","message":"Tu as utilisé 112 % de ton enveloppe ce mois-ci.","action":{"label":"Voir le budget"}}',
   ];
 
   return [
     'WIDGETS STRUCTURÉS (UI génératif) :',
-    'Pour montants, pourcentages, tableaux de dettes, comparaisons et projections, produis un bloc JSON widget AU LIEU de tableaux markdown.',
-    'Types disponibles : progress_card, debt_table, comparison_card, alert_card.',
+    'Pour montants, pourcentages, tableaux de dettes, comparaisons, projections et graphiques, produis un bloc JSON widget AU LIEU de tableaux markdown.',
+    'Types disponibles : progress_card, debt_table, comparison_card, alert_card, line_chart, bar_chart, allocation_chart.',
     'Le texte conversationnel reste en prose ; les widgets sont des blocs JSON séparés (```json``` ou objet standalone), parsés par l\'app — jamais affichés bruts.',
     'Les widgets peuvent coexister avec le bloc action JSON (champ "action") — ne pas mélanger les formats.',
+    '',
+    'Quand utiliser un graphique :',
+    '- line_chart : évolution dans le temps (valeur nette, épargne, dette, dépenses sur plusieurs mois). data = nombres bruts (min 2 points).',
+    '- bar_chart : comparer des catégories ou montants discrets (dépenses par catégorie, revenus vs dépenses). items[].value = nombre brut.',
+    '- allocation_chart : répartition en parts (budget, actifs, dettes par type). segments[].value = part numérique (souvent % ou montant).',
+    '- comparison_card : 2–4 scénarios textuels sans série temporelle ni barres.',
+    '- progress_card : un seul objectif avec barre de progression (%).',
     '',
     'Schémas :',
     '- progress_card : label, value_label, percent (0-100), percent_label, status_line?, actions?[{label}]',
     '- debt_table : label?, columns?, rows[{name,balance,rate?,payment?}], total{label,balance,rate?,payment?}',
     '- comparison_card : label, items[{label,value,highlight?}], primary_index?, footer?',
+    '- line_chart : label, data[number] (min 2), value_label?, caption?, positive?',
+    '- bar_chart : label, items[{label,value,value_label?}], caption?',
+    '- allocation_chart : label, segments[{label,value,percent?}], caption?',
     '- alert_card : severity (info|warning|danger|success), title, message, action?{label}',
     '',
     'Après exécution réussie d\'une action (confirmation bouton ou texte « oui » / « ok » / « confirme »), réponds UNIQUEMENT avec un bloc alert_card JSON (severity: success) — jamais de prose seule pour le résultat final.',
@@ -281,11 +298,15 @@ export function parseActionsFromResponse(text: string): {
 
   actions: ChatAction[];
 
+  blocks: import('@/types/aiWidgets').MessageBlock[];
+
 } {
 
   const actions: ChatAction[] = [];
 
   const seen = new Set<string>();
+
+  const blocks = parseMessageBlocks(text);
 
 
 
@@ -325,7 +346,13 @@ export function parseActionsFromResponse(text: string): {
 
 
 
-  return { cleanText: stripCodeFromAssistantText(text), actions };
+  const plainFromBlocks = messageBlocksToPlainText(blocks);
+
+  return {
+    cleanText: plainFromBlocks || stripCodeFromAssistantText(text),
+    actions,
+    blocks,
+  };
 
 }
 
@@ -387,7 +414,9 @@ async function executeTextConfirmation(
 
     role: 'assistant',
 
-    content: alertCardToAssistantContent(alertCard),
+    content: alertCard.message,
+
+    blocks: [alertCard],
 
     createdAt: new Date().toISOString(),
 
@@ -969,7 +998,9 @@ export async function sendChatMessage(
 
   emitActivity('analyse');
 
-  const { cleanText, actions } = parseActionsFromResponse(assistantRaw);
+  const { cleanText, actions, blocks } = parseActionsFromResponse(assistantRaw);
+
+  const hasWidgets = blocks.some((block) => block.type !== 'text');
 
   completedPhases.push('analyse');
 
@@ -984,6 +1015,8 @@ export async function sendChatMessage(
     role: 'assistant',
 
     content: cleanText || 'Je n\'ai pas pu formuler de réponse.',
+
+    blocks: hasWidgets ? blocks : undefined,
 
     createdAt: new Date().toISOString(),
 

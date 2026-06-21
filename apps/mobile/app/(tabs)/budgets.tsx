@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import {
+  FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -43,9 +44,9 @@ import {
   destructiveTextActionStyle,
   FLOATING_NAV_CONTENT_PADDING,
   ICON_WELL_SIZE,
-  interBoldText,
-  interExtraBoldText,
-  interMediumText,
+  jakartaBoldText,
+  jakartaExtraBoldText,
+  jakartaMediumText,
   PAGE_PADDING_HORIZONTAL,
   PAGE_TITLE_STYLE,
   PORTFOLIO_SECTION_GAP,
@@ -138,7 +139,9 @@ export default function BudgetScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isLight } = useAppTheme();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<FlatList<CategoryRowModel>>(null);
+  const lastLoadedAtRef = useRef(0);
+  const loadInFlightRef = useRef(false);
   const [items, setItems] = useState<CategoryBudget[]>([]);
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<CategoryBudget | null>(null);
@@ -153,24 +156,54 @@ export default function BudgetScreen() {
     setFormFeedback({ variant: 'error', title, message });
   }, []);
 
-  const load = useCallback(async () => {
-    await ensureBudgetPresets();
-    const [budgets, nextDashboard] = await Promise.all([getCategoryBudgets(), getDashboard()]);
-    setItems(budgets);
-    setDashboard(nextDashboard);
+  const load = useCallback(async (force = false) => {
+    if (loadInFlightRef.current) return;
+    if (!force && Date.now() - lastLoadedAtRef.current < 2500) return;
+    loadInFlightRef.current = true;
+    try {
+      await ensureBudgetPresets();
+      const [budgets, nextDashboard] = await Promise.all([getCategoryBudgets(), getDashboard()]);
+      setItems(budgets);
+      setDashboard(nextDashboard);
+      lastLoadedAtRef.current = Date.now();
+    } finally {
+      loadInFlightRef.current = false;
+    }
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  useEffect(() => dataEvents.subscribe(load), [load]);
+  useEffect(() => dataEvents.subscribe(() => {
+    void load(true);
+  }), [load]);
 
-  useRefreshOnFocus(load);
+  useRefreshOnFocus(useCallback(() => {
+    void load(false);
+  }, [load]));
   useScrollToTopOnFocus(
     useCallback(() => {
-      scrollRef.current?.scrollTo({ y: 0, animated: false });
+      scrollRef.current?.scrollToOffset({ offset: 0, animated: false });
     }, []),
+  );
+
+  const categoryModels = useMemo(() => buildCategoryModels(items), [items]);
+  const { rows, chartSegments, limitTotal, spentTotal } = categoryModels;
+
+  const handleSelectCategory = useCallback((category: CategoryBudget) => {
+    tapHaptic();
+    setHighlightedCategoryId(category.categoryId);
+    setSelectedCategory(category);
+  }, []);
+
+  const handleSelectCategoryId = useCallback(
+    (categoryId: string) => {
+      const category = items.find((item) => item.categoryId === categoryId);
+      if (!category) return;
+      handleSelectCategory(category);
+    },
+    [handleSelectCategory, items],
   );
 
   const handleAddCategory = useCallback(() => {
@@ -185,6 +218,67 @@ export default function BudgetScreen() {
       weeklyLimit: '',
     });
   }, []);
+
+  const renderCategoryRow = useCallback(
+    ({ item: row }: { item: CategoryRowModel }) => (
+      <BudgetCategoryRow
+        row={row}
+        highlighted={highlightedCategoryId === row.id}
+        mutedTextColor={mutedTextColor}
+        onPress={handleSelectCategoryId}
+      />
+    ),
+    [handleSelectCategoryId, highlightedCategoryId, mutedTextColor],
+  );
+
+  const listHeader = useMemo(
+    () => (
+      <>
+        <BudgetPageHeader onAdd={handleAddCategory} />
+        {rows.length === 0 ? (
+          <BudgetCategoriesEmpty mutedTextColor={mutedTextColor} onAddCategory={handleAddCategory} />
+        ) : (
+          <View style={allocStyles.section}>
+            <BudgetAllocationChart
+              segments={chartSegments}
+              totalAllocated={limitTotal}
+              totalSpent={spentTotal}
+              selectedId={highlightedCategoryId}
+              onSelectSegment={handleSelectCategoryId}
+            />
+            <View style={allocStyles.listSection}>
+              <View style={allocStyles.categoriesHeader}>
+                <View style={allocStyles.listTitleGroup}>
+                  <DashboardSectionLabel>Progression</DashboardSectionLabel>
+                  <Text style={[allocStyles.listTitle, { color: colors.text }]}>Mes catégories</Text>
+                </View>
+                <View style={[allocStyles.countBadge, { backgroundColor: colors.surfaceElevated }]}>
+                  <Text style={[allocStyles.countBadgeLabel, { color: mutedTextColor }]}>{rows.length}</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+      </>
+    ),
+    [
+      chartSegments,
+      colors.surfaceElevated,
+      colors.text,
+      handleAddCategory,
+      handleSelectCategoryId,
+      highlightedCategoryId,
+      limitTotal,
+      mutedTextColor,
+      rows.length,
+      spentTotal,
+    ],
+  );
+
+  const listFooter = useMemo(
+    () => (rows.length > 0 ? <AddCategoryCta onPress={handleAddCategory} /> : null),
+    [handleAddCategory, rows.length],
+  );
 
   const handleEditCategory = useCallback((category: CategoryBudget) => {
     tapHaptic();
@@ -233,7 +327,7 @@ export default function BudgetScreen() {
     });
     await upsertCategoryBudget(form.id, limit, weeklyLimit);
     await refreshMonthlyBudgetLimit();
-    await load();
+    await load(true);
     setSaving(false);
     setFormFeedback(null);
     setForm(null);
@@ -244,7 +338,7 @@ export default function BudgetScreen() {
     async (category: CategoryBudget) => {
       await deleteCategoryBudget(category.categoryId);
       await refreshMonthlyBudgetLimit();
-      await load();
+      await load(true);
       setSelectedCategory(null);
       successHaptic();
     },
@@ -261,9 +355,15 @@ export default function BudgetScreen() {
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
       />
-      <ScrollView
+      <FlatList
         ref={scrollRef}
         style={[styles.screen, { backgroundColor: colors.background }]}
+        data={rows}
+        keyExtractor={(row) => row.id}
+        extraData={highlightedCategoryId}
+        renderItem={renderCategoryRow}
+        ListHeaderComponent={listHeader}
+        ListFooterComponent={listFooter}
         contentContainerStyle={[
           styles.content,
           {
@@ -271,33 +371,24 @@ export default function BudgetScreen() {
             paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING + spacing.xl,
           },
         ]}
+        ItemSeparatorComponent={CategoryRowSeparator}
         showsVerticalScrollIndicator={false}
-        nestedScrollEnabled
+        initialNumToRender={8}
+        maxToRenderPerBatch={6}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS === 'android'}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={async () => {
               setRefreshing(true);
-              await load();
+              await load(true);
               setRefreshing(false);
             }}
             tintColor={colors.primary}
           />
         }
-      >
-        <BudgetPageHeader onAdd={handleAddCategory} />
-        <BudgetCategoriesSection
-          items={items}
-          mutedTextColor={mutedTextColor}
-          highlightedCategoryId={highlightedCategoryId}
-          onHighlightCategory={setHighlightedCategoryId}
-          onAddCategory={handleAddCategory}
-          onSelectCategory={(category) => {
-            setHighlightedCategoryId(category.categoryId);
-            setSelectedCategory(category);
-          }}
-        />
-      </ScrollView>
+      />
 
       <BudgetCategoryDetailSheet
         category={selectedCategory}
@@ -379,181 +470,133 @@ function buildCategoryModels(items: CategoryBudget[]) {
   return { rows, chartSegments, limitTotal, spentTotal };
 }
 
-function BudgetCategoriesSection({
-  items,
+function CategoryRowSeparator() {
+  return <View style={allocStyles.categoryRowSeparator} />;
+}
+
+const BudgetCategoryRow = memo(function BudgetCategoryRow({
+  row,
+  highlighted,
   mutedTextColor,
-  highlightedCategoryId,
-  onHighlightCategory,
-  onAddCategory,
-  onSelectCategory,
+  onPress,
 }: {
-  items: CategoryBudget[];
+  row: CategoryRowModel;
+  highlighted: boolean;
   mutedTextColor: string;
-  highlightedCategoryId: string | null;
-  onHighlightCategory: (id: string | null) => void;
-  onAddCategory: () => void;
-  onSelectCategory: (category: CategoryBudget) => void;
+  onPress: (categoryId: string) => void;
 }) {
   const { colors, isLight } = useAppTheme();
-  const { rows, chartSegments, limitTotal, spentTotal } = useMemo(() => buildCategoryModels(items), [items]);
-
-  const categoryById = useMemo(() => {
-    const lookup = new Map<string, CategoryBudget>();
-    items.forEach((item) => lookup.set(item.categoryId, item));
-    return lookup;
-  }, [items]);
-
-  const handleSegmentPress = useCallback(
-    (id: string) => {
-      const category = categoryById.get(id);
-      if (!category) return;
-      tapHaptic();
-      onHighlightCategory(id);
-      onSelectCategory(category);
-    },
-    [categoryById, onHighlightCategory, onSelectCategory],
+  const usage = getCategoryBudgetUsage(row.limit, row.spent);
+  const usagePct = row.limit > 0 ? Math.round((row.spent / row.limit) * 100) : 0;
+  const barColor = categoryBudgetBarColor(
+    usage.usagePercent,
+    usage.isZeroLimitOverspend,
+    isLight,
+    row.color,
+    colors,
   );
 
-  if (rows.length === 0) {
-    return (
-      <View style={allocStyles.section}>
-        <View style={allocStyles.categoriesHeader}>
-          <View style={allocStyles.listTitleGroup}>
-            <DashboardSectionLabel>Catégories</DashboardSectionLabel>
-            <Text style={[allocStyles.listTitle, { color: colors.text }]}>Mes catégories</Text>
+  return (
+    <Pressable android_ripple={null} onPress={() => onPress(row.id)}>
+      <DashboardCard
+        innerStyle={[
+          allocStyles.categoryCardInner,
+          highlighted && {
+            backgroundColor: isLight ? 'rgba(0,168,84,0.05)' : 'rgba(0,230,100,0.06)',
+          },
+        ]}
+        padding={0}
+      >
+        <View style={allocStyles.categoryRow}>
+          <UserPickedIconBadge icon={row.icon as IconName} size={48} />
+          <View style={allocStyles.rowBody}>
+            <View style={allocStyles.rowMain}>
+              <Text style={[allocStyles.rowName, { color: colors.text }]} {...rowTitleTextProps}>
+                {row.name}
+              </Text>
+              <View
+                style={[
+                  allocStyles.pctPill,
+                  {
+                    backgroundColor: isLight ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.08)',
+                    borderColor: highlighted ? barColor : 'transparent',
+                    borderWidth: highlighted ? 1 : 0,
+                  },
+                ]}
+              >
+                <Text style={[allocStyles.rowPct, { color: barColor }]}>{`${usagePct} %`}</Text>
+              </View>
+            </View>
+            <DashboardProgressBar
+              pct={usage.progress * 100}
+              color={barColor}
+              height={PROGRESS_BAR_TRACK_HEIGHT}
+              marginTop={0}
+            />
+            <View style={allocStyles.rowMain}>
+              {usage.isZeroLimitOverspend ? (
+                <Text
+                  style={[allocStyles.rowAmt, allocStyles.rowAmtLeading, { color: barColor, fontWeight: '700' }]}
+                  {...singleLineAmountProps}
+                >
+                  Budget dépassé
+                </Text>
+              ) : (
+                <Text
+                  style={[allocStyles.rowAmt, allocStyles.rowAmtLeading, { color: mutedTextColor }]}
+                  {...singleLineAmountProps}
+                >
+                  {`${formatAllocMoney(row.spent)} dépensé`}
+                </Text>
+              )}
+              <Text style={[allocStyles.rowAmt, { color: mutedTextColor }]} {...singleLineAmountProps}>
+                {usage.isZeroLimitOverspend ? '0 $ alloué' : `${formatAllocMoney(row.limit)} limite`}
+              </Text>
+            </View>
           </View>
+          <Ionicons name="chevron-forward" size={16} color={mutedTextColor} />
         </View>
-        <DashboardCard
-          innerStyle={allocStyles.emptyCardInner}
-          padding={spacing.xl}
-        >
-          <Ionicons name="pie-chart-outline" size={32} color={mutedTextColor} />
-          <Text style={[allocStyles.emptyTitle, { color: colors.text }]}>Aucune catégorie active</Text>
-          <Text style={[allocStyles.emptyHint, { color: mutedTextColor }]}>
-            Ajoute une limite par catégorie pour visualiser les portions du budget.
-          </Text>
-          <Pressable
-            onPress={onAddCategory}
-            style={({ pressed }) => [
-              allocStyles.emptyCta,
-              { backgroundColor: colors.primary },
-              pressed && allocStyles.pressed,
-            ]}
-          >
-            <Text style={[allocStyles.emptyCtaText, { color: isLight ? '#FFFFFF' : '#0a0a0a' }]}>
-              Ajouter une catégorie
-            </Text>
-          </Pressable>
-        </DashboardCard>
-      </View>
-    );
-  }
+      </DashboardCard>
+    </Pressable>
+  );
+});
+
+function BudgetCategoriesEmpty({
+  mutedTextColor,
+  onAddCategory,
+}: {
+  mutedTextColor: string;
+  onAddCategory: () => void;
+}) {
+  const { colors, isLight } = useAppTheme();
 
   return (
     <View style={allocStyles.section}>
-      <BudgetAllocationChart
-        segments={chartSegments}
-        totalAllocated={limitTotal}
-        totalSpent={spentTotal}
-        selectedId={highlightedCategoryId}
-        onSelectSegment={handleSegmentPress}
-      />
-
-      <View style={allocStyles.listSection}>
-        <View style={allocStyles.categoriesHeader}>
-          <View style={allocStyles.listTitleGroup}>
-            <DashboardSectionLabel>Progression</DashboardSectionLabel>
-            <Text style={[allocStyles.listTitle, { color: colors.text }]}>Mes catégories</Text>
-          </View>
-          <View style={[allocStyles.countBadge, { backgroundColor: colors.surfaceElevated }]}>
-            <Text style={[allocStyles.countBadgeLabel, { color: mutedTextColor }]}>{rows.length}</Text>
-          </View>
+      <View style={allocStyles.categoriesHeader}>
+        <View style={allocStyles.listTitleGroup}>
+          <DashboardSectionLabel>Catégories</DashboardSectionLabel>
+          <Text style={[allocStyles.listTitle, { color: colors.text }]}>Mes catégories</Text>
         </View>
-
-        <View style={allocStyles.categoryCards}>
-          {rows.map((row) => {
-            const usage = getCategoryBudgetUsage(row.limit, row.spent);
-            const usagePct = row.limit > 0 ? Math.round((row.spent / row.limit) * 100) : 0;
-            const barColor = categoryBudgetBarColor(
-              usage.usagePercent,
-              usage.isZeroLimitOverspend,
-              isLight,
-              row.color,
-              colors,
-            );
-            const highlighted = highlightedCategoryId === row.id;
-
-            return (
-              <Pressable
-                key={row.id}
-                android_ripple={null}
-                onPress={() => handleSegmentPress(row.id)}
-              >
-                <DashboardCard
-                  innerStyle={[
-                    allocStyles.categoryCardInner,
-                    highlighted && {
-                      backgroundColor: isLight ? 'rgba(0,168,84,0.05)' : 'rgba(0,230,100,0.06)',
-                    },
-                  ]}
-                  padding={0}
-                >
-                  <View style={allocStyles.categoryRow}>
-                    <UserPickedIconBadge icon={row.icon as IconName} size={48} />
-                    <View style={allocStyles.rowBody}>
-                      <View style={allocStyles.rowMain}>
-                        <Text style={[allocStyles.rowName, { color: colors.text }]} {...rowTitleTextProps}>
-                          {row.name}
-                        </Text>
-                        <View
-                          style={[
-                            allocStyles.pctPill,
-                            {
-                              backgroundColor: isLight ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.08)',
-                              borderColor: highlighted ? barColor : 'transparent',
-                              borderWidth: highlighted ? 1 : 0,
-                            },
-                          ]}
-                        >
-                          <Text style={[allocStyles.rowPct, { color: barColor }]}>{`${usagePct} %`}</Text>
-                        </View>
-                      </View>
-                      <DashboardProgressBar
-                        pct={usage.progress * 100}
-                        color={barColor}
-                        height={PROGRESS_BAR_TRACK_HEIGHT}
-                        marginTop={0}
-                      />
-                      <View style={allocStyles.rowMain}>
-                        {usage.isZeroLimitOverspend ? (
-                          <Text
-                            style={[allocStyles.rowAmt, allocStyles.rowAmtLeading, { color: barColor, fontWeight: '700' }]}
-                            {...singleLineAmountProps}
-                          >
-                            Budget dépassé
-                          </Text>
-                        ) : (
-                          <Text
-                            style={[allocStyles.rowAmt, allocStyles.rowAmtLeading, { color: mutedTextColor }]}
-                            {...singleLineAmountProps}
-                          >
-                            {`${formatAllocMoney(row.spent)} dépensé`}
-                          </Text>
-                        )}
-                        <Text style={[allocStyles.rowAmt, { color: mutedTextColor }]} {...singleLineAmountProps}>
-                          {usage.isZeroLimitOverspend ? '0 $ alloué' : `${formatAllocMoney(row.limit)} limite`}
-                        </Text>
-                      </View>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={mutedTextColor} />
-                  </View>
-                </DashboardCard>
-              </Pressable>
-            );
-          })}
-        </View>
-        <AddCategoryCta onPress={onAddCategory} />
       </View>
+      <DashboardCard innerStyle={allocStyles.emptyCardInner} padding={spacing.xl}>
+        <Ionicons name="pie-chart-outline" size={32} color={mutedTextColor} />
+        <Text style={[allocStyles.emptyTitle, { color: colors.text }]}>Aucune catégorie active</Text>
+        <Text style={[allocStyles.emptyHint, { color: mutedTextColor }]}>
+          Ajoute une limite par catégorie pour visualiser les portions du budget.
+        </Text>
+        <Pressable
+          onPress={onAddCategory}
+          style={({ pressed }) => [
+            allocStyles.emptyCta,
+            { backgroundColor: colors.primary },
+            pressed && allocStyles.pressed,
+          ]}
+        >
+          <Text style={[allocStyles.emptyCtaText, { color: isLight ? '#FFFFFF' : '#0a0a0a' }]}>
+            Ajouter une catégorie
+          </Text>
+        </Pressable>
+      </DashboardCard>
     </View>
   );
 }
@@ -1066,8 +1109,9 @@ const allocStyles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,
   },
-  countBadgeLabel: { ...interBoldText, fontSize: typography.micro },
+  countBadgeLabel: { ...jakartaBoldText, fontSize: typography.micro },
   categoryCards: { gap: spacing.md },
+  categoryRowSeparator: { height: spacing.md },
   categoryCardInner: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
@@ -1081,7 +1125,7 @@ const allocStyles = StyleSheet.create({
   },
   rowBody: { flex: 1, minWidth: 0, gap: 7 },
   rowMain: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
-  rowName: { ...rowLabel, ...interExtraBoldText },
+  rowName: { ...rowLabel, ...jakartaExtraBoldText },
   pctPill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -1091,15 +1135,15 @@ const allocStyles = StyleSheet.create({
   rowAmt: { ...rowValue, flexShrink: 0 },
   rowAmtLeading: { flex: 1, minWidth: 0, flexShrink: 1 },
   emptyCardInner: { alignItems: 'center', gap: spacing.sm },
-  emptyTitle: { ...interExtraBoldText, fontSize: typography.body },
-  emptyHint: { ...interMediumText, fontSize: typography.caption, lineHeight: 20, textAlign: 'center' },
+  emptyTitle: { ...jakartaExtraBoldText, fontSize: typography.body },
+  emptyHint: { ...jakartaMediumText, fontSize: typography.caption, lineHeight: 20, textAlign: 'center' },
   emptyCta: {
     marginTop: spacing.sm,
     borderRadius: radius.lg,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
-  emptyCtaText: { ...interBoldText, fontSize: typography.caption },
+  emptyCtaText: { ...jakartaBoldText, fontSize: typography.caption },
   pressed: { opacity: 0.82 },
   addCategoryCta: {
     alignSelf: 'stretch',
@@ -1113,7 +1157,7 @@ const allocStyles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   addCategoryCtaLabel: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.meta,
   },
   detailSheet: {
@@ -1155,14 +1199,14 @@ const allocStyles = StyleSheet.create({
   },
   detailHeroCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
   detailHeroEyebrow: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
-  detailTitle: { ...interExtraBoldText, fontSize: typography.title, letterSpacing: -0.4 },
-  detailAmount: { ...interExtraBoldText, fontSize: 32, letterSpacing: -0.6 },
-  detailAmountOf: { ...interBoldText, fontSize: 22 },
+  detailTitle: { ...jakartaExtraBoldText, fontSize: typography.title, letterSpacing: -0.4 },
+  detailAmount: { ...jakartaExtraBoldText, fontSize: 32, letterSpacing: -0.6 },
+  detailAmountOf: { ...jakartaBoldText, fontSize: 22 },
   detailProgressRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1178,8 +1222,8 @@ const allocStyles = StyleSheet.create({
     height: '100%',
     borderRadius: radius.pill,
   },
-  detailUsage: { ...interBoldText, fontSize: typography.meta, minWidth: 44, textAlign: 'right' },
-  detailHeroMeta: { ...interMediumText, fontSize: typography.caption, fontWeight: '700' },
+  detailUsage: { ...jakartaBoldText, fontSize: typography.meta, minWidth: 44, textAlign: 'right' },
+  detailHeroMeta: { ...jakartaMediumText, fontSize: typography.caption, fontWeight: '700' },
   historyWide: {
     flexDirection: 'row',
     alignItems: 'center',

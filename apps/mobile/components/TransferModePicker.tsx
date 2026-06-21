@@ -5,7 +5,7 @@ import { MdiIcon } from '@/components/MdiIcon';
 import {
   CHIP_BORDER_WIDTH,
   CHIP_PADDING_HORIZONTAL,
-  interBoldText,
+  jakartaBoldText,
   radius,
   spacing,
   typography,
@@ -210,7 +210,7 @@ const styles = StyleSheet.create({
     marginLeft: 1,
   },
   label: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
     lineHeight: 14,
     textAlign: 'center',

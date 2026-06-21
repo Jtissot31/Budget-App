@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { interMediumText, interRegularText, radius, spacing, typography } from '@/constants/theme';
+import { jakartaMediumText, jakartaRegularText, radius, spacing, typography } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import type { ChatAction } from '@/lib/ai/types';
 import { useAIChatColors } from './theme';
@@ -52,12 +52,12 @@ export function AIChatActionCard({ action, onConfirm, onCancel, disabled = false
           size={18}
           color={palette.primary}
         />
-        <Text style={[styles.actionType, { color: palette.textMuted }, interRegularText]}>
+        <Text style={[styles.actionType, { color: palette.textMuted }, jakartaRegularText]}>
           {actionTypeLabel(action.action)}
         </Text>
       </View>
 
-      <Text style={[styles.confirmation, { color: palette.text }, interRegularText]}>
+      <Text style={[styles.confirmation, { color: palette.text }, jakartaRegularText]}>
         {action.confirmation}
       </Text>
 
@@ -73,7 +73,7 @@ export function AIChatActionCard({ action, onConfirm, onCancel, disabled = false
                     ? palette.primary
                     : palette.textMuted,
             },
-            interRegularText,
+            jakartaRegularText,
           ]}
         >
           {action.resultMessage}
@@ -96,7 +96,7 @@ export function AIChatActionCard({ action, onConfirm, onCancel, disabled = false
               pressed && styles.pressed,
             ]}
           >
-            <Text style={[styles.secondaryButtonText, { color: palette.textMuted }, interMediumText]}>
+            <Text style={[styles.secondaryButtonText, { color: palette.textMuted }, jakartaMediumText]}>
               Annuler
             </Text>
           </Pressable>
@@ -115,7 +115,7 @@ export function AIChatActionCard({ action, onConfirm, onCancel, disabled = false
               pressed && styles.pressed,
             ]}
           >
-            <Text style={[styles.primaryButtonText, { color: palette.userBubbleText }, interMediumText]}>
+            <Text style={[styles.primaryButtonText, { color: palette.userBubbleText }, jakartaMediumText]}>
               {isExecuting ? 'En cours…' : 'Confirmer'}
             </Text>
           </Pressable>
@@ -123,7 +123,7 @@ export function AIChatActionCard({ action, onConfirm, onCancel, disabled = false
       ) : null}
 
       {isTerminal && action.status === 'cancelled' ? (
-        <Text style={[styles.result, { color: palette.textMuted }, interRegularText]}>Action annulée.</Text>
+        <Text style={[styles.result, { color: palette.textMuted }, jakartaRegularText]}>Action annulée.</Text>
       ) : null}
     </View>
   );

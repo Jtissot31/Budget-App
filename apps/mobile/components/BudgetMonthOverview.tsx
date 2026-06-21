@@ -4,7 +4,7 @@ import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 're
 import { DashboardCard } from '@/components/DashboardCard';
 import { DashboardProgressBar } from '@/components/DashboardProgressBar';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
-import { dashboardPalette, interBoldText, interMediumText, percentStat, spacing, typography } from '@/constants/theme';
+import { dashboardPalette, jakartaBoldText, jakartaMediumText, percentStat, spacing, typography } from '@/constants/theme';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { singleLineAmountProps } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
   },
   ringPct: { ...percentStat, maxWidth: 72 },
   ringPctLabel: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     marginTop: 2,
   },
@@ -258,23 +258,23 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   statLabel: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     fontWeight: '700',
   },
   statValue: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.caption,
   },
   miniBarBlock: { gap: spacing.xs, marginTop: spacing.xs },
   barHint: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     lineHeight: typography.micro + 4,
   },
   emptyBlock: { gap: spacing.sm },
-  emptyTitle: { ...interBoldText, fontSize: typography.body },
-  emptyHint: { ...interMediumText, fontSize: typography.caption, lineHeight: 20 },
+  emptyTitle: { ...jakartaBoldText, fontSize: typography.body },
+  emptyHint: { ...jakartaMediumText, fontSize: typography.caption, lineHeight: 20 },
   insightChip: {
     borderWidth: 1,
     borderRadius: 14,
@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
   insightSpark: { fontSize: typography.body },
   insightText: {
     flex: 1,
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
     lineHeight: typography.meta + 5,
   },

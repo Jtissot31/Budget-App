@@ -3,7 +3,6 @@ import { Modal, Pressable, StyleSheet, Text, View, ScrollView } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { frequencyLabel } from '@/lib/recurringPaymentsForm';
-import { CategoryBudgetProgress } from '@/components/CategoryBudgetProgress';
 import { DashboardCard } from '@/components/DashboardCard';
 import { DashboardDateBadge } from '@/components/DashboardDateBadge';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
@@ -12,9 +11,9 @@ import { OverflowMenuButton, type OverflowMenuItem } from '@/components/Overflow
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import {
   FLOATING_NAV_CONTENT_PADDING,
-  interBoldText,
-  interExtraBoldText,
-  interMediumText,
+  jakartaBoldText,
+  jakartaExtraBoldText,
+  jakartaMediumText,
   radius,
   spacing,
   typography,
@@ -25,7 +24,7 @@ import { portfolioNumericText, rowValue } from '@/lib/textLayout';
 import { UNIFORM_ACTION_BUTTON_MIN_HEIGHT, UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import { dataEvents, uiEvents } from '@/lib/events';
-import { getCategoryBudgets, getLoans, getRecentIncomeTransactions, getRecurringPayments } from '@/lib/db';
+import { getLoans, getRecentIncomeTransactions, getRecurringPayments } from '@/lib/db';
 import {
   ESTIMATED_PAYCHECK_LABEL,
   inferAllEstimatedPaychecksForRange,
@@ -43,7 +42,7 @@ import {
   resolveAgendaBillDisplayIcon,
   resolveRecurringPaymentDisplayIconById,
 } from '@/lib/recurringPaymentPresentation';
-import type { CategoryBudget, Loan, RecurringPayment, Transaction } from '@/types';
+import type { Loan, RecurringPayment, Transaction } from '@/types';
 
 type AgendaViewProps = {
   onEditRecurring?: (payment: RecurringPayment) => void;
@@ -539,7 +538,6 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
   const [month, setMonth] = useState(today.getMonth());
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
-  const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudget[]>([]);
   const [recentIncomeTransactions, setRecentIncomeTransactions] = useState<Transaction[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [paymentDetail, setPaymentDetail] = useState<PaymentDetailPayload | null>(null);
@@ -549,23 +547,15 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
   const todayKey = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
 
   const loadRecurringPayments = useCallback(async () => {
-    const [payments, budgets, incomeTransactions, loadedLoans] = await Promise.all([
+    const [payments, incomeTransactions, loadedLoans] = await Promise.all([
       getRecurringPayments(),
-      getCategoryBudgets(),
       getRecentIncomeTransactions(INCOME_TRANSACTION_LOOKBACK_LIMIT),
       getLoans(),
     ]);
     setRecurringPayments(payments);
-    setCategoryBudgets(budgets);
     setRecentIncomeTransactions(incomeTransactions);
     setLoans(loadedLoans);
   }, []);
-
-  const categoryBudgetById = useMemo(() => {
-    const lookup = new Map<string, CategoryBudget>();
-    categoryBudgets.forEach((item) => lookup.set(item.categoryId, item));
-    return lookup;
-  }, [categoryBudgets]);
 
   const loanByRecurringPaymentId = useMemo(
     () => buildLoanByRecurringPaymentId(loans),
@@ -729,14 +719,6 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
     });
   };
 
-  const resolveBillCategoryBudget = useCallback(
-    (bill: AgendaBill) => {
-      if (!bill.categoryId || (bill.kind ?? 'payment') === 'income') return null;
-      return categoryBudgetById.get(bill.categoryId) ?? null;
-    },
-    [categoryBudgetById],
-  );
-
   /** Ouvre la fiche détail ; édition/suppression via les boutons du sheet. */
   const onBillRowPress = (b: AgendaBill, dateKey: string) => {
     tapHaptic();
@@ -845,7 +827,6 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
           onPress={() => onBillRowPress(b, key)}
           styles={styles}
           colors={colors}
-          categoryBudget={resolveBillCategoryBudget(b)}
           loanByRecurringPaymentId={loanByRecurringPaymentId}
         />
       ))}
@@ -1047,7 +1028,6 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
                           onPress={() => onBillRowPress(b, key)}
                           styles={styles}
                           colors={colors}
-                          categoryBudget={resolveBillCategoryBudget(b)}
                           loanByRecurringPaymentId={loanByRecurringPaymentId}
                         />
                       ))}
@@ -1202,28 +1182,6 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
   );
 });
 
-function AgendaBillBudgetHint({
-  bill,
-  categoryBudget,
-}: {
-  bill: AgendaBill;
-  categoryBudget: CategoryBudget | null;
-}) {
-  if (!categoryBudget || (bill.kind ?? 'payment') === 'income') return null;
-
-  return (
-    <CategoryBudgetProgress
-      budget={{
-        limitAmount: categoryBudget.limitAmount,
-        spent: categoryBudget.spent,
-        categoryColor: categoryBudget.categoryColor,
-        categoryName: categoryBudget.categoryName,
-      }}
-      compactOverspendOnly
-    />
-  );
-}
-
 function resolveAgendaPaymentBadgeVariant(
   dateKey: string,
   todayKey: string,
@@ -1245,7 +1203,6 @@ function AgendaPaymentCard({
   onPress,
   styles,
   colors,
-  categoryBudget,
   loanByRecurringPaymentId,
 }: {
   bill: AgendaBill;
@@ -1255,7 +1212,6 @@ function AgendaPaymentCard({
   onPress: () => void;
   styles: ReturnType<typeof createStyles>;
   colors: AppColors;
-  categoryBudget: CategoryBudget | null;
   loanByRecurringPaymentId: Map<string, Loan>;
 }) {
   const isIncome = isPayBill(bill) || bill.kind === 'income';
@@ -1280,7 +1236,6 @@ function AgendaPaymentCard({
       title={bill.name}
       meta={getPaymentCardMeta(bill)}
       statusBadge={{ label: statusLabel, variant: badgeVariant }}
-      footer={<AgendaBillBudgetHint bill={bill} categoryBudget={categoryBudget} />}
       amount={
         <TransactionAmountLabel
           amount={
@@ -1344,7 +1299,7 @@ function createStyles(colors: AppColors) {
     flex: 1,
   },
   monthName: {
-    ...interBoldText,
+    ...jakartaBoldText,
     color: colors.text,
     fontSize: typography.screenTitle,
     letterSpacing: -0.35,
@@ -1585,7 +1540,7 @@ function createStyles(colors: AppColors) {
   },
   pickerTitle: {
     flex: 1,
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.title,
     letterSpacing: -0.4,
   },
@@ -1598,7 +1553,7 @@ function createStyles(colors: AppColors) {
     justifyContent: 'center',
   },
   pickerSubtitle: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
     lineHeight: 17,
   },
@@ -1650,11 +1605,11 @@ function createStyles(colors: AppColors) {
     gap: 2,
   },
   pickerLabel: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.body,
   },
   pickerDescription: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     lineHeight: 15,
   },

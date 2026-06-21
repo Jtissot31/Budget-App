@@ -44,9 +44,9 @@ import {
 } from '@/constants/regions';
 import {
   DASHBOARD_VALUE_GREEN,
-  interBoldText,
-  interMediumText,
-  interSemiboldText,
+  jakartaBoldText,
+  jakartaMediumText,
+  jakartaSemiboldText,
   radius,
   spacing,
   typography,
@@ -843,7 +843,7 @@ const styles = StyleSheet.create({
     height: HEADER_BUTTON_SIZE,
   },
   title: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.body,
     flex: 1,
     textAlign: 'center',
@@ -871,7 +871,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.body,
     paddingVertical: Platform.OS === 'ios' ? spacing.sm : spacing.xs,
   },
@@ -886,11 +886,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   locateLabel: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
   },
   locateHint: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
@@ -941,11 +941,11 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   optionLabel: {
-    ...interSemiboldText,
+    ...jakartaSemiboldText,
     fontSize: typography.body,
   },
   optionDescription: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
     lineHeight: typography.micro + 4,
   },
@@ -974,13 +974,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   indexLetter: {
-    ...interSemiboldText,
+    ...jakartaSemiboldText,
     fontSize: 10,
     lineHeight: 12,
     opacity: 0.72,
   },
   indexLetterActive: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: 11,
     lineHeight: 13,
     opacity: 1,
@@ -999,7 +999,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   letterPreviewText: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.heroStat,
     lineHeight: typography.heroStat + 2,
   },
@@ -1009,7 +1009,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyText: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.body,
     textAlign: 'center',
   },

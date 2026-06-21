@@ -1,11 +1,8 @@
-import { useEffect, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { memo, useEffect, useMemo } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import Animated, {
-  Easing,
   useAnimatedProps,
   useSharedValue,
-  withDelay,
-  withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, FeDropShadow, Filter } from 'react-native-svg';
 import { DashboardCard } from '@/components/DashboardCard';
@@ -31,8 +28,6 @@ const RADIUS = (CHART_SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 const SEGMENT_GAP = 3;
 const MONO_GREEN = '#3adf8a';
-const SEGMENT_DRAW_MS = 500;
-const SEGMENT_DRAW_STAGGER_MS = 120;
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -53,18 +48,23 @@ type DonutSegmentProps = {
   startOffset: number;
   baseOpacity: number;
   dimmed: boolean;
-  onPress?: () => void;
+  segmentId: string;
+  onSelectSegment?: (id: string) => void;
 };
 
-function DonutSegment({ index, dash, startOffset, baseOpacity, dimmed, onPress }: DonutSegmentProps) {
-  const draw = useSharedValue(0);
+const DonutSegment = memo(function DonutSegment({
+  index,
+  dash,
+  startOffset,
+  baseOpacity,
+  dimmed,
+  segmentId,
+  onSelectSegment,
+}: DonutSegmentProps) {
+  const draw = useSharedValue(1);
 
   useEffect(() => {
-    draw.value = 0;
-    draw.value = withDelay(
-      index * SEGMENT_DRAW_STAGGER_MS,
-      withTiming(1, { duration: SEGMENT_DRAW_MS, easing: Easing.out(Easing.cubic) }),
-    );
+    draw.value = 1;
   }, [dash, draw, index]);
 
   const animatedProps = useAnimatedProps(() => ({
@@ -87,11 +87,11 @@ function DonutSegment({ index, dash, startOffset, baseOpacity, dimmed, onPress }
       strokeDashoffset={-startOffset}
       rotation={-90}
       origin={`${CHART_SIZE / 2}, ${CHART_SIZE / 2}`}
-      filter={index === 0 ? 'url(#budgetSegGlow)' : undefined}
-      onPress={onPress}
+      filter={index === 0 && Platform.OS !== 'android' ? 'url(#budgetSegGlow)' : undefined}
+      onPress={onSelectSegment ? () => onSelectSegment(segmentId) : undefined}
     />
   );
-}
+});
 
 type Props = {
   segments: BudgetChartSegment[];
@@ -102,7 +102,7 @@ type Props = {
   onLayout?: (event: LayoutChangeEvent) => void;
 };
 
-export function BudgetAllocationChart({
+export const BudgetAllocationChart = memo(function BudgetAllocationChart({
   segments,
   totalAllocated,
   totalSpent,
@@ -113,6 +113,25 @@ export function BudgetAllocationChart({
   const { colors, isLight } = useAppTheme();
   const mutedTextColor = isLight ? colors.textMuted : '#909090';
   const visualFractions = useMemo(() => getDonutVisualFractions(segments), [segments]);
+  const segmentArcs = useMemo(() => {
+    let running = 0;
+    return segments
+      .map((seg, idx) => {
+        const visualFrac = visualFractions[idx] ?? 0;
+        if (visualFrac <= 0) return null;
+        const startOffset = running * CIRCUMFERENCE + SEGMENT_GAP / 2;
+        running += visualFrac;
+        const dash = Math.max(0, visualFrac * CIRCUMFERENCE - SEGMENT_GAP);
+        return {
+          id: seg.id,
+          index: idx,
+          dash,
+          startOffset,
+          baseOpacity: segmentOpacity(idx),
+        };
+      })
+      .filter((arc): arc is NonNullable<typeof arc> => arc != null);
+  }, [segments, visualFractions]);
   const trackColor = isLight ? colors.border : colors.scopeTrack;
   const hubColor = colors.containerBackground;
   const hasSelection = Boolean(selectedId);
@@ -162,24 +181,20 @@ export function BudgetAllocationChart({
               opacity={0.55}
             />
 
-            {segments.map((seg, idx) => {
-              const visualFrac = visualFractions[idx] ?? 0;
-              if (visualFrac <= 0) return null;
-              const start =
-                visualFractions.slice(0, idx).reduce((sum, frac) => sum + frac, 0) * CIRCUMFERENCE;
-              const dash = Math.max(0, visualFrac * CIRCUMFERENCE - SEGMENT_GAP);
-              const selected = selectedId === seg.id;
+            {segmentArcs.map((arc) => {
+              const selected = selectedId === arc.id;
               const dimmed = hasSelection && !selected;
 
               return (
                 <DonutSegment
-                  key={seg.id}
-                  index={idx}
-                  dash={dash}
-                  startOffset={start + SEGMENT_GAP / 2}
-                  baseOpacity={segmentOpacity(idx)}
+                  key={arc.id}
+                  index={arc.index}
+                  dash={arc.dash}
+                  startOffset={arc.startOffset}
+                  baseOpacity={arc.baseOpacity}
                   dimmed={dimmed}
-                  onPress={() => onSelectSegment?.(seg.id)}
+                  segmentId={arc.id}
+                  onSelectSegment={onSelectSegment}
                 />
               );
             })}
@@ -246,7 +261,7 @@ export function BudgetAllocationChart({
       </View>
     </DashboardCard>
   );
-}
+});
 
 const styles = StyleSheet.create({
   cardInner: { gap: spacing.lg, paddingBottom: spacing.sm },

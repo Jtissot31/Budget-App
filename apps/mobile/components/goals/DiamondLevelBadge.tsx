@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { GOAL_PROGRESS_FILL, interBoldText, interExtraBoldText, spacing, typography } from '@/constants/theme';
+import { GOAL_PROGRESS_FILL, jakartaBoldText, jakartaExtraBoldText, spacing, typography } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 import type { SavingsLevelStats } from '@/lib/savingsGamification';
 
@@ -76,25 +76,25 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   levelPrefix: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
   levelValue: {
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: 28,
     lineHeight: 30,
     letterSpacing: -0.6,
   },
   rankLabel: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
     textAlign: 'center',
     marginTop: 2,
   },
   pointsLabel: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: typography.micro,
     letterSpacing: 0.2,
   },

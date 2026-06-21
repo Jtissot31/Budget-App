@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { interMediumText, radius, spacing, typography, typographyKit } from '@/constants/theme';
+import { jakartaMediumText, radius, spacing, typography, typographyKit } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 import type { AccountKind } from '@/types';
 
@@ -97,11 +97,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   typeChipText: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
   },
   emptyHint: {
-    ...interMediumText,
+    ...jakartaMediumText,
     fontSize: typography.meta,
     lineHeight: 18,
   },

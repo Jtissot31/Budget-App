@@ -11,7 +11,7 @@ import { SurfaceCard } from '@/components/SurfaceCard';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import { ReceiptCaptureActions } from '@/components/ReceiptCaptureActions';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
-import { containerSurfaceStyle, interExtraBoldText, radius, spacing, typography } from '@/constants/theme';
+import { containerSurfaceStyle, jakartaExtraBoldText, radius, spacing, typography } from '@/constants/theme';
 import { typographyKit } from '@/constants/typographyKit';
 import { getCategories } from '@/lib/db';
 import { formValidationError } from '@/lib/formFeedback';
@@ -268,7 +268,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    ...interExtraBoldText,
+    ...jakartaExtraBoldText,
     fontSize: typography.title,
     letterSpacing: -0.4,
   },

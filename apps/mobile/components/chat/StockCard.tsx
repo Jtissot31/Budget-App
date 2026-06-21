@@ -1,8 +1,8 @@
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  interBoldText,
-  interRegularText,
-  interSemiboldText,
+  jakartaBoldText,
+  jakartaRegularText,
+  jakartaSemiboldText,
   radius,
   spacing,
 } from '@/constants/theme';
@@ -46,7 +46,7 @@ export function StockCard({ stock }: Props) {
       </View>
       <View style={styles.footer}>
         <Text style={[styles.price, { color: colors.text }]}>{formatPrice(stock.price, stock.currency)}</Text>
-        <Text style={[styles.changeText, { color: changeColor }, interSemiboldText]}>
+        <Text style={[styles.changeText, { color: changeColor }, jakartaSemiboldText]}>
           {formatChangePercent(stock.changePercent)}
         </Text>
       </View>
@@ -68,12 +68,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   symbol: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: 13,
     letterSpacing: 0.3,
   },
   name: {
-    ...interRegularText,
+    ...jakartaRegularText,
     fontSize: 12,
     flex: 1,
   },
@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   price: {
-    ...interBoldText,
+    ...jakartaBoldText,
     fontSize: 16,
     letterSpacing: -0.2,
   },
