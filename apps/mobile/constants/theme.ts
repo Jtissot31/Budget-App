@@ -18,6 +18,13 @@ export {
   jakartaSemiboldText,
 } from './plusJakartaFonts';
 
+/** @deprecated Use jakarta*Text — kept for recovered screens not yet migrated */
+export const interRegularText = jakartaRegularText;
+export const interMediumText = jakartaMediumText;
+export const interSemiboldText = jakartaSemiboldText;
+export const interBoldText = jakartaBoldText;
+export const interExtraBoldText = jakartaExtraBoldText;
+
 /** Light app canvas — single smooth diagonal warm-grey gradient */
 export const appBackgroundGradientLight = {
   colors: ['#EFEFEF', '#E8E8E8', '#E0E0E0', '#D8D8D8'] as const,

@@ -45,10 +45,9 @@ import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { DashboardAccountBalanceCard } from '@/components/DashboardAccountBalanceCard';
 import { DashboardStatCard } from '@/components/DashboardStatCard';
 import { HomeInsightCard } from '@/components/dashboard/HomeInsightCard';
-import { HomeNetWorthHero } from '@/components/dashboard/HomeNetWorthHero';
+import { HomeAvailableNowHero } from '@/components/dashboard/HomeAvailableNowHero';
 import { HomePlansCarousel } from '@/components/dashboard/HomePlansCarousel';
 import { HomeQuickStatsRow } from '@/components/dashboard/HomeQuickStatsRow';
-import type { PortfolioChartCardPeriodData } from '@/components/PortfolioChartCard';
 import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
 import {
   getDashboard,
@@ -63,9 +62,12 @@ import {
   setSetting,
 } from '@/lib/db';
 import {
-  buildNetWorthTrendFromTransactions,
-  NET_WORTH_TREND_HISTORICAL_MONTH_COUNT,
-} from '@/lib/buildNetWorthTrendSeries';
+  buildCheckingBalanceDailyValues,
+} from '@/lib/buildCheckingBalanceTrendSeries';
+import {
+  computeMonthlyNetFlux,
+  sumVisibleCheckingBalance,
+} from '@/lib/homeCheckingBalance';
 import { sumWealthAssetsDisplayValue } from '@/lib/wealthAssetPresentation';
 import { PAYCHECK_TRANSACTION_LOOKBACK_LIMIT, resolveNextPaycheckForAccount, resolvePaycheckForPaymentAlert } from '@/lib/estimatedPaycheck';
 import {
@@ -1294,40 +1296,20 @@ export default function HomeScreen() {
     [wealthAssets, loansByIdForWealth],
   );
 
-  const totalNetWorth = totalAccountBalance + offAccountAssetsBalance;
-
-  const netWorthTrendPoints = useMemo(
-    () =>
-      buildNetWorthTrendFromTransactions(
-        'inclusive',
-        totalNetWorth,
-        simulatedAccounts,
-        offAccountAssetsBalance,
-        transactions,
-      ),
-    [totalNetWorth, simulatedAccounts, offAccountAssetsBalance, transactions],
+  const checkingBalance = useMemo(
+    () => sumVisibleCheckingBalance(simulatedAccounts),
+    [simulatedAccounts],
   );
 
-  const sparklineValues = useMemo(() => {
-    const historical = netWorthTrendPoints.slice(0, NET_WORTH_TREND_HISTORICAL_MONTH_COUNT);
-    return historical.slice(-6).map((point) => point.value);
-  }, [netWorthTrendPoints]);
+  const monthlyNetFlux = useMemo(
+    () => computeMonthlyNetFlux(data?.monthlyIncome ?? 0, data?.monthlyExpenses ?? 0),
+    [data?.monthlyIncome, data?.monthlyExpenses],
+  );
 
-  const heroPeriodData = useMemo((): PortfolioChartCardPeriodData | null => {
-    if (sparklineValues.length < 2) return null;
-    const startValue = sparklineValues[0]!;
-    const endValue = sparklineValues[sparklineValues.length - 1]!;
-    const delta = endValue - startValue;
-    const deltaPercent = startValue !== 0 ? (delta / Math.abs(startValue)) * 100 : 0;
-    return {
-      period: '6M',
-      currentValue: totalNetWorth,
-      delta,
-      deltaPercent,
-      selectedIndex: sparklineValues.length - 1,
-      selectedLabel: '',
-    };
-  }, [sparklineValues, totalNetWorth]);
+  const checkingBalanceSeries = useMemo(
+    () => buildCheckingBalanceDailyValues(simulatedAccounts, transactions),
+    [simulatedAccounts, transactions],
+  );
 
   const openBalanceSelector = useCallback(() => {
     tapHaptic();
@@ -1613,10 +1595,10 @@ export default function HomeScreen() {
       </View>
 
       <View style={dashStyles.sectionFirst}>
-        <HomeNetWorthHero
-          totalNetWorth={totalNetWorth}
-          sparklineValues={sparklineValues}
-          periodData={heroPeriodData}
+        <HomeAvailableNowHero
+          checkingBalance={checkingBalance}
+          monthlyNetFlux={monthlyNetFlux}
+          checkingBalanceSeries={checkingBalanceSeries}
         />
       </View>
 

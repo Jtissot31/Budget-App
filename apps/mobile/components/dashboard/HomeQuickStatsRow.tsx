@@ -7,7 +7,6 @@ import {
   typography,
 } from '@/constants/theme';
 import { formatDisplayMoney } from '@/lib/formatDisplayMoney';
-import { formatNumberDisplay } from '@/lib/formatNumber';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
@@ -22,9 +21,6 @@ function formatCompactStat(value: number): string {
 
 export function HomeQuickStatsRow({ monthlyIncome, monthlyExpenses }: Props) {
   const { colors } = useAppTheme();
-  const savingsRate =
-    monthlyIncome > 0 ? ((monthlyIncome - monthlyExpenses) / monthlyIncome) * 100 : null;
-  const savingsPositive = savingsRate != null && savingsRate >= 0;
 
   return (
     <View style={styles.row}>
@@ -39,22 +35,6 @@ export function HomeQuickStatsRow({ monthlyIncome, monthlyExpenses }: Props) {
         <Text style={[styles.label, { color: colors.textMuted }, interSemiboldText]}>DÉPENSES</Text>
         <Text style={[styles.value, { color: colors.text }, interBoldText]} numberOfLines={1}>
           {formatCompactStat(monthlyExpenses)}
-        </Text>
-      </View>
-
-      <View style={[styles.tile, { backgroundColor: colors.containerBackground }]}>
-        <Text style={[styles.label, { color: colors.textMuted }, interSemiboldText]}>ÉPARGNE</Text>
-        <Text
-          style={[
-            styles.value,
-            { color: savingsPositive ? colors.accentGreen : colors.danger },
-            interBoldText,
-          ]}
-          numberOfLines={1}
-        >
-          {savingsRate == null
-            ? '—'
-            : `${formatNumberDisplay(savingsRate, { maximumFractionDigits: 0 })} %`}
         </Text>
       </View>
     </View>
