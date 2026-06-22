@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
+
+import { getSecureItemAsync, setSecureItemAsync } from '@/lib/secureStorage';
 
 const ENCRYPTION_KEY_ALIAS = 'bt_ai_storage_key_v1';
 
@@ -24,7 +25,7 @@ async function getOrCreateCryptoKey(): Promise<CryptoKey | null> {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) return null;
 
-  const stored = await SecureStore.getItemAsync(ENCRYPTION_KEY_ALIAS);
+  const stored = await getSecureItemAsync(ENCRYPTION_KEY_ALIAS);
   if (stored) {
     const raw = base64ToBytes(stored);
     return subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
@@ -35,7 +36,7 @@ async function getOrCreateCryptoKey(): Promise<CryptoKey | null> {
     'decrypt',
   ]);
   const exported = await subtle.exportKey('raw', key);
-  await SecureStore.setItemAsync(ENCRYPTION_KEY_ALIAS, bytesToBase64(new Uint8Array(exported)));
+  await setSecureItemAsync(ENCRYPTION_KEY_ALIAS, bytesToBase64(new Uint8Array(exported)));
   return key;
 }
 

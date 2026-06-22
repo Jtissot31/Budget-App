@@ -1,35 +1,40 @@
 import { memo, useEffect, useMemo } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { Platform, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedProps,
   useSharedValue,
 } from 'react-native-reanimated';
-import Svg, { Circle, Defs, FeDropShadow, Filter } from 'react-native-svg';
-import { DashboardCard } from '@/components/DashboardCard';
-import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
+import Svg, { Circle, Defs, FeDropShadow, Filter, G, Line, Text as SvgText } from 'react-native-svg';
 import {
   interBoldText,
   interExtraBoldText,
   interMediumText,
-  PAGE_PADDING_HORIZONTAL,
-  radius,
   spacing,
   typography,
 } from '@/constants/theme';
-import { colorWithAlpha, getDonutVisualFractions, type BudgetChartSegment } from '@/lib/budgetChart';
+import { getDonutVisualFractions, type BudgetChartSegment } from '@/lib/budgetChart';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
-import { rowTitleTextProps } from '@/lib/textLayout';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
-const CHART_SIZE = 248;
+const DONUT_SIZE = 248;
 const STROKE = 18;
-const RADIUS = (CHART_SIZE - STROKE) / 2;
+const RADIUS = (DONUT_SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 const SEGMENT_GAP = 3;
-const MONO_GREEN = '#3adf8a';
+const LABEL_MARGIN = 52;
+const SVG_SIZE = DONUT_SIZE + LABEL_MARGIN * 2;
+const CX = SVG_SIZE / 2;
+const CY = SVG_SIZE / 2;
+const LEADER_INNER = RADIUS + STROKE / 2 + 2;
+const LEADER_OUTER = LEADER_INNER + 14;
+const LABEL_RADIUS = LEADER_OUTER + 10;
+const MIN_LABEL_SWEEP_DEG = 14;
+const MAX_LABEL_CHARS = 11;
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const AnimatedG = Animated.createAnimatedComponent(G);
 
 function segmentOpacity(index: number) {
   if (index === 0) return 1;
@@ -42,12 +47,27 @@ function formatMoney(value: number) {
   return formatDisplayMoneyAbsolute(Math.max(0, value));
 }
 
+function polarToXY(r: number, angleDeg: number) {
+  const rad = (angleDeg * Math.PI) / 180;
+  return {
+    x: CX + r * Math.cos(rad),
+    y: CY + r * Math.sin(rad),
+  };
+}
+
+function truncateLabel(name: string, maxLen = MAX_LABEL_CHARS) {
+  const trimmed = name.trim();
+  if (trimmed.length <= maxLen) return trimmed;
+  return `${trimmed.slice(0, maxLen - 1)}…`;
+}
+
 type DonutSegmentProps = {
   index: number;
   dash: number;
   startOffset: number;
   baseOpacity: number;
   dimmed: boolean;
+  accentColor: string;
   segmentId: string;
   onSelectSegment?: (id: string) => void;
 };
@@ -58,6 +78,7 @@ const DonutSegment = memo(function DonutSegment({
   startOffset,
   baseOpacity,
   dimmed,
+  accentColor,
   segmentId,
   onSelectSegment,
 }: DonutSegmentProps) {
@@ -76,22 +97,37 @@ const DonutSegment = memo(function DonutSegment({
   return (
     <AnimatedCircle
       animatedProps={animatedProps}
-      cx={CHART_SIZE / 2}
-      cy={CHART_SIZE / 2}
+      cx={CX}
+      cy={CY}
       r={RADIUS}
-      stroke={MONO_GREEN}
+      stroke={accentColor}
       strokeWidth={STROKE}
       fill="none"
       strokeOpacity={opacity}
       strokeLinecap="butt"
       strokeDashoffset={-startOffset}
       rotation={-90}
-      origin={`${CHART_SIZE / 2}, ${CHART_SIZE / 2}`}
+      origin={`${CX}, ${CY}`}
       filter={index === 0 && Platform.OS !== 'android' ? 'url(#budgetSegGlow)' : undefined}
-      onPress={onSelectSegment ? () => onSelectSegment(segmentId) : undefined}
+      onPress={
+        onSelectSegment
+          ? () => {
+              tapHaptic();
+              onSelectSegment(segmentId);
+            }
+          : undefined
+      }
     />
   );
 });
+
+type SegmentLabel = {
+  id: string;
+  name: string;
+  midAngleDeg: number;
+  sweepDeg: number;
+  baseOpacity: number;
+};
 
 type Props = {
   segments: BudgetChartSegment[];
@@ -112,7 +148,9 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
 }: Props) {
   const { colors, isLight } = useAppTheme();
   const mutedTextColor = isLight ? colors.textMuted : '#909090';
+  const accentColor = colors.accentGreen;
   const visualFractions = useMemo(() => getDonutVisualFractions(segments), [segments]);
+
   const segmentArcs = useMemo(() => {
     let running = 0;
     return segments
@@ -120,60 +158,91 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
         const visualFrac = visualFractions[idx] ?? 0;
         if (visualFrac <= 0) return null;
         const startOffset = running * CIRCUMFERENCE + SEGMENT_GAP / 2;
+        const sweepDeg = visualFrac * 360;
+        const startDeg = running * 360 - 90;
+        const midAngleDeg = startDeg + sweepDeg / 2;
         running += visualFrac;
         const dash = Math.max(0, visualFrac * CIRCUMFERENCE - SEGMENT_GAP);
         return {
           id: seg.id,
+          name: seg.name,
           index: idx,
           dash,
           startOffset,
+          midAngleDeg,
+          sweepDeg,
           baseOpacity: segmentOpacity(idx),
         };
       })
       .filter((arc): arc is NonNullable<typeof arc> => arc != null);
   }, [segments, visualFractions]);
+
+  const segmentLabels: SegmentLabel[] = useMemo(
+    () =>
+      segmentArcs.map((arc) => ({
+        id: arc.id,
+        name: arc.name,
+        midAngleDeg: arc.midAngleDeg,
+        sweepDeg: arc.sweepDeg,
+        baseOpacity: arc.baseOpacity,
+      })),
+    [segmentArcs],
+  );
+
   const trackColor = isLight ? colors.border : colors.scopeTrack;
   const hubColor = colors.containerBackground;
   const hasSelection = Boolean(selectedId);
 
-  return (
-    <DashboardCard
-      padding={PAGE_PADDING_HORIZONTAL}
-      innerStyle={styles.cardInner}
-    >
-      <View style={styles.header}>
-        <View style={styles.headerCopy}>
-          <DashboardSectionLabel>Répartition</DashboardSectionLabel>
-          <Text style={[styles.title, { color: colors.text }]}>Par catégorie</Text>
-          <Text style={[styles.subtitle, { color: mutedTextColor }]}>
-            {`${formatMoney(totalAllocated)} alloué · ${formatMoney(totalSpent)} dépensé`}
-          </Text>
-        </View>
-        <View style={[styles.countBadge, { backgroundColor: colors.surfaceElevated }]}>
-          <Text style={[styles.countBadgeText, { color: mutedTextColor }]}>{segments.length}</Text>
-        </View>
-      </View>
+  const rotation = useSharedValue(0);
+  const startTouchAngle = useSharedValue(0);
+  const savedRotation = useSharedValue(0);
 
-      <View onLayout={onLayout} style={styles.chartBlock}>
+  const panGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(10)
+        .onBegin((event) => {
+          const angle = Math.atan2(event.y - CY, event.x - CX);
+          startTouchAngle.value = angle;
+          savedRotation.value = rotation.value;
+        })
+        .onUpdate((event) => {
+          const angle = Math.atan2(event.y - CY, event.x - CX);
+          let delta = angle - startTouchAngle.value;
+          if (delta > Math.PI) delta -= 2 * Math.PI;
+          if (delta < -Math.PI) delta += 2 * Math.PI;
+          rotation.value = savedRotation.value + (delta * 180) / Math.PI;
+        }),
+    [rotation, savedRotation, startTouchAngle],
+  );
+
+  const animatedGroupProps = useAnimatedProps(() => ({
+    rotation: rotation.value,
+    origin: `${CX}, ${CY}`,
+  }));
+
+  return (
+    <View onLayout={onLayout} style={styles.chartBlock}>
+      <GestureDetector gesture={panGesture}>
         <View style={styles.chartHalo}>
-          <Svg width={CHART_SIZE} height={CHART_SIZE} style={styles.chartSvg}>
+          <Svg width={SVG_SIZE} height={SVG_SIZE} style={styles.chartSvg}>
             <Defs>
               <Filter id="budgetSegGlow" x="-30%" y="-30%" width="160%" height="160%">
-                <FeDropShadow dx={0} dy={0} stdDeviation={4} floodColor="#3adf8a" floodOpacity={0.53} />
+                <FeDropShadow dx={0} dy={0} stdDeviation={4} floodColor={accentColor} floodOpacity={0.53} />
               </Filter>
             </Defs>
 
             <Circle
-              cx={CHART_SIZE / 2}
-              cy={CHART_SIZE / 2}
+              cx={CX}
+              cy={CY}
               r={RADIUS}
               stroke={trackColor}
               strokeWidth={STROKE + 2}
               fill="none"
             />
             <Circle
-              cx={CHART_SIZE / 2}
-              cy={CHART_SIZE / 2}
+              cx={CX}
+              cy={CY}
               r={RADIUS - 28}
               stroke={colors.border}
               strokeWidth={1}
@@ -181,23 +250,68 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
               opacity={0.55}
             />
 
-            {segmentArcs.map((arc) => {
-              const selected = selectedId === arc.id;
-              const dimmed = hasSelection && !selected;
+            <AnimatedG animatedProps={animatedGroupProps}>
+              {segmentArcs.map((arc) => {
+                const selected = selectedId === arc.id;
+                const dimmed = hasSelection && !selected;
 
-              return (
-                <DonutSegment
-                  key={arc.id}
-                  index={arc.index}
-                  dash={arc.dash}
-                  startOffset={arc.startOffset}
-                  baseOpacity={arc.baseOpacity}
-                  dimmed={dimmed}
-                  segmentId={arc.id}
-                  onSelectSegment={onSelectSegment}
-                />
-              );
-            })}
+                return (
+                  <DonutSegment
+                    key={arc.id}
+                    index={arc.index}
+                    dash={arc.dash}
+                    startOffset={arc.startOffset}
+                    baseOpacity={arc.baseOpacity}
+                    dimmed={dimmed}
+                    accentColor={accentColor}
+                    segmentId={arc.id}
+                    onSelectSegment={onSelectSegment}
+                  />
+                );
+              })}
+
+              {segmentLabels.map((label) => {
+                if (label.sweepDeg < MIN_LABEL_SWEEP_DEG) return null;
+
+                const selected = selectedId === label.id;
+                const dimmed = hasSelection && !selected;
+                const labelOpacity = dimmed ? label.baseOpacity * 0.42 : label.baseOpacity;
+                const inner = polarToXY(LEADER_INNER, label.midAngleDeg);
+                const outer = polarToXY(LEADER_OUTER, label.midAngleDeg);
+                const anchor = polarToXY(LABEL_RADIUS, label.midAngleDeg);
+                const onRight = Math.cos((label.midAngleDeg * Math.PI) / 180) >= 0;
+                const textX = anchor.x + (onRight ? 4 : -4);
+                const textAnchor = onRight ? 'start' : 'end';
+                const lineColor = selected ? accentColor : mutedTextColor;
+                const textColor = selected ? colors.text : mutedTextColor;
+
+                return (
+                  <G key={`label-${label.id}`}>
+                    <Line
+                      x1={inner.x}
+                      y1={inner.y}
+                      x2={outer.x}
+                      y2={outer.y}
+                      stroke={lineColor}
+                      strokeWidth={selected ? 1.25 : 1}
+                      strokeOpacity={labelOpacity}
+                    />
+                    <SvgText
+                      x={textX}
+                      y={anchor.y}
+                      fill={textColor}
+                      fontSize={typography.micro}
+                      fontWeight={selected ? '700' : '500'}
+                      textAnchor={textAnchor}
+                      alignmentBaseline="middle"
+                      opacity={labelOpacity}
+                    >
+                      {truncateLabel(label.name)}
+                    </SvgText>
+                  </G>
+                );
+              })}
+            </AnimatedG>
           </Svg>
 
           <View
@@ -220,81 +334,29 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
             >
               {formatMoney(totalAllocated)}
             </Text>
-            <Text style={[styles.hubMeta, { color: MONO_GREEN }]}>
+            <Text style={[styles.hubMeta, { color: accentColor }]}>
               {`${formatMoney(totalSpent)} dépensé`}
             </Text>
           </View>
         </View>
-      </View>
-
-      <View style={styles.legend}>
-        {segments.map((seg, idx) => {
-          const pct = Math.round(seg.fraction * 100);
-          const selected = selectedId === seg.id;
-          const toneOpacity = segmentOpacity(idx);
-          return (
-            <Pressable
-              key={`legend-${seg.id}`}
-              accessibilityRole="button"
-              accessibilityLabel={`${seg.name}, ${pct} pour cent`}
-              onPress={() => {
-                tapHaptic();
-                onSelectSegment?.(seg.id);
-              }}
-              style={({ pressed }) => [
-                styles.legendItem,
-                {
-                  backgroundColor: selected ? colors.surfaceElevated : 'transparent',
-                  borderColor: selected ? colorWithAlpha(MONO_GREEN, isLight ? 0.35 : 0.45) : 'transparent',
-                },
-                pressed && styles.legendPressed,
-              ]}
-            >
-              <View style={[styles.legendDot, { backgroundColor: MONO_GREEN, opacity: toneOpacity }]} />
-              <Text style={[styles.legendName, { color: colors.text }]} {...rowTitleTextProps}>
-                {seg.name}
-              </Text>
-              <Text style={[styles.legendPct, { color: MONO_GREEN, opacity: toneOpacity }]}>{`${pct} %`}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </DashboardCard>
+      </GestureDetector>
+    </View>
   );
 });
 
 const styles = StyleSheet.create({
-  cardInner: { gap: spacing.lg, paddingBottom: spacing.sm },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  headerCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
-  title: { ...interExtraBoldText, fontSize: typography.body, letterSpacing: -0.3 },
-  subtitle: { ...interMediumText, fontSize: typography.caption, lineHeight: 20 },
-  countBadge: {
-    minWidth: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
-  },
-  countBadgeText: { ...interBoldText, fontSize: typography.micro },
   chartBlock: { alignItems: 'center', paddingVertical: spacing.sm },
   chartHalo: {
-    width: CHART_SIZE,
-    height: CHART_SIZE,
+    width: SVG_SIZE,
+    height: SVG_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
   chartSvg: { position: 'absolute' },
   hub: {
-    width: CHART_SIZE - STROKE * 2 - 18,
-    height: CHART_SIZE - STROKE * 2 - 18,
-    borderRadius: (CHART_SIZE - STROKE * 2 - 18) / 2,
+    width: DONUT_SIZE - STROKE * 2 - 18,
+    height: DONUT_SIZE - STROKE * 2 - 18,
+    borderRadius: (DONUT_SIZE - STROKE * 2 - 18) / 2,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
@@ -322,39 +384,5 @@ const styles = StyleSheet.create({
     fontSize: typography.micro,
     marginTop: 5,
     textAlign: 'center',
-  },
-  legend: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 8,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    maxWidth: '100%',
-  },
-  legendPressed: { opacity: 0.78 },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    flexShrink: 0,
-  },
-  legendName: {
-    ...interMediumText,
-    fontSize: typography.micro,
-    fontWeight: '700',
-    flexShrink: 1,
-    maxWidth: 120,
-  },
-  legendPct: {
-    ...interBoldText,
-    fontSize: typography.micro,
-    flexShrink: 0,
   },
 });

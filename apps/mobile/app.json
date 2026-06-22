@@ -2,7 +2,7 @@
   "expo": {
     "name": "Budget Tracker",
     "slug": "budget-tracker",
-    "platforms": ["ios", "android"],
+    "platforms": ["ios", "android", "web"],
     "version": "1.0.1-BOOT",
     "orientation": "portrait",
     "scheme": "budgettracker",

@@ -236,31 +236,31 @@ export default function BudgetScreen() {
   const listHeader = useMemo(
     () => (
       <>
+        <BudgetPageHeader onAdd={handleAddCategory} />
         <BudgetShortcutCards
           onPressPlans={() => router.push('/(tabs)/goals')}
           onPressSavingsGoals={() => router.push('/savings-goals')}
         />
-        <BudgetPageHeader onAdd={handleAddCategory} />
+        {rows.length > 0 ? (
+          <BudgetAllocationChart
+            segments={chartSegments}
+            totalAllocated={limitTotal}
+            totalSpent={spentTotal}
+            selectedId={highlightedCategoryId}
+            onSelectSegment={handleSelectCategoryId}
+          />
+        ) : null}
         {rows.length === 0 ? (
           <BudgetCategoriesEmpty mutedTextColor={mutedTextColor} onAddCategory={handleAddCategory} />
         ) : (
-          <View style={allocStyles.section}>
-            <BudgetAllocationChart
-              segments={chartSegments}
-              totalAllocated={limitTotal}
-              totalSpent={spentTotal}
-              selectedId={highlightedCategoryId}
-              onSelectSegment={handleSelectCategoryId}
-            />
-            <View style={allocStyles.listSection}>
-              <View style={allocStyles.categoriesHeader}>
-                <View style={allocStyles.listTitleGroup}>
-                  <DashboardSectionLabel>Progression</DashboardSectionLabel>
-                  <Text style={[allocStyles.listTitle, { color: colors.text }]}>Mes catégories</Text>
-                </View>
-                <View style={[allocStyles.countBadge, { backgroundColor: colors.surfaceElevated }]}>
-                  <Text style={[allocStyles.countBadgeLabel, { color: mutedTextColor }]}>{rows.length}</Text>
-                </View>
+          <View style={allocStyles.listSection}>
+            <View style={allocStyles.categoriesHeader}>
+              <View style={allocStyles.listTitleGroup}>
+                <DashboardSectionLabel>Progression</DashboardSectionLabel>
+                <Text style={[allocStyles.listTitle, { color: colors.text }]}>Mes catégories</Text>
+              </View>
+              <View style={[allocStyles.countBadge, { backgroundColor: colors.surfaceElevated }]}>
+                <Text style={[allocStyles.countBadgeLabel, { color: mutedTextColor }]}>{rows.length}</Text>
               </View>
             </View>
           </View>

@@ -51,14 +51,14 @@ export function BudgetShortcutCards({ onPressPlans, onPressSavingsGoals }: Props
         title="Plans financiers"
         subtitle="Voir mes plans"
         accessibilityLabel="Ouvrir les plans financiers"
-        icon={<TrendingUp size={20} color={ACCENT_GREEN} strokeWidth={2} />}
+        icon={<TrendingUp size={18} color={ACCENT_GREEN} strokeWidth={2} />}
         onPress={onPressPlans}
       />
       <ShortcutCard
         title="Objectifs d'épargne"
         subtitle="Voir mes objectifs"
         accessibilityLabel="Ouvrir les objectifs d'épargne"
-        icon={<Target size={20} color={ACCENT_GREEN} strokeWidth={2} />}
+        icon={<Target size={18} color={ACCENT_GREEN} strokeWidth={2} />}
         onPress={onPressSavingsGoals}
       />
     </View>
@@ -77,23 +77,23 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     borderWidth: 0.5,
     borderColor: CARD_BORDER,
-    padding: 16,
-    minHeight: 108,
+    padding: 12,
+    minHeight: 96,
   },
   chevronWrap: {
     position: 'absolute',
-    top: 16,
-    right: 16,
+    top: 12,
+    right: 12,
   },
   title: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 14,
+    fontSize: 13,
     color: TITLE_COLOR,
-    marginTop: 8,
+    marginTop: 6,
   },
   subtitle: {
     fontFamily: fontFamilies.regular,
-    fontSize: 12,
+    fontSize: 11,
     color: MUTED_COLOR,
     marginTop: 2,
   },
