@@ -1,15 +1,18 @@
-import { memo, useEffect, useMemo } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { Platform, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  cancelAnimation,
+  runOnJS,
   useAnimatedProps,
   useSharedValue,
+  withDecay,
+  type SharedValue,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, FeDropShadow, Filter, G, Line, Text as SvgText } from 'react-native-svg';
 import {
   interBoldText,
   interExtraBoldText,
-  interMediumText,
   spacing,
   typography,
 } from '@/constants/theme';
@@ -23,18 +26,73 @@ const STROKE = 18;
 const RADIUS = (DONUT_SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 const SEGMENT_GAP = 3;
-const LABEL_MARGIN = 52;
+const LABEL_MARGIN = 58;
 const SVG_SIZE = DONUT_SIZE + LABEL_MARGIN * 2;
 const CX = SVG_SIZE / 2;
 const CY = SVG_SIZE / 2;
 const LEADER_INNER = RADIUS + STROKE / 2 + 2;
-const LEADER_OUTER = LEADER_INNER + 14;
-const LABEL_RADIUS = LEADER_OUTER + 10;
+const LEADER_OUTER = LEADER_INNER + 12;
+const LABEL_RADIUS = LEADER_OUTER + 6;
 const MIN_LABEL_SWEEP_DEG = 14;
-const MAX_LABEL_CHARS = 11;
+const MAX_LABEL_CHARS = 10;
+const ROTATION_MIN_DISTANCE = 6;
+// Lower = the donut turns slower relative to the finger (less sensitive).
+const ROTATION_SENSITIVITY = 0.6;
+// Ignore rotation when the finger is this close to the center, where the
+// angle is unstable and tiny moves would otherwise spin the donut wildly.
+const ROTATION_DEAD_ZONE = 28;
+const ROTATION_DECAY = 0.99;
+const ROTATION_MAX_VELOCITY = 240;
+const ROTATION_MIN_DECAY_VELOCITY = 18;
+const RING_INNER = RADIUS - STROKE / 2 - 4;
+const RING_OUTER = RADIUS + STROKE / 2 + 28;
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const AnimatedG = Animated.createAnimatedComponent(G);
+const AnimatedSvgText = Animated.createAnimatedComponent(SvgText);
+
+type RotatingLabelProps = {
+  rotation: SharedValue<number>;
+  x: number;
+  y: number;
+  fill: string;
+  fontWeight: '500' | '700';
+  opacity: number;
+  text: string;
+};
+
+/**
+ * Rendered inside the rotating group so its anchor point follows the donut,
+ * but counter-rotates around its own anchor so the text stays upright/readable.
+ */
+const RotatingLabel = memo(function RotatingLabel({
+  rotation,
+  x,
+  y,
+  fill,
+  fontWeight,
+  opacity,
+  text,
+}: RotatingLabelProps) {
+  const animatedProps = useAnimatedProps(() => ({
+    transform: `rotate(${-rotation.value}, ${x}, ${y})`,
+  }));
+
+  return (
+    <AnimatedSvgText
+      animatedProps={animatedProps}
+      x={x}
+      y={y}
+      fill={fill}
+      fontSize={typography.micro}
+      fontWeight={fontWeight}
+      textAnchor="middle"
+      alignmentBaseline="middle"
+      opacity={opacity}
+    >
+      {text}
+    </AnimatedSvgText>
+  );
+});
 
 function segmentOpacity(index: number) {
   if (index === 0) return 1;
@@ -61,6 +119,8 @@ function truncateLabel(name: string, maxLen = MAX_LABEL_CHARS) {
   return `${trimmed.slice(0, maxLen - 1)}…`;
 }
 
+const TWELVE_OCLOCK_OFFSET = CIRCUMFERENCE / 4;
+
 type DonutSegmentProps = {
   index: number;
   dash: number;
@@ -68,8 +128,6 @@ type DonutSegmentProps = {
   baseOpacity: number;
   dimmed: boolean;
   accentColor: string;
-  segmentId: string;
-  onSelectSegment?: (id: string) => void;
 };
 
 const DonutSegment = memo(function DonutSegment({
@@ -79,24 +137,11 @@ const DonutSegment = memo(function DonutSegment({
   baseOpacity,
   dimmed,
   accentColor,
-  segmentId,
-  onSelectSegment,
 }: DonutSegmentProps) {
-  const draw = useSharedValue(1);
-
-  useEffect(() => {
-    draw.value = 1;
-  }, [dash, draw, index]);
-
-  const animatedProps = useAnimatedProps(() => ({
-    strokeDasharray: `${draw.value * dash} ${CIRCUMFERENCE - draw.value * dash}`,
-  }));
-
   const opacity = dimmed ? baseOpacity * 0.38 : baseOpacity;
 
   return (
-    <AnimatedCircle
-      animatedProps={animatedProps}
+    <Circle
       cx={CX}
       cy={CY}
       r={RADIUS}
@@ -105,18 +150,9 @@ const DonutSegment = memo(function DonutSegment({
       fill="none"
       strokeOpacity={opacity}
       strokeLinecap="butt"
-      strokeDashoffset={-startOffset}
-      rotation={-90}
-      origin={`${CX}, ${CY}`}
+      strokeDasharray={[dash, CIRCUMFERENCE - dash]}
+      strokeDashoffset={-(startOffset + TWELVE_OCLOCK_OFFSET)}
       filter={index === 0 && Platform.OS !== 'android' ? 'url(#budgetSegGlow)' : undefined}
-      onPress={
-        onSelectSegment
-          ? () => {
-              tapHaptic();
-              onSelectSegment(segmentId);
-            }
-          : undefined
-      }
     />
   );
 });
@@ -136,6 +172,9 @@ type Props = {
   selectedId?: string | null;
   onSelectSegment?: (id: string) => void;
   onLayout?: (event: LayoutChangeEvent) => void;
+  /** Locks parent scroll (e.g. FlatList) while the chart is being dragged. */
+  onInteractionStart?: () => void;
+  onInteractionEnd?: () => void;
 };
 
 export const BudgetAllocationChart = memo(function BudgetAllocationChart({
@@ -145,6 +184,8 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
   selectedId = null,
   onSelectSegment,
   onLayout,
+  onInteractionStart,
+  onInteractionEnd,
 }: Props) {
   const { colors, isLight } = useAppTheme();
   const mutedTextColor = isLight ? colors.textMuted : '#909090';
@@ -194,38 +235,188 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
   const hasSelection = Boolean(selectedId);
 
   const rotation = useSharedValue(0);
-  const startTouchAngle = useSharedValue(0);
-  const savedRotation = useSharedValue(0);
+  const prevTouchAngle = useSharedValue(0);
+  const isDragging = useSharedValue(false);
+
+  const notifyInteractionStart = useCallback(() => {
+    onInteractionStart?.();
+  }, [onInteractionStart]);
+
+  const notifyInteractionEnd = useCallback(() => {
+    onInteractionEnd?.();
+  }, [onInteractionEnd]);
+
+  const handleSegmentTap = useCallback(
+    (x: number, y: number, currentRotation: number) => {
+      if (!onSelectSegment) return;
+
+      const dx = x - CX;
+      const dy = y - CY;
+      const dist = Math.hypot(dx, dy);
+      if (dist < RING_INNER || dist > RING_OUTER) return;
+
+      let touchAngle = (Math.atan2(dy, dx) * 180) / Math.PI - currentRotation;
+      touchAngle = ((touchAngle % 360) + 360) % 360;
+
+      for (const arc of segmentArcs) {
+        let start = arc.midAngleDeg - arc.sweepDeg / 2;
+        let end = arc.midAngleDeg + arc.sweepDeg / 2;
+        start = ((start % 360) + 360) % 360;
+        end = ((end % 360) + 360) % 360;
+
+        const inRange =
+          start <= end
+            ? touchAngle >= start && touchAngle <= end
+            : touchAngle >= start || touchAngle <= end;
+
+        if (inRange) {
+          tapHaptic();
+          onSelectSegment(arc.id);
+          return;
+        }
+      }
+    },
+    [onSelectSegment, segmentArcs],
+  );
 
   const panGesture = useMemo(
     () =>
       Gesture.Pan()
-        .minDistance(10)
-        .onBegin((event) => {
-          const angle = Math.atan2(event.y - CY, event.x - CX);
-          startTouchAngle.value = angle;
-          savedRotation.value = rotation.value;
+        .minDistance(ROTATION_MIN_DISTANCE)
+        .onBegin(() => {
+          isDragging.value = true;
+          if (onInteractionStart) {
+            runOnJS(notifyInteractionStart)();
+          }
+        })
+        .onStart((event) => {
+          cancelAnimation(rotation);
+          prevTouchAngle.value = Math.atan2(event.y - CY, event.x - CX);
         })
         .onUpdate((event) => {
-          const angle = Math.atan2(event.y - CY, event.x - CX);
-          let delta = angle - startTouchAngle.value;
+          const dx = event.x - CX;
+          const dy = event.y - CY;
+          const angle = Math.atan2(dy, dx);
+          let delta = angle - prevTouchAngle.value;
+          prevTouchAngle.value = angle;
           if (delta > Math.PI) delta -= 2 * Math.PI;
           if (delta < -Math.PI) delta += 2 * Math.PI;
-          rotation.value = savedRotation.value + (delta * 180) / Math.PI;
+          // Near the center the angle is unstable, so skip rotation there while
+          // still tracking the angle to avoid a jump when the finger moves out.
+          if (Math.hypot(dx, dy) < ROTATION_DEAD_ZONE) return;
+          rotation.value += ((delta * 180) / Math.PI) * ROTATION_SENSITIVITY;
+        })
+        .onEnd((event) => {
+          const dx = event.x - CX;
+          const dy = event.y - CY;
+          const radiusSq = dx * dx + dy * dy;
+          if (radiusSq >= ROTATION_DEAD_ZONE * ROTATION_DEAD_ZONE) {
+            let angularVelocityDeg =
+              ((dx * event.velocityY - dy * event.velocityX) / radiusSq) *
+              (180 / Math.PI) *
+              ROTATION_SENSITIVITY;
+            angularVelocityDeg = Math.max(
+              -ROTATION_MAX_VELOCITY,
+              Math.min(ROTATION_MAX_VELOCITY, angularVelocityDeg),
+            );
+            if (Math.abs(angularVelocityDeg) >= ROTATION_MIN_DECAY_VELOCITY) {
+              rotation.value = withDecay({
+                velocity: angularVelocityDeg,
+                deceleration: ROTATION_DECAY,
+              });
+            }
+          }
+
+          isDragging.value = false;
+          if (onInteractionEnd) {
+            runOnJS(notifyInteractionEnd)();
+          }
+        })
+        .onFinalize(() => {
+          if (isDragging.value) {
+            isDragging.value = false;
+            if (onInteractionEnd) {
+              runOnJS(notifyInteractionEnd)();
+            }
+          }
         }),
-    [rotation, savedRotation, startTouchAngle],
+    [
+      isDragging,
+      notifyInteractionEnd,
+      notifyInteractionStart,
+      onInteractionEnd,
+      onInteractionStart,
+      prevTouchAngle,
+      rotation,
+    ],
+  );
+
+  const tapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDuration(250)
+        .onEnd((event) => {
+          if (!onSelectSegment) return;
+          runOnJS(handleSegmentTap)(event.x, event.y, rotation.value);
+        }),
+    [handleSegmentTap, onSelectSegment, rotation],
+  );
+
+  const chartGesture = useMemo(
+    () => Gesture.Exclusive(panGesture, tapGesture),
+    [panGesture, tapGesture],
   );
 
   const animatedGroupProps = useAnimatedProps(() => ({
-    rotation: rotation.value,
-    origin: `${CX}, ${CY}`,
+    transform: `rotate(${rotation.value}, ${CX}, ${CY})`,
   }));
+
+  const segmentLabelNodes = segmentLabels.map((label) => {
+    if (label.sweepDeg < MIN_LABEL_SWEEP_DEG) return null;
+
+    const selected = selectedId === label.id;
+    const dimmed = hasSelection && !selected;
+    const labelOpacity = dimmed ? label.baseOpacity * 0.42 : label.baseOpacity;
+    const inner = polarToXY(LEADER_INNER, label.midAngleDeg);
+    const outer = polarToXY(LEADER_OUTER, label.midAngleDeg);
+    const anchor = polarToXY(LABEL_RADIUS, label.midAngleDeg);
+    const lineColor = selected ? accentColor : mutedTextColor;
+    const textColor = selected ? colors.text : mutedTextColor;
+
+    return (
+      <G key={`label-${label.id}`}>
+        <Line
+          x1={inner.x}
+          y1={inner.y}
+          x2={outer.x}
+          y2={outer.y}
+          stroke={lineColor}
+          strokeWidth={selected ? 1.25 : 1}
+          strokeOpacity={labelOpacity}
+        />
+        <RotatingLabel
+          rotation={rotation}
+          x={anchor.x}
+          y={anchor.y}
+          fill={textColor}
+          fontWeight={selected ? '700' : '500'}
+          opacity={labelOpacity}
+          text={truncateLabel(label.name)}
+        />
+      </G>
+    );
+  });
 
   return (
     <View onLayout={onLayout} style={styles.chartBlock}>
-      <GestureDetector gesture={panGesture}>
-        <View style={styles.chartHalo}>
-          <Svg width={SVG_SIZE} height={SVG_SIZE} style={styles.chartSvg}>
+      <GestureDetector gesture={chartGesture}>
+        <View style={styles.chartHalo} collapsable={false}>
+          <Svg
+            width={SVG_SIZE}
+            height={SVG_SIZE}
+            style={styles.chartSvg}
+            pointerEvents="none"
+          >
             <Defs>
               <Filter id="budgetSegGlow" x="-30%" y="-30%" width="160%" height="160%">
                 <FeDropShadow dx={0} dy={0} stdDeviation={4} floodColor={accentColor} floodOpacity={0.53} />
@@ -264,55 +455,15 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
                     baseOpacity={arc.baseOpacity}
                     dimmed={dimmed}
                     accentColor={accentColor}
-                    segmentId={arc.id}
-                    onSelectSegment={onSelectSegment}
                   />
                 );
               })}
 
-              {segmentLabels.map((label) => {
-                if (label.sweepDeg < MIN_LABEL_SWEEP_DEG) return null;
-
-                const selected = selectedId === label.id;
-                const dimmed = hasSelection && !selected;
-                const labelOpacity = dimmed ? label.baseOpacity * 0.42 : label.baseOpacity;
-                const inner = polarToXY(LEADER_INNER, label.midAngleDeg);
-                const outer = polarToXY(LEADER_OUTER, label.midAngleDeg);
-                const anchor = polarToXY(LABEL_RADIUS, label.midAngleDeg);
-                const onRight = Math.cos((label.midAngleDeg * Math.PI) / 180) >= 0;
-                const textX = anchor.x + (onRight ? 4 : -4);
-                const textAnchor = onRight ? 'start' : 'end';
-                const lineColor = selected ? accentColor : mutedTextColor;
-                const textColor = selected ? colors.text : mutedTextColor;
-
-                return (
-                  <G key={`label-${label.id}`}>
-                    <Line
-                      x1={inner.x}
-                      y1={inner.y}
-                      x2={outer.x}
-                      y2={outer.y}
-                      stroke={lineColor}
-                      strokeWidth={selected ? 1.25 : 1}
-                      strokeOpacity={labelOpacity}
-                    />
-                    <SvgText
-                      x={textX}
-                      y={anchor.y}
-                      fill={textColor}
-                      fontSize={typography.micro}
-                      fontWeight={selected ? '700' : '500'}
-                      textAnchor={textAnchor}
-                      alignmentBaseline="middle"
-                      opacity={labelOpacity}
-                    >
-                      {truncateLabel(label.name)}
-                    </SvgText>
-                  </G>
-                );
-              })}
+              {segmentLabelNodes}
             </AnimatedG>
           </Svg>
+
+          <View style={styles.touchOverlay} collapsable={false} />
 
           <View
             pointerEvents="none"
@@ -351,8 +502,16 @@ const styles = StyleSheet.create({
     height: SVG_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'visible',
   },
   chartSvg: { position: 'absolute' },
+  chartSvgLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  touchOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+  },
   hub: {
     width: DONUT_SIZE - STROKE * 2 - 18,
     height: DONUT_SIZE - STROKE * 2 - 18,
