@@ -1,0 +1,40 @@
+---
+description: DM Mono reserved exclusively for transaction detail ARTICLES section
+alwaysApply: true
+---
+
+# DM Mono — articles section only
+
+DM Mono (`DMMono_400Regular`, `DMMono_500Medium`) is **exclusively** for the ARTICLES / receipt UI in transaction detail (`app/transaction-detail.tsx` — `TransactionReceiptCard`, itemized line amounts).
+
+## Everywhere else
+
+- Labels → Inter (`interMediumText`, `typographyKit`, etc.)
+- Money amounts → `moneyAmountTypography()` (Inter ExtraBold) from `apps/mobile/constants/theme.ts`
+
+## Bad — do not use DM Mono here
+
+- Dashboard / Accueil (`app/(tabs)/index.tsx`)
+- `BankAccountCard`, `CashAccountCard`, `LoanCard`
+- `TransactionRow` and other list rows
+- Debt, cash, portfolio, chart metrics
+
+```tsx
+// ❌ BAD — DM Mono on dashboard or cards
+fontFamily: 'DMMono_500Medium'
+import { ARTICLES_MONO_FONT } from '@/constants/theme' // in DashboardStatCard
+
+// ✅ GOOD — Inter ExtraBold for amounts
+import { moneyAmountTypography } from '@/constants/theme'
+style={moneyAmountTypography({ tier: 'stat' })}
+```
+
+## Good — articles section only
+
+```tsx
+// ✅ GOOD — transaction-detail ARTICLES / receipt lines only
+import { ARTICLES_MONO_FONT, articlesReceiptTypography } from '@/constants/theme'
+style={articlesReceiptTypography('medium')}
+```
+
+Reference tokens: `ARTICLES_MONO_FONT`, `articlesReceiptTypography()`, `moneyAmountTypography()` in `apps/mobile/constants/theme.ts`.

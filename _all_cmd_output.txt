@@ -1,0 +1,31 @@
+
+--- COMMAND 1 ---
+commit
+
+--- COMMAND 2 ---
+commit
+
+--- COMMAND 3 ---
+318688d3c6112b051a5103538b2796b4aac05d8e
+
+--- COMMAND 4 ---
+61:    commit_sha = sys.argv[1] if len(sys.argv) > 1 else "318688d3c6112b051a5103538b2796b4aac05d8e"
+65:    kind, body = read_object(commit_sha)
+72:        raise SystemExit(f"file not found at commit {commit_sha}: {rel_path}")
+75:    print(f"COMMIT={commit_sha}")
+
+--- COMMAND 5 ---
+Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.
+
+--- COMMAND 6 ---
+Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.
+
+--- COMMAND 7 ---
+Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.
+
+--- COMMAND 8 ---
+missing files
+
+--- COMMAND 9 ---
+
+--- COMMAND 10 ---

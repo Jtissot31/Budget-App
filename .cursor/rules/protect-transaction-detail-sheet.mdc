@@ -1,0 +1,19 @@
+﻿---
+description: Permanently protects TransactionDetailSheet.tsx — NEVER modify under any task
+globs: apps/mobile/components/TransactionDetailSheet.tsx
+alwaysApply: true
+---
+
+# PROTECTED FILE — DO NOT MODIFY
+
+`apps/mobile/components/TransactionDetailSheet.tsx` is **locked**. The user restored it from git (`318688d3` / `origin/main`). Agents must **NEVER** change this file.
+
+## Absolute rules
+
+- **NEVER** edit, rewrite, refactor, rename, move, or delete this file
+- **NEVER** change imports, styles, layout, theming, delete buttons, copy, props, hooks, or comments (except when the user explicitly names this file and requests a change)
+- **NEVER** modify as part of another task — including "while you are here", consistency passes, bug fixes elsewhere, design refreshes, or refactors
+- **NEVER** "improve", "modernize", or merge features from other branches into this sheet without explicit user instruction naming this file
+- If any task seems to require touching this file: **stop, report to the user, and do not proceed**
+
+No exceptions unless the user message explicitly requests changes to `TransactionDetailSheet.tsx` by name.

@@ -1,0 +1,108 @@
+Comparing files _git_head.tsx and _GIT_OLD.TSX
+***** _git_head.tsx
+    1:  import { useEffect, useMemo, useState } from 'react';
+    2:  import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+***** _GIT_OLD.TSX
+    1:  import { useMemo, useState } from 'react';
+    2:  import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+*****
+
+***** _git_head.tsx
+   13:  import { detailHeroAmount, rowTitleTextProps, rowValue, singleLineAmountProps } from '@/lib/textLayout';
+   14:  import { useSimulatedAccounts } from '@/hooks/useSimulatedAccounts';
+   15:  import {
+   16:    getTransactionPaymentMethodFieldLabel,
+   17:    resolveTransactionPaymentMethodLabel,
+   18:  } from '@/lib/accountTransactionFlow';
+   19:  import { deleteTransactionById, getSavingsGoals } from '@/lib/db';
+   20:  import { tapHaptic } from '@/lib/haptics';
+***** _GIT_OLD.TSX
+   13:  import { detailHeroAmount, rowTitleTextProps, rowValue, singleLineAmountProps } from '@/lib/textLayout';
+   14:  import { deleteTransactionById } from '@/lib/db';
+   15:  import { tapHaptic } from '@/lib/haptics';
+*****
+
+***** _git_head.tsx
+   22:  import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+   23:  import type { SavingsGoal, Transaction } from '@/types';
+   24:  
+***** _GIT_OLD.TSX
+   17:  import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+   18:  import type { Transaction } from '@/types';
+   19:  
+*****
+
+***** _git_head.tsx
+  103:    const [confirmVisible, setConfirmVisible] = useState(false);
+  104:    const storeAccounts = useSimulatedAccounts();
+  105:    const [transferGoals, setTransferGoals] = useState<Pick<SavingsGoal, 'id' | 'name'>[]>([]);
+  106:  
+  107:    useEffect(() => {
+  108:      if (!tx || tx.type !== 'transfer') {
+  109:        setTransferGoals([]);
+  110:        return;
+  111:      }
+  112:  
+  113:      let cancelled = false;
+  114:      void getSavingsGoals().then((goals) => {
+  115:        if (!cancelled) setTransferGoals(goals);
+  116:      });
+  117:  
+  118:      return () => {
+  119:        cancelled = true;
+  120:      };
+  121:    }, [tx?.id, tx?.type]);
+  122:  
+  123:    const paymentMethodLabel = useMemo(
+  124:      () => (tx ? resolveTransactionPaymentMethodLabel(tx, { accounts: storeAccounts, savingsGoals: transferGoals }) : null),
+  125:      [storeAccounts, transferGoals, tx],
+  126:    );
+  127:  
+***** _GIT_OLD.TSX
+   98:    const [confirmVisible, setConfirmVisible] = useState(false);
+   99:  
+*****
+
+***** _git_head.tsx
+  130:    const isIncome = tx.type === 'income';
+  131:    const isTransfer = tx.type === 'transfer';
+  132:    const visible = !!tx;
+  133:    const paymentMethodFieldLabel = getTransactionPaymentMethodFieldLabel(tx.type);
+  134:    const paymentMethodIcon = isTransfer ? 'swap-horizontal-outline' : isIncome ? 'wallet-outline' : 'card-outline';
+  135:    const itemizedNote = parseItemizedNote(tx.note);
+***** _GIT_OLD.TSX
+  102:    const isIncome = tx.type === 'income';
+  103:    const visible = !!tx;
+  104:    const itemizedNote = parseItemizedNote(tx.note);
+*****
+
+***** _git_head.tsx
+  208:  
+  209:        {paymentMethodLabel ? (
+  210:          <SurfaceCard style={styles.paymentMethodCardShell} innerStyle={styles.paymentMethodCardInner} padding={spacing.md}>
+  211:            <Ionicons name={paymentMethodIcon} size={14} color={colors.textMuted} />
+  212:            <View style={styles.detailCopy}>
+  213:              <Text style={styles.detailLabel}>{paymentMethodFieldLabel}</Text>
+  214:              <Text style={styles.detailValue} numberOfLines={3}>
+  215:                {paymentMethodLabel}
+  216:              </Text>
+  217:            </View>
+  218:          </SurfaceCard>
+  219:        ) : null}
+  220:  
+  221:        <SurfaceCard style={styles.syncCardShell} innerStyle={styles.syncCardInner} padding={spacing.md}>
+***** _GIT_OLD.TSX
+  177:  
+  178:        <SurfaceCard style={styles.syncCardShell} innerStyle={styles.syncCardInner} padding={spacing.md}>
+*****
+
+***** _git_head.tsx
+  371:      detailValue: { color: colors.text, fontSize: typography.meta, fontWeight: '700', marginTop: 2 },
+  372:      paymentMethodCardShell: { marginBottom: spacing.md },
+  373:      paymentMethodCardInner: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
+  374:      syncCardShell: { marginBottom: spacing.md },
+***** _GIT_OLD.TSX
+  328:      detailValue: { color: colors.text, fontSize: typography.meta, fontWeight: '700', marginTop: 2 },
+  329:      syncCardShell: { marginBottom: spacing.md },
+*****
+

@@ -1,0 +1,180 @@
+﻿HEAD: 318688d3c6112b051a5103538b2796b4aac05d8e
+origin/main: 318688d3c6112b051a5103538b2796b4aac05d8e
+--- log TransactionDetailSheet ---
+318688d Add material design icons library
+5645f82 Afficher la carte payeuse sur les depenses et corriger simulatedAccounts
+05e0e92 Mise a jour BudgetTracker - UI, objectifs, fond charcoal, chat IA
+c3c141b Am├⌐liorer l'UI mobile BudgetTracker
+--- status ---
+ M apps/mobile/app/(tabs)/accounts.tsx
+ M apps/mobile/app/(tabs)/budgets.tsx
+ M apps/mobile/app/(tabs)/goals.tsx
+ M apps/mobile/app/(tabs)/index.tsx
+ M apps/mobile/app/(tabs)/transactions.tsx
+ M apps/mobile/app/_layout.tsx
+ M apps/mobile/app/account-detail.tsx
+ M apps/mobile/app/add-transaction.tsx
+ M apps/mobile/app/budget-category-transactions.tsx
+ M apps/mobile/app/merchant-detail.tsx
+ M apps/mobile/app/merchant-receipts.tsx
+ M apps/mobile/app/savings-goal-transactions.tsx
+ M apps/mobile/app/scan.tsx
+ M apps/mobile/app/wealth-asset-detail.tsx
+ M apps/mobile/app/wealth-asset-transactions.tsx
+ M apps/mobile/components/AgendaView.tsx
+ M apps/mobile/components/BottomSheet.tsx
+ M apps/mobile/components/BudgetAllocationChart.tsx
+ M apps/mobile/components/ConfirmDeleteModal.tsx
+ M apps/mobile/components/FloatingTabBar.tsx
+ M apps/mobile/components/GlassContainer.tsx
+ M apps/mobile/components/IconPickerSheet.tsx
+ M apps/mobile/components/MerchantEditModal.tsx
+ M apps/mobile/components/MerchantLogo.tsx
+ M apps/mobile/components/MinimalDatePicker.tsx
+ M apps/mobile/components/PaymentDetailSheet.tsx
+ M apps/mobile/components/RecurringPaymentsForm.tsx
+ M apps/mobile/components/SavingsGoalsForm.tsx
+ M apps/mobile/components/ThemedConfirmModal.tsx
+M  apps/mobile/components/TransactionDetailSheet.tsx
+ M apps/mobile/components/TransactionRow.tsx
+ M apps/mobile/components/chat/MessageBubble.tsx
+ M apps/mobile/components/chat/StockCard.tsx
+ M apps/mobile/components/chat/SummaryCard.tsx
+ M apps/mobile/components/chat/TypingIndicator.tsx
+ M apps/mobile/constants/theme.ts
+ M apps/mobile/lib/accountTransactionFlow.ts
+ M apps/mobile/lib/db.ts
+ M apps/mobile/lib/itemizedNote.ts
+ M apps/mobile/types/index.ts
+?? _5645_tx.tsx
+?? _HEAD_tx.tsx
+?? _cmd_out.txt
+?? _extract_git_file.py
+?? _restore_report.txt
+?? apps/mobile/app/contact-detail.tsx
+?? apps/mobile/app/loan-detail.tsx
+?? apps/mobile/components/BudgetCategoryPicker.tsx
+?? apps/mobile/components/ContactDirectory.tsx
+?? apps/mobile/components/ContactFormModal.tsx
+?? apps/mobile/components/ItemizedArticlesEditor.tsx
+?? apps/mobile/components/MerchantDirectory.tsx
+?? apps/mobile/components/ReceiptCaptureActions.tsx
+?? apps/mobile/components/SyncStatusBadge.tsx
+?? apps/mobile/components/TransactionAiInsightCard.tsx
+?? apps/mobile/components/TransferModePicker.tsx
+?? apps/mobile/hooks/useSavingsGoals.ts
+?? apps/mobile/lib/categoryInference.ts
+?? apps/mobile/lib/contactHistory.ts
+?? apps/mobile/lib/formatFriendlyDateLabel.ts
+?? apps/mobile/lib/loanPresentation.ts
+?? apps/mobile/lib/localDateInput.ts
+?? apps/mobile/lib/mortgageWealthSync.ts
+?? apps/mobile/lib/propertyPhoto.ts
+?? apps/mobile/lib/receiptCapture.ts
+?? apps/mobile/lib/receiptScan.ts
+?? apps/mobile/lib/syncLoanRecurringPayment.ts
+?? apps/mobile/lib/transactionInsight.ts
+?? extract_git_file.py
+--- diff HEAD TransactionDetailSheet ---
+diff --git a/apps/mobile/components/TransactionDetailSheet.tsx b/apps/mobile/components/TransactionDetailSheet.tsx
+index 43ab67d..965a404 100644
+--- a/apps/mobile/components/TransactionDetailSheet.tsx
++++ b/apps/mobile/components/TransactionDetailSheet.tsx
+@@ -1,4 +1,4 @@
+-import { useEffect, useMemo, useState } from 'react';
++import { useMemo, useState } from 'react';
+ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+ import { Image } from 'expo-image';
+ import { Ionicons } from '@expo/vector-icons';
+@@ -11,16 +11,11 @@ import { TransactionAvatar } from '@/components/TransactionAvatar';
+ import type { IconName } from '@/constants/categoryOptions';
+ import { radius, spacing, typography, type AppColors } from '@/constants/theme';
+ import { detailHeroAmount, rowTitleTextProps, rowValue, singleLineAmountProps } from '@/lib/textLayout';
+-import { useSimulatedAccounts } from '@/hooks/useSimulatedAccounts';
+-import {
+-  getTransactionPaymentMethodFieldLabel,
+-  resolveTransactionPaymentMethodLabel,
+-} from '@/lib/accountTransactionFlow';
+-import { deleteTransactionById, getSavingsGoals } from '@/lib/db';
++import { deleteTransactionById } from '@/lib/db';
+ import { tapHaptic } from '@/lib/haptics';
+ import { useAppTheme } from '@/lib/themeContext';
+ import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+-import type { SavingsGoal, Transaction } from '@/types';
++import type { Transaction } from '@/types';
+ 
+ type Props = {
+   transaction: Transaction | null;
+@@ -100,37 +95,11 @@ export function TransactionDetailSheet({ transaction: tx, onClose, onDeleted }:
+   const styles = useMemo(() => createStyles(colors), [colors]);
+   const insets = useSafeAreaInsets();
+   const [confirmVisible, setConfirmVisible] = useState(false);
+-  const storeAccounts = useSimulatedAccounts();
+-  const [transferGoals, setTransferGoals] = useState<Pick<SavingsGoal, 'id' | 'name'>[]>([]);
+-
+-  useEffect(() => {
+-    if (!tx || tx.type !== 'transfer') {
+-      setTransferGoals([]);
+-      return;
+-    }
+-
+-    let cancelled = false;
+-    void getSavingsGoals().then((goals) => {
+-      if (!cancelled) setTransferGoals(goals);
+-    });
+-
+-    return () => {
+-      cancelled = true;
+-    };
+-  }, [tx?.id, tx?.type]);
+-
+-  const paymentMethodLabel = useMemo(
+-    () => (tx ? resolveTransactionPaymentMethodLabel(tx, { accounts: storeAccounts, savingsGoals: transferGoals }) : null),
+-    [storeAccounts, transferGoals, tx],
+-  );
+ 
+   if (!tx) return null;
+ 
+   const isIncome = tx.type === 'income';
+-  const isTransfer = tx.type === 'transfer';
+   const visible = !!tx;
+-  const paymentMethodFieldLabel = getTransactionPaymentMethodFieldLabel(tx.type);
+-  const paymentMethodIcon = isTransfer ? 'swap-horizontal-outline' : isIncome ? 'wallet-outline' : 'card-outline';
+   const itemizedNote = parseItemizedNote(tx.note);
+   const syncStatus = getSyncStatusMeta(tx.syncStatus, colors);
+   const editTransaction = () => {
+@@ -205,18 +174,6 @@ export function TransactionDetailSheet({ transaction: tx, onClose, onDeleted }:
+         </SurfaceCard>
+       </View>
+ 
+-      {paymentMethodLabel ? (
+-        <SurfaceCard style={styles.paymentMethodCardShell} innerStyle={styles.paymentMethodCardInner} padding={spacing.md}>
+-          <Ionicons name={paymentMethodIcon} size={14} color={colors.textMuted} />
+-          <View style={styles.detailCopy}>
+-            <Text style={styles.detailLabel}>{paymentMethodFieldLabel}</Text>
+-            <Text style={styles.detailValue} numberOfLines={3}>
+-              {paymentMethodLabel}
+-            </Text>
+-          </View>
+-        </SurfaceCard>
+-      ) : null}
+-
+       <SurfaceCard style={styles.syncCardShell} innerStyle={styles.syncCardInner} padding={spacing.md}>
+         <View style={[styles.syncIconWrap, { backgroundColor: syncStatus.color + '1F' }]}>
+           <Ionicons name={syncStatus.icon} size={15} color={syncStatus.color} />
+@@ -367,8 +324,6 @@ function createStyles(colors: AppColors) {
+     detailCopy: { flex: 1, minWidth: 0 },
+     detailLabel: { color: colors.textMuted, fontSize: typography.micro },
+     detailValue: { color: colors.text, fontSize: typography.meta, fontWeight: '700', marginTop: 2 },
+-    paymentMethodCardShell: { marginBottom: spacing.md },
+-    paymentMethodCardInner: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
+     syncCardShell: { marginBottom: spacing.md },
+     syncCardInner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+     syncIconWrap: {
+_5645_tx.tsx size=15422 has ReceiptCaptureActions=False has TransactionAiInsightCard=False has DashboardSectionLabel=False
+_HEAD_tx.tsx size=17303 has ReceiptCaptureActions=False has TransactionAiInsightCard=False has DashboardSectionLabel=False
+RESTORED from 5645f825
+--- post-restore diff ---
+--- post status ---
+?? apps/mobile/components/ReceiptCaptureActions.tsx
+?? apps/mobile/components/TransactionAiInsightCard.tsx
