@@ -141,6 +141,7 @@ function RootLayoutContent() {
             <Stack.Screen name="goal-detail" options={{ headerShown: false }} />
             <Stack.Screen name="savings-goal-transactions" options={{ headerShown: false }} />
             <Stack.Screen name="budget-category-transactions" options={{ headerShown: false }} />
+            <Stack.Screen name="savings-goals" options={{ headerShown: false }} />
             <Stack.Screen name="paycheck-allocation" options={{ headerShown: false }} />
             <Stack.Screen name="lucide-icons" options={{ headerShown: false }} />
             <Stack.Screen name="scan" options={{ title: 'Scanner', presentation: 'modal' }} />

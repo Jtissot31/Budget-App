@@ -17,6 +17,7 @@ import { AppIcon } from '@/components/icons/AppIcon';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BudgetShortcutCards } from '@/components/budget/BudgetShortcutCards';
 import { BottomSheet } from '@/components/BottomSheet';
 import { BudgetAllocationChart } from '@/components/BudgetAllocationChart';
 import { DashboardCard } from '@/components/DashboardCard';
@@ -235,6 +236,10 @@ export default function BudgetScreen() {
   const listHeader = useMemo(
     () => (
       <>
+        <BudgetShortcutCards
+          onPressPlans={() => router.push('/(tabs)/goals')}
+          onPressSavingsGoals={() => router.push('/savings-goals')}
+        />
         <BudgetPageHeader onAdd={handleAddCategory} />
         {rows.length === 0 ? (
           <BudgetCategoriesEmpty mutedTextColor={mutedTextColor} onAddCategory={handleAddCategory} />
@@ -271,6 +276,7 @@ export default function BudgetScreen() {
       highlightedCategoryId,
       limitTotal,
       mutedTextColor,
+      router,
       rows.length,
       spentTotal,
     ],
