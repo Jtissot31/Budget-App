@@ -13,6 +13,7 @@ import {
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { useRouter } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -47,7 +48,7 @@ import { DashboardStatCard } from '@/components/DashboardStatCard';
 import { HomeInsightCard } from '@/components/dashboard/HomeInsightCard';
 import { HomeAvailableNowHero } from '@/components/dashboard/HomeAvailableNowHero';
 import { HomePlansCarousel } from '@/components/dashboard/HomePlansCarousel';
-import { HomeQuickStatsRow } from '@/components/dashboard/HomeQuickStatsRow';
+import { PaycheckAllocationWidget } from '@/components/PaycheckAllocationWidget';
 import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
 import {
   getDashboard,
@@ -1575,22 +1576,40 @@ export default function HomeScreen() {
           >
             {greetingLine()}, {displayName}
         </Text>
-          <Pressable
-            onPress={() => {
-              tapHaptic();
-              router.push('/settings');
-            }}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Ouvrir les réglages"
-            style={({ pressed }) => [
-              styles.headerIconButton,
-              { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
-              pressed && styles.pressed,
-            ]}
-          >
-            <Ionicons name="settings-outline" size={21} color={colors.textSecondary} />
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable
+              onPress={() => {
+                tapHaptic();
+                router.push('/lucide-icons');
+              }}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Ouvrir le catalogue d'icônes Lucide"
+              style={({ pressed }) => [
+                styles.headerIconButton,
+                { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
+                pressed && styles.pressed,
+              ]}
+            >
+              <AppIcon family="ionicons" name="grid-outline" size={20} color={colors.textSecondary} />
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                tapHaptic();
+                router.push('/settings');
+              }}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Ouvrir les réglages"
+              style={({ pressed }) => [
+                styles.headerIconButton,
+                { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
+                pressed && styles.pressed,
+              ]}
+            >
+              <AppIcon family="ionicons" name="settings-outline" size={21} color={colors.textSecondary} />
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -1602,18 +1621,15 @@ export default function HomeScreen() {
         />
       </View>
 
-      <View style={dashStyles.sectionBlock}>
-        <HomeQuickStatsRow
-          monthlyIncome={data.monthlyIncome}
-          monthlyExpenses={data.monthlyExpenses}
-        />
-      </View>
-
       {primaryInsight ? (
-        <View style={dashStyles.sectionBlock}>
+        <View style={dashStyles.sectionAfterHero}>
           <HomeInsightCard title={primaryInsight.title} message={primaryInsight.body} />
         </View>
       ) : null}
+
+      <View style={dashStyles.sectionBlock}>
+        <PaycheckAllocationWidget />
+      </View>
 
       <View style={dashStyles.sectionBlock}>
         <HomePlansCarousel />
@@ -1979,6 +1995,11 @@ const styles = StyleSheet.create({
     minWidth: 0,
     ...PAGE_TITLE_STYLE,
     color: C.text,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   headerIconButton: {
     width: 40,
@@ -2683,7 +2704,10 @@ const dashStyles = StyleSheet.create({
   },
   sectionFirst: {
     paddingTop: PAGE_TITLE_CONTENT_GAP,
-    paddingBottom: spacing.sm,
+    paddingBottom: 0,
+  },
+  sectionAfterHero: {
+    paddingTop: spacing.md,
   },
   sectionBlock: {
     paddingTop: spacing.lg,

@@ -1,6 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { interMediumText, interSemiboldText, radius, spacing, typography } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
@@ -53,7 +53,7 @@ export function HomePlansCarousel() {
     <View style={styles.section}>
       <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
-          <MaterialIcons name="auto-awesome" size={16} color={colors.text} />
+          <AppIcon family="material" name="auto-awesome" size={16} color={colors.text} />
           <Text style={[styles.headerTitle, { color: colors.text }, interSemiboldText]}>Tes plans</Text>
         </View>
         <Pressable
@@ -82,7 +82,7 @@ export function HomePlansCarousel() {
               key={plan.id}
               style={[styles.planCard, { backgroundColor: colors.containerBackground }]}
             >
-              <MaterialCommunityIcons name={plan.icon} size={20} color={colors.textSecondary} />
+              <AppIcon family="material-community" name={plan.icon} size={20} color={colors.textSecondary} />
               <Text style={[styles.planName, { color: colors.text }, interSemiboldText]} numberOfLines={2}>
                 {plan.name}
               </Text>

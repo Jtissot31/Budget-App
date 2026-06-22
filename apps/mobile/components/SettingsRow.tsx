@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   jakartaMediumText,
   jakartaSemiboldText,
@@ -93,7 +93,8 @@ function RowCopy({
     <View style={styles.copy}>
       {icon ? (
         <View style={[styles.iconWell, { backgroundColor: colors.surfaceElevated }]}>
-          <Ionicons
+          <AppIcon
+            family="ionicons"
             name={icon}
             size={17}
             color={destructive ? colors.danger : colors.textSecondary}

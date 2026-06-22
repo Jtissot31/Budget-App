@@ -27,6 +27,7 @@ export function buildCompactSparklinePaths(
   chartWidth: number,
   chartHeight: number,
   verticalPadding = 8,
+  horizontalPadding = 0,
 ): { linePath: string; fillPath: string } {
   if (values.length < 2 || chartWidth <= 0 || chartHeight <= 0) {
     return { linePath: '', fillPath: '' };
@@ -35,10 +36,10 @@ export function buildCompactSparklinePaths(
   const { yMin, yMax } = computeYDomain(values);
   const range = yMax - yMin;
   const innerHeight = chartHeight - verticalPadding * 2;
-  const plotWidth = Math.max(chartWidth, 1);
+  const plotWidth = Math.max(chartWidth - horizontalPadding * 2, 1);
 
   const pts: ChartPoint[] = values.map((value, index) => {
-    const x = (index / Math.max(values.length - 1, 1)) * plotWidth;
+    const x = horizontalPadding + (index / Math.max(values.length - 1, 1)) * plotWidth;
     const y = verticalPadding + (1 - (value - yMin) / range) * innerHeight;
     return { x, y };
   });

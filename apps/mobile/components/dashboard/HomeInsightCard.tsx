@@ -1,6 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { interMediumText, interSemiboldText, radius, spacing, typography } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -23,12 +22,12 @@ export function HomeInsightCard({ title, message }: Props) {
       ]}
     >
       <View style={styles.badgeRow}>
-        <MaterialIcons name="auto-awesome" size={13} color={colors.accentGreen} />
+        <AppIcon family="material" name="auto-awesome" size={13} color={colors.accentGreen} />
         <Text style={[styles.badgeText, { color: colors.accentGreen }, interSemiboldText]}>INSIGHT</Text>
       </View>
 
       <View style={styles.bodyRow}>
-        <MaterialCommunityIcons name="alert-circle-outline" size={18} color={colors.warning} />
+        <AppIcon family="material-community" name="alert-circle-outline" size={18} color={colors.warning} />
         <View style={styles.copy}>
           <Text style={[styles.title, { color: colors.text }, interSemiboldText]} numberOfLines={2}>
             {title}

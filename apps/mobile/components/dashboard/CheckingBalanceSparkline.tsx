@@ -11,9 +11,10 @@ const SPARKLINE_FILL_TOP_OPACITY = 0.12;
 
 type Props = {
   values: number[];
+  horizontalInset?: number;
 };
 
-export function CheckingBalanceSparkline({ values }: Props) {
+export function CheckingBalanceSparkline({ values, horizontalInset = 8 }: Props) {
   const gradientId = `checking-spark-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const [width, setWidth] = useState(0);
   const { accent, danger } = planFinanceKit.colors;
@@ -24,8 +25,8 @@ export function CheckingBalanceSparkline({ values }: Props) {
   }, [accent, danger, values]);
 
   const { linePath, fillPath } = useMemo(
-    () => buildCompactSparklinePaths(values, width, CHECKING_SPARKLINE_HEIGHT),
-    [values, width],
+    () => buildCompactSparklinePaths(values, width, CHECKING_SPARKLINE_HEIGHT, 8, horizontalInset),
+    [horizontalInset, values, width],
   );
 
   const handleLayout = (event: LayoutChangeEvent) => {

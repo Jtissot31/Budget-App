@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { PageTransition } from '@/components/PageTransition';
@@ -67,6 +68,7 @@ import { useAppTheme } from '@/lib/themeContext';
 type PickerKind = 'currency' | 'language' | 'region' | null;
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isLight, mode, setMode } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -452,6 +454,19 @@ export default function SettingsScreen() {
                 </Text>
               </Pressable>
             </View>
+          </SettingsSection>
+
+          <SettingsSection title="Dev (temporaire)">
+            <SettingsNavigationRow
+              label="Catalogue icônes Lucide"
+              hint="Parcourir et choisir une icône visuellement."
+              icon="grid-outline"
+              onPress={() => {
+                tapHaptic();
+                router.push('/lucide-icons');
+              }}
+              isLast
+            />
           </SettingsSection>
 
           <Text style={[styles.footer, { color: colors.textMuted }]}>Budget Tracker · v1.0</Text>

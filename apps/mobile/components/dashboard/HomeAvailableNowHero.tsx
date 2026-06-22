@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { CheckingBalanceSparkline } from '@/components/dashboard/CheckingBalanceSparkline';
 import { NetWorthAmountRow } from '@/components/NetWorthAmountRow';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
@@ -28,15 +28,7 @@ export function HomeAvailableNowHero({ checkingBalance, monthlyNetFlux, checking
   const fluxColor = monthlyNetFlux >= 0 ? colors.accentGreen : colors.danger;
 
   return (
-    <View
-      style={[
-        styles.card,
-        {
-          backgroundColor: colors.containerBackground,
-          borderColor: colors.containerBorder,
-        },
-      ]}
-    >
+    <View style={styles.hero}>
       <DashboardSectionLabel style={styles.eyebrow}>DISPONIBLE MAINTENANT</DashboardSectionLabel>
 
       <View style={styles.amountRow}>
@@ -57,7 +49,8 @@ export function HomeAvailableNowHero({ checkingBalance, monthlyNetFlux, checking
           }}
           style={({ pressed }) => [styles.eyeButton, pressed && styles.pressed]}
         >
-          <MaterialCommunityIcons
+          <AppIcon
+            family="material-community"
             name={balancesHidden ? 'eye-off-outline' : 'eye-outline'}
             size={22}
             color={colors.textSecondary}
@@ -83,12 +76,9 @@ export function HomeAvailableNowHero({ checkingBalance, monthlyNetFlux, checking
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: 13,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: spacing.lg,
+  hero: {
     gap: spacing.sm,
-    overflow: 'hidden',
+    overflow: 'visible',
   },
   eyebrow: {
     marginBottom: spacing.xs,
@@ -111,14 +101,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   sparklineClip: {
-    marginHorizontal: -spacing.lg,
-    marginBottom: -spacing.lg,
-    marginTop: spacing.xs,
-    paddingBottom: 18,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xl,
     overflow: 'hidden',
-    backgroundColor: 'transparent',
-    borderBottomLeftRadius: 13,
-    borderBottomRightRadius: 13,
   },
   pressed: {
     opacity: 0.78,

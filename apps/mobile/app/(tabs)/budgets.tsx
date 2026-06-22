@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -579,7 +580,7 @@ function BudgetCategoriesEmpty({
         </View>
       </View>
       <DashboardCard innerStyle={allocStyles.emptyCardInner} padding={spacing.xl}>
-        <Ionicons name="pie-chart-outline" size={32} color={mutedTextColor} />
+        <AppIcon family="ionicons" name="pie-chart-outline" size={32} color={mutedTextColor} />
         <Text style={[allocStyles.emptyTitle, { color: colors.text }]}>Aucune catégorie active</Text>
         <Text style={[allocStyles.emptyHint, { color: mutedTextColor }]}>
           Ajoute une limite par catégorie pour visualiser les portions du budget.

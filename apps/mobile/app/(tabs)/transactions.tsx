@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AgendaView, type AgendaViewRef } from '@/components/AgendaView';
@@ -437,7 +437,7 @@ export default function TransactionsScreen() {
       <View style={styles.topBar}>
         <Text style={[styles.title, { color: colors.text }]}>Transactions</Text>
         <Pressable onPress={() => router.push('/scan')} hitSlop={12} style={styles.scanIcon}>
-          <Ionicons name="scan-outline" size={22} color={colors.textMuted} />
+          <AppIcon family="ionicons" name="scan-outline" size={22} color={colors.textMuted} />
         </Pressable>
       </View>
       <View style={[styles.tabsWrap, activeView === 'history' && styles.tabsWrapHistory]}>
@@ -469,7 +469,7 @@ export default function TransactionsScreen() {
             },
           ]}
         >
-          <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+          <AppIcon family="ionicons" name="search-outline" size={18} color={colors.textMuted} />
           <TextInput
             style={[styles.search, { color: colors.text }]}
             placeholder="Rechercher"
@@ -488,7 +488,8 @@ export default function TransactionsScreen() {
             }}
             style={styles.filterIconBtn}
           >
-            <Ionicons
+            <AppIcon
+              family="ionicons"
               name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
               size={20}
               color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
@@ -551,7 +552,7 @@ export default function TransactionsScreen() {
             ListEmptyComponent={
               <DashboardCard padding={spacing.lg} innerStyle={styles.historyEmptyInner}>
                 <View style={[styles.historyEmptyIcon, { backgroundColor: colors.surfaceElevated }]}>
-                  <Ionicons name="receipt-outline" size={22} color={colors.textMuted} />
+                  <AppIcon family="ionicons" name="receipt-outline" size={22} color={colors.textMuted} />
                 </View>
                 <Text style={[styles.historyEmptyTitle, { color: colors.text }]}>
                   {historyHasActiveFilters ? 'Aucun résultat' : 'Aucune transaction'}
@@ -574,7 +575,7 @@ export default function TransactionsScreen() {
                       pressed && styles.pressed,
                     ]}
                   >
-                    <Ionicons name="scan-outline" size={16} color={colors.background} />
+                    <AppIcon family="ionicons" name="scan-outline" size={16} color={colors.background} />
                     <Text style={[styles.historyEmptyCtaText, { color: colors.background }]}>Scanner un reçu</Text>
                   </Pressable>
                 ) : null}
