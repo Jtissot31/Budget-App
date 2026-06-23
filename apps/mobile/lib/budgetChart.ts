@@ -45,19 +45,5 @@ export function lightenHex(color: string, amount = 0.22) {
 }
 
 export function getDonutVisualFractions(segments: BudgetChartSegment[]): number[] {
-  const rawFractions = segments.map((seg) => Math.max(0, seg.fraction));
-  const positiveCount = rawFractions.filter((frac) => frac > 0).length;
-  if (positiveCount === 0) return rawFractions;
-
-  const minFrac = Math.min(MIN_SWEEP_DEGREES / 360, 0.72 / positiveCount);
-  const smallCount = rawFractions.filter((frac) => frac > 0 && frac < minFrac).length;
-  const fixedTotal = smallCount * minFrac;
-  const largeTotal = rawFractions.reduce((sum, frac) => (frac >= minFrac ? sum + frac : sum), 0);
-  const scale = largeTotal > 0 ? Math.max(0, 1 - fixedTotal) / largeTotal : 0;
-
-  return rawFractions.map((frac) => {
-    if (frac <= 0) return 0;
-    if (frac < minFrac) return minFrac;
-    return frac * scale;
-  });
+  return segments.map((seg) => Math.max(0, seg.fraction));
 }
