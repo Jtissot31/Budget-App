@@ -6,7 +6,7 @@ import { ensureDisplayLanguageFromDevice, hydrateRuntimePreferences } from './se
 
 import { hydrateRFAOnBoot } from './ai/rfaService';
 import { evaluateAlerts } from './ai/alertService';
-import { seedDemoTransactionsIfMissing } from './seed';
+import { ensureAverageUserBudgetBaseline, seedDemoTransactionsIfMissing } from './seed';
 
 
 
@@ -114,6 +114,7 @@ export async function ensureDbReady(): Promise<void> {
 
   try {
 
+    await withTimeout(ensureAverageUserBudgetBaseline(), 'Budget baseline seeding', DB_INIT_TIMEOUT_MS);
     await withTimeout(seedDemoTransactionsIfMissing(), 'Demo data seeding', DB_INIT_TIMEOUT_MS);
 
     await ensureDisplayLanguageFromDevice();

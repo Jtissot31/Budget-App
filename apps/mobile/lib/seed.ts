@@ -1,5 +1,6 @@
 import {
-  BUDGET_PRESETS,
+  AVERAGE_USER_BUDGET_PRESETS,
+  AVERAGE_USER_MONTHLY_BUDGET_TOTAL,
   DEFAULT_CATEGORIES,
   INCOME_CATEGORY,
   TRANSFER_CATEGORY,
@@ -15,6 +16,7 @@ import {
   ensureCashAccount,
   getSimulatedAccounts,
   getDb,
+  getSetting,
   getTransactionCount,
   getVisibleTransactionCount,
   getWealthAssets,
@@ -369,14 +371,11 @@ export async function ensureSeedCatalog(): Promise<void> {
     await upsertCategory(category);
   }
 
-  for (const preset of BUDGET_PRESETS) {
+  for (const preset of AVERAGE_USER_BUDGET_PRESETS) {
     await upsertCategoryBudget(preset.id, preset.defaultLimit);
   }
 
-  await setSetting(
-    'monthly_budget_limit',
-    String(BUDGET_PRESETS.reduce((sum, preset) => sum + preset.defaultLimit, 0)),
-  );
+  await setSetting('monthly_budget_limit', String(AVERAGE_USER_MONTHLY_BUDGET_TOTAL));
 
   await seedDemoAccounts();
   await seedDemoPatrimoineWealthAssetsIfEmpty();
@@ -412,6 +411,111 @@ export async function seedDemoTransactionsIfMissing(): Promise<boolean> {
 
   dataEvents.emit();
   return true;
+}
+
+const BUDGET_BASELINE_SEED_VERSION = '2';
+
+/**
+ * Wipes user budget categories and restores the average-user baseline (10 categories).
+ * Reassigns existing transactions to the closest baseline category.
+ */
+export async function resetBudgetCategoriesToBaseline(): Promise<void> {
+  const db = await getDb();
+  const baselinePresets = AVERAGE_USER_BUDGET_PRESETS;
+  const baselineIds = new Set(baselinePresets.map((preset) => preset.id));
+  const protectedIds = new Set([
+    UNCATEGORIZED_TRANSACTION_CATEGORY.id,
+    TRANSFER_CATEGORY.id,
+    INCOME_CATEGORY.id,
+    ...baselineIds,
+  ]);
+  const baselineCategories = baselinePresets.map(({ id, name, icon, color }) => ({
+    id,
+    name,
+    icon,
+    color,
+  }));
+
+  await upsertCategory(UNCATEGORIZED_TRANSACTION_CATEGORY);
+  await upsertCategory(TRANSFER_CATEGORY);
+  await upsertCategory(INCOME_CATEGORY);
+  for (const category of DEFAULT_CATEGORIES) {
+    await upsertCategory(category);
+  }
+  for (const category of baselineCategories) {
+    await upsertCategory(category);
+  }
+
+  const expenseCategories = baselineCategories;
+  const transactions = await db.getAllAsync<{
+    id: string;
+    label: string;
+    type: 'expense' | 'income';
+    category_id: string;
+  }>('SELECT id, label, type, category_id FROM transactions');
+
+  for (const transaction of transactions) {
+    if (transaction.type === 'income') {
+      if (transaction.category_id !== INCOME_CATEGORY.id) {
+        await db.runAsync('UPDATE transactions SET category_id = ? WHERE id = ?', [
+          INCOME_CATEGORY.id,
+          transaction.id,
+        ]);
+      }
+      continue;
+    }
+
+    const nextCategoryId =
+      inferCategoryId(transaction.label, expenseCategories, expenseCategories[0]?.id ?? null) ??
+      expenseCategories[0]?.id ??
+      UNCATEGORIZED_TRANSACTION_CATEGORY.id;
+
+    if (nextCategoryId !== transaction.category_id) {
+      await db.runAsync('UPDATE transactions SET category_id = ? WHERE id = ?', [
+        nextCategoryId,
+        transaction.id,
+      ]);
+    }
+  }
+
+  const recurringPayments = await db.getAllAsync<{
+    id: string;
+    name: string;
+    category_id: string | null;
+  }>('SELECT id, name, category_id FROM recurring_payments WHERE category_id IS NOT NULL');
+
+  for (const payment of recurringPayments) {
+    const nextCategoryId = inferCategoryId(payment.name, expenseCategories, null);
+    if (nextCategoryId !== payment.category_id) {
+      await db.runAsync('UPDATE recurring_payments SET category_id = ? WHERE id = ?', [
+        nextCategoryId,
+        payment.id,
+      ]);
+    }
+  }
+
+  await db.runAsync('DELETE FROM category_budgets');
+
+  const existingCategories = await db.getAllAsync<{ id: string }>('SELECT id FROM categories');
+  for (const category of existingCategories) {
+    if (protectedIds.has(category.id)) continue;
+    await db.runAsync('DELETE FROM categories WHERE id = ?', [category.id]);
+  }
+
+  for (const preset of baselinePresets) {
+    await upsertCategoryBudget(preset.id, preset.defaultLimit);
+  }
+
+  await setSetting('monthly_budget_limit', String(AVERAGE_USER_MONTHLY_BUDGET_TOTAL));
+  dataEvents.emit();
+}
+
+/** One-time migration requested for demo baseline budgets. */
+export async function ensureAverageUserBudgetBaseline(): Promise<void> {
+  const version = await getSetting('budget_baseline_seed_version', '0');
+  if (version === BUDGET_BASELINE_SEED_VERSION) return;
+  await resetBudgetCategoriesToBaseline();
+  await setSetting('budget_baseline_seed_version', BUDGET_BASELINE_SEED_VERSION);
 }
 
 /** Wipes transactions, resets demo account balances, and reseeds (dev / manual recovery). */

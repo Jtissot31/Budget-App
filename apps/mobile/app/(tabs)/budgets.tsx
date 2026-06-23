@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import {
-  FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -12,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { FlatList } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -123,16 +123,20 @@ function BudgetPageHeader({ onAdd }: { onAdd: () => void }) {
   const { colors } = useAppTheme();
 
   return (
-    <View style={pageStyles.headerRow}>
-      <Text style={[pageStyles.pageTitle, { color: colors.text }]}>Budget</Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Ajouter une catégorie"
-        onPress={onAdd}
-        style={[pageStyles.headerIconButton, { backgroundColor: colors.surfaceElevated }]}
-      >
-        <Ionicons name="add-outline" size={20} color={colors.text} />
-      </Pressable>
+    <View style={pageStyles.heroBlock}>
+      <View style={pageStyles.headerRow}>
+        <Text style={[pageStyles.pageTitle, { color: colors.text }]} numberOfLines={1}>
+          Budget
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Ajouter une catégorie"
+          onPress={onAdd}
+          style={[pageStyles.headerIconButton, { backgroundColor: colors.surfaceElevated }]}
+        >
+          <Ionicons name="add-outline" size={20} color={colors.text} />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -151,6 +155,7 @@ export default function BudgetScreen() {
   const [form, setForm] = useState<CategoryForm | null>(null);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [chartScrollLocked, setChartScrollLocked] = useState(false);
   const [formFeedback, setFormFeedback] = useState<FormFeedback | null>(null);
   const mutedTextColor = isLight ? colors.textMuted : '#909090';
 
@@ -223,19 +228,31 @@ export default function BudgetScreen() {
 
   const renderCategoryRow = useCallback(
     ({ item: row }: { item: CategoryRowModel }) => (
-      <BudgetCategoryRow
-        row={row}
-        highlighted={highlightedCategoryId === row.id}
-        mutedTextColor={mutedTextColor}
-        onPress={handleSelectCategoryId}
-      />
+      <View style={pageStyles.listRowInset}>
+        <BudgetCategoryRow
+          row={row}
+          highlighted={highlightedCategoryId === row.id}
+          mutedTextColor={mutedTextColor}
+          onPress={handleSelectCategoryId}
+        />
+      </View>
     ),
     [handleSelectCategoryId, highlightedCategoryId, mutedTextColor],
   );
 
+  const handleChartInteractionStart = useCallback(() => {
+    setChartScrollLocked(true);
+    scrollRef.current?.setNativeProps?.({ scrollEnabled: false });
+  }, []);
+
+  const handleChartInteractionEnd = useCallback(() => {
+    setChartScrollLocked(false);
+    scrollRef.current?.setNativeProps?.({ scrollEnabled: true });
+  }, []);
+
   const listHeader = useMemo(
     () => (
-      <>
+      <View style={pageStyles.listHeader}>
         <BudgetPageHeader onAdd={handleAddCategory} />
         <BudgetShortcutCards
           onPressPlans={() => router.push('/(tabs)/goals')}
@@ -248,6 +265,8 @@ export default function BudgetScreen() {
             totalSpent={spentTotal}
             selectedId={highlightedCategoryId}
             onSelectSegment={handleSelectCategoryId}
+            onInteractionStart={handleChartInteractionStart}
+            onInteractionEnd={handleChartInteractionEnd}
           />
         ) : null}
         {rows.length === 0 ? (
@@ -265,13 +284,15 @@ export default function BudgetScreen() {
             </View>
           </View>
         )}
-      </>
+      </View>
     ),
     [
       chartSegments,
       colors.surfaceElevated,
       colors.text,
       handleAddCategory,
+      handleChartInteractionEnd,
+      handleChartInteractionStart,
       handleSelectCategoryId,
       highlightedCategoryId,
       limitTotal,
@@ -283,7 +304,11 @@ export default function BudgetScreen() {
   );
 
   const listFooter = useMemo(
-    () => (rows.length > 0 ? <AddCategoryCta onPress={handleAddCategory} /> : null),
+    () => (rows.length > 0 ? (
+      <View style={pageStyles.listRowInset}>
+        <AddCategoryCta onPress={handleAddCategory} />
+      </View>
+    ) : null),
     [handleAddCategory, rows.length],
   );
 
@@ -371,11 +396,15 @@ export default function BudgetScreen() {
         renderItem={renderCategoryRow}
         ListHeaderComponent={listHeader}
         ListFooterComponent={listFooter}
+        scrollEnabled={!chartScrollLocked}
+        nestedScrollEnabled={Platform.OS === 'android'}
         contentContainerStyle={[
           styles.content,
           {
             paddingTop: insets.top + SCREEN_TOP_GUTTER,
             paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING + spacing.xl,
+            paddingHorizontal: 0,
+            gap: 0,
           },
         ]}
         ItemSeparatorComponent={CategoryRowSeparator}
@@ -383,7 +412,7 @@ export default function BudgetScreen() {
         initialNumToRender={8}
         maxToRenderPerBatch={6}
         windowSize={7}
-        removeClippedSubviews={Platform.OS === 'android'}
+        removeClippedSubviews={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -444,17 +473,31 @@ type CategoryRowModel = {
 };
 
 function buildCategoryModels(items: CategoryBudget[]) {
-  const active = items
-    .filter((item) => item.limitAmount > 0 || item.spent > 0)
-    .sort((a, b) => b.limitAmount - a.limitAmount || b.spent - a.spent);
-  const limitTotal = active.reduce((sum, item) => sum + Math.max(0, item.limitAmount), 0);
-  const spentTotal = active.reduce((sum, item) => sum + Math.max(0, item.spent), 0);
-  const portionTotal = limitTotal > 0 ? limitTotal : spentTotal;
+  const sorted = [...items].sort(
+    (a, b) =>
+      b.limitAmount - a.limitAmount ||
+      b.spent - a.spent ||
+      a.categoryName.localeCompare(b.categoryName, 'fr'),
+  );
+  const limitTotal = sorted.reduce((sum, item) => sum + Math.max(0, item.limitAmount), 0);
+  const spentTotal = sorted.reduce((sum, item) => sum + Math.max(0, item.spent), 0);
 
-  const rows = active.map<CategoryRowModel>((item) => {
+  const weights = sorted.map((item) => {
     const limit = Math.max(0, item.limitAmount);
     const spent = Math.max(0, item.spent);
-    const amountForPortion = limitTotal > 0 ? limit : spent;
+    if (limitTotal > 0) {
+      if (limit > 0) return limit;
+      // Keep zero-limit categories visible in the donut.
+      return spent > 0 ? Math.max(spent, 1) : 1;
+    }
+    if (spentTotal > 0) return spent > 0 ? spent : 1;
+    return 1;
+  });
+  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+
+  const rows = sorted.map<CategoryRowModel>((item, index) => {
+    const limit = Math.max(0, item.limitAmount);
+    const spent = Math.max(0, item.spent);
     return {
       id: item.categoryId,
       name: item.categoryName,
@@ -462,7 +505,7 @@ function buildCategoryModels(items: CategoryBudget[]) {
       icon: getCategoryIconName(item),
       limit,
       spent,
-      fraction: portionTotal > 0 ? amountForPortion / portionTotal : 0,
+      fraction: weightTotal > 0 ? weights[index]! / weightTotal : 0,
     };
   });
 
@@ -1080,13 +1123,25 @@ const pageStyles = StyleSheet.create({
     height: 260,
     zIndex: 0,
   },
+  listHeader: {
+    gap: PORTFOLIO_SECTION_GAP,
+  },
+  listRowInset: {
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+  },
+  heroBlock: {
+    alignItems: 'flex-start',
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+  },
   headerRow: {
+    alignSelf: 'stretch',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
+    marginTop: spacing.lg,
   },
-  pageTitle: { ...PAGE_TITLE_STYLE },
+  pageTitle: { ...PAGE_TITLE_STYLE, flex: 1, minWidth: 0 },
   headerIconButton: {
     width: 40,
     height: 40,
@@ -1097,14 +1152,14 @@ const pageStyles = StyleSheet.create({
 });
 
 const allocStyles = StyleSheet.create({
-  section: { gap: PORTFOLIO_SECTION_GAP },
+  section: { gap: PORTFOLIO_SECTION_GAP, paddingHorizontal: PAGE_PADDING_HORIZONTAL },
   listSection: { gap: spacing.md },
   categoriesHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: spacing.md,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
   listTitleGroup: { flex: 1, minWidth: 0, gap: spacing.xs },
   listTitle: { ...SECTION_TITLE_STYLE },
@@ -1475,7 +1530,8 @@ function getColorOptions(options: readonly string[], selectedColor: string) {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: {
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    gap: PORTFOLIO_SECTION_GAP,
+    flexGrow: 1,
+    paddingHorizontal: 0,
+    gap: 0,
   },
 });

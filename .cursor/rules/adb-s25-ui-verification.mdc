@@ -1,0 +1,47 @@
+---
+description: Captures ADB S25 Ultra avant/après chaque changement de design mobile
+alwaysApply: true
+---
+
+# Samsung S25 Ultra — captures ADB obligatoires (design)
+
+Pour **toute modification ou création de design** dans `apps/mobile/` (layout, thème, couleurs, typo, composants visuels, animations UI), l’agent **doit** capturer l’écran sur le **S25 Ultra physique** via ADB — **avant** et **après** le changement.
+
+**Interdit** pour la vérif visuelle : webview, localhost, Cursor browser. **Expo Go sur le téléphone uniquement.**
+
+## Appareil & Metro
+
+- Device : Samsung S25 Ultra — ADB sans fil (`adb devices` ; souvent `192.168.1.60:xxxx`)
+- Metro : `exp://192.168.1.171:8081` (IP LAN variable — `ipconfig` pour l’hôte actuel)
+
+## Workflow obligatoire
+
+1. **Avant** : naviguer vers l’écran concerné sur le S25, capturer la baseline
+2. **Appliquer** le changement de design
+3. **Après** : recharger l’app (`r` Metro ou shake → Reload), recapturer le même écran
+4. **Comparer** visuellement ; en cas de régression → corriger avant de conclure
+
+Ne pas considérer une tâche design terminée sans les deux captures.
+
+## Commandes ADB
+
+```bash
+adb shell screencap -p /sdcard/verify-s25-<ecran>-before.png
+adb pull /sdcard/verify-s25-<ecran>-before.png apps/mobile/
+
+adb shell screencap -p /sdcard/verify-s25-<ecran>-after.png
+adb pull /sdcard/verify-s25-<ecran>-after.png apps/mobile/
+```
+
+Nommage : `verify-s25-<ecran>-<before|after>.png` dans `apps/mobile/`.
+
+## Référence thème (dark Budget Tracker)
+
+- Fond `#0a0a0a`, cartes `#111111`
+- Accent `#4ADE80` — Disponible / succès uniquement
+- Fonte : **Plus Jakarta Sans** (pas DM Mono hors articles — voir `dm-mono-articles-only`)
+- Radius cartes ~13px ; bordures `rgba(255,255,255,0.12–0.15)`
+
+## Fichier protégé
+
+Ne pas modifier `apps/mobile/components/TransactionDetailSheet.tsx` sauf demande explicite (`protect-transaction-detail-sheet`).

@@ -145,26 +145,8 @@ function RootLayoutContent() {
             <Stack.Screen name="paycheck-allocation" options={{ headerShown: false }} />
             <Stack.Screen name="lucide-icons" options={{ headerShown: false }} />
             <Stack.Screen name="scan" options={{ title: 'Scanner', presentation: 'modal' }} />
-            <Stack.Screen
-              name="ai-chat"
-              options={{
-                headerShown: false,
-                presentation: 'fullScreenModal',
-                animation: 'none',
-                gestureEnabled: true,
-                contentStyle: { flex: 1, backgroundColor: 'transparent' },
-              }}
-            />
-            <Stack.Screen
-              name="ai-advisor"
-              options={{
-                headerShown: false,
-                presentation: 'fullScreenModal',
-                animation: 'fade_from_bottom',
-                gestureEnabled: true,
-                contentStyle: { flex: 1, backgroundColor: 'transparent' },
-              }}
-            />
+            <Stack.Screen name="ai-chat" options={{ headerShown: false }} />
+            <Stack.Screen name="ai-advisor" options={{ headerShown: false }} />
           </Stack>
         </View>
       </View>

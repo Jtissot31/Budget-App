@@ -1,22 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppState, BackHandler, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { usePathname, useRouter } from 'expo-router';
 import {
-  FLOATING_FAB_ICON_SIZE,
-  FLOATING_FAB_RADIUS,
   FLOATING_FAB_SIZE,
   floatingGlassButtonPressed,
 } from '@/constants/floatingGlassButton';
 import {
   getFloatingTabBarBottomInset,
-  lightColors,
   spacing,
   typographyKit,
 } from '@/constants/theme';
@@ -56,11 +53,6 @@ const ROUTE_LABELS: Record<string, string> = {
 
 const HIDDEN_ROUTES = new Set(['settings']);
 
-/** Brand green AI FAB gradients (expo-linear-gradient, 3-stop) */
-const AI_CHAT_FAB_GRADIENT_DARK = ['#003d1a', '#007a3d', '#4ADE80'] as const;
-const AI_CHAT_FAB_GRADIENT_LIGHT = [lightColors.primary, '#34c976', '#1a7a45'] as const;
-const AI_CHAT_FAB_GRADIENT_LOCATIONS = [0, 0.5, 1] as const;
-
 /** `Plus` from src/icons — React Native SVG. */
 function PlusFabIcon({ size, color }: { size: number; color: string }) {
   return (
@@ -68,18 +60,6 @@ function PlusFabIcon({ size, color }: { size: number; color: string }) {
       <Path
         fill={color}
         d="M19 11h-6V5a1 1 0 0 0-2 0v6H5a1 1 0 0 0 0 2h6v6a1 1 0 0 0 2 0v-6h6a1 1 0 0 0 0-2Z"
-      />
-    </Svg>
-  );
-}
-
-/** `Chat` from src/icons — React Native SVG. */
-function DashboardChatIcon({ size, color }: { size: number; color: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        fill={color}
-        d="M3 20.077V4.615q0-.69.463-1.152Q3.925 3 4.615 3h14.77q.69 0 1.152.463q.463.462.463 1.152v10.77q0 .69-.462 1.153q-.463.462-1.153.462H6.077L3 20.077ZM6.5 13.5h7v-1h-7v1Zm0-3h11v-1h-11v1Zm0-3h11v-1h-11v1Z"
       />
     </Svg>
   );
@@ -196,7 +176,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const isTransactionsHistoryView = transactionsView === 'history';
   const isTransactionsAgendaView = transactionsView === 'agenda';
   const isTransactionsMerchantsView = transactionsView === 'merchants';
-  const showDashboardAiChatFab = isDashboard;
   const showAddButton =
     activeRouteName !== 'accounts' &&
     activeRouteName !== 'goals' &&
@@ -277,10 +256,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     },
     [collapseHistoryFab, router],
   );
-
-  const openAiChat = () => {
-    router.push('/ai-advisor');
-  };
 
   const handleAddPress = () => {
     if (isTransactionsHistoryView) {
@@ -467,29 +442,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           })}
         </View>
       ) : null}
-      {showDashboardAiChatFab ? (
-        <Pressable
-          style={({ pressed }) => [
-            styles.aiChatOuter,
-            { bottom: rightThumbFabBottom + FAB_STACK_OFFSET_ADD },
-            pressed && floatingGlassButtonPressed,
-          ]}
-          onPress={openAiChat}
-          accessibilityRole="button"
-          accessibilityLabel="Fyn — conseils budget"
-        >
-          <LinearGradient
-            colors={isLight ? [...AI_CHAT_FAB_GRADIENT_LIGHT] : [...AI_CHAT_FAB_GRADIENT_DARK]}
-            locations={[...AI_CHAT_FAB_GRADIENT_LOCATIONS]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={{ ...StyleSheet.absoluteFillObject, borderRadius: FLOATING_FAB_RADIUS }}
-          />
-          <View style={styles.aiChatIconWrap}>
-            <DashboardChatIcon size={FLOATING_FAB_ICON_SIZE + 5} color="#FFFFFF" />
-          </View>
-        </Pressable>
-      ) : null}
       {showAddButton ? (
         <Pressable
           style={({ pressed }) => [
@@ -549,10 +501,8 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
       >
         {state.routes.map((route, index) => {
           if (HIDDEN_ROUTES.has(route.name)) return null;
-          const isFynShortcut = route.name === 'goals';
-          const focused = isFynShortcut
-            ? pathname === '/ai-advisor'
-            : state.index === index;
+          const isFynTab = route.name === 'goals';
+          const focused = state.index === index;
           const icons = ROUTE_ICONS[route.name] ?? {
             outline: 'circle-outline',
             filled: 'circle',
@@ -563,12 +513,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
 
           const onPress = () => {
             collapseSpeedDials();
-
-            if (isFynShortcut) {
-              tapHaptic();
-              router.push('/ai-advisor');
-              return;
-            }
 
             const event = navigation.emit({
               type: 'tabPress',
@@ -599,14 +543,20 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
               accessibilityLabel={tabLabel}
               accessibilityState={{ selected: focused }}
             >
-              {isFynShortcut && FynBrainIcon ? (
+              {isFynTab && FynBrainIcon ? (
                 <FynBrainIcon
                   size={TAB_ICON_SIZE}
                   color={iconColor}
                   strokeWidth={focused ? 2.35 : 2}
                 />
               ) : (
-                <MaterialCommunityIcons name={iconName} size={TAB_ICON_SIZE} color={iconColor} />
+                <AppIcon
+                  family="material-community"
+                  name={iconName}
+                  size={TAB_ICON_SIZE}
+                  color={iconColor}
+                  focused={focused}
+                />
               )}
             </Pressable>
           );
@@ -680,24 +630,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 16,
     elevation: 12,
-  },
-  aiChatOuter: {
-    position: 'absolute',
-    right: spacing.sm,
-    zIndex: 12,
-    width: FLOATING_FAB_SIZE,
-    height: FLOATING_FAB_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: FLOATING_FAB_RADIUS,
-    overflow: 'hidden',
-  },
-  aiChatIconWrap: {
-    width: FLOATING_FAB_SIZE,
-    height: FLOATING_FAB_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
   },
   addIconWrap: {
     alignItems: 'center',

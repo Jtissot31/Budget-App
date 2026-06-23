@@ -14,7 +14,7 @@ import Animated, {
 import { FloatingTabBar } from '@/components/FloatingTabBar';
 import { useAppTheme } from '@/lib/themeContext';
 
-const MAIN_TAB_PATHS = ['/', '/transactions', '/accounts', '/goals', '/budgets'] as const;
+const MAIN_TAB_PATHS = ['/', '/transactions', '/goals', '/accounts', '/budgets'] as const;
 
 const SWIPE_MIN_DISTANCE = 58;
 const SWIPE_MIN_VELOCITY = 520;
@@ -117,8 +117,8 @@ export default function TabLayout() {
           >
             <Tabs.Screen name="index" />
             <Tabs.Screen name="transactions" />
-            <Tabs.Screen name="accounts" options={{ title: 'Portefeuille' }} />
             <Tabs.Screen name="goals" options={{ title: 'Conseiller Fyn' }} />
+            <Tabs.Screen name="accounts" options={{ title: 'Portefeuille' }} />
             <Tabs.Screen name="budgets" />
             <Tabs.Screen name="settings" />
           </Tabs>

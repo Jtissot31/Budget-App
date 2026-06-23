@@ -275,6 +275,44 @@ export const BUDGET_PRESETS: BudgetPreset[] = [
   },
 ];
 
+/** Profil budget par défaut — utilisateur moyen (~10 catégories actives). */
+const AVERAGE_USER_BUDGET_LIMITS: Record<string, number> = {
+  'cat-home': 1350,
+  'cat-utilities': 165,
+  'cat-phone': 95,
+  'cat-food': 450,
+  'cat-rest': 175,
+  'cat-gas': 130,
+  'cat-transport': 85,
+  'cat-shopping': 110,
+  'cat-health': 55,
+  'cat-fun': 95,
+};
+
+const AVERAGE_USER_BUDGET_IDS = [
+  'cat-home',
+  'cat-utilities',
+  'cat-phone',
+  'cat-food',
+  'cat-rest',
+  'cat-gas',
+  'cat-transport',
+  'cat-shopping',
+  'cat-health',
+  'cat-fun',
+] as const;
+
+export const AVERAGE_USER_BUDGET_PRESETS: BudgetPreset[] = AVERAGE_USER_BUDGET_IDS.map((id) => {
+  const preset = BUDGET_PRESETS.find((entry) => entry.id === id);
+  if (!preset) throw new Error(`Missing budget preset: ${id}`);
+  return { ...preset, defaultLimit: AVERAGE_USER_BUDGET_LIMITS[id] ?? preset.defaultLimit };
+});
+
+export const AVERAGE_USER_MONTHLY_BUDGET_TOTAL = AVERAGE_USER_BUDGET_PRESETS.reduce(
+  (sum, preset) => sum + preset.defaultLimit,
+  0,
+);
+
 export const DEFAULT_CATEGORIES: Category[] = [
   ...BUDGET_PRESETS.map(({ id, name, icon, color }) => ({ id, name, icon, color })),
   INCOME_CATEGORY,

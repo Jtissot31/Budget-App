@@ -4,15 +4,16 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   cancelAnimation,
   runOnJS,
-  useAnimatedProps,
+  useAnimatedStyle,
   useSharedValue,
   withDecay,
   type SharedValue,
 } from 'react-native-reanimated';
-import Svg, { Circle, Defs, FeDropShadow, Filter, G, Line, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, FeDropShadow, Filter, Line } from 'react-native-svg';
 import {
   interBoldText,
   interExtraBoldText,
+  interMediumText,
   spacing,
   typography,
 } from '@/constants/theme';
@@ -26,18 +27,19 @@ const STROKE = 18;
 const RADIUS = (DONUT_SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 const SEGMENT_GAP = 3;
-const LABEL_MARGIN = 58;
+const LABEL_MARGIN = 92;
 const SVG_SIZE = DONUT_SIZE + LABEL_MARGIN * 2;
 const CX = SVG_SIZE / 2;
 const CY = SVG_SIZE / 2;
-const LEADER_INNER = RADIUS + STROKE / 2 + 2;
-const LEADER_OUTER = LEADER_INNER + 12;
-const LABEL_RADIUS = LEADER_OUTER + 6;
-const MIN_LABEL_SWEEP_DEG = 14;
-const MAX_LABEL_CHARS = 10;
-const ROTATION_MIN_DISTANCE = 6;
+const LEADER_INNER = RADIUS + STROKE / 2 + 4;
+const LABEL_RADIUS = LEADER_INNER + 14;
+const LABEL_RADIUS_STAGGER = 32;
+const LABEL_CHAR_WIDTH = 6.5;
+const MAX_LABEL_CHARS = 9;
+const ROTATION_MIN_DISTANCE = 4;
+const ROTATION_SCROLL_VERTICAL_THRESHOLD = 14;
 // Lower = the donut turns slower relative to the finger (less sensitive).
-const ROTATION_SENSITIVITY = 0.6;
+const ROTATION_SENSITIVITY = 0.9;
 // Ignore rotation when the finger is this close to the center, where the
 // angle is unstable and tiny moves would otherwise spin the donut wildly.
 const ROTATION_DEAD_ZONE = 28;
@@ -45,60 +47,18 @@ const ROTATION_DECAY = 0.99;
 const ROTATION_MAX_VELOCITY = 240;
 const ROTATION_MIN_DECAY_VELOCITY = 18;
 const RING_INNER = RADIUS - STROKE / 2 - 4;
-const RING_OUTER = RADIUS + STROKE / 2 + 28;
-
-const AnimatedG = Animated.createAnimatedComponent(G);
-const AnimatedSvgText = Animated.createAnimatedComponent(SvgText);
-
-type RotatingLabelProps = {
-  rotation: SharedValue<number>;
-  x: number;
-  y: number;
-  fill: string;
-  fontWeight: '500' | '700';
-  opacity: number;
-  text: string;
-};
-
-/**
- * Rendered inside the rotating group so its anchor point follows the donut,
- * but counter-rotates around its own anchor so the text stays upright/readable.
- */
-const RotatingLabel = memo(function RotatingLabel({
-  rotation,
-  x,
-  y,
-  fill,
-  fontWeight,
-  opacity,
-  text,
-}: RotatingLabelProps) {
-  const animatedProps = useAnimatedProps(() => ({
-    transform: `rotate(${-rotation.value}, ${x}, ${y})`,
-  }));
-
-  return (
-    <AnimatedSvgText
-      animatedProps={animatedProps}
-      x={x}
-      y={y}
-      fill={fill}
-      fontSize={typography.micro}
-      fontWeight={fontWeight}
-      textAnchor="middle"
-      alignmentBaseline="middle"
-      opacity={opacity}
-    >
-      {text}
-    </AnimatedSvgText>
-  );
-});
+const RING_OUTER = RADIUS + STROKE / 2 + 58;
 
 function segmentOpacity(index: number) {
   if (index === 0) return 1;
   if (index === 1) return 0.55;
   if (index === 2) return 0.25;
   return Math.max(0.1, 0.25 - (index - 2) * 0.04);
+}
+
+/** Labels stay readable even on small / lower-ranked segments. */
+function labelOpacity(index: number) {
+  return Math.max(0.58, segmentOpacity(index));
 }
 
 function formatMoney(value: number) {
@@ -114,9 +74,44 @@ function polarToXY(r: number, angleDeg: number) {
 }
 
 function truncateLabel(name: string, maxLen = MAX_LABEL_CHARS) {
-  const trimmed = name.trim();
-  if (trimmed.length <= maxLen) return trimmed;
-  return `${trimmed.slice(0, maxLen - 1)}…`;
+  const primary = name.split('/')[0]?.trim() ?? name.trim();
+  if (primary.length <= maxLen) return primary;
+  return `${primary.slice(0, maxLen - 1)}…`;
+}
+
+function estimateTextHalfWidth(name: string) {
+  return (truncateLabel(name).length * LABEL_CHAR_WIDTH) / 2;
+}
+
+function angleWithinSegment(angleDeg: number, startDeg: number, endDeg: number) {
+  const angle = normalizeAngleDeg(angleDeg);
+  const start = normalizeAngleDeg(startDeg);
+  const end = normalizeAngleDeg(endDeg);
+
+  if (start <= end) {
+    return angle >= start && angle <= end;
+  }
+  return angle >= start || angle <= end;
+}
+
+function clampAngleToSegment(angleDeg: number, startDeg: number, endDeg: number) {
+  const angle = normalizeAngleDeg(angleDeg);
+  const start = normalizeAngleDeg(startDeg);
+  const end = normalizeAngleDeg(endDeg);
+
+  if (angleWithinSegment(angle, start, end)) return angle;
+
+  const distToStart = Math.min(circularAngleGap(angle, start), circularAngleGap(start, angle));
+  const distToEnd = Math.min(circularAngleGap(angle, end), circularAngleGap(end, angle));
+  return distToStart <= distToEnd ? start : end;
+}
+
+function normalizeAngleDeg(angleDeg: number) {
+  return ((angleDeg % 360) + 360) % 360;
+}
+
+function circularAngleGap(fromDeg: number, toDeg: number) {
+  return normalizeAngleDeg(toDeg - fromDeg);
 }
 
 const TWELVE_OCLOCK_OFFSET = CIRCUMFERENCE / 4;
@@ -129,6 +124,67 @@ type DonutSegmentProps = {
   dimmed: boolean;
   accentColor: string;
 };
+
+type AnimatedSegmentLabelRuntimeProps = {
+  rotation: SharedValue<number>;
+  text: string;
+  color: string;
+  opacity: number;
+  selected: boolean;
+};
+
+/** Factory bakes midAngleDeg into the worklet closure — fixes Android label clustering. */
+function createSegmentLabelComponent(
+  bakedMidAngleDeg: number,
+  bakedLabelRadius: number,
+  bakedTextHalfWidth: number,
+) {
+  const bakedTextHalfHeight = typography.micro / 2;
+
+  return memo(function SegmentLabelInstance({
+    rotation,
+    text,
+    color,
+    opacity,
+    selected,
+  }: AnimatedSegmentLabelRuntimeProps) {
+    const positionStyle = useAnimatedStyle(() => {
+      'worklet';
+      const rad = ((bakedMidAngleDeg + rotation.value) * Math.PI) / 180;
+      const x = bakedLabelRadius * Math.cos(rad);
+      const y = bakedLabelRadius * Math.sin(rad);
+      return {
+        position: 'absolute',
+        left: CX + x - bakedTextHalfWidth,
+        top: CY + y - bakedTextHalfHeight,
+      };
+    });
+
+    const rotateStyle = useAnimatedStyle(() => {
+      'worklet';
+      return {
+        transform: [{ rotate: `${-rotation.value}deg` }],
+      };
+    });
+
+    return (
+      <Animated.View style={[styles.labelAnchor, positionStyle, { opacity }]} pointerEvents="none">
+        <Animated.View style={rotateStyle}>
+          <Text
+            style={[
+              styles.labelText,
+              selected ? interBoldText : interMediumText,
+              { color, fontSize: typography.micro },
+            ]}
+            numberOfLines={1}
+          >
+            {text}
+          </Text>
+        </Animated.View>
+      </Animated.View>
+    );
+  });
+}
 
 const DonutSegment = memo(function DonutSegment({
   index,
@@ -157,13 +213,49 @@ const DonutSegment = memo(function DonutSegment({
   );
 });
 
-type SegmentLabel = {
+type SegmentLabelInput = {
   id: string;
   name: string;
   midAngleDeg: number;
-  sweepDeg: number;
-  baseOpacity: number;
+  startDeg: number;
+  endDeg: number;
+  labelOpacity: number;
 };
+
+type SegmentLabel = SegmentLabelInput & {
+  labelAngleDeg: number;
+  /** Text center radius — one per segment at its midAngleDeg. */
+  labelRadius: number;
+  /** Leader line stops at the inner edge of the label text. */
+  lineEndRadius: number;
+};
+
+function layoutSegmentLabels(labels: SegmentLabelInput[]): SegmentLabel[] {
+  if (labels.length === 0) return [];
+
+  const sorted = [...labels].sort(
+    (a, b) => normalizeAngleDeg(a.midAngleDeg) - normalizeAngleDeg(b.midAngleDeg),
+  );
+
+  return sorted.map((label, index) => {
+    const prev = sorted[(index - 1 + sorted.length) % sorted.length]!;
+    const next = sorted[(index + 1) % sorted.length]!;
+    const gapPrev = circularAngleGap(prev.midAngleDeg, label.midAngleDeg);
+    const gapNext = circularAngleGap(label.midAngleDeg, next.midAngleDeg);
+    const minGap = Math.min(gapPrev, gapNext);
+    const tier =
+      minGap < 16 ? 1 + (index % 6) : minGap < 26 ? 1 + (index % 4) : index % 2 === 1 ? 1 : 0;
+    const labelRadius = LABEL_RADIUS + tier * LABEL_RADIUS_STAGGER;
+    const textHalfWidth = estimateTextHalfWidth(label.name);
+
+    return {
+      ...label,
+      labelAngleDeg: clampAngleToSegment(label.midAngleDeg, label.startDeg, label.endDeg),
+      labelRadius,
+      lineEndRadius: labelRadius - textHalfWidth,
+    };
+  });
+}
 
 type Props = {
   segments: BudgetChartSegment[];
@@ -194,41 +286,65 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
 
   const segmentArcs = useMemo(() => {
     let running = 0;
-    return segments
-      .map((seg, idx) => {
-        const visualFrac = visualFractions[idx] ?? 0;
-        if (visualFrac <= 0) return null;
-        const startOffset = running * CIRCUMFERENCE + SEGMENT_GAP / 2;
-        const sweepDeg = visualFrac * 360;
-        const startDeg = running * 360 - 90;
-        const midAngleDeg = startDeg + sweepDeg / 2;
-        running += visualFrac;
-        const dash = Math.max(0, visualFrac * CIRCUMFERENCE - SEGMENT_GAP);
-        return {
-          id: seg.id,
-          name: seg.name,
-          index: idx,
-          dash,
-          startOffset,
-          midAngleDeg,
-          sweepDeg,
-          baseOpacity: segmentOpacity(idx),
-        };
-      })
-      .filter((arc): arc is NonNullable<typeof arc> => arc != null);
+    return segments.map((seg, idx) => {
+      const rawFrac = visualFractions[idx] ?? 0;
+      const visualFrac = rawFrac > 0 ? rawFrac : 1 / Math.max(segments.length, 1);
+      const startOffset = running * CIRCUMFERENCE + SEGMENT_GAP / 2;
+      const sweepDeg = visualFrac * 360;
+      const startDeg = running * 360 - 90;
+      const endDeg = startDeg + sweepDeg;
+      const midAngleDeg = startDeg + sweepDeg / 2;
+      running += visualFrac;
+      const dash = Math.max(0, visualFrac * CIRCUMFERENCE - SEGMENT_GAP);
+      // Each segment gets a unique midAngleDeg (e.g. seg0 ~0°, small segs ~100°–264°).
+      return {
+        id: seg.id,
+        name: seg.name,
+        index: idx,
+        dash,
+        startOffset,
+        startDeg,
+        endDeg,
+        midAngleDeg,
+        sweepDeg,
+        segmentOpacity: segmentOpacity(idx),
+        labelOpacity: labelOpacity(idx),
+      };
+    });
   }, [segments, visualFractions]);
 
-  const segmentLabels: SegmentLabel[] = useMemo(
+  const segmentLabels = useMemo(
     () =>
-      segmentArcs.map((arc) => ({
-        id: arc.id,
-        name: arc.name,
-        midAngleDeg: arc.midAngleDeg,
-        sweepDeg: arc.sweepDeg,
-        baseOpacity: arc.baseOpacity,
-      })),
+      layoutSegmentLabels(
+        segmentArcs.map((arc) => ({
+          id: arc.id,
+          name: arc.name,
+          midAngleDeg: arc.midAngleDeg,
+          startDeg: arc.startDeg,
+          endDeg: arc.endDeg,
+          labelOpacity: arc.labelOpacity,
+        })),
+      ),
     [segmentArcs],
   );
+
+  const segmentLabelRenderers = useMemo(() => {
+    if (__DEV__) {
+      console.log(
+        '[DonutLabels] midAngleDeg:',
+        segmentLabels.map((l) => `${l.name}=${l.midAngleDeg.toFixed(1)}°`).join(', '),
+      );
+    }
+    return segmentLabels.map((label) => ({
+      id: label.id,
+      Component: createSegmentLabelComponent(
+        label.labelAngleDeg,
+        label.labelRadius,
+        estimateTextHalfWidth(label.name),
+      ),
+      label,
+    }));
+  }, [segmentLabels]);
 
   const trackColor = isLight ? colors.border : colors.scopeTrack;
   const hubColor = colors.containerBackground;
@@ -237,6 +353,9 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
   const rotation = useSharedValue(0);
   const prevTouchAngle = useSharedValue(0);
   const isDragging = useSharedValue(false);
+  const rotationActivated = useSharedValue(false);
+  const touchStartX = useSharedValue(0);
+  const touchStartY = useSharedValue(0);
 
   const notifyInteractionStart = useCallback(() => {
     onInteractionStart?.();
@@ -282,16 +401,53 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
   const panGesture = useMemo(
     () =>
       Gesture.Pan()
-        .minDistance(ROTATION_MIN_DISTANCE)
-        .onBegin(() => {
+        .manualActivation(true)
+        .onTouchesDown((event) => {
+          const touch = event.allTouches[0];
+          if (!touch) return;
+          touchStartX.value = touch.x;
+          touchStartY.value = touch.y;
+          rotationActivated.value = false;
+        })
+        .onTouchesMove((event, state) => {
+          const touch = event.allTouches[0];
+          if (!touch) return;
+
+          const dx = touch.x - touchStartX.value;
+          const dy = touch.y - touchStartY.value;
+          const travel = Math.hypot(dx, dy);
+          if (travel < ROTATION_MIN_DISTANCE) return;
+
+          const rx = touch.x - CX;
+          const ry = touch.y - CY;
+          const radialLen = Math.hypot(rx, ry);
+          if (radialLen < RING_INNER || radialLen > RING_OUTER) {
+            state.fail();
+            return;
+          }
+
+          const nx = rx / radialLen;
+          const ny = ry / radialLen;
+          const tx = -ny;
+          const ty = nx;
+          const tangential = Math.abs(dx * tx + dy * ty);
+          const vertical = Math.abs(dy);
+
+          if (vertical > tangential * 2.2 && vertical > ROTATION_SCROLL_VERTICAL_THRESHOLD) {
+            state.fail();
+            return;
+          }
+
+          state.activate();
+        })
+        .onStart((event) => {
+          rotationActivated.value = true;
           isDragging.value = true;
+          cancelAnimation(rotation);
+          prevTouchAngle.value = Math.atan2(event.y - CY, event.x - CX);
           if (onInteractionStart) {
             runOnJS(notifyInteractionStart)();
           }
-        })
-        .onStart((event) => {
-          cancelAnimation(rotation);
-          prevTouchAngle.value = Math.atan2(event.y - CY, event.x - CX);
         })
         .onUpdate((event) => {
           const dx = event.x - CX;
@@ -301,12 +457,12 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
           prevTouchAngle.value = angle;
           if (delta > Math.PI) delta -= 2 * Math.PI;
           if (delta < -Math.PI) delta += 2 * Math.PI;
-          // Near the center the angle is unstable, so skip rotation there while
-          // still tracking the angle to avoid a jump when the finger moves out.
           if (Math.hypot(dx, dy) < ROTATION_DEAD_ZONE) return;
           rotation.value += ((delta * 180) / Math.PI) * ROTATION_SENSITIVITY;
         })
         .onEnd((event) => {
+          if (!rotationActivated.value) return;
+
           const dx = event.x - CX;
           const dy = event.y - CY;
           const radiusSq = dx * dx + dy * dy;
@@ -327,13 +483,15 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
             }
           }
 
+          rotationActivated.value = false;
           isDragging.value = false;
           if (onInteractionEnd) {
             runOnJS(notifyInteractionEnd)();
           }
         })
         .onFinalize(() => {
-          if (isDragging.value) {
+          if (rotationActivated.value) {
+            rotationActivated.value = false;
             isDragging.value = false;
             if (onInteractionEnd) {
               runOnJS(notifyInteractionEnd)();
@@ -348,6 +506,9 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
       onInteractionStart,
       prevTouchAngle,
       rotation,
+      rotationActivated,
+      touchStartX,
+      touchStartY,
     ],
   );
 
@@ -367,43 +528,29 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
     [panGesture, tapGesture],
   );
 
-  const animatedGroupProps = useAnimatedProps(() => ({
-    transform: `rotate(${rotation.value}, ${CX}, ${CY})`,
+  const rotatingStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
   }));
 
-  const segmentLabelNodes = segmentLabels.map((label) => {
-    if (label.sweepDeg < MIN_LABEL_SWEEP_DEG) return null;
-
+  const leaderLineNodes = segmentLabels.map((label) => {
     const selected = selectedId === label.id;
     const dimmed = hasSelection && !selected;
-    const labelOpacity = dimmed ? label.baseOpacity * 0.42 : label.baseOpacity;
-    const inner = polarToXY(LEADER_INNER, label.midAngleDeg);
-    const outer = polarToXY(LEADER_OUTER, label.midAngleDeg);
-    const anchor = polarToXY(LABEL_RADIUS, label.midAngleDeg);
+    const opacity = dimmed ? label.labelOpacity * 0.42 : label.labelOpacity;
+    const inner = polarToXY(LEADER_INNER, label.labelAngleDeg);
+    const lineEnd = polarToXY(label.lineEndRadius, label.labelAngleDeg);
     const lineColor = selected ? accentColor : mutedTextColor;
-    const textColor = selected ? colors.text : mutedTextColor;
 
     return (
-      <G key={`label-${label.id}`}>
-        <Line
-          x1={inner.x}
-          y1={inner.y}
-          x2={outer.x}
-          y2={outer.y}
-          stroke={lineColor}
-          strokeWidth={selected ? 1.25 : 1}
-          strokeOpacity={labelOpacity}
-        />
-        <RotatingLabel
-          rotation={rotation}
-          x={anchor.x}
-          y={anchor.y}
-          fill={textColor}
-          fontWeight={selected ? '700' : '500'}
-          opacity={labelOpacity}
-          text={truncateLabel(label.name)}
-        />
-      </G>
+      <Line
+        key={`line-${label.id}`}
+        x1={inner.x}
+        y1={inner.y}
+        x2={lineEnd.x}
+        y2={lineEnd.y}
+        stroke={lineColor}
+        strokeWidth={selected ? 1.25 : 1}
+        strokeOpacity={opacity}
+      />
     );
   });
 
@@ -411,37 +558,32 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
     <View onLayout={onLayout} style={styles.chartBlock}>
       <GestureDetector gesture={chartGesture}>
         <View style={styles.chartHalo} collapsable={false}>
-          <Svg
-            width={SVG_SIZE}
-            height={SVG_SIZE}
-            style={styles.chartSvg}
-            pointerEvents="none"
-          >
-            <Defs>
-              <Filter id="budgetSegGlow" x="-30%" y="-30%" width="160%" height="160%">
-                <FeDropShadow dx={0} dy={0} stdDeviation={4} floodColor={accentColor} floodOpacity={0.53} />
-              </Filter>
-            </Defs>
+          <Animated.View style={[styles.chartSvg, rotatingStyle]} pointerEvents="none">
+            <Svg width={SVG_SIZE} height={SVG_SIZE} pointerEvents="none">
+              <Defs>
+                <Filter id="budgetSegGlow" x="-30%" y="-30%" width="160%" height="160%">
+                  <FeDropShadow dx={0} dy={0} stdDeviation={4} floodColor={accentColor} floodOpacity={0.53} />
+                </Filter>
+              </Defs>
 
-            <Circle
-              cx={CX}
-              cy={CY}
-              r={RADIUS}
-              stroke={trackColor}
-              strokeWidth={STROKE + 2}
-              fill="none"
-            />
-            <Circle
-              cx={CX}
-              cy={CY}
-              r={RADIUS - 28}
-              stroke={colors.border}
-              strokeWidth={1}
-              fill="none"
-              opacity={0.55}
-            />
+              <Circle
+                cx={CX}
+                cy={CY}
+                r={RADIUS}
+                stroke={trackColor}
+                strokeWidth={STROKE + 2}
+                fill="none"
+              />
+              <Circle
+                cx={CX}
+                cy={CY}
+                r={RADIUS - 28}
+                stroke={colors.border}
+                strokeWidth={1}
+                fill="none"
+                opacity={0.55}
+              />
 
-            <AnimatedG animatedProps={animatedGroupProps}>
               {segmentArcs.map((arc) => {
                 const selected = selectedId === arc.id;
                 const dimmed = hasSelection && !selected;
@@ -452,16 +594,36 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
                     index={arc.index}
                     dash={arc.dash}
                     startOffset={arc.startOffset}
-                    baseOpacity={arc.baseOpacity}
+                    baseOpacity={arc.segmentOpacity}
                     dimmed={dimmed}
                     accentColor={accentColor}
                   />
                 );
               })}
 
-              {segmentLabelNodes}
-            </AnimatedG>
-          </Svg>
+              {leaderLineNodes}
+            </Svg>
+          </Animated.View>
+
+          <View style={styles.labelsOverlay} pointerEvents="none" collapsable={false}>
+            {segmentLabelRenderers.map(({ id, Component, label }) => {
+              const selected = selectedId === label.id;
+              const dimmed = hasSelection && !selected;
+              const opacity = dimmed ? label.labelOpacity * 0.42 : label.labelOpacity;
+              const textColor = selected ? colors.text : mutedTextColor;
+
+              return (
+                <Component
+                  key={`label-${id}`}
+                  rotation={rotation}
+                  text={truncateLabel(label.name)}
+                  color={textColor}
+                  opacity={opacity}
+                  selected={selected}
+                />
+              );
+            })}
+          </View>
 
           <View style={styles.touchOverlay} collapsable={false} />
 
@@ -496,7 +658,7 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
 });
 
 const styles = StyleSheet.create({
-  chartBlock: { alignItems: 'center', paddingVertical: spacing.sm },
+  chartBlock: { alignItems: 'center', paddingVertical: spacing.sm, overflow: 'visible' },
   chartHalo: {
     width: SVG_SIZE,
     height: SVG_SIZE,
@@ -504,9 +666,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'visible',
   },
-  chartSvg: { position: 'absolute' },
-  chartSvgLayer: {
+  chartSvg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: SVG_SIZE,
+    height: SVG_SIZE,
+  },
+  labelsOverlay: {
     ...StyleSheet.absoluteFillObject,
+    width: SVG_SIZE,
+    height: SVG_SIZE,
+    overflow: 'visible',
+    zIndex: 1,
+  },
+  labelAnchor: {
+    overflow: 'visible',
+  },
+  labelText: {
+    textAlign: 'center',
   },
   touchOverlay: {
     ...StyleSheet.absoluteFillObject,

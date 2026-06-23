@@ -90,7 +90,13 @@ function toListItems(messages: AIChatUiMessage[]): ListItem[] {
   return items;
 }
 
-export function AIChatAdvisorScreen({ tabBarVisible = true }: { tabBarVisible?: boolean }) {
+export function AIChatAdvisorScreen({
+  tabBarVisible = true,
+  showBackButton = true,
+}: {
+  tabBarVisible?: boolean;
+  showBackButton?: boolean;
+}) {
   const insets = useSafeAreaInsets();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [inputOverlayHeight, setInputOverlayHeight] = useState(0);
@@ -556,6 +562,7 @@ export function AIChatAdvisorScreen({ tabBarVisible = true }: { tabBarVisible?: 
         status={isResponding ? 'thinking' : 'online'}
         statusLabel={headerStatusLabel}
         topInset={insets.top}
+        showBackButton={showBackButton}
         onMenuPress={() => setSettingsVisible(true)}
       />
 
