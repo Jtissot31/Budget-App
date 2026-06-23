@@ -1,5 +1,12 @@
 import { memo, useCallback, useEffect, useMemo } from 'react';
-import { Platform, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import {
+  Platform,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  type LayoutChangeEvent,
+} from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   cancelAnimation,
@@ -24,15 +31,8 @@ import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
-const DONUT_SIZE = 248;
 const STROKE = 18;
-const RADIUS = (DONUT_SIZE - STROKE) / 2;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 const SEGMENT_GAP = 3;
-const LABEL_MARGIN = 92;
-const SVG_SIZE = DONUT_SIZE + LABEL_MARGIN * 2;
-const CX = SVG_SIZE / 2;
-const CY = SVG_SIZE / 2;
 const ROTATION_MIN_DISTANCE = 4;
 const ROTATION_SCROLL_VERTICAL_THRESHOLD = 14;
 // Lower = the donut turns slower relative to the finger (less sensitive).
@@ -42,21 +42,8 @@ const ROTATION_DEAD_ZONE = 28;
 const ROTATION_DECAY = 0.99;
 const ROTATION_MAX_VELOCITY = 240;
 const ROTATION_MIN_DECAY_VELOCITY = 18;
-const RING_INNER = RADIUS - STROKE / 2 - 4;
-const RING_OUTER = RADIUS + STROKE / 2 + 58;
-const TWELVE_OCLOCK_OFFSET = CIRCUMFERENCE / 4;
 const MAX_LABEL_CHARS = 12;
 
-// ─── Option C elbow-line geometry ────────────────────────────────────────────
-// Outer edge of the ring stroke.
-const OUTER_RADIUS = RADIUS + STROKE / 2; // 124
-// Waypoint circle: the elbow of the bent leader line.
-const WAYPOINT_RADIUS = OUTER_RADIUS + 20; // 144
-// Horizontal label anchors — computed per-frame in allPositions:
-//   right: min(CX + OUTER_RADIUS + 80, SVG_SIZE - 8) → 424
-//   left:  max(CX - OUTER_RADIUS - 80, 8)            → 12
-// Fixed-width text container.
-const LABEL_BOX_WIDTH = 52;
 // Half of two-line label block (9px name + 8px pct) for vertical centering.
 const LABEL_HALF_HEIGHT = 9;
 // Minimum vertical gap between labels in the same column.
@@ -121,6 +108,11 @@ type DonutSegmentProps = {
   baseOpacity: number;
   dimmed: boolean;
   accentColor: string;
+  cx: number;
+  cy: number;
+  radius: number;
+  circumference: number;
+  twelveOclockOffset: number;
 };
 
 const DonutSegment = memo(function DonutSegment({
@@ -130,21 +122,26 @@ const DonutSegment = memo(function DonutSegment({
   baseOpacity,
   dimmed,
   accentColor,
+  cx,
+  cy,
+  radius,
+  circumference,
+  twelveOclockOffset,
 }: DonutSegmentProps) {
   const opacity = dimmed ? baseOpacity * 0.38 : baseOpacity;
 
   return (
     <Circle
-      cx={CX}
-      cy={CY}
-      r={RADIUS}
+      cx={cx}
+      cy={cy}
+      r={radius}
       stroke={accentColor}
       strokeWidth={STROKE}
       fill="none"
       strokeOpacity={opacity}
       strokeLinecap="butt"
-      strokeDasharray={[dash, CIRCUMFERENCE - dash]}
-      strokeDashoffset={-(startOffset + TWELVE_OCLOCK_OFFSET)}
+      strokeDasharray={[dash, circumference - dash]}
+      strokeDashoffset={-(startOffset + twelveOclockOffset)}
       filter={index === 0 && Platform.OS !== 'android' ? 'url(#budgetSegGlow)' : undefined}
     />
   );
@@ -161,7 +158,7 @@ const DonutSegment = memo(function DonutSegment({
  * Android safety: all animated props are numeric (x1, y1, x2, y2,
  * strokeOpacity) — no SVG transform strings.
  */
-function createOptionCElbowLine(bakedIndex: number) {
+function createOptionCElbowLine(bakedIndex: number, labelBoxWidth: number) {
   return memo(function OptionCElbowLine({
     allPositions,
     stroke,
@@ -199,7 +196,7 @@ function createOptionCElbowLine(bakedIndex: number) {
         return {
           x1: pos.wx,
           y1: pos.wy,
-          x2: pos.isRight ? pos.lx - LABEL_BOX_WIDTH : pos.lx + LABEL_BOX_WIDTH,
+          x2: pos.isRight ? pos.lx - labelBoxWidth : pos.lx + labelBoxWidth,
           y2: pos.ly,
           strokeOpacity: opacity * 0.7,
         };
@@ -224,7 +221,7 @@ function createOptionCElbowLine(bakedIndex: number) {
  * crosses the centre axis the anchor x still snaps to the correct column while
  * text-align remains stable.
  */
-function createOptionCLabel(bakedIndex: number, bakedIsRight: boolean) {
+function createOptionCLabel(bakedIndex: number, bakedIsRight: boolean, labelBoxWidth: number) {
   return memo(function OptionCLabel({
     allPositions,
     text,
@@ -247,7 +244,7 @@ function createOptionCLabel(bakedIndex: number, bakedIsRight: boolean) {
         return { position: 'absolute', left: -9999, top: -9999 };
       }
       // Right-side lx: outer (right) edge; left-side lx: outer (left) edge.
-      const leftEdge = bakedIsRight ? pos.lx - LABEL_BOX_WIDTH : pos.lx;
+      const leftEdge = bakedIsRight ? pos.lx - labelBoxWidth : pos.lx;
       return {
         position: 'absolute',
         left: leftEdge,
@@ -259,7 +256,8 @@ function createOptionCLabel(bakedIndex: number, bakedIsRight: boolean) {
       <Animated.View style={[posStyle, { opacity }]} pointerEvents="none">
         <Text
           style={[
-            styles.optionCLabel,
+            labelTextStyles.optionCLabel,
+            { width: labelBoxWidth },
             selected ? interBoldText : interMediumText,
             {
               color,
@@ -274,7 +272,8 @@ function createOptionCLabel(bakedIndex: number, bakedIsRight: boolean) {
         {percentage ? (
           <Text
             style={[
-              styles.optionCLabelPct,
+              labelTextStyles.optionCLabelPct,
+              { width: labelBoxWidth },
               selected ? interBoldText : interMediumText,
               {
                 color,
@@ -316,6 +315,111 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
   onInteractionStart,
   onInteractionEnd,
 }: Props) {
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
+  const geometry = useMemo(() => {
+    const PAGE_PADDING = 32;
+    const svgSize = SCREEN_WIDTH - PAGE_PADDING;
+    const labelMargin = Math.min(Math.max(svgSize * 0.2, 72), 100);
+    const donutSize = svgSize - labelMargin * 2;
+    const radius = (donutSize - STROKE) / 2;
+    const circumference = 2 * Math.PI * radius;
+    const cx = svgSize / 2;
+    const cy = svgSize / 2;
+    const ringInner = radius - STROKE / 2 - 4;
+    const ringOuter = radius + STROKE / 2 + 58;
+    const twelveOclockOffset = circumference * 0.25;
+    const outerRadius = radius + STROKE / 2;
+    const waypointRadius = outerRadius + 16;
+    const labelRightX = Math.min(cx + outerRadius + 70, svgSize - 6);
+    const labelLeftX = Math.max(cx - outerRadius - 70, 6);
+    const labelBoxWidth = Math.floor(labelMargin - 8);
+    const hubSize = donutSize - STROKE * 2 - 18;
+    const innerRingInset = Math.round(donutSize * (28 / 248));
+    return {
+      svgSize,
+      donutSize,
+      radius,
+      circumference,
+      cx,
+      cy,
+      ringInner,
+      ringOuter,
+      twelveOclockOffset,
+      outerRadius,
+      waypointRadius,
+      labelRightX,
+      labelLeftX,
+      labelBoxWidth,
+      hubSize,
+      innerRingInset,
+    };
+  }, [SCREEN_WIDTH]);
+
+  const chartStyles = useMemo(
+    () =>
+      StyleSheet.create({
+        chartBlock: { alignItems: 'center', paddingVertical: spacing.sm, overflow: 'visible' },
+        chartHalo: {
+          width: geometry.svgSize,
+          height: geometry.svgSize,
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'visible',
+        },
+        chartSvg: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: geometry.svgSize,
+          height: geometry.svgSize,
+        },
+        labelsOverlay: {
+          ...StyleSheet.absoluteFillObject,
+          width: geometry.svgSize,
+          height: geometry.svgSize,
+          overflow: 'visible',
+          zIndex: 1,
+        },
+        touchOverlay: {
+          ...StyleSheet.absoluteFillObject,
+          zIndex: 2,
+        },
+        hub: {
+          width: geometry.hubSize,
+          height: geometry.hubSize,
+          borderRadius: geometry.hubSize / 2,
+          borderWidth: StyleSheet.hairlineWidth,
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: spacing.md,
+          shadowOpacity: 0.22,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 6,
+        },
+        hubLabel: {
+          ...interBoldText,
+          fontSize: typography.micro,
+          letterSpacing: 0.65,
+          textTransform: 'uppercase',
+        },
+        hubAmount: {
+          ...interExtraBoldText,
+          fontSize: 30,
+          letterSpacing: -0.9,
+          marginTop: 4,
+          textAlign: 'center',
+        },
+        hubMeta: {
+          ...interBoldText,
+          fontSize: typography.micro,
+          marginTop: 5,
+          textAlign: 'center',
+        },
+      }),
+    [geometry],
+  );
+
   const { colors, isLight } = useAppTheme();
   const mutedTextColor = isLight ? colors.textMuted : '#909090';
   const accentColor = colors.accentGreen;
@@ -326,13 +430,13 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
     return segments.map((seg, idx) => {
       const rawFrac = visualFractions[idx] ?? 0;
       const visualFrac = rawFrac > 0 ? rawFrac : 1 / Math.max(segments.length, 1);
-      const startOffset = running * CIRCUMFERENCE + SEGMENT_GAP / 2;
+      const startOffset = running * geometry.circumference + SEGMENT_GAP / 2;
       const sweepDeg = visualFrac * 360;
       const startDeg = running * 360 - 90;
       const endDeg = startDeg + sweepDeg;
       const midAngleDeg = startDeg + sweepDeg / 2;
       running += visualFrac;
-      const dash = Math.max(0, visualFrac * CIRCUMFERENCE - SEGMENT_GAP);
+      const dash = Math.max(0, visualFrac * geometry.circumference - SEGMENT_GAP);
       return {
         id: seg.id,
         name: seg.name,
@@ -347,7 +451,7 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
         labelOpacity: labelOpacity(idx),
       };
     });
-  }, [segments, visualFractions]);
+  }, [segments, visualFractions, geometry.circumference]);
 
   // SharedValue holding static segment geometry.  Updated via useEffect when
   // the segment list changes (e.g. user edits budget categories).
@@ -386,6 +490,17 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
   //      all vertical gaps are ≥ MIN_LABEL_GAP (refined up to 3 passes).
   //
   // Android safety: all values are numbers — no SVG transform strings.
+  const {
+    cx,
+    cy,
+    outerRadius,
+    waypointRadius,
+    labelRightX,
+    labelLeftX,
+    ringInner,
+    ringOuter,
+  } = geometry;
+
   const allPositions = useDerivedValue<LabelPos[]>(() => {
     'worklet';
     const segs = segmentsDataSV.value;
@@ -399,14 +514,12 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
       const midRad = ((seg.midAngleDeg + rot) * Math.PI) / 180;
       const cosA = Math.cos(midRad);
       const sinA = Math.sin(midRad);
-      const x1 = CX + OUTER_RADIUS * cosA;
-      const y1 = CY + OUTER_RADIUS * sinA;
-      const wx = CX + WAYPOINT_RADIUS * cosA;
-      const wy = CY + WAYPOINT_RADIUS * sinA;
-      const isRight = wx > CX;
-      const lx = isRight
-        ? Math.min(CX + OUTER_RADIUS + 80, SVG_SIZE - 8)
-        : Math.max(CX - OUTER_RADIUS - 80, 8);
+      const x1 = cx + outerRadius * cosA;
+      const y1 = cy + outerRadius * sinA;
+      const wx = cx + waypointRadius * cosA;
+      const wy = cy + waypointRadius * sinA;
+      const isRight = wx > cx;
+      const lx = isRight ? labelRightX : labelLeftX;
       return { visible: true, x1, y1, wx, wy, lx, ly: wy, isRight };
     });
 
@@ -420,10 +533,10 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
       const seg2 = segs[i + 1];
       if (!seg1 || !seg2) continue;
       if (seg1.sweepDeg <= seg2.sweepDeg) {
-        p1.wy += Math.sign(p1.wy - CY) * CONSECUTIVE_WY_NUDGE;
+        p1.wy += Math.sign(p1.wy - cy) * CONSECUTIVE_WY_NUDGE;
         p1.ly = p1.wy;
       } else {
-        p2.wy += Math.sign(p2.wy - CY) * CONSECUTIVE_WY_NUDGE;
+        p2.wy += Math.sign(p2.wy - cy) * CONSECUTIVE_WY_NUDGE;
         p2.ly = p2.wy;
       }
     }
@@ -471,8 +584,8 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
   const elbowRenderers = useMemo(() => {
     return segmentArcs.map((arc, i) => {
       const midRad = (arc.midAngleDeg * Math.PI) / 180;
-      const initialWx = CX + WAYPOINT_RADIUS * Math.cos(midRad);
-      const bakedIsRight = initialWx > CX;
+      const initialWx = cx + waypointRadius * Math.cos(midRad);
+      const bakedIsRight = initialWx > cx;
       const pct = Math.round((arc.sweepDeg / 360) * 100);
       return {
         key: arc.id,
@@ -480,11 +593,11 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
         name: arc.name,
         percentage: `${pct}%`,
         segLabelOpacity: arc.labelOpacity,
-        ElbowLine: createOptionCElbowLine(i),
-        ElbowLabel: createOptionCLabel(i, bakedIsRight),
+        ElbowLine: createOptionCElbowLine(i, geometry.labelBoxWidth),
+        ElbowLabel: createOptionCLabel(i, bakedIsRight, geometry.labelBoxWidth),
       };
     });
-  }, [segmentArcs]);
+  }, [segmentArcs, cx, waypointRadius, geometry.labelBoxWidth]);
 
   // ─── Gesture callbacks ───────────────────────────────────────────────────
   const notifyInteractionStart = useCallback(() => {
@@ -499,10 +612,10 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
     (x: number, y: number, currentRotation: number) => {
       if (!onSelectSegment) return;
 
-      const dx = x - CX;
-      const dy = y - CY;
+      const dx = x - cx;
+      const dy = y - cy;
       const dist = Math.hypot(dx, dy);
-      if (dist < RING_INNER || dist > RING_OUTER) return;
+      if (dist < ringInner || dist > ringOuter) return;
 
       let touchAngle = (Math.atan2(dy, dx) * 180) / Math.PI - currentRotation;
       touchAngle = ((touchAngle % 360) + 360) % 360;
@@ -525,7 +638,7 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
         }
       }
     },
-    [onSelectSegment, segmentArcs],
+    [onSelectSegment, segmentArcs, cx, cy, ringInner, ringOuter],
   );
 
   const panGesture = useMemo(
@@ -548,10 +661,10 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
           const travel = Math.hypot(dx, dy);
           if (travel < ROTATION_MIN_DISTANCE) return;
 
-          const rx = touch.x - CX;
-          const ry = touch.y - CY;
+          const rx = touch.x - cx;
+          const ry = touch.y - cy;
           const radialLen = Math.hypot(rx, ry);
-          if (radialLen < RING_INNER || radialLen > RING_OUTER) {
+          if (radialLen < ringInner || radialLen > ringOuter) {
             state.fail();
             return;
           }
@@ -574,14 +687,14 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
           rotationActivated.value = true;
           isDragging.value = true;
           cancelAnimation(rotation);
-          prevTouchAngle.value = Math.atan2(event.y - CY, event.x - CX);
+          prevTouchAngle.value = Math.atan2(event.y - cy, event.x - cx);
           if (onInteractionStart) {
             runOnJS(notifyInteractionStart)();
           }
         })
         .onUpdate((event) => {
-          const dx = event.x - CX;
-          const dy = event.y - CY;
+          const dx = event.x - cx;
+          const dy = event.y - cy;
           const angle = Math.atan2(dy, dx);
           let delta = angle - prevTouchAngle.value;
           prevTouchAngle.value = angle;
@@ -593,8 +706,8 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
         .onEnd((event) => {
           if (!rotationActivated.value) return;
 
-          const dx = event.x - CX;
-          const dy = event.y - CY;
+          const dx = event.x - cx;
+          const dy = event.y - cy;
           const radiusSq = dx * dx + dy * dy;
           if (radiusSq >= ROTATION_DEAD_ZONE * ROTATION_DEAD_ZONE) {
             let angularVelocityDeg =
@@ -629,6 +742,10 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
           }
         }),
     [
+      cx,
+      cy,
+      ringInner,
+      ringOuter,
       isDragging,
       notifyInteractionEnd,
       notifyInteractionStart,
@@ -664,13 +781,13 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
-    <View onLayout={onLayout} style={styles.chartBlock}>
+    <View onLayout={onLayout} style={chartStyles.chartBlock}>
       <GestureDetector gesture={chartGesture}>
-        <View style={styles.chartHalo} collapsable={false}>
+        <View style={chartStyles.chartHalo} collapsable={false}>
 
           {/* ── Rotating ring + segment arcs ── */}
-          <Animated.View style={[styles.chartSvg, rotatingStyle]} pointerEvents="none">
-            <Svg width={SVG_SIZE} height={SVG_SIZE} pointerEvents="none">
+          <Animated.View style={[chartStyles.chartSvg, rotatingStyle]} pointerEvents="none">
+            <Svg width={geometry.svgSize} height={geometry.svgSize} pointerEvents="none">
               <Defs>
                 <Filter id="budgetSegGlow" x="-30%" y="-30%" width="160%" height="160%">
                   <FeDropShadow dx={0} dy={0} stdDeviation={4} floodColor={accentColor} floodOpacity={0.53} />
@@ -678,17 +795,17 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
               </Defs>
 
               <Circle
-                cx={CX}
-                cy={CY}
-                r={RADIUS}
+                cx={geometry.cx}
+                cy={geometry.cy}
+                r={geometry.radius}
                 stroke={trackColor}
                 strokeWidth={STROKE + 2}
                 fill="none"
               />
               <Circle
-                cx={CX}
-                cy={CY}
-                r={RADIUS - 28}
+                cx={geometry.cx}
+                cy={geometry.cy}
+                r={geometry.radius - geometry.innerRingInset}
                 stroke={colors.border}
                 strokeWidth={1}
                 fill="none"
@@ -707,6 +824,11 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
                     baseOpacity={arc.segmentOpacity}
                     dimmed={dimmed}
                     accentColor={accentColor}
+                    cx={geometry.cx}
+                    cy={geometry.cy}
+                    radius={geometry.radius}
+                    circumference={geometry.circumference}
+                    twelveOclockOffset={geometry.twelveOclockOffset}
                   />
                 );
               })}
@@ -716,8 +838,8 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
           {/* ── Static SVG overlay — animated elbow lines ──
               NOT inside the rotating view.  Each AnimatedLine updates via
               useAnimatedProps using numeric x1/y1/x2/y2 (no SVG transforms). */}
-          <View style={styles.chartSvg} pointerEvents="none">
-            <Svg width={SVG_SIZE} height={SVG_SIZE} pointerEvents="none">
+          <View style={chartStyles.chartSvg} pointerEvents="none">
+            <Svg width={geometry.svgSize} height={geometry.svgSize} pointerEvents="none">
               {elbowRenderers.map(({ key, segmentId, ElbowLine, segLabelOpacity }) => {
                 const selected = selectedId === segmentId;
                 const dimmed = hasSelection && !selected;
@@ -736,7 +858,7 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
           </View>
 
           {/* ── Labels overlay (RN Views, not SVG) ── */}
-          <View style={styles.labelsOverlay} pointerEvents="none" collapsable={false}>
+          <View style={chartStyles.labelsOverlay} pointerEvents="none" collapsable={false}>
             {elbowRenderers.map(({ key, segmentId, name, percentage, ElbowLabel, segLabelOpacity }) => {
               const selected = selectedId === segmentId;
               const dimmed = hasSelection && !selected;
@@ -756,12 +878,12 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
             })}
           </View>
 
-          <View style={styles.touchOverlay} collapsable={false} />
+          <View style={chartStyles.touchOverlay} collapsable={false} />
 
           <View
             pointerEvents="none"
             style={[
-              styles.hub,
+              chartStyles.hub,
               {
                 backgroundColor: hubColor,
                 borderColor: colors.border,
@@ -769,16 +891,16 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
               },
             ]}
           >
-            <Text style={[styles.hubLabel, { color: mutedTextColor }]}>Alloué</Text>
+            <Text style={[chartStyles.hubLabel, { color: mutedTextColor }]}>Alloué</Text>
             <Text
-              style={[styles.hubAmount, { color: colors.text }]}
+              style={[chartStyles.hubAmount, { color: colors.text }]}
               numberOfLines={1}
               adjustsFontSizeToFit
               minimumFontScale={0.72}
             >
               {formatMoney(totalAllocated)}
             </Text>
-            <Text style={[styles.hubMeta, { color: accentColor }]}>
+            <Text style={[chartStyles.hubMeta, { color: accentColor }]}>
               {`${formatMoney(totalSpent)} dépensé`}
             </Text>
           </View>
@@ -788,72 +910,12 @@ export const BudgetAllocationChart = memo(function BudgetAllocationChart({
   );
 });
 
-const styles = StyleSheet.create({
-  chartBlock: { alignItems: 'center', paddingVertical: spacing.sm, overflow: 'visible' },
-  chartHalo: {
-    width: SVG_SIZE,
-    height: SVG_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'visible',
-  },
-  chartSvg: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: SVG_SIZE,
-    height: SVG_SIZE,
-  },
-  labelsOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    width: SVG_SIZE,
-    height: SVG_SIZE,
-    overflow: 'visible',
-    zIndex: 1,
-  },
+const labelTextStyles = StyleSheet.create({
   optionCLabel: {
-    width: LABEL_BOX_WIDTH,
     overflow: 'hidden',
   },
   optionCLabelPct: {
-    width: LABEL_BOX_WIDTH,
     overflow: 'hidden',
     marginTop: 1,
-  },
-  touchOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 2,
-  },
-  hub: {
-    width: DONUT_SIZE - STROKE * 2 - 18,
-    height: DONUT_SIZE - STROKE * 2 - 18,
-    borderRadius: (DONUT_SIZE - STROKE * 2 - 18) / 2,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-  hubLabel: {
-    ...interBoldText,
-    fontSize: typography.micro,
-    letterSpacing: 0.65,
-    textTransform: 'uppercase',
-  },
-  hubAmount: {
-    ...interExtraBoldText,
-    fontSize: 30,
-    letterSpacing: -0.9,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  hubMeta: {
-    ...interBoldText,
-    fontSize: typography.micro,
-    marginTop: 5,
-    textAlign: 'center',
   },
 });
