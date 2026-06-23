@@ -199,7 +199,7 @@ function createOptionCElbowLine(bakedIndex: number) {
         return {
           x1: pos.wx,
           y1: pos.wy,
-          x2: pos.lx,
+          x2: pos.isRight ? pos.lx - LABEL_BOX_WIDTH : pos.lx + LABEL_BOX_WIDTH,
           y2: pos.ly,
           strokeOpacity: opacity * 0.7,
         };
@@ -246,9 +246,8 @@ function createOptionCLabel(bakedIndex: number, bakedIsRight: boolean) {
       if (!pos?.visible) {
         return { position: 'absolute', left: -9999, top: -9999 };
       }
-      // Right-side labels: container starts at lx (text flows right).
-      // Left-side labels: container ends at lx (text flows left inside box).
-      const leftEdge = bakedIsRight ? pos.lx : pos.lx - LABEL_BOX_WIDTH;
+      // Right-side lx: outer (right) edge; left-side lx: outer (left) edge.
+      const leftEdge = bakedIsRight ? pos.lx - LABEL_BOX_WIDTH : pos.lx;
       return {
         position: 'absolute',
         left: leftEdge,

@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -39,6 +40,15 @@ import {
   getCategoryIconName,
   type IconName,
 } from '@/constants/categoryOptions';
+import {
+  addCategory,
+  deleteCategory as deleteStoredCategory,
+  getCategories,
+  initializeCategories,
+  syncSpentFromDatabase,
+  updateCategoryLimit,
+  type BudgetCategory,
+} from '@/lib/budgetCategories';
 import type { MdiIconName } from '@/lib/mdiIconCatalog';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
@@ -63,7 +73,6 @@ import {
   deleteCategoryBudget,
   getCategoryBudgets,
   getDashboard,
-  getSetting,
   setSetting,
   upsertCategory,
   upsertCategoryBudget,
@@ -149,6 +158,7 @@ export default function BudgetScreen() {
   const lastLoadedAtRef = useRef(0);
   const loadInFlightRef = useRef(false);
   const [items, setItems] = useState<CategoryBudget[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<CategoryBudget | null>(null);
   const [highlightedCategoryId, setHighlightedCategoryId] = useState<string | null>(null);
@@ -168,13 +178,15 @@ export default function BudgetScreen() {
     if (!force && Date.now() - lastLoadedAtRef.current < 2500) return;
     loadInFlightRef.current = true;
     try {
-      await ensureBudgetPresets();
-      const [budgets, nextDashboard] = await Promise.all([getCategoryBudgets(), getDashboard()]);
-      setItems(budgets);
+      await initializeCategories();
+      await syncSpentFromDatabase();
+      const [categories, nextDashboard] = await Promise.all([getCategories(), getDashboard()]);
+      setItems(categories.map(toCategoryBudget));
       setDashboard(nextDashboard);
       lastLoadedAtRef.current = Date.now();
     } finally {
       loadInFlightRef.current = false;
+      setCategoriesLoading(false);
     }
   }, []);
 
@@ -359,6 +371,21 @@ export default function BudgetScreen() {
     });
     await upsertCategoryBudget(form.id, limit, weeklyLimit);
     await refreshMonthlyBudgetLimit();
+    const existingStored = (await getCategories()).some((category) => category.id === form.id);
+    if (existingStored) {
+      await updateCategoryLimit(form.id, limit);
+    } else {
+      await addCategory({
+        id: form.id,
+        name,
+        icon: form.icon.trim() || DEFAULT_ICON,
+        limit,
+        spent: 0,
+        period: 'monthly',
+        created_by: 'user',
+        createdAt: new Date().toISOString(),
+      });
+    }
     await load(true);
     setSaving(false);
     setFormFeedback(null);
@@ -369,6 +396,7 @@ export default function BudgetScreen() {
   const handleDeleteCategory = useCallback(
     async (category: CategoryBudget) => {
       await deleteCategoryBudget(category.categoryId);
+      await deleteStoredCategory(category.categoryId);
       await refreshMonthlyBudgetLimit();
       await load(true);
       setSelectedCategory(null);
@@ -376,6 +404,16 @@ export default function BudgetScreen() {
     },
     [load],
   );
+
+  if (categoriesLoading) {
+    return (
+      <PageTransition>
+        <View style={[styles.screen, styles.loadingScreen]}>
+          <ActivityIndicator size="large" color="#4ADE80" />
+        </View>
+      </PageTransition>
+    );
+  }
 
   return (
     <PageTransition>
@@ -1408,41 +1446,17 @@ const allocStyles = StyleSheet.create({
   saveButtonText: { color: '#000000', fontSize: typography.body, fontWeight: '800' },
 });
 
-const DEFAULT_8_CATEGORIES: { id: string; name: string; icon: string; color: string; limit: number }[] = [
-  { id: 'cat-food',      name: 'Épicerie',             icon: 'basket-outline',          color: '#34D399', limit: 400 },
-  { id: 'cat-rest',      name: 'Restaurants / cafés',  icon: 'restaurant-outline',      color: '#F97316', limit: 200 },
-  { id: 'cat-home',      name: 'Logement',             icon: 'home-outline',            color: '#8B5CF6', limit: 0   },
-  { id: 'cat-gas',       name: 'Essence',              icon: 'flame-outline',           color: '#FB7185', limit: 150 },
-  { id: 'cat-transport', name: 'Transport',            icon: 'train-outline',           color: '#00A854', limit: 100 },
-  { id: 'cat-phone',     name: 'Téléphone / internet', icon: 'phone-portrait-outline',  color: '#14B8A6', limit: 80  },
-  { id: 'cat-fun',       name: 'Loisirs',              icon: 'game-controller-outline', color: '#8B5CF6', limit: 80  },
-  { id: 'cat-health',    name: 'Santé / pharmacie',    icon: 'medkit-outline',          color: '#34D399', limit: 60  },
-];
-
-async function ensureBudgetPresets() {
-  const hasSeededPresets = await getSetting('budget_presets_v2_seeded', '0');
-  const existingBudgets = await getCategoryBudgets();
-  if (hasSeededPresets === '1') {
-    return;
-  }
-  if (existingBudgets.length > 0) {
-    await setSetting('budget_presets_v2_seeded', '1');
-    return;
-  }
-
-  for (const preset of DEFAULT_8_CATEGORIES) {
-    await upsertCategory({
-      id: preset.id,
-      name: preset.name,
-      icon: preset.icon,
-      color: preset.color,
-    });
-    await upsertCategoryBudget(preset.id, preset.limit);
-  }
-  const nextBudgets = await getCategoryBudgets();
-  const nextTotal = nextBudgets.reduce((sum, item) => sum + item.limitAmount, 0);
-  await setSetting('monthly_budget_limit', String(nextTotal));
-  await setSetting('budget_presets_v2_seeded', '1');
+function toCategoryBudget(category: BudgetCategory): CategoryBudget {
+  const preset = BUDGET_PRESETS.find((entry) => entry.id === category.id);
+  return {
+    categoryId: category.id,
+    categoryName: category.name,
+    categoryIcon: category.icon,
+    categoryColor: preset?.color ?? DEFAULT_COLOR,
+    limitAmount: category.limit,
+    weeklyLimitAmount: null,
+    spent: category.spent,
+  };
 }
 
 async function refreshMonthlyBudgetLimit() {
@@ -1529,6 +1543,11 @@ function getColorOptions(options: readonly string[], selectedColor: string) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  loadingScreen: {
+    backgroundColor: '#0E0E10',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   content: {
     flexGrow: 1,
     paddingHorizontal: 0,
