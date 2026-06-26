@@ -2,8 +2,10 @@ import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsF
 
 type Listener = () => void;
 type RecurringPaymentListener = (variant: RecurringPaymentAddVariant) => void;
+type FynChatSendListener = (text: string) => void;
 const listeners = new Set<Listener>();
 const newRecurringPaymentListeners = new Set<RecurringPaymentListener>();
+const fynChatSendListeners = new Set<FynChatSendListener>();
 
 export const dataEvents = {
   emit: () => listeners.forEach((fn) => fn()),
@@ -22,6 +24,13 @@ export const uiEvents = {
     newRecurringPaymentListeners.add(fn);
     return () => {
       newRecurringPaymentListeners.delete(fn);
+    };
+  },
+  requestFynChatSend: (text: string) => fynChatSendListeners.forEach((fn) => fn(text)),
+  subscribeFynChatSend: (fn: FynChatSendListener) => {
+    fynChatSendListeners.add(fn);
+    return () => {
+      fynChatSendListeners.delete(fn);
     };
   },
 };

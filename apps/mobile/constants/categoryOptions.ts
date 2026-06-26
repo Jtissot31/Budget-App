@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { getColorForCategoryIndex } from '@/constants/budgetCategoryColors';
 import type { Category } from '@/types';
 
 export type IconName = keyof typeof Ionicons.glyphMap;
@@ -302,10 +303,14 @@ const AVERAGE_USER_BUDGET_IDS = [
   'cat-fun',
 ] as const;
 
-export const AVERAGE_USER_BUDGET_PRESETS: BudgetPreset[] = AVERAGE_USER_BUDGET_IDS.map((id) => {
+export const AVERAGE_USER_BUDGET_PRESETS: BudgetPreset[] = AVERAGE_USER_BUDGET_IDS.map((id, index) => {
   const preset = BUDGET_PRESETS.find((entry) => entry.id === id);
   if (!preset) throw new Error(`Missing budget preset: ${id}`);
-  return { ...preset, defaultLimit: AVERAGE_USER_BUDGET_LIMITS[id] ?? preset.defaultLimit };
+  return {
+    ...preset,
+    defaultLimit: AVERAGE_USER_BUDGET_LIMITS[id] ?? preset.defaultLimit,
+    color: getColorForCategoryIndex(index),
+  };
 });
 
 export const AVERAGE_USER_MONTHLY_BUDGET_TOTAL = AVERAGE_USER_BUDGET_PRESETS.reduce(

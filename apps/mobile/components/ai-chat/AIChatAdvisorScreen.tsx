@@ -37,12 +37,14 @@ import {
 import { getActivityPhaseLabel, type ActivityPhase } from '@/lib/ai/activityPhases';
 import { isAnthropicApiKeyConfigured } from '@/lib/ai/env';
 import { readChatImageAttachment } from '@/lib/ai/imageAttachment';
+import { uiEvents } from '@/lib/events';
 import { captureReceiptPhoto, pickReceiptFromGallery } from '@/lib/receiptCapture';
 import { AIChatActivityIndicator } from './AIChatActivityIndicator';
 import { AIChatHeader } from './AIChatHeader';
 import { AIChatMessage } from './AIChatMessage';
 import { AIChatSettingsSheet } from './AIChatSettingsSheet';
 import { AIChatMultimodalInput } from './AIChatMultimodalInput';
+import { AIChatQuickChips } from './AIChatQuickChips';
 import { AIChatProjectionWidget } from './AIChatProjectionWidget';
 import {
   aiMessageToUiMessage,
@@ -462,15 +464,26 @@ export function AIChatAdvisorScreen({
     setQuotaWarning(null);
   }, []);
 
+  useEffect(() => {
+    if (!tabBarVisible) return;
+    return uiEvents.subscribeFynChatSend((text) => {
+      void sendMessage(text);
+    });
+  }, [tabBarVisible, sendMessage]);
+
   const listData = useMemo(() => toListItems(messages), [messages]);
   const showQuickChips = !hasUserSentMessage && (messages.length === 0 || usingDemoSeed);
+  const showInlineComposer = !tabBarVisible;
   const estimatedInputOverlayHeight =
     (showQuickChips ? CHAT_QUICK_CHIPS_ESTIMATED_HEIGHT : 0) +
-    CHAT_INPUT_ROW_ESTIMATED_HEIGHT +
+    (showInlineComposer ? CHAT_INPUT_ROW_ESTIMATED_HEIGHT : 0) +
     (isResponding ? CHAT_ACTIVITY_INDICATOR_ESTIMATED_HEIGHT : 0) +
     chatInputBottomInset;
+  const showBottomOverlay = showInlineComposer || isResponding || (showQuickChips && tabBarVisible);
   const listBottomPadding =
-    Math.max(inputOverlayHeight, estimatedInputOverlayHeight) +
+    (showBottomOverlay
+      ? Math.max(inputOverlayHeight, estimatedInputOverlayHeight)
+      : estimatedInputOverlayHeight) +
     LIST_BOTTOM_CLEARANCE_GAP +
     insets.bottom;
 
@@ -634,33 +647,47 @@ export function AIChatAdvisorScreen({
             }}
           />
 
-          <View
-            style={styles.inputOverlay}
-            pointerEvents="box-none"
-            onLayout={handleInputOverlayLayout}
-          >
-            {isResponding ? (
-              <View style={styles.activityAboveInput}>
-                <AIChatActivityIndicator
-                  currentPhase={activityState?.currentPhase ?? null}
-                  completedPhases={activityState?.completedPhases ?? []}
-                />
-              </View>
-            ) : null}
+          {showBottomOverlay ? (
+            <View
+              style={styles.inputOverlay}
+              pointerEvents="box-none"
+              onLayout={handleInputOverlayLayout}
+            >
+              {isResponding ? (
+                <View style={styles.activityAboveInput}>
+                  <AIChatActivityIndicator
+                    currentPhase={activityState?.currentPhase ?? null}
+                    completedPhases={activityState?.completedPhases ?? []}
+                  />
+                </View>
+              ) : null}
 
-            <AIChatMultimodalInput
-              value={input}
-              onChangeText={setInput}
-              onSend={(text) => void sendMessage(text)}
-              onAttach={() => void handlePickImage('gallery')}
-              onCamera={() => void handlePickImage('camera')}
-              onChipPress={handleChipPress}
-              onInputBlur={handleKeyboardDismiss}
-              chips={showQuickChips ? AI_QUICK_CHIPS : []}
-              disabled={isResponding || !historyLoaded}
-              bottomInset={chatInputBottomInset}
-            />
-          </View>
+              {showQuickChips && tabBarVisible ? (
+                <View style={{ paddingBottom: chatInputBottomInset }}>
+                  <AIChatQuickChips
+                    chips={AI_QUICK_CHIPS}
+                    onChipPress={handleChipPress}
+                    disabled={isResponding || !historyLoaded}
+                  />
+                </View>
+              ) : null}
+
+              {showInlineComposer ? (
+                <AIChatMultimodalInput
+                  value={input}
+                  onChangeText={setInput}
+                  onSend={(text) => void sendMessage(text)}
+                  onAttach={() => void handlePickImage('gallery')}
+                  onCamera={() => void handlePickImage('camera')}
+                  onChipPress={handleChipPress}
+                  onInputBlur={handleKeyboardDismiss}
+                  chips={showQuickChips ? AI_QUICK_CHIPS : []}
+                  disabled={isResponding || !historyLoaded}
+                  bottomInset={chatInputBottomInset}
+                />
+              ) : null}
+            </View>
+          ) : null}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

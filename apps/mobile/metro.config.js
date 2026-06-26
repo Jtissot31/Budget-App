@@ -13,21 +13,6 @@ if (!config.resolver.sourceExts.includes('mjs')) {
   config.resolver.sourceExts.push('mjs');
 }
 
-const lucideCjsEntry = path.resolve(
-  __dirname,
-  'node_modules/lucide-react-native/dist/cjs/lucide-react-native.js',
-);
-
-const defaultResolveRequest = config.resolver.resolveRequest;
-config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (moduleName === 'lucide-react-native') {
-    return { type: 'sourceFile', filePath: lucideCjsEntry };
-  }
-  if (defaultResolveRequest) {
-    return defaultResolveRequest(context, moduleName, platform);
-  }
-  return context.resolveRequest(context, moduleName, platform);
-};
 
 // Dev server headers required for SharedArrayBuffer / OPFS on web.
 const selectionExportPath = path.resolve(__dirname, 'lib/designSystemLucideSelection.json');

@@ -1,5 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppState, BackHandler, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  AppState,
+  BackHandler,
+  Dimensions,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableWithoutFeedback,
+  View,
+  type ViewStyle,
+} from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useFocusEffect } from '@react-navigation/native';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +20,14 @@ import Svg, { Path } from 'react-native-svg';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { usePathname, useRouter } from 'expo-router';
+import {
+  TRANSACTIONS_FAB_BLUR_INTENSITY,
+  TRANSACTIONS_FAB_BLUR_TINT,
+  TRANSACTIONS_FAB_ICON_COLOR_BLUR,
+  TRANSACTIONS_FAB_ICON_COLOR_ORIGINAL,
+  TRANSACTIONS_FAB_STYLE_BLUR,
+  TRANSACTIONS_FAB_STYLE_ORIGINAL,
+} from '@/constants/fabStyles';
 import {
   FLOATING_FAB_SIZE,
   floatingGlassButtonPressed,
@@ -28,10 +48,12 @@ import { useAppTheme } from '@/lib/themeContext';
 const PILL_BORDER_RADIUS = 999;
 
 const TAB_ICON_SIZE = 21;
+/** Expands icon-only tab target to 44×44 without a sized pressable background. */
+const TAB_HIT_SLOP = { top: 11, bottom: 11, left: 11, right: 11 } as const;
 
 const FynBrainIcon = getSelectedLucideIcon('Brain');
 
-/** Material Community Icons — outline (inactive) / filled (active) */
+/** Material Community Icons — outline only (icon-only tabs, no filled circles). */
 const ROUTE_ICONS: Record<
   string,
   { outline: keyof typeof MaterialCommunityIcons.glyphMap; filled: keyof typeof MaterialCommunityIcons.glyphMap }
@@ -101,13 +123,88 @@ const HISTORY_FAB_MAIN_SIZE = 54;
 const HISTORY_FAB_OPTION_ROW_HEIGHT = 44;
 /** Arc speed-dial: radius and angles (°) from FAB center — 180° = left, 90° = up. */
 const HISTORY_FAB_ARC_RADIUS = 125;
-// 158° → 163°: equalises visual pill gap (y-gap = R·Δsin θ − pillH).
-// Equal Δθ ≠ equal Δy because sin is nonlinear; 163° centres Revenu at
-// the midpoint of sin(195°)…sin(121°), giving ~25 px gap on both sides.
 const HISTORY_FAB_ARC_ANGLES_DEG = [195, 163, 121] as const;
 const HISTORY_FAB_OPTION_PILL_WIDTH = 132;
 const HISTORY_FAB_ARC_STAGGER_MS = 55;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
+
+// Android: no live BlurView — causes scroll sampling artifacts (dimezisBlurView live-samples
+// the framebuffer behind absolutely-positioned nav; any transparency brings scroll ghosts).
+const ANDROID_FAKE_GLASS = {
+  dark: {
+    fill: 'rgba(10, 10, 10, 0.90)',
+    sheen: 'rgba(255, 255, 255, 0.06)',
+  },
+  light: {
+    fill: 'rgba(255, 255, 255, 0.90)',
+    sheen: 'rgba(255, 255, 255, 0.10)',
+  },
+} as const;
+
+/** iOS only — BlurView + opaque underlay keeps frosted glass stable without ghost bleed. */
+const IOS_FLOATING_GLASS = {
+  dark: {
+    underlay: 'rgba(10, 10, 10, 0.75)',
+    blurOverlay: 'rgba(10, 10, 10, 0.32)',
+    sheen: 'rgba(255, 255, 255, 0.04)',
+  },
+  light: {
+    underlay: 'rgba(255, 255, 255, 0.75)',
+    blurOverlay: 'rgba(255, 255, 255, 0.30)',
+    sheen: 'rgba(255, 255, 255, 0.10)',
+  },
+} as const;
+
+const ANDROID_HISTORY_FAB_GLOW: Pick<
+  ViewStyle,
+  'shadowColor' | 'shadowOffset' | 'shadowOpacity' | 'shadowRadius' | 'elevation'
+> = {
+  shadowColor: '#4ADE80',
+  shadowOffset: { width: 0, height: 0 },
+  shadowOpacity: 0.35,
+  shadowRadius: 12,
+  elevation: 0,
+};
+
+type FloatingGlassFillStyle = ReturnType<typeof StyleSheet.absoluteFillObject> | typeof StyleSheet.absoluteFill;
+
+function FloatingGlassBackground({
+  intensity,
+  tint,
+  isLight,
+  fillStyle = StyleSheet.absoluteFill,
+}: {
+  intensity: number;
+  tint: 'light' | 'dark';
+  isLight: boolean;
+  fillStyle?: FloatingGlassFillStyle;
+}) {
+  if (Platform.OS === 'android') {
+    const glass = isLight ? ANDROID_FAKE_GLASS.light : ANDROID_FAKE_GLASS.dark;
+    return (
+      <>
+        <View pointerEvents="none" collapsable={false} style={[fillStyle, { backgroundColor: glass.fill }]} />
+        <View pointerEvents="none" collapsable={false} style={[fillStyle, { backgroundColor: glass.sheen }]} />
+      </>
+    );
+  }
+
+  const glass = isLight ? IOS_FLOATING_GLASS.light : IOS_FLOATING_GLASS.dark;
+
+  return (
+    <>
+      <View pointerEvents="none" collapsable={false} style={[fillStyle, { backgroundColor: glass.underlay }]} />
+      <BlurView
+        intensity={intensity}
+        tint={tint}
+        collapsable={false}
+        style={[fillStyle, { overflow: 'hidden' }]}
+      />
+      <View pointerEvents="none" collapsable={false} style={[fillStyle, { backgroundColor: glass.blurOverlay }]} />
+      <View pointerEvents="none" collapsable={false} style={[fillStyle, { backgroundColor: glass.sheen }]} />
+    </>
+  );
+}
 
 const AGENDA_FAB_OPTION_PILL_WIDTH = 132;
 
@@ -192,7 +289,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     setIsAgendaFabExpanded(false);
   }, []);
 
-  // Stack push/pop above tabs: blur/focus on the tab navigator.
   useFocusEffect(
     useCallback(() => {
       collapseSpeedDials();
@@ -202,7 +298,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     }, [collapseSpeedDials]),
   );
 
-  // Tab switch, pathname change, Historique ↔ Agenda sub-view: blur previous / focus next.
   useEffect(() => {
     collapseSpeedDials();
     return () => {
@@ -274,12 +369,14 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     router.push('/add-transaction');
   };
 
-  const navShellBg = colors.containerBackground;
+  const tabBarBlurIntensity = isLight ? 65 : 72;
+  const tabBarBorderColor = isLight ? colors.border : 'rgba(255, 255, 255, 0.12)';
 
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       {showHistoryFabOptions ? (
         <Pressable
+          pointerEvents="auto"
           style={[
             styles.historyFabBackdrop,
             {
@@ -330,6 +427,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                 style={styles.historyFabArcOption}
               >
                 <Pressable
+                  pointerEvents="auto"
                   accessibilityRole="button"
                   accessibilityLabel={accessibilityLabel}
                   onPress={() => openHistoryAddTransaction(type)}
@@ -362,6 +460,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
       ) : null}
       {showAgendaFabOptions ? (
         <Pressable
+          pointerEvents="auto"
           style={[
             styles.historyFabBackdrop,
             {
@@ -412,6 +511,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                 style={[styles.historyFabArcOption, { width: AGENDA_FAB_OPTION_PILL_WIDTH }]}
               >
                 <Pressable
+                  pointerEvents="auto"
                   accessibilityRole="button"
                   accessibilityLabel={accessibilityLabel}
                   onPress={() => openAgendaAddRecurring(variant)}
@@ -444,14 +544,20 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
       ) : null}
       {showAddButton ? (
         <Pressable
+          pointerEvents="auto"
           style={({ pressed }) => [
-            styles.addOuter,
             styles.fabPosition,
+            isTransactionsHistoryView ? TRANSACTIONS_FAB_STYLE_BLUR : styles.addOuter,
             {
               bottom: rightThumbFabBottom + FAB_STACK_OFFSET_ADD,
-              backgroundColor: colors.primary,
-              shadowColor: colors.primary,
             },
+            isTransactionsHistoryView && Platform.OS === 'android' ? ANDROID_HISTORY_FAB_GLOW : null,
+            !isTransactionsHistoryView
+              ? {
+                  backgroundColor: colors.primary,
+                  shadowColor: colors.primary,
+                }
+              : null,
             pressed && floatingGlassButtonPressed,
           ]}
           onPress={handleAddPress}
@@ -470,6 +576,14 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
               : 'Nouvelle transaction'
           }
         >
+          {isTransactionsHistoryView ? (
+            <FloatingGlassBackground
+              intensity={TRANSACTIONS_FAB_BLUR_INTENSITY}
+              tint={TRANSACTIONS_FAB_BLUR_TINT}
+              isLight={isLight}
+              fillStyle={styles.addBlurFill}
+            />
+          ) : null}
           <MotiView
             animate={{
               rotate:
@@ -481,86 +595,106 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
             transition={{ type: 'timing', duration: 180 }}
             style={styles.addIconWrap}
           >
-            <PlusFabIcon size={24} color="#000000" />
+            <PlusFabIcon
+              size={24}
+              color={
+                isTransactionsHistoryView
+                  ? TRANSACTIONS_FAB_ICON_COLOR_BLUR
+                  : TRANSACTIONS_FAB_ICON_COLOR_ORIGINAL
+              }
+            />
           </MotiView>
         </Pressable>
       ) : null}
 
       <View
         pointerEvents="box-none"
+        collapsable={false}
         style={[
-          styles.floatingNav,
+          styles.floatingNavShell,
           {
             marginBottom: bottom + spacing.sm,
             marginHorizontal: spacing.lg,
-            backgroundColor: navShellBg,
-            borderColor: colors.border,
-            borderRadius: PILL_BORDER_RADIUS,
           },
         ]}
       >
-        {state.routes.map((route, index) => {
-          if (HIDDEN_ROUTES.has(route.name)) return null;
-          const isFynTab = route.name === 'goals';
-          const focused = state.index === index;
-          const icons = ROUTE_ICONS[route.name] ?? {
-            outline: 'circle-outline',
-            filled: 'circle',
-          };
-          const iconName = focused ? icons.filled : icons.outline;
-          const tabLabel = ROUTE_LABELS[route.name] ?? route.name;
-          const iconColor = focused ? colors.text : colors.textMuted;
+        <View
+          pointerEvents="none"
+          style={[
+            styles.floatingNavBlurLayer,
+            {
+              borderColor: tabBarBorderColor,
+              borderRadius: PILL_BORDER_RADIUS,
+            },
+          ]}
+        >
+          <FloatingGlassBackground
+            intensity={tabBarBlurIntensity}
+            tint={isLight ? 'light' : 'dark'}
+            isLight={isLight}
+          />
+        </View>
+        <View style={styles.navContent} pointerEvents="box-none">
+          {state.routes.map((route, index) => {
+            if (HIDDEN_ROUTES.has(route.name)) return null;
+            const isFynTab = route.name === 'goals';
+            const focused = state.index === index;
+            const icons = ROUTE_ICONS[route.name] ?? {
+              outline: 'circle-outline',
+              filled: 'circle',
+            };
+            const iconName = icons.outline;
+            const tabLabel = ROUTE_LABELS[route.name] ?? route.name;
+            const iconColor = focused ? colors.text : colors.textMuted;
 
-          const onPress = () => {
-            collapseSpeedDials();
+            const onPress = () => {
+              collapseSpeedDials();
 
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
-            if (event.defaultPrevented) return;
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
+              if (event.defaultPrevented) return;
 
-            if (route.name === 'transactions') {
-              const subView = (route.params as { view?: string } | undefined)?.view;
-              if (!focused || (subView && subView !== 'history')) {
-                navigation.navigate('transactions', { view: 'history' });
+              if (route.name === 'transactions') {
+                const subView = (route.params as { view?: string } | undefined)?.view;
+                if (!focused || (subView && subView !== 'history')) {
+                  navigation.navigate('transactions', { view: 'history' });
+                }
+                return;
               }
-              return;
-            }
 
-            if (!focused) {
-              navigation.navigate(route.name, route.params);
-            }
-          };
+              if (!focused) {
+                navigation.navigate(route.name, route.params);
+              }
+            };
 
-          return (
-            <Pressable
-              key={route.key}
-              onPress={onPress}
-              style={({ pressed }) => [styles.tab, pressed && styles.pressed]}
-              accessibilityRole="tab"
-              accessibilityLabel={tabLabel}
-              accessibilityState={{ selected: focused }}
-            >
-              {isFynTab && FynBrainIcon ? (
-                <FynBrainIcon
-                  size={TAB_ICON_SIZE}
-                  color={iconColor}
-                  strokeWidth={focused ? 2.35 : 2}
-                />
-              ) : (
-                <AppIcon
-                  family="material-community"
-                  name={iconName}
-                  size={TAB_ICON_SIZE}
-                  color={iconColor}
-                  focused={focused}
-                />
-              )}
-            </Pressable>
-          );
-        })}
+            return (
+              <TouchableWithoutFeedback
+                key={route.key}
+                onPress={onPress}
+                hitSlop={TAB_HIT_SLOP}
+                accessibilityRole="tab"
+                accessibilityLabel={tabLabel}
+                accessibilityState={{ selected: focused }}
+              >
+                <View style={styles.tab}>
+                  {isFynTab && FynBrainIcon ? (
+                    <FynBrainIcon size={TAB_ICON_SIZE} color={iconColor} strokeWidth={2} />
+                  ) : (
+                    <AppIcon
+                      family="material-community"
+                      name={iconName}
+                      size={TAB_ICON_SIZE}
+                      color={iconColor}
+                    />
+                  )}
+                </View>
+              </TouchableWithoutFeedback>
+            );
+          })}
+        </View>
       </View>
     </View>
   );
@@ -575,13 +709,22 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     backgroundColor: 'transparent',
   },
-  floatingNav: {
+  floatingNavShell: {
+    backgroundColor: 'transparent',
+  },
+  floatingNavBlurLayer: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  navContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    borderWidth: StyleSheet.hairlineWidth,
     paddingVertical: 13,
     paddingHorizontal: 20,
+    backgroundColor: 'transparent',
+    zIndex: 1,
   },
   historyFabBackdrop: {
     position: 'absolute',
@@ -621,15 +764,12 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   addOuter: {
-    width: 54,
-    height: 54,
+    ...TRANSACTIONS_FAB_STYLE_ORIGINAL,
+  },
+  addBlurFill: {
+    ...StyleSheet.absoluteFillObject,
     borderRadius: 27,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 12,
+    overflow: 'hidden',
   },
   addIconWrap: {
     alignItems: 'center',
@@ -641,6 +781,11 @@ const styles = StyleSheet.create({
     minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    elevation: 0,
+    shadowOpacity: 0,
+    overflow: 'visible',
   },
   pressed: { opacity: 0.75 },
 });

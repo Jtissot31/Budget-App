@@ -147,6 +147,7 @@ function RootLayoutContent() {
             <Stack.Screen name="scan" options={{ title: 'Scanner', presentation: 'modal' }} />
             <Stack.Screen name="ai-chat" options={{ headerShown: false }} />
             <Stack.Screen name="ai-advisor" options={{ headerShown: false }} />
+            <Stack.Screen name="alert-center" options={{ headerShown: false }} />
           </Stack>
         </View>
       </View>

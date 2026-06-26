@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
 import {
   jakartaMediumText,

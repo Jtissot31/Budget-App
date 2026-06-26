@@ -60,7 +60,7 @@ const styles = StyleSheet.create({
   },
   bodyRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: spacing.sm,
   },
   copy: {

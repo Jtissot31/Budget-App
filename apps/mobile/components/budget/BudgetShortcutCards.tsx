@@ -1,6 +1,13 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ChevronRight, Target, TrendingUp } from 'lucide-react-native';
+import { resolveLucideIcon } from '@/lib/lucideIconCatalog';
+import ChevronRightMod from 'lucide-react-native/dist/cjs/icons/chevron-right.js';
+import TargetMod from 'lucide-react-native/dist/cjs/icons/target.js';
+import TrendingUpMod from 'lucide-react-native/dist/cjs/icons/trending-up.js';
+
+const ChevronRight = resolveLucideIcon(ChevronRightMod)!;
+const Target = resolveLucideIcon(TargetMod)!;
+const TrendingUp = resolveLucideIcon(TrendingUpMod)!;
 import { fontFamilies, PAGE_PADDING_HORIZONTAL } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 

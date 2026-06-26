@@ -1,5 +1,5 @@
+import { assignCategoryColor } from '@/constants/budgetCategoryColors';
 import {
-  CATEGORY_COLOR_OPTIONS,
   CATEGORY_ICON_OPTIONS,
   UNCATEGORIZED_TRANSACTION_CATEGORY,
 } from '@/constants/categoryOptions';
@@ -265,18 +265,21 @@ async function executeModifierObjectif(params: Record<string, unknown>): Promise
   };
 }
 
+// TODO(budget-categories-fresh-start): rewrite when new budget category model/UI lands.
 async function executeCreerCategorieBudget(
   params: Record<string, unknown>,
 ): Promise<ExecuteChatActionResult> {
   const name = requireString(params, 'nom', 'Nom');
   const limitAmount = requireNumber(params, 'limite_mensuelle', 'Limite mensuelle');
   const id = createEntityId('cat');
+  const budgets = await getCategoryBudgets();
+  const color = assignCategoryColor(budgets.map((budget) => budget.categoryColor));
 
   await upsertCategory({
     id,
     name,
     icon: readString(params, 'icone') ?? CATEGORY_ICON_OPTIONS[0] ?? 'cart-outline',
-    color: readString(params, 'couleur') ?? CATEGORY_COLOR_OPTIONS[0] ?? '#34D399',
+    color,
   });
   await upsertCategoryBudget(id, limitAmount, readNumber(params, 'limite_hebdomadaire'));
 
@@ -287,6 +290,7 @@ async function executeCreerCategorieBudget(
   };
 }
 
+// TODO(budget-categories-fresh-start): rewrite when new budget category model/UI lands.
 async function executeModifierCategorieBudget(
   params: Record<string, unknown>,
 ): Promise<ExecuteChatActionResult> {
@@ -300,7 +304,7 @@ async function executeModifierCategorieBudget(
     id: existing.id,
     name: nextName,
     icon: readString(params, 'icone') ?? existing.icon,
-    color: readString(params, 'couleur') ?? existing.color,
+    color: existing.color,
   });
 
   const budgets = await getCategoryBudgets();

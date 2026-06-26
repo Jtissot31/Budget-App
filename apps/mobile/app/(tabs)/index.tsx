@@ -14,6 +14,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { AlertCenterButton } from '@/components/AlertCenterButton';
 import { useRouter } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -78,6 +79,7 @@ import {
 import { dataEvents } from '@/lib/events';
 import { getUserDisplayName } from '@/lib/userDisplay';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
+import { useAlertCenter } from '@/hooks/useAlertCenter';
 import {
   creditLimitUtilizationBarColor,
   creditUsedFromBalance,
@@ -190,7 +192,7 @@ const BALANCE_COMPARE_SETTING_KEY = 'dashboard_balance_compare_account_ids';
 
 const C = dashboardPalette;
 
-const DASHBOARD_BOTTOM_PADDING = 110;
+const DASHBOARD_BOTTOM_PADDING = FLOATING_NAV_CONTENT_PADDING;
 
 const PAYMENT_WARNING_TITLE_CHECKING = 'Fonds insuffisants';
 const PAYMENT_SUCCESS_TITLE_CHECKING = 'Fonds disponibles';
@@ -1090,6 +1092,16 @@ export default function HomeScreen() {
     'id' | 'paycheckDateRaw' | 'paymentName' | 'accountName' | 'accountId' | 'paycheckIsEstimated'
   > | null>(null);
   const [payEntryPrompt, setPayEntryPrompt] = useState<PaycheckEntryPrompt | null>(null);
+
+  const {
+    unreadCount: alertCenterUnreadCount,
+    refresh: refreshAlertCenter,
+  } = useAlertCenter({
+    recurringPayments,
+    simulatedAccounts,
+    incomeTransactions,
+    enabled: data !== null,
+  });
   const [loadTimedOut, setLoadTimedOut] = useState(false);
 
   const paycheckReminderScheduleFromAlert = useCallback(
@@ -1267,6 +1279,7 @@ export default function HomeScreen() {
 
   useRefreshOnFocus(load);
   useRefreshOnFocus(checkPaycheckEntryPrompt);
+  useRefreshOnFocus(refreshAlertCenter);
   useScrollToTopOnFocus(
     useCallback(() => {
       scrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -1553,7 +1566,7 @@ export default function HomeScreen() {
     />
     <ScrollView
       ref={scrollRef}
-      style={styles.screen}
+      style={[styles.screen, { backgroundColor: dashPalette.bg }]}
       contentContainerStyle={[
         dashStyles.scrollContent,
         {
@@ -1577,22 +1590,10 @@ export default function HomeScreen() {
             {greetingLine()}, {displayName}
         </Text>
           <View style={styles.headerActions}>
-            <Pressable
-              onPress={() => {
-                tapHaptic();
-                router.push('/lucide-icons');
-              }}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Ouvrir le catalogue d'icônes Lucide"
-              style={({ pressed }) => [
-                styles.headerIconButton,
-                { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
-                pressed && styles.pressed,
-              ]}
-            >
-              <AppIcon family="ionicons" name="grid-outline" size={20} color={colors.textSecondary} />
-            </Pressable>
+            <AlertCenterButton
+              unreadCount={alertCenterUnreadCount}
+              onPress={() => router.push('/alert-center')}
+            />
             <Pressable
               onPress={() => {
                 tapHaptic();
@@ -1839,6 +1840,7 @@ export default function HomeScreen() {
       onConfirm={() => void openPayEntryFromPrompt()}
       onCancel={() => void dismissPayEntryPromptForToday()}
     />
+
     </PageTransition>
   );
 }
