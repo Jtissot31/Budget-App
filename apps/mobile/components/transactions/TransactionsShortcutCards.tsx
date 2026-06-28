@@ -108,14 +108,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
-    backgroundColor: '#C9974A',
+    backgroundColor: '#C9974A20',
     marginLeft: 2,
   },
   countBadgeText: {
     fontFamily: fontFamilies.bold,
     fontSize: 9,
     lineHeight: 11,
-    color: '#0a0a0a',
+    color: '#C9974A',
     includeFontPadding: false,
   },
   pressed: {

@@ -717,13 +717,12 @@ const styles = StyleSheet.create({
   historyToolbar: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     marginBottom: 88,
-    gap: 12,
   },
   searchFilterRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 0,
+    marginBottom: 12,
   },
   searchPill: {
     flex: 1,
