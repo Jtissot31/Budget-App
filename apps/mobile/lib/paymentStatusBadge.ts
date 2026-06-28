@@ -22,10 +22,21 @@ export function formatUpcomingStatusBadge(days: number) {
 export function resolvePaymentStatusBadge(
   eventDateKey: string,
   todayKey: string,
-  options: { isIncome?: boolean; isPay?: boolean } = {},
+  options: {
+    isIncome?: boolean;
+    isPay?: boolean;
+    /** Dépôt de paie estimé — « REÇU » seulement si un revenu réel est confirmé. */
+    isEstimatedPay?: boolean;
+    hasConfirmedIncome?: boolean;
+  } = {},
 ) {
   if (eventDateKey > todayKey) {
     return formatUpcomingStatusBadge(daysUntilPayment(eventDateKey, new Date(`${todayKey}T12:00:00`)));
+  }
+  if (options.isEstimatedPay) {
+    if (options.hasConfirmedIncome) return 'REÇU';
+    if (eventDateKey === todayKey) return "AUJOURD'HUI";
+    return 'ESTIMÉ';
   }
   if (options.isIncome || options.isPay) return 'REÇU';
   return 'PAYÉ';

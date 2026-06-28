@@ -4,28 +4,20 @@ import { AppIcon } from '@/components/icons/AppIcon';
 import { CheckingBalanceSparkline } from '@/components/dashboard/CheckingBalanceSparkline';
 import { NetWorthAmountRow } from '@/components/NetWorthAmountRow';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
-import { interBoldText, interMediumText, spacing } from '@/constants/theme';
-import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { interBoldText, spacing } from '@/constants/theme';
 import { netWorthHeroAmount } from '@/lib/textLayout';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
   checkingBalance: number;
-  monthlyNetFlux: number;
   checkingBalanceSeries: number[];
 };
 
-function formatFluxAmount(value: number): string {
-  const sign = value >= 0 ? '+' : '−';
-  return `${sign}${formatDisplayMoneyAbsolute(Math.abs(value))}`;
-}
-
-export function HomeAvailableNowHero({ checkingBalance, monthlyNetFlux, checkingBalanceSeries }: Props) {
+export function HomeAvailableNowHero({ checkingBalance, checkingBalanceSeries }: Props) {
   const { colors } = useAppTheme();
   const [balancesHidden, setBalancesHidden] = useState(false);
   const maskedLabel = useMemo(() => '••••••', []);
-  const fluxColor = monthlyNetFlux >= 0 ? colors.accentGreen : colors.danger;
 
   return (
     <View style={styles.hero}>
@@ -58,14 +50,6 @@ export function HomeAvailableNowHero({ checkingBalance, monthlyNetFlux, checking
         </Pressable>
       </View>
 
-      {balancesHidden ? (
-        <Text style={[styles.fluxLine, { color: colors.textMuted }, interMediumText]}>Flux masqué</Text>
-      ) : (
-        <Text style={[styles.fluxLine, { color: fluxColor }, interMediumText]}>
-          Flux net ce mois : {formatFluxAmount(monthlyNetFlux)} (revenus − dépenses)
-        </Text>
-      )}
-
       {!balancesHidden && checkingBalanceSeries.length >= 2 ? (
         <View style={styles.sparklineClip}>
           <CheckingBalanceSparkline values={checkingBalanceSeries} />
@@ -94,11 +78,6 @@ const styles = StyleSheet.create({
   },
   maskedAmount: {
     letterSpacing: 2,
-  },
-  fluxLine: {
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: spacing.xs,
   },
   sparklineClip: {
     marginTop: spacing.sm,

@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
+import { DatePickerField } from '@/components/MinimalDatePicker';
+import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { PageTransition } from '@/components/PageTransition';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { RegionPickerSheet } from '@/components/RegionPickerSheet';
@@ -31,6 +33,7 @@ import {
   PAGE_TITLE_CONTENT_GAP,
   spacing,
   subtleDeleteButtonStyle,
+  typography,
   typographyKit,
   type AppColors,
   type ThemePreference,
@@ -60,12 +63,22 @@ import {
   type NumpadDefaultMode,
 } from '@/lib/settings';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
+import {
+  getPayEstimationSettings,
+  PAY_ESTIMATION_FREQUENCY_OPTIONS,
+  payEstimationFrequencyLabel,
+  setPayAverageAmount as persistPayAverageAmount,
+  setPayEstimationFrequency as persistPayEstimationFrequency,
+  setPayLastDate as persistPayLastDate,
+  setPaySecondLastDate as persistPaySecondLastDate,
+  type PayEstimationFrequency,
+} from '@/lib/payEstimationSettings';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import { clearChatHistory, getChatQuotaState, getDataModeLabel } from '@/lib/ai/chatService';
 import { isAnthropicApiKeyConfigured } from '@/lib/ai/env';
 import { useAppTheme } from '@/lib/themeContext';
 
-type PickerKind = 'currency' | 'language' | 'region' | null;
+type PickerKind = 'currency' | 'language' | 'region' | 'pay_frequency' | null;
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -86,6 +99,11 @@ export default function SettingsScreen() {
   const [aiQuotaLabel, setAiQuotaLabel] = useState<string | undefined>(undefined);
   const [anthropicApiKeyConfigured, setAnthropicApiKeyConfigured] = useState(false);
   const [clearingChatHistory, setClearingChatHistory] = useState(false);
+
+  const [payFrequency, setPayFrequency] = useState<PayEstimationFrequency | null>(null);
+  const [paySecondLastDate, setPaySecondLastDate] = useState('');
+  const [payLastDate, setPayLastDate] = useState('');
+  const [payAverageAmount, setPayAverageAmount] = useState('');
 
   const [activePicker, setActivePicker] = useState<PickerKind>(null);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
@@ -120,6 +138,7 @@ export default function SettingsScreen() {
       storedCloud,
       dataModeLabel,
       quota,
+      paySettings,
     ] = await Promise.all([
       getDisplayCurrency(),
       getDisplayLanguage(),
@@ -131,6 +150,7 @@ export default function SettingsScreen() {
       getCloudAccountConnected(),
       getDataModeLabel(),
       getChatQuotaState(),
+      getPayEstimationSettings(),
     ]);
 
     setCurrency(storedCurrency);
@@ -144,6 +164,14 @@ export default function SettingsScreen() {
     setAiDataModeLabel(dataModeLabel);
     setAiQuotaLabel(`${quota.messagesThisMonth}/${quota.monthlyLimit} messages ce mois`);
     setAnthropicApiKeyConfigured(isAnthropicApiKeyConfigured());
+    setPayFrequency(paySettings.frequency);
+    setPaySecondLastDate(paySettings.secondLastDate ?? '');
+    setPayLastDate(paySettings.lastDate ?? '');
+    setPayAverageAmount(
+      paySettings.averageAmount != null && paySettings.averageAmount > 0
+        ? String(paySettings.averageAmount)
+        : '',
+    );
   }, []);
 
   useRefreshOnFocus(load);
@@ -355,6 +383,67 @@ export default function SettingsScreen() {
             </SettingsCustomRow>
           </SettingsSection>
 
+          <SettingsSection title="Info">
+            <SettingsNavigationRow
+              label="Fréquence des paies"
+              hint="Utilisée pour projeter les jours de paie dans l’agenda."
+              icon="repeat-outline"
+              value={payFrequency ? payEstimationFrequencyLabel(payFrequency) : 'Non définie'}
+              onPress={() => setActivePicker('pay_frequency')}
+            />
+            <SettingsCustomRow
+              label="Avant-dernière paie"
+              hint="Date de la paie précédant la dernière."
+              icon="calendar-outline"
+            >
+              <DatePickerField
+                label="Date"
+                value={paySecondLastDate}
+                placeholder="Choisir une date"
+                variant="sheet"
+                onChangeDate={(next) => {
+                  setPaySecondLastDate(next);
+                  void persistPaySecondLastDate(next);
+                }}
+              />
+            </SettingsCustomRow>
+            <SettingsCustomRow
+              label="Dernière paie"
+              hint="Point de départ pour estimer les prochaines paies dans l’agenda."
+              icon="calendar-outline"
+            >
+              <DatePickerField
+                label="Date"
+                value={payLastDate}
+                placeholder="Choisir une date"
+                variant="sheet"
+                onChangeDate={(next) => {
+                  setPayLastDate(next);
+                  void persistPayLastDate(next);
+                }}
+              />
+            </SettingsCustomRow>
+            <SettingsCustomRow
+              label="Montant moyen des paies"
+              hint="Optionnel — affiché sur les dépôts estimés de l’agenda."
+              icon="cash-outline"
+              isLast
+            >
+              <NumericAmountInput
+                value={payAverageAmount}
+                onChangeText={(next) => {
+                  setPayAverageAmount(next);
+                  const parsed = Number(next);
+                  void persistPayAverageAmount(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
+                }}
+                placeholder="Ex. 2 450"
+                placeholderTextColor={colors.textMuted}
+                style={styles.amountInput}
+                keyboardType="decimal-pad"
+              />
+            </SettingsCustomRow>
+          </SettingsSection>
+
           <SettingsSection title="Fyn">
             <SettingsNavigationRow
               label="Clé Anthropic"
@@ -510,6 +599,19 @@ export default function SettingsScreen() {
           }}
         />
 
+        <SettingsPickerSheet
+          visible={activePicker === 'pay_frequency'}
+          title="Fréquence des paies"
+          options={PAY_ESTIMATION_FREQUENCY_OPTIONS}
+          selectedId={payFrequency ?? PAY_ESTIMATION_FREQUENCY_OPTIONS[1].id}
+          onClose={() => setActivePicker(null)}
+          onSelect={(id) => {
+            const next = id as PayEstimationFrequency;
+            setPayFrequency(next);
+            void persistPayEstimationFrequency(next);
+          }}
+        />
+
         <ConfirmDeleteModal
           visible={confirmDeleteVisible}
           title="Supprimer les données cloud ?"
@@ -570,6 +672,18 @@ const createStyles = (colors: AppColors) =>
       ...typographyKit.microMedium,
       textAlign: 'center',
       marginTop: spacing.sm,
+    },
+    amountInput: {
+      minHeight: 50,
+      borderRadius: 13,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceElevated,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 14,
+      color: colors.text,
+      fontSize: typography.body,
+      fontWeight: '700',
     },
     pressed: {
       opacity: 0.82,

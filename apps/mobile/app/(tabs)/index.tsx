@@ -52,25 +52,18 @@ import { HomePlansCarousel } from '@/components/dashboard/HomePlansCarousel';
 import { PaycheckAllocationWidget } from '@/components/PaycheckAllocationWidget';
 import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
 import {
-  getDashboard,
-  getLoans,
-  getMerchantOverrides,
   getRecentIncomeTransactions,
   getRecurringPayments,
   getSetting,
   getSimulatedAccounts,
-  getTransactions,
-  getWealthAssets,
+  getTransactionsSince,
   setSetting,
 } from '@/lib/db';
 import {
   buildCheckingBalanceDailyValues,
+  CHECKING_BALANCE_SPARKLINE_DAY_COUNT,
 } from '@/lib/buildCheckingBalanceTrendSeries';
-import {
-  computeMonthlyNetFlux,
-  sumVisibleCheckingBalance,
-} from '@/lib/homeCheckingBalance';
-import { sumWealthAssetsDisplayValue } from '@/lib/wealthAssetPresentation';
+import { sumVisibleCheckingBalance } from '@/lib/homeCheckingBalance';
 import { PAYCHECK_TRANSACTION_LOOKBACK_LIMIT, resolveNextPaycheckForAccount, resolvePaycheckForPaymentAlert } from '@/lib/estimatedPaycheck';
 import {
   evaluateCheckingInsufficientFunds,
@@ -116,14 +109,10 @@ import {
 } from '@/lib/userPickedIcon';
 import { PageTransition } from '@/components/PageTransition';
 import type {
-  DashboardSummary,
-  Loan,
-  MerchantOverride,
   RecurringPayment,
   RecurringPaymentKind,
   SimulatedAccount,
   Transaction,
-  WealthAsset,
 } from '@/types';
 
 type UpcomingPayment = {
@@ -189,6 +178,13 @@ const UPCOMING_PAYMENTS: UpcomingPayment[] = [
 ];
 
 const BALANCE_COMPARE_SETTING_KEY = 'dashboard_balance_compare_account_ids';
+
+function sparklineTransactionsSinceIso(dayCount: number = CHECKING_BALANCE_SPARKLINE_DAY_COUNT): string {
+  const since = new Date();
+  since.setDate(since.getDate() - (dayCount + 1));
+  since.setHours(0, 0, 0, 0);
+  return since.toISOString();
+}
 
 const C = dashboardPalette;
 
@@ -1070,17 +1066,14 @@ export default function HomeScreen() {
   const dashPalette = useMemo(() => dashboardPaletteForTheme(isLight), [isLight]);
   const dashMuted = isLight ? dashPalette.subtext : 'rgba(245,245,245,0.84)';
   const scrollRef = useRef<ScrollView>(null);
-  const [data, setData] = useState<DashboardSummary | null>(null);
+  const [isReady, setIsReady] = useState(false);
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
-  const [loans, setLoans] = useState<Loan[]>([]);
   const [incomeTransactions, setIncomeTransactions] = useState<Transaction[]>([]);
-  const [merchantOverrides, setMerchantOverrides] = useState<MerchantOverride[]>([]);
   const [displayName, setDisplayName] = useState('Jérémie');
   const [refreshing, setRefreshing] = useState(false);
   const [balanceAccountOptions, setBalanceAccountOptions] = useState<BalanceCompareAccount[]>([]);
   const [simulatedAccounts, setSimulatedAccounts] = useState<SimulatedAccount[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [wealthAssets, setWealthAssets] = useState<WealthAsset[]>([]);
   const [selectedBalanceAccountIds, setSelectedBalanceAccountIds] = useState<string[]>([]);
   const [draftBalanceAccountIds, setDraftBalanceAccountIds] = useState<string[]>([]);
   const [balanceSelectorVisible, setBalanceSelectorVisible] = useState(false);
@@ -1100,9 +1093,8 @@ export default function HomeScreen() {
     recurringPayments,
     simulatedAccounts,
     incomeTransactions,
-    enabled: data !== null,
+    enabled: isReady,
   });
-  const [loadTimedOut, setLoadTimedOut] = useState(false);
 
   const paycheckReminderScheduleFromAlert = useCallback(
     (alertItem: Pick<
@@ -1207,61 +1199,47 @@ export default function HomeScreen() {
     setAlertCollapsed((prev) => ({ ...prev, [alertId]: true }));
   }, []);
 
-  const load = useCallback(async () => {
+  const loadSparklineTransactions = useCallback(async () => {
+    const loadedTransactions = await getTransactionsSince(sparklineTransactionsSinceIso());
+    setTransactions(loadedTransactions);
+  }, []);
+
+  const loadCore = useCallback(async () => {
     const [
-      dash,
       name,
       recurring,
-      overrides,
       loadedSimulatedAccounts,
       storedBalanceIds,
       incomeTx,
-      loadedLoans,
-      loadedTransactions,
-      loadedWealthAssets,
     ] = await Promise.all([
-      getDashboard(),
       getUserDisplayName(),
       getRecurringPayments(),
-      getMerchantOverrides(),
       getSimulatedAccounts(),
       getSetting(BALANCE_COMPARE_SETTING_KEY, ''),
       getRecentIncomeTransactions(PAYCHECK_TRANSACTION_LOOKBACK_LIMIT),
-      getLoans(),
-      getTransactions(),
-      getWealthAssets(),
     ]);
     const compareAccounts = toBalanceCompareAccounts(loadedSimulatedAccounts);
     const storedIds = parseBalanceCompareIds(storedBalanceIds);
 
-    setData(dash);
     setDisplayName(name);
     setRecurringPayments(recurring);
-    setLoans(loadedLoans);
     setIncomeTransactions(incomeTx);
-    setTransactions(loadedTransactions);
-    setWealthAssets(loadedWealthAssets);
-    setMerchantOverrides(overrides);
     setSimulatedAccounts(loadedSimulatedAccounts);
     setBalanceAccountOptions(compareAccounts);
-    setSelectedBalanceAccountIds(resolveBalanceCompareSelection(compareAccounts, storedIds).map((account) => account.id));
+    setSelectedBalanceAccountIds(
+      resolveBalanceCompareSelection(compareAccounts, storedIds).map((account) => account.id),
+    );
+    setIsReady(true);
   }, []);
+
+  const load = useCallback(async () => {
+    await loadCore();
+    void loadSparklineTransactions();
+  }, [loadCore, loadSparklineTransactions]);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    if (data !== null) {
-      setLoadTimedOut(false);
-      return;
-    }
-    const timer = setTimeout(() => {
-      console.warn('[Boot] dashboard data still null after 2s — showing skeleton');
-      setLoadTimedOut(true);
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [data]);
 
   useEffect(() => dataEvents.subscribe(load), [load]);
 
@@ -1273,13 +1251,13 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => {
-    if (!data) return;
+    if (!isReady) return;
     void checkPaycheckEntryPrompt();
-  }, [data, alertReminders, checkPaycheckEntryPrompt]);
+  }, [isReady, alertReminders, checkPaycheckEntryPrompt]);
 
-  useRefreshOnFocus(load);
-  useRefreshOnFocus(checkPaycheckEntryPrompt);
-  useRefreshOnFocus(refreshAlertCenter);
+  useRefreshOnFocus(load, { skipInitial: true });
+  useRefreshOnFocus(checkPaycheckEntryPrompt, { skipInitial: true });
+  useRefreshOnFocus(refreshAlertCenter, { skipInitial: true });
   useScrollToTopOnFocus(
     useCallback(() => {
       scrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -1289,7 +1267,7 @@ export default function HomeScreen() {
   const onRefresh = async () => {
     setRefreshing(true);
     await syncWithServer();
-    await load();
+    await Promise.all([loadCore(), loadSparklineTransactions()]);
     setRefreshing(false);
   };
 
@@ -1298,26 +1276,9 @@ export default function HomeScreen() {
     [balanceAccountOptions, selectedBalanceAccountIds],
   );
 
-  const totalAccountBalance = useMemo(
-    () => simulatedAccounts.filter((account) => !account.hidden).reduce((sum, account) => sum + account.balance, 0),
-    [simulatedAccounts],
-  );
-
-  const loansByIdForWealth = useMemo(() => new Map(loans.map((loan) => [loan.id, loan])), [loans]);
-
-  const offAccountAssetsBalance = useMemo(
-    () => sumWealthAssetsDisplayValue(wealthAssets, loansByIdForWealth),
-    [wealthAssets, loansByIdForWealth],
-  );
-
   const checkingBalance = useMemo(
     () => sumVisibleCheckingBalance(simulatedAccounts),
     [simulatedAccounts],
-  );
-
-  const monthlyNetFlux = useMemo(
-    () => computeMonthlyNetFlux(data?.monthlyIncome ?? 0, data?.monthlyExpenses ?? 0),
-    [data?.monthlyIncome, data?.monthlyExpenses],
   );
 
   const checkingBalanceSeries = useMemo(
@@ -1362,10 +1323,7 @@ export default function HomeScreen() {
     [recurringPayments, paymentResolutionPool],
   );
 
-  if (!data) {
-    if (!loadTimedOut) {
-      return <View style={[styles.screen, { backgroundColor: dashPalette.bg }]} />;
-    }
+  if (!isReady) {
     return (
       <View style={[styles.screen, dashStyles.skeletonScreen, { backgroundColor: dashPalette.bg, paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
         <View style={dashStyles.skeletonGreeting} />
@@ -1617,7 +1575,6 @@ export default function HomeScreen() {
       <View style={dashStyles.sectionFirst}>
         <HomeAvailableNowHero
           checkingBalance={checkingBalance}
-          monthlyNetFlux={monthlyNetFlux}
           checkingBalanceSeries={checkingBalanceSeries}
         />
       </View>

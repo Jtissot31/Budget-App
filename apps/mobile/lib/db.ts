@@ -1411,11 +1411,15 @@ export function filterActiveCategoryBudgets(budgets: CategoryBudget[]): Category
 }
 
 export async function getCategoryBudgets(): Promise<CategoryBudget[]> {
+  return getCategoryBudgetsForMonth(new Date());
+}
+
+export async function getCategoryBudgetsForMonth(monthDate: Date): Promise<CategoryBudget[]> {
   const db = await getDb();
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
+  const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1, 0, 0, 0, 0);
+  const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1, 0, 0, 0, 0);
   const monthStartIso = monthStart.toISOString();
+  const monthEndIso = monthEnd.toISOString();
 
   return db.getAllAsync<CategoryBudget>(
     `SELECT
@@ -1427,14 +1431,49 @@ export async function getCategoryBudgets(): Promise<CategoryBudget[]> {
        b.weekly_limit_amount AS weeklyLimitAmount,
        COALESCE((
          SELECT SUM(t.amount) FROM transactions t
-         WHERE t.category_id = c.id AND t.type = 'expense' AND t.date >= ?
+         WHERE t.category_id = c.id AND t.type = 'expense'
+           AND t.date >= ? AND t.date < ?
        ), 0) AS spent
      FROM category_budgets b
      JOIN categories c ON c.id = b.category_id
      WHERE b.category_id NOT IN (${DEPRECATED_BUDGET_CATEGORY_IDS.map(() => '?').join(', ')})
      ORDER BY spent DESC`,
-    [monthStartIso, ...DEPRECATED_BUDGET_CATEGORY_IDS],
+    [monthStartIso, monthEndIso, ...DEPRECATED_BUDGET_CATEGORY_IDS],
   );
+}
+
+/** First day of the earliest calendar month containing an expense transaction. */
+export async function getEarliestExpenseMonthStart(): Promise<Date> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ date: string | null }>(
+    `SELECT MIN(date) AS date FROM transactions WHERE type = 'expense'`,
+  );
+  const now = new Date();
+  if (!row?.date) {
+    return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  }
+  const earliest = new Date(row.date);
+  if (Number.isNaN(earliest.getTime())) {
+    return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  }
+  return new Date(earliest.getFullYear(), earliest.getMonth(), 1, 0, 0, 0, 0);
+}
+
+/** Expense totals per category for a single calendar month. */
+export async function getCategorySpentForMonth(monthDate: Date): Promise<Map<string, number>> {
+  const db = await getDb();
+  const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1, 0, 0, 0, 0);
+  const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1, 0, 0, 0, 0);
+
+  const rows = await db.getAllAsync<{ categoryId: string; spent: number }>(
+    `SELECT t.category_id AS categoryId, COALESCE(SUM(t.amount), 0) AS spent
+     FROM transactions t
+     WHERE t.type = 'expense' AND t.date >= ? AND t.date < ?
+     GROUP BY t.category_id`,
+    [monthStart.toISOString(), monthEnd.toISOString()],
+  );
+
+  return new Map(rows.map((row) => [row.categoryId, row.spent]));
 }
 
 export async function getMonthlyBudgetHistory(monthCount = 6): Promise<MonthlyBudgetSummary[]> {
@@ -1664,6 +1703,23 @@ export async function getTransactionsInDateRange(
      WHERE t.date >= ? AND t.date < ?
      ORDER BY datetime(t.date) DESC, t.id DESC`,
     [startInclusiveIso, endExclusiveIso],
+  );
+}
+
+/** Lower-bound date filter — for sparklines / rolling windows (avoids full table scan). */
+export async function getTransactionsSince(startInclusiveIso: string): Promise<Transaction[]> {
+  const db = await getDb();
+  return db.getAllAsync<Transaction>(
+    `SELECT t.id, t.label, t.amount, t.type, t.date, t.category_id AS categoryId,
+            t.transaction_icon AS transactionIcon, t.receipt_uri AS receiptUri,
+            t.receipt_status AS receiptStatus, t.note, t.sync_status AS syncStatus,
+            t.wealth_asset_id AS wealthAssetId, t.savings_goal_id AS savingsGoalId,
+            c.name AS categoryName, c.icon AS categoryIcon, c.color AS categoryColor
+     FROM transactions t
+     JOIN categories c ON c.id = t.category_id
+     WHERE t.date >= ?
+     ORDER BY datetime(t.date) DESC, t.id DESC`,
+    [startInclusiveIso],
   );
 }
 

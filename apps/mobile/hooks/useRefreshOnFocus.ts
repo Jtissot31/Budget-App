@@ -1,12 +1,31 @@
 import type { MutableRefObject } from 'react';
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useFocusEffect } from 'expo-router';
 
-export function useRefreshOnFocus(refresh: () => void | Promise<void>) {
+type RefreshOnFocusOptions = {
+  /** Skip the focus callback on first mount (useEffect already loaded). */
+  skipInitial?: boolean;
+};
+
+export function useRefreshOnFocus(
+  refresh: () => void | Promise<void>,
+  options?: RefreshOnFocusOptions,
+) {
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const skipInitialRef = useRef(options?.skipInitial ?? false);
+  skipInitialRef.current = options?.skipInitial ?? false;
+  const isFirstFocusRef = useRef(true);
+
   useFocusEffect(
     useCallback(() => {
-      void refresh();
-    }, [refresh]),
+      if (skipInitialRef.current && isFirstFocusRef.current) {
+        isFirstFocusRef.current = false;
+        return;
+      }
+      isFirstFocusRef.current = false;
+      void refreshRef.current();
+    }, []),
   );
 }
 

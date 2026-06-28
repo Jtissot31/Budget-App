@@ -1,19 +1,16 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View, ScrollView } from 'react-native';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { frequencyLabel } from '@/lib/recurringPaymentsForm';
+import { MonthSelector } from '@/components/MonthSelector';
 import { DashboardCard } from '@/components/DashboardCard';
 import { DashboardDateBadge } from '@/components/DashboardDateBadge';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { PaymentDetailSheet, type PaymentDetailPayload } from '@/components/PaymentDetailSheet';
-import { OverflowMenuButton, type OverflowMenuItem } from '@/components/OverflowMenuButton';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import {
   FLOATING_NAV_CONTENT_PADDING,
-  jakartaBoldText,
-  jakartaExtraBoldText,
-  jakartaMediumText,
   radius,
   spacing,
   typography,
@@ -21,16 +18,17 @@ import {
 } from '@/constants/theme';
 import { typographyKit } from '@/constants/typographyKit';
 import { portfolioNumericText, rowValue } from '@/lib/textLayout';
-import { UNIFORM_ACTION_BUTTON_MIN_HEIGHT, UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
+import { UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
-import { dataEvents, uiEvents } from '@/lib/events';
-import { getLoans, getRecentIncomeTransactions, getRecurringPayments } from '@/lib/db';
+import { dataEvents } from '@/lib/events';
+import { getEarliestExpenseMonthStart, getLoans, getRecentIncomeTransactions, getRecurringPayments } from '@/lib/db';
 import {
   ESTIMATED_PAYCHECK_LABEL,
   inferAllEstimatedPaychecksForRange,
   PAYCHECK_TRANSACTION_LOOKBACK_LIMIT,
 } from '@/lib/estimatedPaycheck';
 import { tapHaptic } from '@/lib/haptics';
+import { isMonthAfter, startOfMonth } from '@/lib/budgetMonth';
 import { useAppTheme } from '@/lib/themeContext';
 import { PaymentListRow, type PaymentListRowBadgeVariant } from '@/components/PaymentListRow';
 import { TransactionAmountLabel, recurringPaymentAmountDirection } from '@/components/TransactionAmountLabel';
@@ -40,11 +38,11 @@ import { resolvePaymentStatusBadge } from '@/lib/paymentStatusBadge';
 import {
   buildLoanByRecurringPaymentId,
   resolveAgendaBillDisplayIcon,
-  resolveRecurringPaymentDisplayIconById,
 } from '@/lib/recurringPaymentPresentation';
 import type { Loan, RecurringPayment, Transaction } from '@/types';
 
 type AgendaViewProps = {
+  headerComponent?: ReactNode;
   onEditRecurring?: (payment: RecurringPayment) => void;
 };
 
@@ -68,20 +66,6 @@ export type AgendaViewRef = {
 };
 
 const DAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-const MONTHS_FR = [
-  'Janvier',
-  'Février',
-  'Mars',
-  'Avril',
-  'Mai',
-  'Juin',
-  'Juillet',
-  'Août',
-  'Septembre',
-  'Octobre',
-  'Novembre',
-  'Décembre',
-];
 
 const PAY_LABEL = ESTIMATED_PAYCHECK_LABEL;
 
@@ -447,6 +431,21 @@ function shouldShowEstimatedPayBill(estimateDateKey: string, transactions: Trans
   return todayStart <= hideAfter;
 }
 
+function resolveAgendaBillStatusLabel(
+  dateKey: string,
+  todayKey: string,
+  bill: AgendaBill,
+  transactions: Transaction[],
+) {
+  const estimated = isEstimatedPayBill(bill);
+  return resolvePaymentStatusBadge(dateKey, todayKey, {
+    isIncome: !estimated && (bill.kind ?? 'payment') === 'income',
+    isPay: !estimated && isPayBill(bill),
+    isEstimatedPay: estimated,
+    hasConfirmedIncome: estimated && hasConfirmedPayInEstimateWindow(dateKey, transactions),
+  });
+}
+
 function filterEstimatedPayFromAgenda(
   billsByDate: Record<string, AgendaBill[]>,
   transactions: Transaction[],
@@ -457,6 +456,16 @@ function filterEstimatedPayFromAgenda(
     const filtered = bills.filter(
       (bill) => !isEstimatedPayBill(bill) || shouldShowEstimatedPayBill(key, transactions, today),
     );
+    if (filtered.length) next[key] = filtered;
+  });
+  return next;
+}
+
+/** Liste « À venir » : pas de dépôts de paie estimés — revenus/paiements récurrents uniquement. */
+function excludeEstimatedPayFromBillsByDate(billsByDate: Record<string, AgendaBill[]>) {
+  const next: Record<string, AgendaBill[]> = {};
+  Object.entries(billsByDate).forEach(([key, bills]) => {
+    const filtered = bills.filter((bill) => !isEstimatedPayBill(bill));
     if (filtered.length) next[key] = filtered;
   });
   return next;
@@ -483,54 +492,9 @@ function calendarDayMarkers(dateKey: string, billsByDate: Record<string, AgendaB
   return { hasConfirmedPay, hasEstimatedPay, hasPayment };
 }
 
-const SUBSCRIPTION_CATEGORY_PATTERN = /abonnement|subscription|loisir|divertissement|streaming/;
-
-/** Heuristique d’affichage : range les paiements de type loisir/abonnement sous « Abonnements ». */
-function isSubscriptionPayment(payment: RecurringPayment) {
-  if ((payment.kind ?? 'payment') === 'income') return false;
-  if (payment.categoryId === 'cat-fun') return true;
-  return SUBSCRIPTION_CATEGORY_PATTERN.test(normalizeText(payment.categoryName));
-}
-
-function nextRecurringOccurrence(payment: RecurringPayment, from: Date) {
-  const firstDate = parseIsoDay(payment.nextDate);
-  if (!firstDate) return null;
-
-  const endDate = parseIsoDay(payment.endDate);
-  let index = 0;
-  let occurrence = occurrenceDateAt(firstDate, payment.frequency, index);
-  while (occurrence < from && index < 1200) {
-    index += 1;
-    occurrence = occurrenceDateAt(firstDate, payment.frequency, index);
-  }
-  if (occurrence < from) return null;
-  if (endDate && occurrence > endDate) return null;
-  return occurrence;
-}
-
-function formatRecurringListDate(date: Date) {
-  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
-}
-
-function recurringListMeta(payment: RecurringPayment, from: Date) {
-  const parts: string[] = [];
-  if (!payment.active) parts.push('Inactif');
-  parts.push(frequencyLabel(payment.frequency));
-  const next = payment.active ? nextRecurringOccurrence(payment, from) : null;
-  if (next) parts.push(formatRecurringListDate(next));
-  return parts.join(' · ');
-}
-
-function resolveRecurringListIcon(
-  payment: RecurringPayment,
-  loanByRecurringPaymentId: Map<string, Loan>,
-) {
-  return resolveRecurringPaymentDisplayIconById(payment, loanByRecurringPaymentId);
-}
-
-export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function AgendaView({ onEditRecurring }, ref) {
+export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function AgendaView({ headerComponent, onEditRecurring }, ref) {
   const today = useMemo(() => startOfToday(), []);
-  const { colors, isLight } = useAppTheme();
+  const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const scrollRef = useRef<ScrollView>(null);
@@ -541,10 +505,13 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
   const [recentIncomeTransactions, setRecentIncomeTransactions] = useState<Transaction[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [paymentDetail, setPaymentDetail] = useState<PaymentDetailPayload | null>(null);
-  const [showRecurringList, setShowRecurringList] = useState(false);
-  const [listOnlyMode, setListOnlyMode] = useState(false);
+  const [earliestMonth, setEarliestMonth] = useState(() => startOfMonth(today));
 
   const todayKey = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
+  const viewMonth = useMemo(() => new Date(year, month, 1), [month, year]);
+  const agendaEarliest = startOfMonth(earliestMonth);
+  const canGoAgendaPrevious = isMonthAfter(viewMonth, agendaEarliest);
+  const canGoAgendaNext = true;
 
   const loadRecurringPayments = useCallback(async () => {
     const [payments, incomeTransactions, loadedLoans] = await Promise.all([
@@ -565,6 +532,13 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
   useEffect(() => {
     void loadRecurringPayments();
   }, [loadRecurringPayments]);
+
+  useEffect(() => {
+    void (async () => {
+      const dbEarliest = await getEarliestExpenseMonthStart();
+      setEarliestMonth(dbEarliest);
+    })();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = dataEvents.subscribe(() => {
@@ -592,7 +566,8 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
     const firstDow = first.getDay();
     const offset = firstDow === 0 ? 6 : firstDow - 1;
     const dim = new Date(year, month + 1, 0).getDate();
-    const total = 42;
+    const weekCount = Math.ceil((offset + dim) / 7);
+    const total = weekCount * 7;
     const cells: ({ day: number } | null)[] = [];
     for (let i = 0; i < total; i++) {
       const day = i - offset + 1;
@@ -641,6 +616,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
   }, [recentIncomeTransactions, recurringPayments, today, visibleEnd, visibleStart]);
 
   const prevMonth = () => {
+    if (!canGoAgendaPrevious) return;
     if (month === 0) {
       setMonth(11);
       setYear((y) => y - 1);
@@ -649,6 +625,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
   };
 
   const nextMonth = () => {
+    if (!canGoAgendaNext) return;
     if (month === 11) {
       setMonth(0);
       setYear((y) => y + 1);
@@ -669,21 +646,8 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
       today,
       rangeEnd,
     );
-    const billsWithActualPay = mergeBillsByDate(baseBillsByDate, actualPayByDate);
-    const allEstimates = inferAllEstimatedPaychecksForRange(
-      recentIncomeTransactions,
-      recurringPayments,
-      today,
-      rangeEnd,
-      today,
-    );
-    const upcomingBillsByDate = filterEstimatedPayFromAgenda(
-      mergeBillsByDate(
-        billsWithActualPay,
-        buildAllEstimatedPaysByDate(allEstimates, billsWithActualPay),
-      ),
-      recentIncomeTransactions,
-      today,
+    const upcomingBillsByDate = excludeEstimatedPayFromBillsByDate(
+      mergeBillsByDate(baseBillsByDate, actualPayByDate),
     );
 
     return Object.entries(upcomingBillsByDate)
@@ -725,93 +689,6 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
     openBillDetail(b, dateKey);
   };
 
-  const handleOpenRecurringList = () => {
-    tapHaptic();
-    setShowRecurringList(true);
-  };
-
-  const handleEnterListOnlyMode = () => {
-    tapHaptic();
-    setSelectedKey(null);
-    setListOnlyMode(true);
-  };
-
-  const handleExitListOnlyMode = () => {
-    tapHaptic();
-    setListOnlyMode(false);
-  };
-
-  const overflowMenuItems: OverflowMenuItem[] = [
-    listOnlyMode
-      ? {
-          key: 'calendar',
-          label: 'Voir le calendrier',
-          icon: 'calendar-outline',
-          onPress: handleExitListOnlyMode,
-        }
-      : {
-          key: 'list-only',
-          label: 'Voir la liste seulement',
-          icon: 'reorder-four-outline',
-          onPress: handleEnterListOnlyMode,
-        },
-    {
-      key: 'list',
-      label: 'Voir la liste',
-      icon: 'list-outline',
-      onPress: handleOpenRecurringList,
-    },
-    {
-      key: 'add-bill',
-      label: 'Ajouter une facture',
-      icon: 'receipt-outline',
-      onPress: () => uiEvents.requestNewRecurringPayment('bill'),
-    },
-    {
-      key: 'add-subscription',
-      label: 'Ajouter un abonnement',
-      icon: 'card-outline',
-      onPress: () => uiEvents.requestNewRecurringPayment('subscription'),
-    },
-    {
-      key: 'add-income',
-      label: 'Ajouter un revenu récurrent',
-      icon: 'trending-up-outline',
-      onPress: () => uiEvents.requestNewRecurringPayment('income'),
-    },
-  ];
-
-  const handleEditRecurring = (payment: RecurringPayment) => {
-    tapHaptic();
-    setShowRecurringList(false);
-    onEditRecurring?.(payment);
-  };
-
-  const recurringListSections = useMemo(() => {
-    const sortKey = (payment: RecurringPayment) => {
-      const next = nextRecurringOccurrence(payment, today);
-      return next ? dateKeyFromDate(next) : '9999-99-99';
-    };
-    const sorted = [...recurringPayments].sort(
-      (a, b) => sortKey(a).localeCompare(sortKey(b)) || a.name.localeCompare(b.name, 'fr'),
-    );
-    return [
-      { key: 'subscriptions', title: 'Abonnements', items: sorted.filter(isSubscriptionPayment) },
-      {
-        key: 'bills',
-        title: 'Factures et paiements récurrents',
-        items: sorted.filter(
-          (payment) => (payment.kind ?? 'payment') !== 'income' && !isSubscriptionPayment(payment),
-        ),
-      },
-      {
-        key: 'incomes',
-        title: 'Revenus récurrents',
-        items: sorted.filter((payment) => (payment.kind ?? 'payment') === 'income'),
-      },
-    ].filter((section) => section.items.length > 0);
-  }, [recurringPayments, today]);
-
   const renderAgendaPaymentCards = (items: { key: string; b: AgendaBill }[]) => (
     <View style={styles.agendaPaymentList}>
       {items.map(({ key, b }, index) => (
@@ -819,10 +696,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
           key={`${key}-${index}-${b.sourceId ?? b.name}`}
           bill={b}
           dateKey={key}
-          statusLabel={resolvePaymentStatusBadge(key, todayKey, {
-            isIncome: (b.kind ?? 'payment') === 'income',
-            isPay: isPayBill(b),
-          })}
+          statusLabel={resolveAgendaBillStatusLabel(key, todayKey, b, recentIncomeTransactions)}
           todayKey={todayKey}
           onPress={() => onBillRowPress(b, key)}
           styles={styles}
@@ -845,40 +719,20 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
         nestedScrollEnabled
         contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPadding }]}
       >
-        <View style={styles.monthHeader}>
-          {listOnlyMode ? (
-            <View style={styles.navHit} />
-          ) : (
-            <Pressable onPress={prevMonth} hitSlop={14} style={styles.navHit}>
-              <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
-            </Pressable>
-          )}
-          <View style={styles.monthTitles}>
-            {listOnlyMode ? (
-              <Text style={styles.monthName}>À venir</Text>
-            ) : (
-              <>
-                <Text style={styles.monthName}>{MONTHS_FR[month]}</Text>
-                <Text style={styles.yearSub}>{year}</Text>
-              </>
-            )}
-          </View>
-          <View style={styles.monthHeaderRight}>
-            {listOnlyMode ? null : (
-              <Pressable onPress={nextMonth} hitSlop={14} style={styles.navHit}>
-                <Ionicons name="chevron-forward" size={22} color={colors.textSecondary} />
-              </Pressable>
-            )}
-            <OverflowMenuButton
-              items={overflowMenuItems}
-              accessibilityLabel="Options paiements récurrents"
+        {headerComponent}
+        <View style={styles.agendaContentAfterHeader}>
+          <DashboardCard
+            padding={0}
+            style={styles.calendarCard}
+            innerStyle={styles.calendarCardInner}
+          >
+            <MonthSelector
+              month={viewMonth}
+              onPrevious={prevMonth}
+              onNext={nextMonth}
+              canGoPrevious={canGoAgendaPrevious}
+              canGoNext={canGoAgendaNext}
             />
-          </View>
-        </View>
-
-        {!listOnlyMode ? (
-        <View style={styles.insetGroupShadow}>
-          <DashboardCard padding={0} innerStyle={styles.calendarInner}>
             <View style={styles.dowRow}>
               {DAYS.map((d, i) => (
                 <Text key={i} style={styles.dow}>
@@ -945,25 +799,25 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
                 );
               })}
             </View>
-            <View style={styles.calendarLegend}>
-              <View style={styles.calendarLegendItem}>
-                <View style={[styles.markBar, styles.markBarPayment]} />
-                <Text style={styles.calendarLegendLabel}>Paiement</Text>
-              </View>
-              <View style={styles.calendarLegendItem}>
-                <View style={[styles.markBar, styles.markBarPay]} />
-                <Text style={styles.calendarLegendLabel}>Jour de paie estimé</Text>
-              </View>
-              <View style={styles.calendarLegendItem}>
-                <Text style={styles.calendarLegendPayMark}>$</Text>
-                <Text style={styles.calendarLegendLabel}>Dépôt de revenu confirmé</Text>
-              </View>
-            </View>
           </DashboardCard>
         </View>
-        ) : null}
 
-        {!listOnlyMode && selBills && selBills.length > 0 ? (
+        <View style={styles.calendarLegend}>
+          <View style={styles.calendarLegendItem}>
+            <View style={[styles.markBar, styles.markBarPayment]} />
+            <Text style={styles.calendarLegendLabel}>Paiement</Text>
+          </View>
+          <View style={styles.calendarLegendItem}>
+            <View style={[styles.markBar, styles.markBarPay]} />
+            <Text style={styles.calendarLegendLabel}>Jour de paie estimé</Text>
+          </View>
+          <View style={styles.calendarLegendItem}>
+            <Text style={styles.calendarLegendPayMark}>$</Text>
+            <Text style={styles.calendarLegendLabel}>Dépôt de revenu confirmé</Text>
+          </View>
+        </View>
+
+        {selBills && selBills.length > 0 ? (
           <View style={styles.section}>
             <View style={styles.sectionHeaderBlock}>
               <View style={styles.sectionLabelRow}>
@@ -979,7 +833,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
             </View>
             {renderAgendaPaymentCards(selBills.map((b) => ({ key: selectedKey!, b })))}
           </View>
-        ) : !listOnlyMode && selectedKey ? (
+        ) : selectedKey ? (
           <View style={styles.section}>
             <View style={styles.sectionHeaderBlock}>
               <View style={styles.sectionLabelRow}>
@@ -1002,11 +856,9 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
           </View>
         ) : (
           <View style={styles.section}>
-            {!listOnlyMode ? (
-              <DashboardSectionLabel style={styles.sectionEyebrow}>À venir</DashboardSectionLabel>
-            ) : null}
+            <DashboardSectionLabel style={styles.sectionEyebrow}>À venir</DashboardSectionLabel>
             {upcomingCount > 0 ? (
-              <View style={styles.agendaPaymentList}>
+              <View style={styles.upcomingGroupsList}>
                 {upcoming.map(([key, bills]) => (
                   <View key={key} style={styles.upcomingGroup}>
                     <View style={styles.upcomingGroupHeader}>
@@ -1020,10 +872,12 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
                           key={`${key}-${index}-${b.sourceId ?? b.name}`}
                           bill={b}
                           dateKey={key}
-                          statusLabel={resolvePaymentStatusBadge(key, todayKey, {
-                            isIncome: (b.kind ?? 'payment') === 'income',
-                            isPay: isPayBill(b),
-                          })}
+                          statusLabel={resolveAgendaBillStatusLabel(
+                            key,
+                            todayKey,
+                            b,
+                            recentIncomeTransactions,
+                          )}
                           todayKey={todayKey}
                           onPress={() => onBillRowPress(b, key)}
                           styles={styles}
@@ -1050,129 +904,6 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
       </ScrollView>
       </View>
 
-      <Modal
-        visible={showRecurringList}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowRecurringList(false)}
-      >
-        <View style={[styles.pickerBackdrop, { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' }]}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            accessibilityLabel="Fermer la liste des paiements récurrents"
-            onPress={() => setShowRecurringList(false)}
-          />
-          <View
-            style={[
-              styles.pickerSheet,
-              styles.recurringListSheet,
-              {
-                backgroundColor: colors.containerBackground,
-                borderColor: colors.containerBorder,
-                paddingBottom: Math.max(insets.bottom, spacing.md),
-              },
-            ]}
-          >
-            <View style={[styles.pickerHandle, { backgroundColor: colors.borderStrong }]} />
-            <View style={styles.pickerHeader}>
-              <Text style={[styles.pickerTitle, { color: colors.text }]}>Paiements récurrents</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Fermer"
-                hitSlop={12}
-                onPress={() => setShowRecurringList(false)}
-                style={[styles.pickerClose, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
-              >
-                <Ionicons name="close" size={19} color={colors.textMuted} />
-              </Pressable>
-            </View>
-            <Text style={[styles.pickerSubtitle, { color: colors.textMuted }]}>
-              Touche un élément pour le modifier.
-            </Text>
-            {recurringListSections.length ? (
-              <ScrollView
-                style={styles.recurringListScroll}
-                contentContainerStyle={styles.recurringListContent}
-                showsVerticalScrollIndicator={false}
-              >
-                {recurringListSections.map((section) => (
-                  <View key={section.key} style={styles.recurringListSection}>
-                    <DashboardSectionLabel>{section.title}</DashboardSectionLabel>
-                    <View style={styles.recurringListItems}>
-                      {section.items.map((payment) => {
-                        const isIncome = (payment.kind ?? 'payment') === 'income';
-                        return (
-                          <Pressable
-                            key={payment.id}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Modifier ${payment.name}`}
-                            onPress={() => handleEditRecurring(payment)}
-                            style={({ pressed }) => [
-                              styles.pickerRow,
-                              {
-                                backgroundColor: colors.surfaceElevated,
-                                borderColor: colors.border,
-                              },
-                              !payment.active && styles.recurringListRowInactive,
-                              pressed && styles.pickerRowPressed,
-                            ]}
-                          >
-                            <UserPickedIconWell
-                              icon={resolveRecurringListIcon(payment, loanByRecurringPaymentId)}
-                              color={isIncome ? colors.success : payment.color}
-                              size={44}
-                              logoUrl={payment.logoUrl?.trim() || getMerchantLogoUrl(payment.name)}
-                              wellGlyphWhite={!isIncome}
-                            />
-                            <View style={styles.pickerCopy}>
-                              <Text
-                                style={[styles.pickerLabel, { color: colors.text }]}
-                                numberOfLines={1}
-                                ellipsizeMode="tail"
-                              >
-                                {payment.name}
-                              </Text>
-                              <Text
-                                style={[styles.pickerDescription, { color: colors.textMuted }]}
-                                numberOfLines={1}
-                                ellipsizeMode="tail"
-                              >
-                                {recurringListMeta(payment, today)}
-                              </Text>
-                            </View>
-                            <TransactionAmountLabel
-                              amount={formatRecurringPaymentAmount(payment.amount, payment.kind ?? 'payment')}
-                              direction={recurringPaymentAmountDirection(payment.kind ?? 'payment')}
-                              color={isIncome ? colors.success : colors.text}
-                              textStyle={[
-                                styles.recurringListAmount,
-                                isIncome
-                                  ? styles.agendaPaymentAmountIncome
-                                  : styles.agendaPaymentAmountRecurring,
-                              ]}
-                            />
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
-            ) : (
-              <View style={styles.recurringListEmpty}>
-                <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceElevated }]}>
-                  <Ionicons name="repeat-outline" size={22} color={colors.textMuted} />
-                </View>
-                <Text style={styles.emptyTitle}>Aucun élément récurrent</Text>
-                <Text style={styles.emptyHint}>
-                  Utilise le bouton + pour ajouter un abonnement, une facture ou un revenu récurrent.
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
-
       <PaymentDetailSheet
         detail={paymentDetail}
         onClose={() => setPaymentDetail(null)}
@@ -1192,6 +923,9 @@ function resolveAgendaPaymentBadgeVariant(
     return isIncome ? 'upcomingIncome' : 'upcoming';
   }
   if (statusLabel === 'REÇU') return 'received';
+  if (statusLabel === 'ESTIMÉ' || statusLabel === "AUJOURD'HUI") {
+    return isIncome ? 'upcomingIncome' : 'upcoming';
+  }
   return 'paid';
 }
 
@@ -1277,46 +1011,16 @@ function createStyles(colors: AppColors) {
     paddingHorizontal: 0,
     backgroundColor: colors.background,
   },
-  monthHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
+  agendaContentAfterHeader: {
+    marginTop: 20,
   },
-  navHit: {
-    padding: spacing.sm,
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
+  calendarCard: {
+    paddingTop: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: 3.5,
   },
-  monthHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  monthTitles: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  monthName: {
-    ...jakartaBoldText,
-    color: colors.text,
-    fontSize: typography.screenTitle,
-    letterSpacing: -0.35,
-  },
-  yearSub: {
-    color: colors.textMuted,
-    fontSize: typography.meta,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  insetGroupShadow: {
-    marginBottom: spacing.xl,
-  },
-  calendarInner: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+  calendarCardInner: {
+    gap: spacing.md,
     overflow: 'hidden',
   },
   dowRow: {
@@ -1335,12 +1039,12 @@ function createStyles(colors: AppColors) {
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    minHeight: 6 * 48,
   },
   cell: {
     width: '14.28%',
     paddingHorizontal: 2,
-    paddingVertical: 2,
+    paddingTop: 2,
+    paddingBottom: 0,
   },
   dayPlate: {
     minHeight: 44,
@@ -1350,9 +1054,8 @@ function createStyles(colors: AppColors) {
     paddingVertical: spacing.xs,
   },
   dayPlateToday: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.primary,
-    backgroundColor: colors.surfaceElevated,
+    borderWidth: StyleSheet.hairlineWidth * 2,
+    borderColor: colors.text,
   },
   dayPlateSelected: {
     backgroundColor: colors.scopeActive,
@@ -1366,7 +1069,7 @@ function createStyles(colors: AppColors) {
   },
   dayNumToday: {
     ...portfolioNumericText,
-    color: colors.primary,
+    color: colors.text,
     fontSize: typography.caption,
   },
   dayNumSelected: {
@@ -1407,11 +1110,7 @@ function createStyles(colors: AppColors) {
     flexWrap: 'wrap',
     columnGap: spacing.md,
     rowGap: spacing.sm,
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
-    paddingHorizontal: spacing.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    marginTop: spacing.md,
   },
   calendarLegendItem: {
     flexDirection: 'row',
@@ -1433,13 +1132,14 @@ function createStyles(colors: AppColors) {
   },
   section: {
     gap: spacing.md,
-    marginTop: spacing.xl,
+    marginTop: 28,
   },
   sectionHeaderBlock: {
     minHeight: UNIFORM_SECTION_HEADER_MIN_HEIGHT,
   },
   sectionEyebrow: {
     marginBottom: spacing.xs,
+    letterSpacing: 1.5,
   },
   sectionLabelRow: {
     flexDirection: 'row',
@@ -1456,6 +1156,9 @@ function createStyles(colors: AppColors) {
   },
   agendaPaymentList: {
     gap: spacing.md,
+  },
+  upcomingGroupsList: {
+    gap: 26,
   },
   upcomingGroup: {
     gap: spacing.sm,
@@ -1512,106 +1215,6 @@ function createStyles(colors: AppColors) {
     fontSize: typography.caption,
     lineHeight: typography.caption + 6,
     textAlign: 'center',
-  },
-  pickerBackdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  pickerSheet: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    gap: spacing.md,
-  },
-  pickerHandle: {
-    alignSelf: 'center',
-    width: 44,
-    height: 4,
-    borderRadius: 999,
-    marginBottom: spacing.xs,
-  },
-  pickerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  pickerTitle: {
-    flex: 1,
-    ...jakartaExtraBoldText,
-    fontSize: typography.title,
-    letterSpacing: -0.4,
-  },
-  pickerClose: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pickerSubtitle: {
-    ...jakartaMediumText,
-    fontSize: typography.meta,
-    lineHeight: 17,
-  },
-  recurringListSheet: {
-    maxHeight: '82%',
-  },
-  recurringListScroll: {
-    flexGrow: 0,
-  },
-  recurringListContent: {
-    gap: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  recurringListSection: {
-    gap: spacing.sm,
-  },
-  recurringListItems: {
-    gap: spacing.sm,
-  },
-  recurringListRowInactive: {
-    opacity: 0.58,
-  },
-  recurringListAmount: {
-    ...rowValue,
-    flexShrink: 0,
-    textAlign: 'right',
-  },
-  recurringListEmpty: {
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.lg,
-  },
-  pickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    minHeight: UNIFORM_ACTION_BUTTON_MIN_HEIGHT,
-  },
-  pickerRowPressed: {
-    opacity: 0.78,
-  },
-  pickerCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  pickerLabel: {
-    ...jakartaBoldText,
-    fontSize: typography.body,
-  },
-  pickerDescription: {
-    ...jakartaMediumText,
-    fontSize: typography.micro,
-    lineHeight: 15,
   },
   });
 }

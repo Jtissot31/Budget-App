@@ -1,3 +1,5 @@
+import type { PayEstimationFrequency, PayEstimationSettings } from '@/lib/payEstimationSettings';
+import { isPayEstimationComplete } from '@/lib/payEstimationSettings';
 import type { RecurringPayment, RecurringPaymentFrequency, Transaction } from '@/types';
 
 export const ESTIMATED_PAYCHECK_LABEL = 'Dépôt de paie estimé';
@@ -10,7 +12,7 @@ export type EstimatedPaycheck = {
   dateKey: string;
   date: Date;
   amount: number;
-  source: 'actual' | 'transactions' | 'recurring';
+  source: 'actual' | 'transactions' | 'recurring' | 'settings';
   /** Vrai si le dépôt est déjà passé et reflété (ou devrait l’être) dans le solde actuel. */
   alreadyReceived?: boolean;
 };
@@ -47,7 +49,7 @@ export function parseIsoDay(value?: string | null) {
   return date;
 }
 
-function dateKeyFromDate(date: Date) {
+export function dateKeyFromDate(date: Date) {
   return dateKey(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
@@ -398,6 +400,7 @@ export function inferAllEstimatedPaychecksForRange(
   rangeStart: Date,
   rangeEnd: Date,
   today: Date = startOfToday(),
+  paySettings?: PayEstimationSettings | null,
 ): EstimatedPaycheck[] {
   const rs = new Date(rangeStart);
   rs.setHours(0, 0, 0, 0);
@@ -407,12 +410,18 @@ export function inferAllEstimatedPaychecksForRange(
   todayMid.setHours(0, 0, 0, 0);
 
   const seen = new Map<string, EstimatedPaycheck>();
+  const settingsComplete = paySettings ? isPayEstimationComplete(paySettings) : false;
 
   function tryAdd(item: EstimatedPaycheck) {
     const d = new Date(item.date);
     d.setHours(0, 0, 0, 0);
     if (d < rs || d > re) return;
     if (!seen.has(item.dateKey)) seen.set(item.dateKey, item);
+  }
+
+  // Source 0: User-configured pay estimation (highest priority for agenda projection)
+  if (paySettings && settingsComplete) {
+    inferPaychecksFromSettings(paySettings, rs, re).forEach(tryAdd);
   }
 
   // Source 1: Recurring income payments (pay-like)
@@ -449,9 +458,9 @@ export function inferAllEstimatedPaychecksForRange(
       }
     });
 
-  // Source 2: Transaction-inferred interval (weekly / biweekly only)
+  // Source 2: Transaction-inferred interval (weekly / biweekly only) — skipped when settings are complete
   const payTransactions = transactions.filter(isLikelyPayTransaction);
-  if (payTransactions.length >= MIN_PAY_DAYS_FOR_ESTIMATE) {
+  if (!settingsComplete && payTransactions.length >= MIN_PAY_DAYS_FOR_ESTIMATE) {
     const payDays = new Map<string, number>();
     payTransactions.forEach((tx) => {
       const k = getLocalDayKey(tx.date);
@@ -544,4 +553,110 @@ export function resolvePaycheckForPaymentAlert(
     dueDate,
     todayStart,
   );
+}
+
+type SemiMonthlyAnchors = { early: number; late: number };
+
+function clampDayInMonth(year: number, month: number, day: number): Date {
+  const dim = new Date(year, month + 1, 0).getDate();
+  const next = new Date(year, month, Math.min(day, dim));
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function deriveSemiMonthlyAnchors(secondLast: Date, last: Date): SemiMonthlyAnchors {
+  const first = secondLast.getDate();
+  const second = last.getDate();
+  return first <= second ? { early: first, late: second } : { early: second, late: first };
+}
+
+function addPayPeriod(
+  date: Date,
+  frequency: PayEstimationFrequency,
+  semiAnchors: SemiMonthlyAnchors | null,
+): Date {
+  if (frequency === 'weekly') return addDays(date, 7);
+  if (frequency === 'biweekly') return addDays(date, 14);
+  if (frequency === 'monthly') return addMonthsClamped(date, 1);
+  if (!semiAnchors) return addMonthsClamped(date, 1);
+
+  const y = date.getFullYear();
+  const m = date.getMonth();
+  const d = date.getDate();
+  const earlyThisMonth = clampDayInMonth(y, m, semiAnchors.early);
+  const lateThisMonth = clampDayInMonth(y, m, semiAnchors.late);
+
+  if (d < earlyThisMonth.getDate()) return earlyThisMonth;
+  if (d < lateThisMonth.getDate()) return lateThisMonth;
+  return clampDayInMonth(y, m + 1, semiAnchors.early);
+}
+
+function subtractPayPeriod(
+  date: Date,
+  frequency: PayEstimationFrequency,
+  semiAnchors: SemiMonthlyAnchors | null,
+): Date {
+  if (frequency === 'weekly') return addDays(date, -7);
+  if (frequency === 'biweekly') return addDays(date, -14);
+  if (frequency === 'monthly') return addMonthsClamped(date, -1);
+  if (!semiAnchors) return addMonthsClamped(date, -1);
+
+  const y = date.getFullYear();
+  const m = date.getMonth();
+  const d = date.getDate();
+  const earlyThisMonth = clampDayInMonth(y, m, semiAnchors.early);
+  const lateThisMonth = clampDayInMonth(y, m, semiAnchors.late);
+
+  if (d > lateThisMonth.getDate()) return lateThisMonth;
+  if (d > earlyThisMonth.getDate()) return earlyThisMonth;
+  return clampDayInMonth(y, m - 1, semiAnchors.late);
+}
+
+/** Project pay dates from user settings across [rangeStart, rangeEnd]. */
+export function inferPaychecksFromSettings(
+  settings: PayEstimationSettings,
+  rangeStart: Date,
+  rangeEnd: Date,
+): EstimatedPaycheck[] {
+  if (!isPayEstimationComplete(settings)) return [];
+
+  const secondLast = parseIsoDay(settings.secondLastDate!)!;
+  const last = parseIsoDay(settings.lastDate!)!;
+  const frequency = settings.frequency!;
+  const semiAnchors =
+    frequency === 'semi_monthly' ? deriveSemiMonthlyAnchors(secondLast, last) : null;
+  const amount = settings.averageAmount ?? 0;
+
+  const rs = new Date(rangeStart);
+  rs.setHours(0, 0, 0, 0);
+  const re = new Date(rangeEnd);
+  re.setHours(0, 0, 0, 0);
+
+  let cursor = new Date(last);
+  let guard = 0;
+  while (cursor > rs && guard < 240) {
+    const prev = subtractPayPeriod(cursor, frequency, semiAnchors);
+    if (prev.getTime() >= cursor.getTime()) break;
+    cursor = prev;
+    guard += 1;
+  }
+
+  const results: EstimatedPaycheck[] = [];
+  guard = 0;
+  while (cursor <= re && guard < 240) {
+    if (cursor >= rs) {
+      results.push({
+        dateKey: dateKeyFromDate(cursor),
+        date: new Date(cursor),
+        amount,
+        source: 'settings',
+      });
+    }
+    const next = addPayPeriod(cursor, frequency, semiAnchors);
+    if (next.getTime() <= cursor.getTime()) break;
+    cursor = next;
+    guard += 1;
+  }
+
+  return results;
 }

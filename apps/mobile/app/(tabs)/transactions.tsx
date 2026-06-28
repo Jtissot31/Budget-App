@@ -32,11 +32,10 @@ import {
 } from '@/lib/recurringPaymentsForm';
 import { PageTransition } from '@/components/PageTransition';
 import { TransactionRow } from '@/components/TransactionRow';
+import { TransactionsShortcutCards } from '@/components/transactions/TransactionsShortcutCards';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   colors,
-  containerSurfaceStyle,
-  DARK_CANVAS,
   dashboardPaletteForTheme,
   FLOATING_NAV_CONTENT_PADDING,
   ICON_WELL_SIZE,
@@ -49,7 +48,9 @@ import {
   spacing,
   typography,
 } from '@/constants/theme';
+import { startOfMonth } from '@/lib/budgetMonth';
 import { listDayTotal } from '@/lib/textLayout';
+import { listTransactionsNeedingArticleReview } from '@/lib/transactionInsights';
 import { getContacts, getMerchantOverrides, getTransactions, sortTransactionsNewestFirst, getCategories, getCategoryBudgets, getSimulatedAccounts } from '@/lib/db';
 import { ensureDbReady } from '@/lib/init';
 import { isContactTransferTx } from '@/lib/accountTransactionFlow';
@@ -94,43 +95,11 @@ function getRequestedView(view?: string): ViewTab | null {
   return null;
 }
 
-function getCurrentMonthKey() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
-}
-
-function isCurrentMonth(isoDate: string) {
-  return getLocalDayKey(isoDate).slice(0, 7) === getCurrentMonthKey();
-}
-
-function computeMonthStats(transactions: Transaction[]): MonthStats {
-  const monthTxs = transactions.filter((tx) => isCurrentMonth(tx.date));
-  let expenses = 0;
-  let income = 0;
-  for (const tx of monthTxs) {
-    if (tx.type === 'expense') expenses += tx.amount;
-    else if (tx.type === 'income') income += tx.amount;
-  }
-  return {
-    count: monthTxs.length,
-    expenses,
-    income,
-    net: income - expenses,
-  };
-}
-
-
 const HISTORY_FILTER_OPTIONS: { id: HistoryTypeFilter; label: string }[] = [
   { id: 'all', label: 'Tous' },
   { id: 'expense', label: 'Dépenses' },
   { id: 'income', label: 'Revenus' },
 ];
-
-type HistoryListItem =
-  | { kind: 'search' }
-  | { kind: 'day'; date: string; txs: Transaction[] };
 
 type HistoryDayGroupProps = {
   date: string;
@@ -180,9 +149,8 @@ export default function TransactionsScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isLight } = useAppTheme();
   const dashboardPalette = useMemo(() => dashboardPaletteForTheme(isLight), [isLight]);
-  const historyQuickActionsSurface = useMemo(() => containerSurfaceStyle(isLight), [isLight]);
-  const contentCanvas = isLight ? colors.background : DARK_CANVAS;
-  const historyListRef = useRef<FlatList<HistoryListItem>>(null);
+  const contentCanvas = colors.background;
+  const historyListRef = useRef<FlatList<[string, Transaction[]]>>(null);
   const merchantsListRef = useRef<FlatList<MerchantRow>>(null);
   const agendaRef = useRef<AgendaViewRef>(null);
   const hasBlurredRef = useRef(false);
@@ -412,12 +380,12 @@ export default function TransactionsScreen() {
       .sort(([a], [b]) => b.localeCompare(a));
   }, [historyFilteredItems]);
 
-  const historyListData = useMemo<HistoryListItem[]>(
-    () => [{ kind: 'search' }, ...grouped.map(([date, txs]) => ({ kind: 'day' as const, date, txs }))],
-    [grouped],
-  );
-
   const historyHasActiveFilters = search.trim().length > 0 || historyTypeFilter !== 'all';
+
+  const pendingValidationCount = useMemo(
+    () => listTransactionsNeedingArticleReview(items, startOfMonth(new Date())).length,
+    [items],
+  );
 
   const handlePressTransaction = useCallback(
     (transactionId: string) => {
@@ -427,173 +395,23 @@ export default function TransactionsScreen() {
     [router],
   );
 
-  const historySearchBar = useMemo(
-    () => (
-      <View
-        style={[
-          styles.searchRow,
-          {
-            backgroundColor: colors.containerBackground,
-            borderColor: colors.containerBorder,
-            borderWidth: 1,
-            marginBottom: historyFiltersExpanded ? spacing.md : 0,
-          },
-        ]}
-      >
-        <AppIcon family="ionicons" name="search-outline" size={18} color={colors.textMuted} />
-        <TextInput
-          style={[styles.search, { color: colors.text }]}
-          placeholder="Rechercher"
-          placeholderTextColor={colors.textMuted}
-          value={search}
-          onChangeText={setSearch}
-        />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Filtres"
-          accessibilityState={{ expanded: historyFiltersExpanded }}
-          hitSlop={8}
-          onPress={() => {
-            tapHaptic();
-            setHistoryFiltersExpanded((expanded) => !expanded);
-          }}
-          style={styles.filterIconBtn}
-        >
-          <AppIcon
-            family="ionicons"
-            name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
-            size={20}
-            color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
-          />
-        </Pressable>
-      </View>
+  const renderHistoryDayGroup = useCallback(
+    ({ item: [date, txs] }: { item: [string, Transaction[]] }) => (
+      <HistoryDayGroup
+        date={date}
+        txs={txs}
+        accounts={simulatedAccounts}
+        savingsGoals={savingsGoals}
+        contactPhotoByKey={contactPhotoByKey}
+        mutedColor={colors.textMuted}
+        onPressTransaction={handlePressTransaction}
+      />
     ),
-    [colors.containerBackground, colors.containerBorder, colors.primary, colors.text, colors.textMuted, historyFiltersExpanded, historyTypeFilter, search],
-  );
-
-  const historySearchToolbar = useMemo(
-    () => (
-      <View style={styles.historyToolbar}>
-        {historySearchBar}
-        {historyFiltersExpanded ? (
-          <View style={styles.historyFilterWrap}>
-            <SegmentedTabs
-              tabs={HISTORY_FILTER_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
-              active={historyTypeFilter}
-              onChange={(id) => {
-                tapHaptic();
-                setHistoryTypeFilter(id);
-              }}
-              showDivider={false}
-              trackBgColor="transparent"
-              activeBgColor="rgba(255,255,255,0.07)"
-              activeLabelColor="rgba(255,255,255,0.85)"
-              inactiveLabelColor="rgba(255,255,255,0.28)"
-            />
-          </View>
-        ) : null}
-      </View>
-    ),
-    [colors.containerBackground, colors.containerBorder, colors.primary, colors.text, colors.textMuted, historyFiltersExpanded, historySearchBar, historyTypeFilter],
-  );
-
-  const historyScrollHeader = (
-    <View
-      style={[
-        styles.pageHeroBlock,
-        styles.pageHeroBlockListHeader,
-        { paddingTop: insets.top + SCREEN_TOP_GUTTER },
-      ]}
-    >
-      <View style={styles.topBar}>
-        <Text style={[styles.title, { color: colors.text }]}>Transactions</Text>
-        <Pressable onPress={() => router.push('/scan')} hitSlop={12} style={styles.scanIcon}>
-          <AppIcon family="ionicons" name="scan-outline" size={22} color={colors.textMuted} />
-        </Pressable>
-      </View>
-      <View style={[styles.tabsWrap, styles.tabsWrapHistory]}>
-        <SegmentedTabs
-          tabs={[
-            { id: 'history', label: 'Historique' },
-            { id: 'agenda', label: 'Agenda' },
-            { id: 'merchants', label: 'Marchands' },
-          ]}
-          active={activeView}
-          onChange={setCurrentView}
-          showDivider={false}
-        />
-      </View>
-    </View>
-  );
-
-  const historyEmptyState = (
-    <DashboardCard padding={spacing.lg} innerStyle={styles.historyEmptyInner}>
-      <View style={[styles.historyEmptyIcon, { backgroundColor: colors.surfaceElevated }]}>
-        <AppIcon family="ionicons" name="receipt-outline" size={22} color={colors.textMuted} />
-      </View>
-      <Text style={[styles.historyEmptyTitle, { color: colors.text }]}>
-        {historyHasActiveFilters ? 'Aucun résultat' : 'Aucune transaction'}
-      </Text>
-      <Text style={[styles.historyEmptyHint, { color: colors.textMuted }]}>
-        {historyHasActiveFilters
-          ? 'Essaie un autre filtre ou une autre recherche.'
-          : 'Scanne un reçu pour ajouter ta première transaction.'}
-      </Text>
-      {!historyHasActiveFilters ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => {
-            tapHaptic();
-            router.push('/scan');
-          }}
-          style={({ pressed }) => [
-            styles.historyEmptyCta,
-            { backgroundColor: colors.text, borderColor: colors.text },
-            pressed && styles.pressed,
-          ]}
-        >
-          <AppIcon family="ionicons" name="scan-outline" size={16} color={colors.background} />
-          <Text style={[styles.historyEmptyCtaText, { color: colors.background }]}>Scanner un reçu</Text>
-        </Pressable>
-      ) : null}
-    </DashboardCard>
-  );
-
-  const renderHistoryListItem = useCallback(
-    ({ item }: { item: HistoryListItem }) => {
-      if (item.kind === 'search') {
-        return (
-          <View style={[styles.historySearchSection, { backgroundColor: contentCanvas }]}>
-            {historySearchToolbar}
-          </View>
-        );
-      }
-
-      return (
-        <HistoryDayGroup
-          date={item.date}
-          txs={item.txs}
-          accounts={simulatedAccounts}
-          savingsGoals={savingsGoals}
-          contactPhotoByKey={contactPhotoByKey}
-          mutedColor={colors.textMuted}
-          onPressTransaction={handlePressTransaction}
-        />
-      );
-    },
-    [
-      colors.textMuted,
-      contactPhotoByKey,
-      contentCanvas,
-      handlePressTransaction,
-      historySearchToolbar,
-      savingsGoals,
-      simulatedAccounts,
-    ],
+    [colors.textMuted, contactPhotoByKey, handlePressTransaction, savingsGoals, simulatedAccounts],
   );
 
   const pageHeader = (
-    <View style={[styles.pageHeroBlock, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
+    <View style={{ paddingTop: insets.top + SCREEN_TOP_GUTTER }}>
       <View style={styles.topBar}>
         <Text style={[styles.title, { color: colors.text }]}>Transactions</Text>
         <Pressable onPress={() => router.push('/scan')} hitSlop={12} style={styles.scanIcon}>
@@ -615,28 +433,95 @@ export default function TransactionsScreen() {
     </View>
   );
 
+  const historyToolbar =
+    activeView === 'history' ? (
+      <View style={styles.historyToolbar}>
+        <View
+          style={[
+            styles.searchRow,
+            {
+              backgroundColor: colors.containerBackground,
+              borderColor: colors.containerBorder,
+              borderWidth: 1,
+              marginBottom: historyFiltersExpanded ? spacing.md : 0,
+            },
+          ]}
+        >
+          <AppIcon family="ionicons" name="search-outline" size={18} color={colors.textMuted} />
+          <TextInput
+            style={[styles.search, { color: colors.text }]}
+            placeholder="Rechercher"
+            placeholderTextColor={colors.textMuted}
+            value={search}
+            onChangeText={setSearch}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Filtres"
+            accessibilityState={{ expanded: historyFiltersExpanded }}
+            hitSlop={8}
+            onPress={() => {
+              tapHaptic();
+              setHistoryFiltersExpanded((expanded) => !expanded);
+            }}
+            style={styles.filterIconBtn}
+          >
+            <AppIcon
+              family="ionicons"
+              name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
+              size={20}
+              color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
+            />
+          </Pressable>
+        </View>
+        {historyFiltersExpanded ? (
+          <View style={styles.historyFilterWrap}>
+            <SegmentedTabs
+              tabs={HISTORY_FILTER_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
+              active={historyTypeFilter}
+              onChange={(id) => {
+                tapHaptic();
+                setHistoryTypeFilter(id);
+              }}
+              showDivider={false}
+              trackBgColor="transparent"
+              activeBgColor="rgba(255,255,255,0.07)"
+              activeLabelColor="rgba(255,255,255,0.85)"
+              inactiveLabelColor="rgba(255,255,255,0.28)"
+            />
+          </View>
+        ) : null}
+        <TransactionsShortcutCards
+          embedded
+          pendingCount={pendingValidationCount}
+          onPressInsights={() => router.push('/transactions-insights')}
+          onPressReview={() =>
+            router.push({ pathname: '/transactions-insights', params: { validate: '1' } })
+          }
+        />
+      </View>
+    ) : null;
+
   return (
     <PageTransition>
     <View style={[styles.screen, { backgroundColor: contentCanvas }]}>
-      {activeView !== 'history' ? pageHeader : null}
+      {pageHeader}
+      {historyToolbar}
 
       {activeView === 'history' ? (
         <View style={[styles.flex, { backgroundColor: contentCanvas }]} collapsable={false}>
           <FlatList
             ref={historyListRef}
             style={[styles.listViewport, { backgroundColor: contentCanvas }]}
-            data={historyListData}
-            keyExtractor={(item) => (item.kind === 'search' ? '__search__' : item.date)}
-            extraData={`${deferredSearch}:${historyTypeFilter}:${simulatedAccounts.length}`}
-            ListHeaderComponent={historyScrollHeader}
+            data={grouped}
+            keyExtractor={([date]) => date}
+            extraData={`${deferredSearch}:${historyTypeFilter}:${simulatedAccounts.length}:${pendingValidationCount}`}
             initialNumToRender={8}
             maxToRenderPerBatch={6}
             windowSize={7}
-            overScrollMode={Platform.OS === 'android' ? 'never' : 'auto'}
-            removeClippedSubviews={Platform.OS === 'android'}
+            removeClippedSubviews={Platform.OS !== 'web'}
             contentContainerStyle={[
               styles.list,
-              styles.listContentStretch,
               { backgroundColor: contentCanvas, paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING },
             ]}
             refreshControl={
@@ -650,8 +535,39 @@ export default function TransactionsScreen() {
                 tintColor={colors.primary}
               />
             }
-            ListFooterComponent={grouped.length === 0 ? historyEmptyState : null}
-            renderItem={renderHistoryListItem}
+            ListEmptyComponent={
+              <DashboardCard padding={spacing.lg} innerStyle={styles.historyEmptyInner}>
+                <View style={[styles.historyEmptyIcon, { backgroundColor: colors.surfaceElevated }]}>
+                  <AppIcon family="ionicons" name="receipt-outline" size={22} color={colors.textMuted} />
+                </View>
+                <Text style={[styles.historyEmptyTitle, { color: colors.text }]}>
+                  {historyHasActiveFilters ? 'Aucun résultat' : 'Aucune transaction'}
+                </Text>
+                <Text style={[styles.historyEmptyHint, { color: colors.textMuted }]}>
+                  {historyHasActiveFilters
+                    ? 'Essaie un autre filtre ou une autre recherche.'
+                    : 'Scanne un reçu pour ajouter ta première transaction.'}
+                </Text>
+                {!historyHasActiveFilters ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => {
+                      tapHaptic();
+                      router.push('/scan');
+                    }}
+                    style={({ pressed }) => [
+                      styles.historyEmptyCta,
+                      { backgroundColor: colors.text, borderColor: colors.text },
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <AppIcon family="ionicons" name="scan-outline" size={16} color={colors.background} />
+                    <Text style={[styles.historyEmptyCtaText, { color: colors.background }]}>Scanner un reçu</Text>
+                  </Pressable>
+                ) : null}
+              </DashboardCard>
+            }
+            renderItem={renderHistoryDayGroup}
           />
         </View>
       ) : null}
@@ -742,24 +658,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: spacing.lg,
     marginBottom: spacing.xl,
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
   title: {
     ...PAGE_TITLE_STYLE,
     flex: 1,
   },
   scanIcon: { padding: 4 },
-  pageHeroBlock: {
-    alignSelf: 'stretch',
-    width: '100%',
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-  },
-  /** Inside history FlatList — horizontal inset comes from `styles.list` only. */
-  pageHeroBlockListHeader: {
-    paddingHorizontal: 0,
-  },
   tabsWrap: {
-    alignSelf: 'stretch',
-    width: '100%',
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     marginBottom: PAGE_TITLE_CONTENT_GAP,
   },
   tabsWrapHistory: {
@@ -767,9 +674,7 @@ const styles = StyleSheet.create({
   },
   historyToolbar: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-  },
-  historySearchSection: {
-    marginBottom: spacing.lg,
+    marginBottom: 88,
   },
   searchRow: {
     flexDirection: 'row',
@@ -835,9 +740,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     paddingTop: spacing.md,
     paddingBottom: FLOATING_NAV_CONTENT_PADDING,
-  },
-  listContentStretch: {
-    alignItems: 'stretch',
   },
   listViewport: { flex: 1 },
   emptyWrap: {

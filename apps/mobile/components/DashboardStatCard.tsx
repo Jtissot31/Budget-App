@@ -8,8 +8,18 @@ import {
   spacing,
   typography,
 } from '@/constants/theme';
+
+/** Label + gap + amount stack height in compact cards (divider alignment). */
+const COMPACT_LABEL_LINE = typography.micro - 1 + 4;
+const COMPACT_COPY_GAP = 2;
+const COMPACT_VALUE_MARGIN = 1;
+const COMPACT_VALUE_LINE = typography.caption + 4;
+export const COMPACT_STAT_COPY_HEIGHT =
+  COMPACT_LABEL_LINE + COMPACT_COPY_GAP + COMPACT_VALUE_MARGIN + COMPACT_VALUE_LINE;
 import { typographyKit } from '@/constants/typographyKit';
 import { useAppTheme } from '@/lib/themeContext';
+
+type StatAlign = 'left' | 'center' | 'right';
 
 type Props = {
   label?: string;
@@ -22,6 +32,7 @@ type Props = {
   valueStyle?: StyleProp<TextStyle>;
   style?: StyleProp<ViewStyle>;
   compact?: boolean;
+  align?: StatAlign;
 };
 
 export function DashboardStatCard({
@@ -35,10 +46,21 @@ export function DashboardStatCard({
   valueStyle,
   style,
   compact = false,
+  align = 'left',
 }: Props) {
   const { colors, isLight } = useAppTheme();
   const muted = colors.textMuted;
   const iconWellBg = isLight ? colors.surfaceElevated : colors.input;
+  const compactAlignStyle =
+    compact && align !== 'left'
+      ? align === 'center'
+        ? styles.copyAlignCenter
+        : styles.copyAlignRight
+      : null;
+  const compactTextAlign =
+    compact && align !== 'left'
+      ? ({ textAlign: align } as const)
+      : null;
 
   return (
     <View style={[styles.row, compact && styles.rowCompact, style]}>
@@ -55,9 +77,12 @@ export function DashboardStatCard({
           {icon}
         </View>
       ) : null}
-      <View style={styles.copy}>
+      <View style={[styles.copy, compactAlignStyle]}>
         {labelNode ?? (
-          <Text style={[styles.label, { color: muted }]} numberOfLines={1}>
+          <Text
+            style={[styles.label, { color: muted }, compactTextAlign]}
+            numberOfLines={1}
+          >
             {label}
           </Text>
         )}
@@ -66,6 +91,7 @@ export function DashboardStatCard({
             compact ? styles.valueCompact : styles.value,
             moneyAmountTypography(compact ? { tier: 'row' } : { tier: 'stat' }),
             { color: valueColor ?? colors.text },
+            compactTextAlign,
             valueStyle,
           ]}
           numberOfLines={1}
@@ -127,6 +153,7 @@ const styles = StyleSheet.create({
   rowCompact: {
     flex: 1,
     minWidth: 0,
+    alignSelf: 'stretch',
   },
   iconWell: {
     width: ICON_WELL_SIZE,
@@ -141,6 +168,12 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: 2,
+  },
+  copyAlignCenter: {
+    alignItems: 'center',
+  },
+  copyAlignRight: {
+    alignItems: 'flex-end',
   },
   label: {
     ...typographyKit.eyebrow,

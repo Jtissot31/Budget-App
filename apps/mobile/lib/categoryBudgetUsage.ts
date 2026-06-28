@@ -52,9 +52,15 @@ export function getCategoryBudgetUsage(limitAmount: number, spent: number): Cate
   };
 }
 
+/** Amber warning — 95–100 % usage. */
+const BUDGET_WARNING_COLOR = '#FBBF24';
+/** Muted red — over budget. */
+const BUDGET_DANGER_COLOR = '#C96560';
+
 /**
- * Barres de progression budget catégorie :
- * 0–94 % mint, 95–100 % orange (warning), &gt;100 % rouge (danger).
+ * Budget category progress bar fill:
+ * 0–94 % → green accent (#4ADE80), 95–100 % → amber, >100 % → muted red.
+ * Category tint stays on the dot only — not the bar.
  */
 export function categoryBudgetBarColor(
   usagePercent: number,
@@ -64,10 +70,10 @@ export function categoryBudgetBarColor(
   colors: AppColors,
 ): string {
   if (isZeroLimitOverspend || usagePercent > 100) {
-    return colors.danger;
+    return BUDGET_DANGER_COLOR;
   }
   if (usagePercent >= 95) {
-    return colors.warning;
+    return BUDGET_WARNING_COLOR;
   }
-  return colors.primary;
+  return colors.accentGreen;
 }

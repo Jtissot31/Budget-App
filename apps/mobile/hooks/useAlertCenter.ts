@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PAYCHECK_TRANSACTION_LOOKBACK_LIMIT } from '@/lib/estimatedPaycheck';
 import { dataEvents } from '@/lib/events';
 import {
@@ -18,6 +18,13 @@ type Options = {
   enabled?: boolean;
 };
 
+type AlertCenterInputs = {
+  enabled: boolean;
+  recurringPayments: RecurringPayment[];
+  simulatedAccounts: SimulatedAccount[];
+  incomeTransactions: Transaction[];
+};
+
 export function useAlertCenter({
   recurringPayments,
   simulatedAccounts,
@@ -27,37 +34,60 @@ export function useAlertCenter({
   const [items, setItems] = useState<AlertCenterItem[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const paymentSources = useMemo(
-    () =>
-      enabled
-        ? buildPaymentAlertSources({
-            recurringPayments,
-            simulatedAccounts,
-            incomeTransactions,
-          })
-        : [],
-    [enabled, recurringPayments, simulatedAccounts, incomeTransactions],
-  );
+  const inputsRef = useRef<AlertCenterInputs>({
+    enabled,
+    recurringPayments,
+    simulatedAccounts,
+    incomeTransactions,
+  });
+  inputsRef.current = {
+    enabled,
+    recurringPayments,
+    simulatedAccounts,
+    incomeTransactions,
+  };
+
+  const refreshGenerationRef = useRef(0);
 
   const refresh = useCallback(async () => {
-    if (!enabled) {
-      setItems([]);
+    const generation = ++refreshGenerationRef.current;
+    const {
+      enabled: isEnabled,
+      recurringPayments: payments,
+      simulatedAccounts: accounts,
+      incomeTransactions: income,
+    } = inputsRef.current;
+
+    if (!isEnabled) {
+      setItems((current) => (current.length === 0 ? current : []));
       return;
     }
+
     setLoading(true);
     try {
+      const paymentSources = buildPaymentAlertSources({
+        recurringPayments: payments,
+        simulatedAccounts: accounts,
+        incomeTransactions: income,
+      });
       const next = await composeAlertCenterItems(paymentSources);
+      if (generation !== refreshGenerationRef.current) return;
       setItems(next);
     } finally {
-      setLoading(false);
+      if (generation === refreshGenerationRef.current) {
+        setLoading(false);
+      }
     }
-  }, [enabled, paymentSources]);
+  }, []);
+
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void refreshRef.current();
+  }, [enabled, recurringPayments, simulatedAccounts, incomeTransactions]);
 
-  useEffect(() => dataEvents.subscribe(() => void refresh()), [refresh]);
+  useEffect(() => dataEvents.subscribe(() => void refreshRef.current()), []);
 
   const unreadCount = useMemo(() => countUnreadAlerts(items), [items]);
 
@@ -92,23 +122,33 @@ export function useAlertCenterSources() {
   const [incomeTransactions, setIncomeTransactions] = useState<Transaction[]>([]);
   const [ready, setReady] = useState(false);
 
+  const loadGenerationRef = useRef(0);
+
   const load = useCallback(async () => {
+    const generation = ++loadGenerationRef.current;
+
     const [recurring, accounts, income] = await Promise.all([
       getRecurringPayments(),
       getSimulatedAccounts(),
       getRecentIncomeTransactions(PAYCHECK_TRANSACTION_LOOKBACK_LIMIT),
     ]);
+
+    if (generation !== loadGenerationRef.current) return;
+
     setRecurringPayments(recurring);
     setSimulatedAccounts(accounts);
     setIncomeTransactions(income);
     setReady(true);
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
-  useEffect(() => dataEvents.subscribe(load), [load]);
+  useEffect(() => {
+    void loadRef.current();
+  }, []);
+
+  useEffect(() => dataEvents.subscribe(() => void loadRef.current()), []);
 
   return {
     recurringPayments,

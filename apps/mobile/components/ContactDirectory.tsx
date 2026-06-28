@@ -178,10 +178,6 @@ const styles = StyleSheet.create({
 
     minWidth: 0,
 
-    justifyContent: 'center',
-
-    alignSelf: 'center',
-
   },
 
   rowName: {
@@ -195,8 +191,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
 
     lineHeight: 16,
-
-    alignSelf: 'center',
 
     includeFontPadding: false,
 

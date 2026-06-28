@@ -340,6 +340,14 @@ function PaymentFormModal({
     [isLight, themeColors],
   );
 
+  const childSupportSalaryNotices = useMemo(
+    () =>
+      form?.kind === 'income'
+        ? getChildSupportSalaryNotices(loans, form.accountId, form.name)
+        : [],
+    [form?.accountId, form?.kind, form?.name, loans],
+  );
+
   if (!form) return null;
   const displayAmount = `${formatMoneyAmountInput(form.amount || '0')} $`;
   const canSubmit = Boolean(form.name.trim()) && parseAmount(form.amount) > 0 && Boolean(form.accountId) && Boolean(form.nextDate.trim());
@@ -356,13 +364,6 @@ function PaymentFormModal({
     form.kind === 'payment' && form.categoryId
       ? categoryBudgets.find((item) => item.categoryId === form.categoryId) ?? null
       : null;
-  const childSupportSalaryNotices = useMemo(
-    () =>
-      form.kind === 'income'
-        ? getChildSupportSalaryNotices(loans, form.accountId, form.name)
-        : [],
-    [form.accountId, form.kind, form.name, loans],
-  );
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>

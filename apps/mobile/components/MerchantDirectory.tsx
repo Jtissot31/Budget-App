@@ -1,4 +1,4 @@
-import { useMemo, useState, type RefObject } from 'react';
+import { useMemo, useState, type ReactNode, type RefObject } from 'react';
 import {
   FlatList,
   Pressable,
@@ -46,6 +46,7 @@ type Props = {
   merchants: MerchantDirectoryRow[];
   contacts?: ContactDirectoryRow[];
   isEditing: boolean;
+  headerComponent?: ReactNode;
   listRef?: MerchantFlatListRef | null;
   contentPaddingBottom: number;
   refreshing: boolean;
@@ -129,6 +130,7 @@ export function MerchantDirectory({
   merchants,
   contacts = [],
   isEditing,
+  headerComponent,
   listRef,
   contentPaddingBottom,
   refreshing,
@@ -167,7 +169,9 @@ export function MerchantDirectory({
   };
 
   const listHeader = (
-    <View style={styles.headerBlock}>
+    <View>
+      {headerComponent}
+      <View style={styles.headerBlock}>
       {showContactsTab ? (
         <SegmentedTabs
           tabs={[
@@ -268,6 +272,7 @@ export function MerchantDirectory({
             <Text style={[styles.addContactButtonText, { color: colors.text }]}>Ajouter un contact</Text>
           </Pressable>
         ) : null}
+      </View>
       </View>
     </View>
   );
@@ -403,8 +408,6 @@ const styles = StyleSheet.create({
   rowCopy: {
     flex: 1,
     minWidth: 0,
-    justifyContent: 'center',
-    alignSelf: 'center',
     gap: 2,
   },
   merchantRowName: {
@@ -413,7 +416,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     fontSize: 13,
     lineHeight: 16,
-    alignSelf: 'center',
     includeFontPadding: false,
   },
   addContactButton: {

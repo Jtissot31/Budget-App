@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -24,10 +25,12 @@ export default function AlertCenterScreen() {
     enabled: ready,
   });
 
-  useRefreshOnFocus(() => {
+  const refreshOnFocus = useCallback(() => {
     void refreshSources();
     void refresh();
-  });
+  }, [refresh, refreshSources]);
+
+  useRefreshOnFocus(refreshOnFocus);
 
   return (
     <PageTransition>

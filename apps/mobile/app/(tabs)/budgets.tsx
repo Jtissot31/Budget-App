@@ -10,25 +10,29 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AddBudgetCategoryModal } from '@/components/budget/AddBudgetCategoryModal';
-import { BudgetCategoryDetailSheet } from '@/components/budget/BudgetCategoryDetailSheet';
 import { BudgetCategoryRow } from '@/components/budget/BudgetCategoryRow';
-import { BudgetDonutChart } from '@/components/BudgetDonutChart';
+import { MonthSelector } from '@/components/MonthSelector';
+import { BudgetDonut, type BudgetDonutCategory } from '@/components/BudgetDonut';
 import { BudgetShortcutCards } from '@/components/budget/BudgetShortcutCards';
+import { DashboardCard } from '@/components/DashboardCard';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { PageTransition } from '@/components/PageTransition';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   FLOATING_NAV_CONTENT_PADDING,
   PAGE_PADDING_HORIZONTAL,
+  PAGE_TITLE_CONTENT_GAP,
   PAGE_TITLE_STYLE,
   PORTFOLIO_SECTION_GAP,
+  radius,
   spacing,
+  typographyKit,
 } from '@/constants/theme';
-import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
-import { getCategories, initializeCategories } from '@/lib/budgetCategories';
+import { useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
+import { getCategoriesForMonth, initializeCategories } from '@/lib/budgetCategories';
 import {
   canAddBudgetCategory,
   computeBudgetTotals,
@@ -36,21 +40,24 @@ import {
   sortBudgetCategoriesByLimitDesc,
   type BudgetCategoryUiModel,
 } from '@/lib/budgetCategoryModel';
+import {
+  formatBudgetMonthEyebrow,
+  isCurrentMonth,
+  isMonthAfter,
+  isMonthBefore,
+  startOfMonth,
+} from '@/lib/budgetMonth';
+import { getMockBudgetEarliestMonthStart } from '@/lib/budgetMonthMock';
+import { getEarliestExpenseMonthStart } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
-const CATEGORY_COLORS = [
-  '#4ADE80',
-  '#22C55E',
-  '#16A34A',
-  '#15803D',
-  '#166534',
-  '#14532D',
-  '#4A5D52',
-  '#3A4A40',
-  '#2A3530',
-];
+const SECTION_BREAK = spacing.lg;
+
+function currentMonthStart(): Date {
+  return startOfMonth(new Date());
+}
 
 function BudgetPageHeader() {
   const { colors } = useAppTheme();
@@ -74,22 +81,66 @@ export default function BudgetScreen() {
 
   const [categories, setCategories] = useState<BudgetCategoryUiModel[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detailVisible, setDetailVisible] = useState(false);
   const [addVisible, setAddVisible] = useState(false);
+  /** Month shown in the donut hub and category list — always matches `categories`. */
+  const [displayMonth, setDisplayMonth] = useState(currentMonthStart);
+  /** Month shown in the selector — may lead `displayMonth` while data loads. */
+  const [pendingMonth, setPendingMonth] = useState(currentMonthStart);
+  const [earliestMonth, setEarliestMonth] = useState(currentMonthStart);
+  const latestMonth = currentMonthStart();
 
-  const load = useCallback(async () => {
+  const displayMonthRef = useRef(displayMonth);
+  displayMonthRef.current = displayMonth;
+  const pendingMonthRef = useRef(pendingMonth);
+  pendingMonthRef.current = pendingMonth;
+  const loadRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    void (async () => {
+      const dbEarliest = await getEarliestExpenseMonthStart();
+      const mockEarliest = getMockBudgetEarliestMonthStart();
+      setEarliestMonth(
+        isMonthBefore(mockEarliest, dbEarliest) ? mockEarliest : dbEarliest,
+      );
+    })();
+  }, []);
+
+  const loadMonth = useCallback(async (targetMonth: Date) => {
+    const month = startOfMonth(targetMonth);
+    const requestId = ++loadRequestIdRef.current;
+
     await initializeCategories();
-    const budgets = await getCategories();
+    const budgets = await getCategoriesForMonth(month);
+    if (requestId !== loadRequestIdRef.current) return;
+
     const mapped = sortBudgetCategoriesByLimitDesc(mapBudgetCategoriesToUi(budgets));
+    displayMonthRef.current = month;
+    setDisplayMonth(month);
     setCategories(mapped);
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const navigateToMonth = useCallback(
+    (month: Date) => {
+      const next = startOfMonth(month);
+      pendingMonthRef.current = next;
+      setPendingMonth(next);
+      setSelectedId(null);
+      void loadMonth(next);
+    },
+    [loadMonth],
+  );
 
-  useEffect(() => dataEvents.subscribe(load), [load]);
-  useRefreshOnFocus(load);
+  useFocusEffect(
+    useCallback(() => {
+      navigateToMonth(currentMonthStart());
+    }, [navigateToMonth]),
+  );
+
+  const refreshDisplayedMonth = useCallback(() => {
+    void loadMonth(pendingMonthRef.current);
+  }, [loadMonth]);
+
+  useEffect(() => dataEvents.subscribe(refreshDisplayedMonth), [refreshDisplayedMonth]);
 
   useScrollToTopOnFocus(
     useCallback(() => {
@@ -98,44 +149,60 @@ export default function BudgetScreen() {
   );
 
   const totals = useMemo(() => computeBudgetTotals(categories), [categories]);
-  const donutSegments = useMemo(
+  const donutCategories = useMemo<readonly BudgetDonutCategory[]>(
     () =>
       categories
         .filter((category) => category.limit > 0)
-        .map((category, index) => ({
+        .map((category) => ({
           id: category.id,
-          value: category.limit,
-          color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+          name: category.name,
+          spent: category.spent,
+          limit: category.limit,
         })),
     [categories],
   );
 
-  const selectedCategory = useMemo(
-    () => categories.find((category) => category.id === selectedId) ?? null,
-    [categories, selectedId],
+  const hubEyebrow = useMemo(
+    () =>
+      isCurrentMonth(displayMonth)
+        ? 'CE MOIS-CI'
+        : formatBudgetMonthEyebrow(displayMonth),
+    [displayMonth],
   );
 
   const showAddButton = canAddBudgetCategory(categories.length);
 
-  const handleSelectCategory = useCallback((id: string | null) => {
-    if (id === null) {
-      setSelectedId(null);
-      setDetailVisible(false);
-      return;
-    }
+  const handleDonutSelect = useCallback((id: string | null) => {
     setSelectedId(id);
-    setDetailVisible(true);
   }, []);
+
+  const handleCategoryRowPress = useCallback((id: string) => {
+    setSelectedId((prev) => (prev === id ? null : id));
+  }, []);
+
+  const budgetMonth = startOfMonth(pendingMonth);
+  const budgetEarliest = startOfMonth(earliestMonth);
+  const budgetLatest = startOfMonth(latestMonth);
+  const canGoBudgetPrevious = isMonthAfter(budgetMonth, budgetEarliest);
+  const canGoBudgetNext = isMonthBefore(budgetMonth, budgetLatest);
+
+  const goBudgetPrevious = useCallback(() => {
+    navigateToMonth(new Date(budgetMonth.getFullYear(), budgetMonth.getMonth() - 1, 1));
+  }, [budgetMonth, navigateToMonth]);
+
+  const goBudgetNext = useCallback(() => {
+    navigateToMonth(new Date(budgetMonth.getFullYear(), budgetMonth.getMonth() + 1, 1));
+  }, [budgetMonth, navigateToMonth]);
 
   const renderItem: ListRenderItem<BudgetCategoryUiModel> = useCallback(
     ({ item }) => (
       <BudgetCategoryRow
         category={item}
         selected={selectedId === item.id}
-        onPress={handleSelectCategory}
+        onPress={handleCategoryRowPress}
       />
     ),
-    [handleSelectCategory, selectedId],
+    [handleCategoryRowPress, selectedId],
   );
 
   const listHeaderComponent = useMemo(
@@ -155,16 +222,24 @@ export default function BudgetScreen() {
         </View>
 
         <View style={pageStyles.donutSection}>
-          <View style={pageStyles.donutSectionHeader}>
-            <DashboardSectionLabel>Répartition mensuelle</DashboardSectionLabel>
-          </View>
-          <BudgetDonutChart
-            segments={donutSegments}
-            totalAllocated={totals.totalAllocated}
-            totalSpent={totals.totalSpent}
-            selectedId={selectedId}
-            onSelectSegment={handleSelectCategory}
-          />
+          <DashboardCard padding={spacing.lg} innerStyle={pageStyles.distributionCard}>
+            <MonthSelector
+              month={budgetMonth}
+              onPrevious={goBudgetPrevious}
+              onNext={goBudgetNext}
+              canGoPrevious={canGoBudgetPrevious}
+              canGoNext={canGoBudgetNext}
+            />
+            <BudgetDonut
+              categories={donutCategories}
+              totalAllocated={totals.totalAllocated}
+              totalSpent={totals.totalSpent}
+              selectedId={selectedId}
+              onSelectCategory={handleDonutSelect}
+              hubEyebrow={hubEyebrow}
+              isCurrentMonth={isCurrentMonth(displayMonth)}
+            />
+          </DashboardCard>
         </View>
 
         <View style={pageStyles.listHeader}>
@@ -181,31 +256,76 @@ export default function BudgetScreen() {
               style={({ pressed }) => [
                 pageStyles.addButton,
                 {
-                  backgroundColor: colors.input,
-                  borderColor: colors.borderSubtle,
+                  backgroundColor: colors.containerBackground,
+                  borderColor: colors.containerBorder,
                 },
                 pressed && pageStyles.pressed,
               ]}
             >
-              <Ionicons name="add" size={20} color={colors.text} />
+              <Ionicons name="add" size={20} color={colors.textSecondary} />
             </Pressable>
           ) : null}
         </View>
       </View>
     ),
     [
-      colors.borderSubtle,
-      colors.input,
-      colors.text,
-      donutSegments,
-      handleSelectCategory,
+      colors.containerBackground,
+      colors.containerBorder,
+      colors.textSecondary,
+      donutCategories,
+      canGoBudgetNext,
+      canGoBudgetPrevious,
+      displayMonth,
+      goBudgetNext,
+      goBudgetPrevious,
+      handleDonutSelect,
+      hubEyebrow,
       insets.top,
+      latestMonth,
+      pendingMonth,
       router,
       selectedId,
       showAddButton,
       totals.totalAllocated,
       totals.totalSpent,
     ],
+  );
+
+  const listEmptyComponent = useMemo(
+    () => (
+      <DashboardCard padding={spacing.lg} innerStyle={pageStyles.emptyCard}>
+        <View style={[pageStyles.emptyIcon, { backgroundColor: colors.surfaceElevated }]}>
+          <Ionicons name="pie-chart-outline" size={22} color={colors.textMuted} />
+        </View>
+        <Text style={[pageStyles.emptyTitle, typographyKit.bodyBold, { color: colors.text }]}>
+          Aucune catégorie budget
+        </Text>
+        <Text style={[pageStyles.emptyHint, typographyKit.caption, { color: colors.textMuted }]}>
+          Ajoutez une catégorie pour suivre vos dépenses mensuelles.
+        </Text>
+        {showAddButton ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Ajouter une catégorie budget"
+            onPress={() => {
+              tapHaptic();
+              setAddVisible(true);
+            }}
+            style={({ pressed }) => [
+              pageStyles.emptyCta,
+              { backgroundColor: colors.text, borderColor: colors.text },
+              pressed && pageStyles.pressed,
+            ]}
+          >
+            <Ionicons name="add" size={16} color={colors.background} />
+            <Text style={[pageStyles.emptyCtaText, typographyKit.bodyBold, { color: colors.background }]}>
+              Ajouter une catégorie
+            </Text>
+          </Pressable>
+        ) : null}
+      </DashboardCard>
+    ),
+    [colors.background, colors.surfaceElevated, colors.text, colors.textMuted, showAddButton],
   );
 
   return (
@@ -231,29 +351,18 @@ export default function BudgetScreen() {
           style={styles.list}
           nestedScrollEnabled
           ListHeaderComponent={listHeaderComponent}
+          ItemSeparatorComponent={() => <View style={pageStyles.rowGap} />}
           contentContainerStyle={{
-            gap: spacing.md,
             paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING + spacing.xl,
           }}
           showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <Text style={[pageStyles.empty, { color: colors.textMuted }]}>
-              Aucune catégorie budget. Ajoutez-en une pour commencer.
-            </Text>
-          }
-        />
-
-        <BudgetCategoryDetailSheet
-          category={selectedCategory}
-          visible={detailVisible}
-          onClose={() => setDetailVisible(false)}
-          onSaved={load}
+          ListEmptyComponent={listEmptyComponent}
         />
 
         <AddBudgetCategoryModal
           visible={addVisible}
           onClose={() => setAddVisible(false)}
-          onCreated={load}
+          onCreated={refreshDisplayedMonth}
         />
       </View>
     </PageTransition>
@@ -270,13 +379,13 @@ const pageStyles = StyleSheet.create({
     zIndex: 0,
   },
   headerBlock: {
-    gap: PORTFOLIO_SECTION_GAP,
+    gap: PAGE_TITLE_CONTENT_GAP,
+  },
+  distributionCard: {
+    gap: spacing.md,
   },
   donutSection: {
-    marginTop: spacing.xs,
-    gap: spacing.xs,
-  },
-  donutSectionHeader: {
+    marginTop: PORTFOLIO_SECTION_GAP,
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
   listHeader: {
@@ -284,13 +393,16 @@ const pageStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    marginTop: PORTFOLIO_SECTION_GAP,
-    marginBottom: spacing.sm,
+    marginTop: SECTION_BREAK,
+    marginBottom: spacing.xs,
+  },
+  rowGap: {
+    height: spacing.md,
   },
   addButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -298,13 +410,41 @@ const pageStyles = StyleSheet.create({
   pressed: {
     opacity: 0.82,
   },
-  empty: {
+  emptyCard: {
+    alignItems: 'center',
+    gap: spacing.md,
+    marginHorizontal: PAGE_PADDING_HORIZONTAL,
+    marginTop: spacing.md,
+    paddingVertical: spacing.lg,
+  },
+  emptyIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  emptyTitle: {
     textAlign: 'center',
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    paddingVertical: spacing.xl,
-    fontSize: 14,
+  },
+  emptyHint: {
+    textAlign: 'center',
     lineHeight: 20,
   },
+  emptyCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
+    minHeight: 44,
+  },
+  emptyCtaText: {},
   heroBlock: {
     alignItems: 'flex-start',
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
