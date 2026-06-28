@@ -1,61 +1,12 @@
-import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import {
-  containerSurfaceStyle,
-  fontFamilies,
-  PAGE_PADDING_HORIZONTAL,
-  radius,
-  spacing,
-} from '@/constants/theme';
+import { fontFamilies } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { resolveLucideIcon } from '@/lib/lucideIconCatalog';
-import { useAppTheme } from '@/lib/themeContext';
 import ChartPieMod from 'lucide-react-native/dist/cjs/icons/chart-pie.js';
 import CircleCheckMod from 'lucide-react-native/dist/cjs/icons/circle-check.js';
 
 const ChartPie = resolveLucideIcon(ChartPieMod)!;
 const CircleCheck = resolveLucideIcon(CircleCheckMod)!;
-
-type ShortcutChipProps = {
-  label: string;
-  accessibilityLabel: string;
-  icon: ReactNode;
-  badgeCount?: number;
-  onPress: () => void;
-};
-
-function ShortcutChip({
-  label,
-  accessibilityLabel,
-  icon,
-  badgeCount = 0,
-  onPress,
-}: ShortcutChipProps) {
-  const { colors, isLight } = useAppTheme();
-  const surface = containerSurfaceStyle(isLight);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      onPress={() => {
-        tapHaptic();
-        onPress();
-      }}
-      style={({ pressed }) => [styles.chip, surface, pressed && styles.pressed]}
-    >
-      {icon}
-      <Text style={[styles.chipLabel, { color: colors.text }]} numberOfLines={1}>
-        {label}
-      </Text>
-      {badgeCount > 0 ? (
-        <View style={[styles.badge, { backgroundColor: colors.accentGreen }]}>
-          <Text style={styles.badgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text>
-        </View>
-      ) : null}
-    </Pressable>
-  );
-}
 
 type Props = {
   onPressInsights: () => void;
@@ -71,27 +22,41 @@ export function TransactionsShortcutCards({
   pendingCount = 0,
   embedded = false,
 }: Props) {
-  const { colors } = useAppTheme();
-
   return (
     <View style={[styles.row, embedded && styles.rowEmbedded]}>
-      <ShortcutChip
-        label="Analyse"
+      <Pressable
+        accessibilityRole="button"
         accessibilityLabel="Ouvrir l'analyse des dépenses par catégorie"
-        icon={<ChartPie size={14} color={colors.accentGreen} strokeWidth={2.25} />}
-        onPress={onPressInsights}
-      />
-      <ShortcutChip
-        label="À compléter"
+        onPress={() => {
+          tapHaptic();
+          onPressInsights();
+        }}
+        style={({ pressed }) => [styles.badge, styles.badgeAnalyse, pressed && styles.pressed]}
+      >
+        <ChartPie size={11} color="#4ADE80" strokeWidth={2.25} />
+        <Text style={styles.badgeAnalyseText}>Analyse</Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
         accessibilityLabel={
           pendingCount > 0
             ? `Compléter ${pendingCount} dépense${pendingCount > 1 ? 's' : ''} scannée${pendingCount > 1 ? 's' : ''} sans articles`
             : 'Revoir les dépenses scannées sans articles'
         }
-        icon={<CircleCheck size={14} color={colors.textMuted} strokeWidth={2.25} />}
-        badgeCount={pendingCount}
-        onPress={onPressReview}
-      />
+        onPress={() => {
+          tapHaptic();
+          onPressReview();
+        }}
+        style={({ pressed }) => [styles.badge, styles.badgeReview, pressed && styles.pressed]}
+      >
+        <CircleCheck size={11} color="#666" strokeWidth={2.25} />
+        <Text style={styles.badgeReviewText}>À compléter</Text>
+        {pendingCount > 0 ? (
+          <View style={styles.countBadge}>
+            <Text style={styles.countBadgeText}>{pendingCount > 99 ? '99+' : pendingCount}</Text>
+          </View>
+        ) : null}
+      </Pressable>
     </View>
   );
 }
@@ -99,42 +64,54 @@ export function TransactionsShortcutCards({
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    marginBottom: spacing.md,
+    gap: 6,
+    marginBottom: 0,
   },
   rowEmbedded: {
-    paddingHorizontal: 0,
-    marginTop: spacing.sm,
-  },
-  chip: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    minHeight: 34,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-  },
-  chipLabel: {
-    fontFamily: fontFamilies.semibold,
-    fontSize: 12,
-    lineHeight: 16,
-    includeFontPadding: false,
-    flexShrink: 1,
+    marginTop: 0,
   },
   badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+  },
+  badgeAnalyse: {
+    backgroundColor: '#18181A',
+    borderColor: '#4ADE8030',
+  },
+  badgeAnalyseText: {
+    fontFamily: fontFamilies.semibold,
+    fontSize: 11,
+    lineHeight: 14,
+    color: '#4ADE80',
+    includeFontPadding: false,
+  },
+  badgeReview: {
+    backgroundColor: '#18181A',
+    borderColor: '#2A2A2C',
+  },
+  badgeReviewText: {
+    fontFamily: fontFamilies.semibold,
+    fontSize: 11,
+    lineHeight: 14,
+    color: '#666',
+    includeFontPadding: false,
+  },
+  countBadge: {
     minWidth: 16,
     height: 16,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
-    marginLeft: -2,
+    backgroundColor: '#C9974A',
+    marginLeft: 2,
   },
-  badgeText: {
+  countBadgeText: {
     fontFamily: fontFamilies.bold,
     fontSize: 9,
     lineHeight: 11,

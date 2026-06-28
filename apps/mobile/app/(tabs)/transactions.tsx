@@ -19,6 +19,9 @@ import { MerchantDirectory } from '@/components/MerchantDirectory';
 import { MerchantEditModal, type MerchantEditTarget } from '@/components/MerchantEditModal';
 import { DashboardCard } from '@/components/DashboardCard';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
+import { resolveLucideIcon } from '@/lib/lucideIconCatalog';
+import SearchMod from 'lucide-react-native/dist/cjs/icons/search.js';
+import SlidersHorizontalMod from 'lucide-react-native/dist/cjs/icons/sliders-horizontal.js';
 import { type FormFeedback } from '@/lib/formFeedback';
 import {
   createNewRecurringPaymentForm,
@@ -40,10 +43,9 @@ import {
   FLOATING_NAV_CONTENT_PADDING,
   ICON_WELL_SIZE,
   PAGE_PADDING_HORIZONTAL,
-  PAGE_TITLE_CONTENT_GAP,
   PAGE_TITLE_STYLE,
   SECTION_TITLE_STYLE,
-  jakartaBoldText,
+  fontFamilies,
   radius,
   spacing,
   typography,
@@ -100,6 +102,15 @@ const HISTORY_FILTER_OPTIONS: { id: HistoryTypeFilter; label: string }[] = [
   { id: 'expense', label: 'Dépenses' },
   { id: 'income', label: 'Revenus' },
 ];
+
+const VIEW_TABS: { id: ViewTab; label: string }[] = [
+  { id: 'history', label: 'Historique' },
+  { id: 'agenda', label: 'Agenda' },
+  { id: 'merchants', label: 'Marchands' },
+];
+
+const SearchIcon = resolveLucideIcon(SearchMod)!;
+const SlidersHorizontalIcon = resolveLucideIcon(SlidersHorizontalMod)!;
 
 type HistoryDayGroupProps = {
   date: string;
@@ -418,17 +429,27 @@ export default function TransactionsScreen() {
           <AppIcon family="ionicons" name="scan-outline" size={22} color={colors.textMuted} />
         </Pressable>
       </View>
-      <View style={[styles.tabsWrap, activeView === 'history' && styles.tabsWrapHistory]}>
-        <SegmentedTabs
-          tabs={[
-            { id: 'history', label: 'Historique' },
-            { id: 'agenda', label: 'Agenda' },
-            { id: 'merchants', label: 'Marchands' },
-          ]}
-          active={activeView}
-          onChange={setCurrentView}
-          showDivider={false}
-        />
+      <View style={[styles.viewTabsRow, activeView === 'history' && styles.viewTabsRowHistory]}>
+        {VIEW_TABS.map((tab) => {
+          const selected = activeView === tab.id;
+          return (
+            <Pressable
+              key={tab.id}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              onPress={() => {
+                tapHaptic();
+                setCurrentView(tab.id);
+              }}
+              style={styles.viewTab}
+            >
+              <Text style={[styles.viewTabLabel, selected && styles.viewTabLabelActive]}>
+                {tab.label}
+              </Text>
+              {selected ? <View style={styles.viewTabIndicator} /> : null}
+            </Pressable>
+          );
+        })}
       </View>
     </View>
   );
@@ -436,25 +457,17 @@ export default function TransactionsScreen() {
   const historyToolbar =
     activeView === 'history' ? (
       <View style={styles.historyToolbar}>
-        <View
-          style={[
-            styles.searchRow,
-            {
-              backgroundColor: colors.containerBackground,
-              borderColor: colors.containerBorder,
-              borderWidth: 1,
-              marginBottom: historyFiltersExpanded ? spacing.md : 0,
-            },
-          ]}
-        >
-          <AppIcon family="ionicons" name="search-outline" size={18} color={colors.textMuted} />
-          <TextInput
-            style={[styles.search, { color: colors.text }]}
-            placeholder="Rechercher"
-            placeholderTextColor={colors.textMuted}
-            value={search}
-            onChangeText={setSearch}
-          />
+        <View style={styles.searchFilterRow}>
+          <View style={styles.searchPill}>
+            <SearchIcon size={14} color="#444" strokeWidth={2} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Rechercher"
+              placeholderTextColor="#3A3A3C"
+              value={search}
+              onChangeText={setSearch}
+            />
+          </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Filtres"
@@ -464,13 +477,15 @@ export default function TransactionsScreen() {
               tapHaptic();
               setHistoryFiltersExpanded((expanded) => !expanded);
             }}
-            style={styles.filterIconBtn}
+            style={[
+              styles.filterBtn,
+              historyTypeFilter !== 'all' && styles.filterBtnActive,
+            ]}
           >
-            <AppIcon
-              family="ionicons"
-              name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
-              size={20}
-              color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
+            <SlidersHorizontalIcon
+              size={14}
+              color={historyTypeFilter !== 'all' ? '#4ADE80' : '#777'}
+              strokeWidth={2}
             />
           </Pressable>
         </View>
@@ -656,8 +671,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacing.lg,
-    marginBottom: spacing.xl,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
   title: {
@@ -665,33 +680,83 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scanIcon: { padding: 4 },
-  tabsWrap: {
+  viewTabsRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
+    marginBottom: 16,
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    marginBottom: PAGE_TITLE_CONTENT_GAP,
   },
-  tabsWrapHistory: {
-    marginBottom: spacing.md,
+  viewTabsRowHistory: {
+    marginBottom: 12,
+  },
+  viewTab: {
+    marginRight: 20,
+    paddingBottom: 10,
+    position: 'relative',
+  },
+  viewTabLabel: {
+    fontFamily: fontFamilies.semibold,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#444',
+    includeFontPadding: false,
+  },
+  viewTabLabelActive: {
+    color: '#fff',
+  },
+  viewTabIndicator: {
+    position: 'absolute',
+    bottom: -1,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: '#4ADE80',
+    borderRadius: 2,
   },
   historyToolbar: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     marginBottom: 88,
+    gap: 12,
   },
-  searchRow: {
+  searchFilterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    minHeight: 44,
-    borderRadius: radius.card,
-    backgroundColor: colors.containerBackground,
-    borderWidth: 1,
-    borderColor: colors.containerBorder,
+    gap: 8,
+    marginBottom: 0,
   },
-  search: { flex: 1, color: colors.text, fontSize: typography.body, padding: 0 },
-  filterIconBtn: {
-    padding: 4,
-    marginLeft: spacing.xs,
+  searchPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#18181A',
+    borderWidth: 1,
+    borderColor: '#2A2A2C',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  searchInput: {
+    flex: 1,
+    color: '#fff',
+    fontFamily: fontFamilies.regular,
+    fontSize: 13,
+    padding: 0,
+    includeFontPadding: false,
+  },
+  filterBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#18181A',
+    borderWidth: 1,
+    borderColor: '#2A2A2C',
+    borderRadius: 10,
+  },
+  filterBtnActive: {
+    borderColor: '#4ADE8040',
   },
   historyFilterWrap: {
     marginBottom: 0,
