@@ -6,7 +6,6 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
@@ -18,10 +17,6 @@ import { ContactFormModal } from '@/components/ContactFormModal';
 import { MerchantDirectory } from '@/components/MerchantDirectory';
 import { MerchantEditModal, type MerchantEditTarget } from '@/components/MerchantEditModal';
 import { DashboardCard } from '@/components/DashboardCard';
-import { SegmentedTabs } from '@/components/SegmentedTabs';
-import { resolveLucideIcon } from '@/lib/lucideIconCatalog';
-import SearchMod from 'lucide-react-native/dist/cjs/icons/search.js';
-import SlidersHorizontalMod from 'lucide-react-native/dist/cjs/icons/sliders-horizontal.js';
 import { type FormFeedback } from '@/lib/formFeedback';
 import {
   createNewRecurringPaymentForm,
@@ -35,24 +30,23 @@ import {
 } from '@/lib/recurringPaymentsForm';
 import { PageTransition } from '@/components/PageTransition';
 import { TransactionRow } from '@/components/TransactionRow';
-import { TransactionsShortcutCards } from '@/components/transactions/TransactionsShortcutCards';
-import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
+import {
+  TransactionsViewHeader,
+  type HistoryTypeFilter,
+  type TransactionsViewTab,
+} from '@/components/transactions/TransactionsViewHeader';
 import {
   colors,
-  dashboardPaletteForTheme,
   FLOATING_NAV_CONTENT_PADDING,
   ICON_WELL_SIZE,
   PAGE_PADDING_HORIZONTAL,
-  PAGE_TITLE_STYLE,
   SECTION_TITLE_STYLE,
-  fontFamilies,
   radius,
   spacing,
   typography,
 } from '@/constants/theme';
-import { startOfMonth } from '@/lib/budgetMonth';
 import { listDayTotal } from '@/lib/textLayout';
-import { listTransactionsNeedingArticleReview } from '@/lib/transactionInsights';
+import { useTransactionReviewQueue } from '@/hooks/useTransactionReviewQueue';
 import { getContacts, getMerchantOverrides, getTransactions, sortTransactionsNewestFirst, getCategories, getCategoryBudgets, getSimulatedAccounts } from '@/lib/db';
 import { ensureDbReady } from '@/lib/init';
 import { isContactTransferTx } from '@/lib/accountTransactionFlow';
@@ -69,8 +63,7 @@ import { useSavingsGoals } from '@/hooks/useSavingsGoals';
 import { useAppTheme } from '@/lib/themeContext';
 import type { Category, CategoryBudget, Contact, MerchantOverride, RecurringPayment, SimulatedAccount, Transaction } from '@/types';
 
-type ViewTab = 'history' | 'agenda' | 'merchants';
-type HistoryTypeFilter = 'all' | 'expense' | 'income';
+type ViewTab = TransactionsViewTab;
 
 type MerchantRow = {
   originalName: string;
@@ -96,21 +89,6 @@ function getRequestedView(view?: string): ViewTab | null {
   if (view === 'agenda' || view === 'merchants' || view === 'history') return view;
   return null;
 }
-
-const HISTORY_FILTER_OPTIONS: { id: HistoryTypeFilter; label: string }[] = [
-  { id: 'all', label: 'Tous' },
-  { id: 'expense', label: 'Dépenses' },
-  { id: 'income', label: 'Revenus' },
-];
-
-const VIEW_TABS: { id: ViewTab; label: string }[] = [
-  { id: 'history', label: 'Historique' },
-  { id: 'agenda', label: 'Agenda' },
-  { id: 'merchants', label: 'Marchands' },
-];
-
-const SearchIcon = resolveLucideIcon(SearchMod)!;
-const SlidersHorizontalIcon = resolveLucideIcon(SlidersHorizontalMod)!;
 
 type HistoryDayGroupProps = {
   date: string;
@@ -158,8 +136,7 @@ export default function TransactionsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ view?: string }>();
   const insets = useSafeAreaInsets();
-  const { colors, isLight } = useAppTheme();
-  const dashboardPalette = useMemo(() => dashboardPaletteForTheme(isLight), [isLight]);
+  const { colors } = useAppTheme();
   const contentCanvas = colors.background;
   const historyListRef = useRef<FlatList<[string, Transaction[]]>>(null);
   const merchantsListRef = useRef<FlatList<MerchantRow>>(null);
@@ -187,6 +164,7 @@ export default function TransactionsScreen() {
   const requestedView = getRequestedView(params.view);
   const savingsGoals = useSavingsGoals();
   const contactPhotoByKey = useContactPhotoMap();
+  const { unseenCount: pendingValidationCount } = useTransactionReviewQueue(items);
 
   const setCurrentView = useCallback(
     (view: ViewTab) => {
@@ -208,18 +186,40 @@ export default function TransactionsScreen() {
     }
   }, []);
 
+  const loadInFlightRef = useRef<Promise<void> | null>(null);
+  const needsReloadRef = useRef(false);
+
   const load = useCallback(async () => {
-    await ensureDbReady();
-    const [transactions, accounts, overrides, contacts] = await Promise.all([
-      getTransactions(),
-      getSimulatedAccounts(),
-      getMerchantOverrides(),
-      getContacts(),
-    ]);
-    setItems(transactions);
-    setSimulatedAccounts(accounts);
-    setMerchantOverrides(overrides);
-    setSavedContacts(contacts);
+    if (loadInFlightRef.current) {
+      needsReloadRef.current = true;
+      return loadInFlightRef.current;
+    }
+
+    const run = (async () => {
+      do {
+        needsReloadRef.current = false;
+        await ensureDbReady();
+        const [transactions, accounts, overrides, contacts] = await Promise.all([
+          getTransactions(),
+          getSimulatedAccounts(),
+          getMerchantOverrides(),
+          getContacts(),
+        ]);
+        setItems(transactions);
+        setSimulatedAccounts(accounts);
+        setMerchantOverrides(overrides);
+        setSavedContacts(contacts);
+      } while (needsReloadRef.current);
+    })();
+
+    loadInFlightRef.current = run;
+    try {
+      await run;
+    } finally {
+      if (loadInFlightRef.current === run) {
+        loadInFlightRef.current = null;
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -393,11 +393,6 @@ export default function TransactionsScreen() {
 
   const historyHasActiveFilters = search.trim().length > 0 || historyTypeFilter !== 'all';
 
-  const pendingValidationCount = useMemo(
-    () => listTransactionsNeedingArticleReview(items, startOfMonth(new Date())).length,
-    [items],
-  );
-
   const handlePressTransaction = useCallback(
     (transactionId: string) => {
       tapHaptic();
@@ -421,110 +416,56 @@ export default function TransactionsScreen() {
     [colors.textMuted, contactPhotoByKey, handlePressTransaction, savingsGoals, simulatedAccounts],
   );
 
-  const pageHeader = (
-    <View style={{ paddingTop: insets.top + SCREEN_TOP_GUTTER }}>
-      <View style={styles.topBar}>
-        <Text style={[styles.title, { color: colors.text }]}>Transactions</Text>
-        <Pressable onPress={() => router.push('/scan')} hitSlop={12} style={styles.scanIcon}>
-          <AppIcon family="ionicons" name="scan-outline" size={22} color={colors.textMuted} />
-        </Pressable>
-      </View>
-      <View style={[styles.viewTabsRow, activeView === 'history' && styles.viewTabsRowHistory]}>
-        {VIEW_TABS.map((tab) => {
-          const selected = activeView === tab.id;
-          return (
-            <Pressable
-              key={tab.id}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              onPress={() => {
-                tapHaptic();
-                setCurrentView(tab.id);
-              }}
-              style={styles.viewTab}
-            >
-              <Text style={[styles.viewTabLabel, selected && styles.viewTabLabelActive]}>
-                {tab.label}
-              </Text>
-              {selected ? <View style={styles.viewTabIndicator} /> : null}
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
+  const renderScrollHeader = useCallback(
+    (showHistoryToolbar: boolean) => (
+      <TransactionsViewHeader
+        topInset={insets.top}
+        titleColor={colors.text}
+        mutedColor={colors.textMuted}
+        activeView={activeView}
+        onChangeView={setCurrentView}
+        onPressScan={() => router.push('/scan')}
+        showHistoryToolbar={showHistoryToolbar}
+        search={search}
+        onSearchChange={setSearch}
+        historyFiltersExpanded={historyFiltersExpanded}
+        onToggleHistoryFilters={() => setHistoryFiltersExpanded((expanded) => !expanded)}
+        historyTypeFilter={historyTypeFilter}
+        onHistoryTypeFilterChange={setHistoryTypeFilter}
+        pendingValidationCount={pendingValidationCount}
+        onPressInsights={() => router.push('/transactions-insights')}
+        onPressReview={() =>
+          router.push({ pathname: '/transactions-insights', params: { validate: '1' } })
+        }
+      />
+    ),
+    [
+      activeView,
+      colors.text,
+      colors.textMuted,
+      historyFiltersExpanded,
+      historyTypeFilter,
+      insets.top,
+      pendingValidationCount,
+      router,
+      search,
+      setCurrentView,
+    ],
   );
 
-  const historyToolbar =
-    activeView === 'history' ? (
-      <View style={styles.historyToolbar}>
-        <View style={styles.searchFilterRow}>
-          <View style={styles.searchPill}>
-            <SearchIcon size={14} color="#444" strokeWidth={2} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Rechercher"
-              placeholderTextColor="#3A3A3C"
-              value={search}
-              onChangeText={setSearch}
-            />
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Filtres"
-            accessibilityState={{ expanded: historyFiltersExpanded }}
-            hitSlop={8}
-            onPress={() => {
-              tapHaptic();
-              setHistoryFiltersExpanded((expanded) => !expanded);
-            }}
-            style={[
-              styles.filterBtn,
-              historyTypeFilter !== 'all' && styles.filterBtnActive,
-            ]}
-          >
-            <SlidersHorizontalIcon
-              size={14}
-              color={historyTypeFilter !== 'all' ? '#4ADE80' : '#777'}
-              strokeWidth={2}
-            />
-          </Pressable>
-        </View>
-        {historyFiltersExpanded ? (
-          <View style={styles.historyFilterWrap}>
-            <SegmentedTabs
-              tabs={HISTORY_FILTER_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
-              active={historyTypeFilter}
-              onChange={(id) => {
-                tapHaptic();
-                setHistoryTypeFilter(id);
-              }}
-              showDivider={false}
-              trackBgColor="transparent"
-              activeBgColor="rgba(255,255,255,0.07)"
-              activeLabelColor="rgba(255,255,255,0.85)"
-              inactiveLabelColor="rgba(255,255,255,0.28)"
-            />
-          </View>
-        ) : null}
-        <TransactionsShortcutCards
-          embedded
-          pendingCount={pendingValidationCount}
-          onPressInsights={() => router.push('/transactions-insights')}
-          onPressReview={() =>
-            router.push({ pathname: '/transactions-insights', params: { validate: '1' } })
-          }
-        />
-      </View>
-    ) : null;
+  const historyListHeader = useMemo(() => renderScrollHeader(true), [renderScrollHeader]);
+  const agendaMerchantsListHeader = useMemo(() => renderScrollHeader(false), [renderScrollHeader]);
 
   return (
     <PageTransition>
     <View style={[styles.screen, { backgroundColor: contentCanvas }]}>
-      {pageHeader}
-      {historyToolbar}
-
-      {activeView === 'history' ? (
-        <View style={[styles.flex, { backgroundColor: contentCanvas }]} collapsable={false}>
+      <View
+        style={[
+          styles.flex,
+          { backgroundColor: contentCanvas, display: activeView === 'history' ? 'flex' : 'none' },
+        ]}
+        collapsable={false}
+      >
           <FlatList
             ref={historyListRef}
             style={[styles.listViewport, { backgroundColor: contentCanvas }]}
@@ -535,8 +476,9 @@ export default function TransactionsScreen() {
             maxToRenderPerBatch={6}
             windowSize={7}
             removeClippedSubviews={Platform.OS !== 'web'}
+            ListHeaderComponent={historyListHeader}
             contentContainerStyle={[
-              styles.list,
+              styles.listWithHeader,
               { backgroundColor: contentCanvas, paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING },
             ]}
             refreshControl={
@@ -551,6 +493,7 @@ export default function TransactionsScreen() {
               />
             }
             ListEmptyComponent={
+              <View style={styles.historyEmptyWrap}>
               <DashboardCard padding={spacing.lg} innerStyle={styles.historyEmptyInner}>
                 <View style={[styles.historyEmptyIcon, { backgroundColor: colors.surfaceElevated }]}>
                   <AppIcon family="ionicons" name="receipt-outline" size={22} color={colors.textMuted} />
@@ -581,25 +524,35 @@ export default function TransactionsScreen() {
                   </Pressable>
                 ) : null}
               </DashboardCard>
+              </View>
             }
             renderItem={renderHistoryDayGroup}
           />
-        </View>
-      ) : null}
+      </View>
 
-      {activeView === 'agenda' ? (
-        <View style={[styles.agendaWrap, { backgroundColor: contentCanvas }]}>
+      <View
+        style={[
+          styles.agendaWrap,
+          { backgroundColor: contentCanvas, display: activeView === 'agenda' ? 'flex' : 'none' },
+        ]}
+      >
           <AgendaView
             ref={agendaRef}
+            headerComponent={agendaMerchantsListHeader}
             onEditRecurring={(payment) => void openEditRecurringPayment(payment)}
           />
-        </View>
-      ) : null}
+      </View>
 
-      {activeView === 'merchants' ? (
-        <View style={[styles.flex, { backgroundColor: contentCanvas }]} collapsable={false}>
+      <View
+        style={[
+          styles.flex,
+          { backgroundColor: contentCanvas, display: activeView === 'merchants' ? 'flex' : 'none' },
+        ]}
+        collapsable={false}
+      >
           <MerchantDirectory
             listRef={merchantsListRef}
+            headerComponent={agendaMerchantsListHeader}
             merchants={merchants}
             contacts={contacts}
             isEditing={isEditingMerchants}
@@ -628,8 +581,7 @@ export default function TransactionsScreen() {
             }}
             onAddContact={() => setShowContactForm(true)}
           />
-        </View>
-      ) : null}
+      </View>
 
       <MerchantEditModal
         visible={Boolean(editingMerchant)}
@@ -667,98 +619,8 @@ export default function TransactionsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
+  historyEmptyWrap: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-  },
-  title: {
-    ...PAGE_TITLE_STYLE,
-    flex: 1,
-  },
-  scanIcon: { padding: 4 },
-  viewTabsRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#222',
-    marginBottom: 16,
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-  },
-  viewTabsRowHistory: {
-    marginBottom: 12,
-  },
-  viewTab: {
-    marginRight: 20,
-    paddingBottom: 10,
-    position: 'relative',
-  },
-  viewTabLabel: {
-    fontFamily: fontFamilies.semibold,
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#444',
-    includeFontPadding: false,
-  },
-  viewTabLabelActive: {
-    color: '#fff',
-  },
-  viewTabIndicator: {
-    position: 'absolute',
-    bottom: -1,
-    left: 0,
-    right: 0,
-    height: 2,
-    backgroundColor: '#4ADE80',
-    borderRadius: 2,
-  },
-  historyToolbar: {
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    marginBottom: 88,
-  },
-  searchFilterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  searchPill: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#18181A',
-    borderWidth: 1,
-    borderColor: '#2A2A2C',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  searchInput: {
-    flex: 1,
-    color: '#fff',
-    fontFamily: fontFamilies.regular,
-    fontSize: 13,
-    padding: 0,
-    includeFontPadding: false,
-  },
-  filterBtn: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#18181A',
-    borderWidth: 1,
-    borderColor: '#2A2A2C',
-    borderRadius: 10,
-  },
-  filterBtnActive: {
-    borderColor: '#4ADE8040',
-  },
-  historyFilterWrap: {
-    marginBottom: 0,
   },
   historyEmptyInner: {
     alignItems: 'center',
@@ -805,6 +667,9 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: FLOATING_NAV_CONTENT_PADDING,
   },
+  listWithHeader: {
+    paddingBottom: FLOATING_NAV_CONTENT_PADDING,
+  },
   listViewport: { flex: 1 },
   emptyWrap: {
     paddingTop: spacing.xxl,
@@ -812,10 +677,10 @@ const styles = StyleSheet.create({
   },
   agendaWrap: {
     flex: 1,
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
   group: {
     marginBottom: spacing.xl,
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
   groupHeaderRow: {
     flexDirection: 'row',

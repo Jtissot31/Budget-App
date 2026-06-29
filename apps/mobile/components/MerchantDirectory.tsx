@@ -169,8 +169,8 @@ export function MerchantDirectory({
   };
 
   const listHeader = (
-    <View>
-      {headerComponent}
+    <>
+      {headerComponent ? <View style={styles.scrollHeaderBleed}>{headerComponent}</View> : null}
       <View style={styles.headerBlock}>
       {showContactsTab ? (
         <SegmentedTabs
@@ -274,7 +274,7 @@ export function MerchantDirectory({
         ) : null}
       </View>
       </View>
-    </View>
+    </>
   );
 
   return (
@@ -350,6 +350,9 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     paddingTop: spacing.sm,
+  },
+  scrollHeaderBleed: {
+    marginHorizontal: -PAGE_PADDING_HORIZONTAL,
   },
   listContentEmpty: {
     flexGrow: 1,
