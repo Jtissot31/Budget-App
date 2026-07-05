@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -51,6 +52,7 @@ import { HomeAvailableNowHero } from '@/components/dashboard/HomeAvailableNowHer
 import { HomePlansCarousel } from '@/components/dashboard/HomePlansCarousel';
 import { PaycheckAllocationWidget } from '@/components/PaycheckAllocationWidget';
 import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
+import { ensureDbReady } from '@/lib/init';
 import {
   getRecentIncomeTransactions,
   getRecurringPayments,
@@ -1205,6 +1207,7 @@ export default function HomeScreen() {
   }, []);
 
   const loadCore = useCallback(async () => {
+    await ensureDbReady();
     const [
       name,
       recurring,
@@ -2658,9 +2661,10 @@ const dashStyles = StyleSheet.create({
     height: 260,
     zIndex: 0,
   },
-  scrollContent: {
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-  },
+  scrollContent: Platform.select({
+    web: {},
+    default: { paddingHorizontal: PAGE_PADDING_HORIZONTAL },
+  }),
   sectionFirst: {
     paddingTop: PAGE_TITLE_CONTENT_GAP,
     paddingBottom: 0,

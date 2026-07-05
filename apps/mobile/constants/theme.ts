@@ -294,6 +294,15 @@ export const spacing = {
 /** Global horizontal page padding */
 export const PAGE_PADDING_HORIZONTAL = spacing.lg;
 
+/**
+ * Horizontal inset for screen shells (outside ScrollView / FlatList).
+ * RN Web often ignores `paddingHorizontal` on scroll `contentContainerStyle` and list headers —
+ * apply this on the page wrapper instead (see `PageTransition`).
+ */
+export function screenHorizontalGutter(insets?: { left?: number; right?: number }): number {
+  return Math.max(PAGE_PADDING_HORIZONTAL, insets?.left ?? 0, insets?.right ?? 0);
+}
+
 export const radius = {
   sm: 8,
   md: 12,

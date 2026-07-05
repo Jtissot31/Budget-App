@@ -30,8 +30,8 @@ export function CategoryBudgetProgress({ budget, compactOverspendOnly = false }:
   }
 
   const barColor = categoryBudgetBarColor(
-    usage.usagePercent,
-    usage.isZeroLimitOverspend,
+    budget.spent,
+    budget.limitAmount,
     isLight,
     budget.categoryColor,
     colors,

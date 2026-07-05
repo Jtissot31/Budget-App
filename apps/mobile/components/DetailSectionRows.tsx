@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SurfaceCard } from '@/components/SurfaceCard';
@@ -13,13 +13,22 @@ import {
   typographyKit,
   type AppColors,
 } from '@/constants/theme';
-import { flexText, rowValue, ROW_VALUE_MAX_WIDTH, singleLineAmountProps } from '@/lib/textLayout';
+import {
+  detailRowLabel,
+  detailRowValueSlot,
+  detailRowValueTextProps,
+  rowValue,
+  singleLineAmountProps,
+} from '@/lib/textLayout';
 
 export type DetailSectionRow = {
   label: string;
   value: string;
   icon?: keyof typeof Ionicons.glyphMap;
   valueColor?: string;
+  /** `amount` keeps the compact right column for money; default `text` lets values grow. */
+  valueLayout?: 'amount' | 'text';
+  valueContent?: ReactNode;
 };
 
 export type DetailSection = {
@@ -167,28 +176,44 @@ export function DetailSingleLineRow({
     <View
       style={[
         detailSingleLineRowStyle(),
+        row.valueLayout === 'amount' && styles.amountRow,
         rowPaddingVertical != null && { paddingVertical: rowPaddingVertical },
         !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
       ]}
     >
       {row.icon ? (
-        <Ionicons name={row.icon} size={17} color={colors.textMuted} style={styles.rowIcon} />
+        <Ionicons
+          name={row.icon}
+          size={17}
+          color={colors.textMuted}
+          style={[styles.rowIcon, row.valueLayout === 'amount' && styles.amountRowIcon]}
+        />
       ) : (
         <View style={styles.rowIconSpacer} />
       )}
-      <Text style={[styles.rowLabel, flexText, { color: colors.textMuted }]}>
+      <Text
+        style={[styles.rowLabel, detailRowLabel, { color: colors.textMuted }]}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+      >
         {row.label}
       </Text>
-      <Text
-        style={[
-          styles.rowValue,
-          rowValue,
-          { color: row.valueColor ?? colors.text },
-        ]}
-        {...singleLineAmountProps}
-      >
-        {row.value}
-      </Text>
+      {row.valueContent ? (
+        <View style={styles.rowValueSlot}>{row.valueContent}</View>
+      ) : (
+        <View style={styles.rowValueSlot}>
+          <Text
+            style={[
+              styles.rowValue,
+              rowValue,
+              { color: row.valueColor ?? colors.text },
+            ]}
+            {...(row.valueLayout === 'amount' ? singleLineAmountProps : detailRowValueTextProps)}
+          >
+            {row.value}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -200,9 +225,15 @@ const styles = StyleSheet.create({
   rows: {
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+  amountRow: {
+    alignItems: 'center',
+  },
   rowIcon: {
     width: 18,
     marginTop: 1,
+  },
+  amountRowIcon: {
+    marginTop: 0,
   },
   rowIconSpacer: {
     width: 18,
@@ -212,8 +243,9 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
   },
   rowValue: {
-    flexShrink: 0,
-    maxWidth: ROW_VALUE_MAX_WIDTH,
     textAlign: 'right',
+  },
+  rowValueSlot: {
+    ...detailRowValueSlot,
   },
 });

@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
+    "start": "node scripts/expo-start.mjs",
+    "android": "node scripts/expo-start.mjs --android",
+    "ios": "node scripts/expo-start.mjs --ios",
+    "web": "node scripts/expo-start.mjs",
     "move-forms": "node scripts/move-forms.mjs",
     "generate-regions": "node scripts/generate-regions.mjs",
     "lint": "expo lint"

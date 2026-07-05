@@ -52,6 +52,7 @@ import { hasMerchantLogoCandidate } from '@/components/TransactionAvatar';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import {
   TRANSFER_CATEGORY,
+  UNCATEGORIZED_TRANSACTION_CATEGORY,
   getCategoryIconName,
   type IconName,
 } from '@/constants/categoryOptions';
@@ -206,13 +207,12 @@ function resolveExpenseCategoryId(
   if (fromArticle) return fromArticle;
   if (categoryManuallySelected && manualCategoryId) return manualCategoryId;
   if (inferredId) return inferredId;
-  if (manualCategoryId) return manualCategoryId;
   const trimmedMerchant = merchantLabel.trim();
   if (trimmedMerchant) {
     const fromMerchant = inferCategoryId(trimmedMerchant, categories, null);
     if (fromMerchant) return fromMerchant;
   }
-  return categories[0]?.id ?? null;
+  return UNCATEGORIZED_TRANSACTION_CATEGORY.id;
 }
 
 function isIconName(value?: string | null): value is IconName {
@@ -245,8 +245,9 @@ function TransferGoalChipIcon({
 
 async function applyLinkedSavingsGoalDeltas(
   accounts: SimulatedAccount[],
-  accountDeltas: Array<{ id: string; delta: number }>,
+  accountDeltas: { id: string; delta: number }[],
   multiplier = 1,
+  options?: { emit?: boolean },
 ) {
   const accountById = new Map(accounts.map((account) => [account.id, account]));
   const goalDeltas = new Map<string, number>();
@@ -258,7 +259,7 @@ async function applyLinkedSavingsGoalDeltas(
   }
 
   for (const [goalId, delta] of goalDeltas) {
-    await adjustSavingsGoalCurrentAmount(goalId, delta);
+    await adjustSavingsGoalCurrentAmount(goalId, delta, options);
   }
 }
 
@@ -379,6 +380,8 @@ export default function AddTransactionScreen() {
   }, [contactDirectoryRows, label, savedContacts, type]);
 
   useEffect(() => {
+    if (editId && prefilledEditId !== editId) return;
+
     void getCategories().then((cats) => {
       setCategories(cats);
       if (editId && editingTransaction) {
@@ -404,7 +407,7 @@ export default function AddTransactionScreen() {
       setCategoryManuallySelected(false);
       setCategoryId(defaultCat?.id ?? null);
     });
-  }, [budgetCategoryIds, editId, editingTransaction?.type, transferMode, type]);
+  }, [budgetCategoryIds, editId, editingTransaction, prefilledEditId, transferMode, type]);
 
   useEffect(() => {
     if (editId) return;
@@ -1174,6 +1177,8 @@ export default function AddTransactionScreen() {
   };
 
   const save = async () => {
+    if (saving) return;
+
     const saveAsPersonTransferTo = isPersonTransferTo;
     const saveAsPersonTransferFrom = isPersonTransferFrom;
     const saveAsStandardTransfer = isStandardTransfer;
@@ -1323,8 +1328,17 @@ export default function AddTransactionScreen() {
     if (saveAsStandardTransfer) {
       await upsertCategory(TRANSFER_CATEGORY);
     }
+    if (
+      isExpenseSave &&
+      resolvedCategoryId === UNCATEGORIZED_TRANSACTION_CATEGORY.id
+    ) {
+      await upsertCategory(UNCATEGORIZED_TRANSACTION_CATEGORY);
+    }
 
     setSaving(true);
+    const balanceEmit = { emit: false as const };
+
+    try {
     const srcLabel = sourceEndpoint?.label ?? sourceAccount.label;
     const dstLabel = destinationEndpoint?.label ?? destinationAccount.label;
     const autoTransferLabel = buildAutoTransferLabel(srcLabel, dstLabel);
@@ -1390,38 +1404,46 @@ export default function AddTransactionScreen() {
       const previousDeltas = getTransactionAccountDeltas(editingTransaction);
       const nextDeltas = getTransactionAccountDeltas({ amount: parsed, type: persistedType, note });
       for (const delta of previousDeltas) {
-        await adjustSimulatedAccountBalance(delta.id, -delta.delta);
+        await adjustSimulatedAccountBalance(delta.id, -delta.delta, balanceEmit);
       }
       for (const delta of nextDeltas) {
-        await adjustSimulatedAccountBalance(delta.id, delta.delta);
+        await adjustSimulatedAccountBalance(delta.id, delta.delta, balanceEmit);
       }
       if (editingTransaction.type === 'transfer') {
-        await applyLinkedSavingsGoalDeltas(simulatedAccounts, previousDeltas, -1);
+        await applyLinkedSavingsGoalDeltas(simulatedAccounts, previousDeltas, -1, balanceEmit);
       }
       if (saveAsStandardTransfer) {
-        await applyLinkedSavingsGoalDeltas(simulatedAccounts, nextDeltas);
+        await applyLinkedSavingsGoalDeltas(simulatedAccounts, nextDeltas, 1, balanceEmit);
       }
     } else if (saveAsStandardTransfer) {
       if (sourceEndpoint?.kind === 'goal') {
-        await adjustSavingsGoalCurrentAmount(sourceEndpoint.id, -parsed);
+        await adjustSavingsGoalCurrentAmount(sourceEndpoint.id, -parsed, balanceEmit);
       } else if (sourceAccount.isSimulated) {
-        await adjustSimulatedAccountBalance(sourceAccount.id, -parsed);
+        await adjustSimulatedAccountBalance(sourceAccount.id, -parsed, balanceEmit);
       }
       if (destinationEndpoint?.kind === 'goal') {
-        await adjustSavingsGoalCurrentAmount(destinationEndpoint.id, parsed);
+        await adjustSavingsGoalCurrentAmount(destinationEndpoint.id, parsed, balanceEmit);
       } else if (destinationAccount.isSimulated) {
-        await adjustSimulatedAccountBalance(destinationAccount.id, parsed);
+        await adjustSimulatedAccountBalance(destinationAccount.id, parsed, balanceEmit);
       }
       if (sourceEndpoint?.kind !== 'goal' && destinationEndpoint?.kind !== 'goal') {
         await applyLinkedSavingsGoalDeltas(
           simulatedAccounts,
           getTransactionAccountDeltas({ amount: parsed, type: persistedType, note }),
+          1,
+          balanceEmit,
         );
       }
     } else if (sourceAccount.isSimulated) {
-      await adjustSimulatedAccountBalance(sourceAccount.id, persistedType === 'income' ? parsed : -parsed);
+      await adjustSimulatedAccountBalance(
+        sourceAccount.id,
+        persistedType === 'income' ? parsed : -parsed,
+        balanceEmit,
+      );
     }
-    await syncWithServer();
+
+    void syncWithServer().catch(() => {});
+
     if (type === 'income' && incomeReason.trim()) {
       await saveIncomeReasonSuggestion(incomeReason);
       setIncomeReasonSuggestions(await getIncomeReasonSuggestions());
@@ -1434,9 +1456,19 @@ export default function AddTransactionScreen() {
       await saveTransferReasonSuggestion(transferReason);
       setTransferReasonSuggestions(await getTransferReasonSuggestions());
     }
-    setSaving(false);
+
     successHaptic();
     router.back();
+    } catch {
+      setFormFeedback(
+        formValidationError(
+          'Erreur',
+          'Impossible d’enregistrer la transaction. Réessaie dans un instant.',
+        ),
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (

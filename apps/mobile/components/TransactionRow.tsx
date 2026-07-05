@@ -34,6 +34,8 @@ type Props = {
   onPress?: () => void;
   /** Stable list handler — preferred over inline `onPress` closures in virtualized lists. */
   onPressId?: (transactionId: string) => void;
+  /** Renders without an outer card — for nested card layouts. */
+  embedded?: boolean;
 };
 
 function isUnresolvedHistorySubtitle(transaction: Transaction, label: string): boolean {
@@ -83,6 +85,7 @@ const TransactionRowBase = memo(function TransactionRowBase({
   contactPhotoByKey,
   onPress,
   onPressId,
+  embedded = false,
 }: TransactionRowBaseProps) {
   const { colors: themeColors } = useAppTheme();
   const styles = useMemo(() => createStyles(themeColors), [themeColors]);
@@ -114,6 +117,7 @@ const TransactionRowBase = memo(function TransactionRowBase({
 
   return (
     <PaymentListRow
+      embedded={embedded}
       onPress={onPress || onPressId ? handlePress : undefined}
       avatar={
         <TransactionAvatar

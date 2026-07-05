@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,15 +13,20 @@ import { TransactionRow } from '@/components/TransactionRow';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   FLOATING_NAV_CONTENT_PADDING,
+  jakartaExtraBoldText,
   PAGE_PADDING_HORIZONTAL,
+  PAGE_TITLE_STYLE,
   PORTFOLIO_SECTION_GAP,
   radius,
   spacing,
+  typography,
   typographyKit,
 } from '@/constants/theme';
+import { UNIFORM_ACTION_BUTTON_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import { useContactPhotoMap } from '@/hooks/useContactPhotoMap';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useSavingsGoals } from '@/hooks/useSavingsGoals';
+import { useTransactionReviewQueue } from '@/hooks/useTransactionReviewQueue';
 import {
   formatBudgetMonthEyebrow,
   isCurrentMonth,
@@ -42,8 +46,8 @@ import { ensureDbReady } from '@/lib/init';
 import {
   aggregateExpenseCategories,
   getTransactionValidationIssues,
-  listTransactionsNeedingArticleReview,
   listTransactionsNeedingValidation,
+  REVIEW_TRANSACTION_WINDOW,
   validationIssueLabel,
 } from '@/lib/transactionInsights';
 import { useAppTheme } from '@/lib/themeContext';
@@ -56,6 +60,11 @@ function currentMonthStart(): Date {
 function shouldOpenValidation(validate?: string | string[]) {
   const value = Array.isArray(validate) ? validate[0] : validate;
   return value === '1' || value === 'true';
+}
+
+function formatReviewScopeLine(count: number): string {
+  const noun = count > 1 ? 'transactions' : 'transaction';
+  return `${count} ${noun} · ${REVIEW_TRANSACTION_WINDOW} dernières dépenses`;
 }
 
 export default function TransactionsInsightsScreen() {
@@ -75,17 +84,40 @@ export default function TransactionsInsightsScreen() {
   const [earliestMonth, setEarliestMonth] = useState(currentMonthStart);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [validationVisible, setValidationVisible] = useState(openValidationOnFocus);
+  const reviewSeenMarkedRef = useRef(false);
 
   const latestMonth = currentMonthStart();
 
+  const loadInFlightRef = useRef<Promise<void> | null>(null);
+  const needsReloadRef = useRef(false);
+
   const load = useCallback(async () => {
-    await ensureDbReady();
-    const [txs, simulatedAccounts] = await Promise.all([
-      getTransactions(),
-      getSimulatedAccounts(),
-    ]);
-    setTransactions(txs);
-    setAccounts(simulatedAccounts);
+    if (loadInFlightRef.current) {
+      needsReloadRef.current = true;
+      return loadInFlightRef.current;
+    }
+
+    const run = (async () => {
+      do {
+        needsReloadRef.current = false;
+        await ensureDbReady();
+        const [txs, simulatedAccounts] = await Promise.all([
+          getTransactions(),
+          getSimulatedAccounts(),
+        ]);
+        setTransactions(txs);
+        setAccounts(simulatedAccounts);
+      } while (needsReloadRef.current);
+    })();
+
+    loadInFlightRef.current = run;
+    try {
+      await run;
+    } finally {
+      if (loadInFlightRef.current === run) {
+        loadInFlightRef.current = null;
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -99,33 +131,48 @@ export default function TransactionsInsightsScreen() {
     void load();
   }, [load]);
 
-  useRefreshOnFocus(load);
+  useRefreshOnFocus(load, { skipInitial: true });
   useEffect(() => dataEvents.subscribe(load), [load]);
-
-  useFocusEffect(
-    useCallback(() => {
-      const month = currentMonthStart();
-      setDisplayMonth(month);
-      setPendingMonth(month);
-      setSelectedCategoryId(null);
-      setValidationVisible(openValidationOnFocus);
-    }, [openValidationOnFocus]),
-  );
 
   const { categories, totalSpent } = useMemo(
     () => aggregateExpenseCategories(transactions, displayMonth),
     [displayMonth, transactions],
   );
 
+  const {
+    pendingReview,
+    markAllPendingSeen,
+    markSeen,
+    ignoreTransaction,
+  } = useTransactionReviewQueue(transactions);
+
   const pendingValidation = useMemo(
     () =>
-      sortTransactionsNewestFirst(
-        isReviewMode
-          ? listTransactionsNeedingArticleReview(transactions)
-          : listTransactionsNeedingValidation(transactions, displayMonth),
-      ),
-    [displayMonth, isReviewMode, transactions],
+      isReviewMode
+        ? pendingReview
+        : sortTransactionsNewestFirst(listTransactionsNeedingValidation(transactions, displayMonth)),
+    [displayMonth, isReviewMode, pendingReview, transactions],
   );
+
+  useFocusEffect(
+    useCallback(() => {
+      reviewSeenMarkedRef.current = false;
+      const month = currentMonthStart();
+      setDisplayMonth(month);
+      setPendingMonth(month);
+      setSelectedCategoryId(null);
+      setValidationVisible(openValidationOnFocus);
+      return () => {
+        reviewSeenMarkedRef.current = false;
+      };
+    }, [openValidationOnFocus]),
+  );
+
+  useEffect(() => {
+    if (!openValidationOnFocus || pendingReview.length === 0 || reviewSeenMarkedRef.current) return;
+    reviewSeenMarkedRef.current = true;
+    void markAllPendingSeen();
+  }, [markAllPendingSeen, openValidationOnFocus, pendingReview.length]);
 
   const showValidationList = isReviewMode || validationVisible;
 
@@ -167,42 +214,94 @@ export default function TransactionsInsightsScreen() {
   const handlePressTransaction = useCallback(
     (transactionId: string) => {
       tapHaptic();
+      void markSeen([transactionId]);
       router.push({ pathname: '/transaction-detail', params: { transactionId } });
     },
-    [router],
+    [markSeen, router],
+  );
+
+  const handleEnterInfo = useCallback(
+    (transactionId: string) => {
+      tapHaptic();
+      void markSeen([transactionId]);
+      router.push({ pathname: '/transaction-detail', params: { transactionId } });
+    },
+    [markSeen, router],
+  );
+
+  const handleIgnore = useCallback(
+    (transactionId: string) => {
+      tapHaptic();
+      void ignoreTransaction(transactionId);
+    },
+    [ignoreTransaction],
   );
 
   const listHeader = (
     <View>
-      <View style={[styles.header, { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.md }]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Retour"
-          hitSlop={12}
-          onPress={() => {
-            tapHaptic();
-            router.back();
-          }}
-          style={({ pressed }) => [styles.backHit, pressed && styles.pressed]}
-        >
-          <MaterialIcons name="arrow-back" size={22} color={colors.text} />
-        </Pressable>
-        <Text style={[styles.headerTitle, typographyKit.pageTitle, { color: colors.text }]}>
-          {isReviewMode ? 'À compléter' : 'Analyse dépenses'}
-        </Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
       {isReviewMode ? (
-        <View style={styles.reviewHintSection}>
-          <Text style={[styles.reviewHint, typographyKit.caption, { color: colors.textMuted }]}>
+        <View
+          style={[
+            styles.reviewPageHeader,
+            { paddingTop: insets.top + SCREEN_TOP_GUTTER },
+          ]}
+        >
+          <View style={styles.reviewTitleRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Retour"
+              hitSlop={12}
+              onPress={() => {
+                tapHaptic();
+                router.back();
+              }}
+              style={({ pressed }) => [styles.reviewBackHit, pressed && styles.pressed]}
+            >
+              <Ionicons name="chevron-back" size={24} color={colors.text} />
+            </Pressable>
+            <Text style={[styles.reviewPageTitle, { color: colors.text }]} numberOfLines={1}>
+              À compléter
+            </Text>
+          </View>
+          <Text style={[typographyKit.caption, styles.reviewScope, { color: colors.textMuted }]}>
             {pendingValidation.length > 0
-              ? 'Dépenses scannées sans articles détaillés.'
-              : 'Toutes les dépenses scannées ont leurs articles.'}
+              ? formatReviewScopeLine(pendingValidation.length)
+              : 'Toutes vos dépenses récentes sont complètes.'}
           </Text>
         </View>
       ) : (
         <>
+          <View
+            style={[
+              styles.stackTopBar,
+              { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.lg + spacing.md },
+            ]}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Retour"
+              hitSlop={12}
+              onPress={() => {
+                tapHaptic();
+                router.back();
+              }}
+              style={({ pressed }) => [
+                styles.stackBackButton,
+                {
+                  backgroundColor: colors.containerBackground,
+                  borderColor: colors.containerBorder,
+                },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Ionicons name="chevron-back" size={22} color={colors.text} />
+            </Pressable>
+            <Text style={[styles.stackTitle, { color: colors.text }]} numberOfLines={1}>
+              Analyse dépenses
+            </Text>
+            <View style={styles.stackTopBarSpacer} />
+          </View>
+
           <View style={styles.donutSection}>
             <DashboardCard padding={spacing.lg} innerStyle={styles.distributionCard}>
               <MonthSelector
@@ -245,12 +344,12 @@ export default function TransactionsInsightsScreen() {
               ]}
             >
               <Ionicons name="checkmark-circle-outline" size={18} color={colors.background} />
-              <Text style={[styles.validateButtonText, typographyKit.bodyBold, { color: colors.background }]}>
+              <Text style={[typographyKit.bodyBold, { color: colors.background }]}>
                 Valider
               </Text>
               {pendingValidation.length > 0 ? (
                 <View style={[styles.validateBadge, { backgroundColor: colors.accentGreen }]}>
-                  <Text style={[styles.validateBadgeText, typographyKit.caption, { color: '#0a0a0a' }]}>
+                  <Text style={[typographyKit.caption, { color: '#0a0a0a' }]}>
                     {pendingValidation.length}
                   </Text>
                 </View>
@@ -274,16 +373,23 @@ export default function TransactionsInsightsScreen() {
   );
 
   const listEmpty = showValidationList ? (
-    <DashboardCard padding={spacing.lg} innerStyle={styles.emptyCard}>
+    <DashboardCard
+      padding={spacing.lg}
+      innerStyle={[styles.emptyCard, isReviewMode && styles.emptyCardReview]}
+    >
       <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceElevated }]}>
-        <Ionicons name="checkmark-done-outline" size={22} color={colors.accentGreen} />
+        <Ionicons
+          name="checkmark-done-outline"
+          size={22}
+          color={isReviewMode ? colors.accentGreen : colors.textMuted}
+        />
       </View>
       <Text style={[styles.emptyTitle, typographyKit.bodyBold, { color: colors.text }]}>
-        {isReviewMode ? 'Rien à compléter' : 'Rien à valider'}
+        {isReviewMode ? 'Tout est à jour' : 'Rien à valider'}
       </Text>
       <Text style={[styles.emptyHint, typographyKit.caption, { color: colors.textMuted }]}>
         {isReviewMode
-          ? 'Toutes les dépenses scannées ont leurs articles.'
+          ? `Les ${REVIEW_TRANSACTION_WINDOW} dernières dépenses ont une catégorie et une description.`
           : 'Les dépenses de ce mois ont une catégorie et des articles complets.'}
       </Text>
     </DashboardCard>
@@ -313,15 +419,77 @@ export default function TransactionsInsightsScreen() {
           ListEmptyComponent={listEmpty}
           contentContainerStyle={{
             paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING + spacing.xl,
+            ...(isReviewMode && showValidationList
+              ? { paddingHorizontal: PAGE_PADDING_HORIZONTAL, paddingTop: spacing.md }
+              : null),
           }}
           showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={styles.rowGap} />}
+          ItemSeparatorComponent={() => (
+            <View style={isReviewMode ? styles.reviewRowGap : styles.rowGap} />
+          )}
           renderItem={({ item }) => {
             const issues = getTransactionValidationIssues(item).filter((issue) =>
-              isReviewMode ? issue === 'articles' : true,
+              isReviewMode ? issue !== 'article_category' : true,
             );
+
+            if (isReviewMode) {
+              return (
+                <View style={styles.validationRowWrap}>
+                  <TransactionRow
+                    transaction={item}
+                    accounts={accounts}
+                    savingsGoals={savingsGoals}
+                    contactPhotoByKey={contactPhotoByKey}
+                    onPressId={handleEnterInfo}
+                  />
+                  {issues.length > 0 ? (
+                    <View style={styles.issueChips}>
+                      {issues.map((issue) => (
+                        <View
+                          key={issue}
+                          style={[
+                            styles.issueChip,
+                            {
+                              backgroundColor: colors.surfaceElevated,
+                              borderColor: colors.containerBorder,
+                            },
+                          ]}
+                        >
+                          <Text style={[typographyKit.caption, { color: colors.textMuted }]}>
+                            {validationIssueLabel(issue, item)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                  <View style={styles.reviewActions}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Ignorer cette transaction"
+                      onPress={() => handleIgnore(item.id)}
+                      style={({ pressed }) => [styles.reviewActionHit, pressed && styles.pressed]}
+                    >
+                      <Text style={[typographyKit.metaMedium, { color: colors.textMuted }]}>
+                        Ignorer
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Entrer les infos manquantes"
+                      onPress={() => handleEnterInfo(item.id)}
+                      style={({ pressed }) => [styles.reviewActionHit, pressed && styles.pressed]}
+                    >
+                      <Text style={[typographyKit.captionSemibold, { color: colors.text }]}>
+                        Entrer les infos
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            }
+
             return (
-              <View style={styles.validationRowWrap}>
+              <View style={[styles.validationRowWrap, styles.validationRowInset]}>
                 <TransactionRow
                   transaction={item}
                   accounts={accounts}
@@ -342,8 +510,8 @@ export default function TransactionsInsightsScreen() {
                           },
                         ]}
                       >
-                        <Text style={[styles.issueChipText, typographyKit.caption, { color: colors.textMuted }]}>
-                          {validationIssueLabel(issue)}
+                        <Text style={[typographyKit.caption, { color: colors.textMuted }]}>
+                          {validationIssueLabel(issue, item)}
                         </Text>
                       </View>
                     ))}
@@ -368,35 +536,55 @@ const styles = StyleSheet.create({
     height: 260,
     zIndex: 0,
   },
-  header: {
+  stackTopBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    marginBottom: PORTFOLIO_SECTION_GAP,
+    paddingBottom: spacing.md,
   },
-  backHit: {
-    width: 40,
-    height: 40,
-    alignItems: 'flex-start',
+  stackBackButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
+  stackTitle: {
     flex: 1,
     textAlign: 'center',
+    marginHorizontal: spacing.sm,
+    ...jakartaExtraBoldText,
+    fontSize: typography.body,
+    letterSpacing: -0.2,
   },
-  headerSpacer: {
-    width: 40,
+  stackTopBarSpacer: { width: 38 },
+  reviewPageHeader: {
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+    marginBottom: spacing.lg,
+  },
+  reviewTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  reviewBackHit: {
+    padding: 4,
+    marginLeft: -4,
+  },
+  reviewPageTitle: {
+    ...PAGE_TITLE_STYLE,
+    flex: 1,
+    minWidth: 0,
+  },
+  reviewScope: {
+    lineHeight: 18,
   },
   donutSection: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-  },
-  reviewHintSection: {
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    marginBottom: spacing.sm,
-  },
-  reviewHint: {
-    textAlign: 'center',
-    lineHeight: 18,
   },
   distributionCard: {
     gap: spacing.md,
@@ -413,11 +601,10 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    minHeight: 48,
+    minHeight: UNIFORM_ACTION_BUTTON_MIN_HEIGHT,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
-  validateButtonText: {},
   validateBadge: {
     minWidth: 22,
     height: 22,
@@ -426,9 +613,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 6,
     marginLeft: spacing.xs,
-  },
-  validateBadgeText: {
-    fontWeight: '800',
   },
   validateHint: {
     textAlign: 'center',
@@ -442,29 +626,46 @@ const styles = StyleSheet.create({
   rowGap: {
     height: spacing.md,
   },
+  reviewRowGap: {
+    height: spacing.lg,
+  },
   validationRowWrap: {
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     gap: spacing.xs,
+  },
+  validationRowInset: {
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
   issueChips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.xs,
-    paddingLeft: spacing.xs,
+    gap: spacing.sm,
   },
   issueChip: {
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
   },
-  issueChipText: {},
+  reviewActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingRight: spacing.xs,
+  },
+  reviewActionHit: {
+    paddingVertical: spacing.xs,
+  },
   emptyCard: {
     alignItems: 'center',
     gap: spacing.md,
     marginHorizontal: PAGE_PADDING_HORIZONTAL,
-    marginTop: spacing.md,
+    marginTop: spacing.xxl,
     paddingVertical: spacing.lg,
+  },
+  emptyCardReview: {
+    marginHorizontal: 0,
   },
   emptyIcon: {
     width: 48,
@@ -482,6 +683,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   pressed: {
-    opacity: 0.82,
+    opacity: 0.78,
   },
 });

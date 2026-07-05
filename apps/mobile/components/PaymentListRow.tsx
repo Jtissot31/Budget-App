@@ -20,6 +20,8 @@ type Props = {
   amount: ReactNode;
   footer?: ReactNode;
   onPress?: () => void;
+  /** Renders row content without an outer DashboardCard — for nested card layouts. */
+  embedded?: boolean;
 };
 
 export function PaymentListRow({
@@ -30,12 +32,13 @@ export function PaymentListRow({
   amount,
   footer,
   onPress,
+  embedded = false,
 }: Props) {
   const { colors } = useAppTheme();
   const styles = createStyles(colors);
 
-  const card = (
-    <DashboardCard style={styles.card}>
+  const rowContent = (
+    <>
       {avatar}
       <View style={styles.copy}>
         <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
@@ -76,7 +79,13 @@ export function PaymentListRow({
         ) : null}
         {amount}
       </View>
-    </DashboardCard>
+    </>
+  );
+
+  const card = embedded ? (
+    <View style={[styles.card, styles.cardEmbedded]}>{rowContent}</View>
+  ) : (
+    <DashboardCard style={styles.card}>{rowContent}</DashboardCard>
   );
 
   if (!onPress) {
@@ -97,6 +106,9 @@ function createStyles(colors: AppColors) {
       alignItems: 'center',
       gap: spacing.md,
       paddingVertical: spacing.lg,
+    },
+    cardEmbedded: {
+      paddingVertical: 0,
     },
     copy: {
       flex: 1,

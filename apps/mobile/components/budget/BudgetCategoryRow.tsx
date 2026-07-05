@@ -1,16 +1,21 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '@/components/ProgressBar';
+import { getCategoryIconName } from '@/constants/categoryOptions';
 import {
-  ICON_WELL_SIZE,
-  PAGE_PADDING_HORIZONTAL,
-  containerSurfaceStyle,
   jakartaSemiboldText,
   moneyAmountTypography,
   radius,
   spacing,
   typographyKit,
 } from '@/constants/theme';
-import { categoryBudgetBarColor } from '@/lib/categoryBudgetUsage';
+import {
+  BUDGET_GREEN_MAX_PERCENT,
+  categoryBudgetBarColor,
+  categoryBudgetBarOpacity,
+  categoryStatusTagLabel,
+  shouldShowCategoryStatusTag,
+} from '@/lib/categoryBudgetUsage';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import type { BudgetCategoryUiModel } from '@/lib/budgetCategoryModel';
 import { tapHaptic } from '@/lib/haptics';
@@ -20,19 +25,56 @@ type Props = {
   category: BudgetCategoryUiModel;
   selected?: boolean;
   onPress: (id: string) => void;
+  embedded?: boolean;
+  isLast?: boolean;
 };
 
-export function BudgetCategoryRow({ category, selected = false, onPress }: Props) {
+function CategoryStatusIndicator({
+  statusText,
+  barColor,
+  usagePercent,
+}: {
+  statusText: string;
+  barColor: string;
+  usagePercent: number;
+}) {
+  const isAtLimit = usagePercent === BUDGET_GREEN_MAX_PERCENT;
+
+  return (
+    <View style={styles.statusInline} accessibilityLabel={statusText}>
+      {isAtLimit ? (
+        <Ionicons name="checkmark-circle" size={14} color={barColor} />
+      ) : (
+        <View style={[styles.statusDot, { backgroundColor: barColor }]} />
+      )}
+      <Text style={[styles.statusCaption, { color: barColor }]}>{statusText}</Text>
+    </View>
+  );
+}
+
+export function BudgetCategoryRow({
+  category,
+  selected = false,
+  onPress,
+  embedded = false,
+  isLast = false,
+}: Props) {
   const { colors, isLight } = useAppTheme();
-  const surface = containerSurfaceStyle(isLight);
   const iconWellBg = isLight ? colors.surfaceElevated : colors.input;
   const barColor = categoryBudgetBarColor(
-    category.usage.usagePercent,
-    category.usage.isZeroLimitOverspend,
+    category.spent,
+    category.limit,
     isLight,
     category.color,
     colors,
   );
+  const barOpacity = categoryBudgetBarOpacity(category.usage);
+  const showStatusTag = shouldShowCategoryStatusTag(category.usage);
+  const statusText = categoryStatusTagLabel(category.usage);
+  const iconName = getCategoryIconName({
+    icon: category.icon,
+    name: category.name,
+  });
 
   return (
     <Pressable
@@ -44,126 +86,155 @@ export function BudgetCategoryRow({ category, selected = false, onPress }: Props
       }}
       style={({ pressed }) => [
         styles.row,
-        surface,
+        embedded && styles.rowEmbedded,
         selected && {
-          borderColor: colors.accentGreen,
           backgroundColor: colors.successMuted,
         },
         pressed && styles.pressed,
       ]}
     >
-      <View style={styles.topRow}>
-        <View style={styles.leading}>
-          <View
-            style={[
-              styles.swatchWell,
-              {
-                backgroundColor: iconWellBg,
-                borderColor: colors.border,
-              },
-            ]}
-          >
-            <View style={[styles.swatch, { backgroundColor: category.color }]} />
-          </View>
-          <View style={styles.titleBlock}>
-            <Text
-              style={[styles.name, jakartaSemiboldText, { color: colors.text }]}
-              numberOfLines={1}
-            >
-              {category.name}
-            </Text>
-            {category.usage.statusLabel ? (
-              <Text style={[styles.status, typographyKit.caption, { color: barColor }]} numberOfLines={1}>
-                {category.usage.statusLabel}
-              </Text>
-            ) : (
-              <Text style={[styles.usageHint, typographyKit.caption, { color: colors.textMuted }]}>
-                {category.usage.usagePercent} % utilisé
-              </Text>
-            )}
-          </View>
+      <View style={styles.mainRow}>
+        <View
+          style={[
+            styles.iconWell,
+            {
+              backgroundColor: iconWellBg,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <Ionicons name={iconName} size={18} color={colors.textSecondary} />
         </View>
-        <View style={styles.trailing}>
-          <Text
-            style={[styles.amounts, moneyAmountTypography({ tier: 'row' }), { color: colors.text }]}
-            numberOfLines={1}
-          >
-            {formatDisplayMoneyAbsolute(category.spent)}
-          </Text>
-          <Text style={[styles.limit, typographyKit.caption, { color: colors.textMuted }]}>
-            sur {formatDisplayMoneyAbsolute(category.limit)}
-          </Text>
+
+        <View style={styles.content}>
+          <View style={styles.titleRow}>
+            <View style={styles.nameCol}>
+              <Text
+                style={[styles.name, jakartaSemiboldText, { color: colors.text }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {category.name}
+              </Text>
+              {showStatusTag ? (
+                <CategoryStatusIndicator
+                  statusText={statusText}
+                  barColor={barColor}
+                  usagePercent={category.usage.usagePercent}
+                />
+              ) : null}
+            </View>
+            <View style={styles.amountsCol}>
+              <Text
+                style={[moneyAmountTypography({ tier: 'row' }), styles.spentAmount, { color: colors.text }]}
+              >
+                {formatDisplayMoneyAbsolute(category.spent)}
+              </Text>
+              <Text style={[styles.limitText, typographyKit.caption, { color: colors.textMuted }]}>
+                {' / '}
+                {formatDisplayMoneyAbsolute(category.limit)}
+              </Text>
+            </View>
+          </View>
+
+          <View>
+            <ProgressBar
+              progress={category.usage.progress}
+              color={barColor}
+              height={3}
+              fillOpacity={barOpacity}
+            />
+          </View>
         </View>
       </View>
-      <ProgressBar progress={category.usage.progress} color={barColor} />
+
+      {embedded && !isLast ? (
+        <View style={[styles.divider, { backgroundColor: colors.containerBorder }]} />
+      ) : null}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   row: {
-    borderRadius: radius.card,
-    paddingVertical: spacing.md + 2,
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
-    gap: spacing.md,
-    marginHorizontal: PAGE_PADDING_HORIZONTAL,
+  },
+  rowEmbedded: {
+    paddingVertical: spacing.md,
   },
   pressed: {
     opacity: 0.88,
   },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  leading: {
-    flex: 1,
-    minWidth: 0,
+  mainRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
   },
-  swatchWell: {
-    width: ICON_WELL_SIZE,
-    height: ICON_WELL_SIZE,
-    borderRadius: radius.md,
+  iconWell: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  swatch: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  titleBlock: {
+  content: {
     flex: 1,
     minWidth: 0,
-    gap: 3,
+    gap: spacing.sm,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  nameCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
   name: {
     fontSize: 14,
     lineHeight: 18,
   },
-  status: {
-    fontSize: 11,
-    lineHeight: 14,
-  },
-  usageHint: {
-    fontSize: 11,
-    lineHeight: 14,
-  },
-  trailing: {
-    alignItems: 'flex-end',
+  statusInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
     flexShrink: 0,
-    gap: 2,
-    paddingTop: 1,
   },
-  amounts: {},
-  limit: {
-    fontSize: 11,
-    lineHeight: 14,
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    flexShrink: 0,
+  },
+  statusCaption: {
+    ...typographyKit.metaMedium,
+    flexShrink: 0,
+  },
+  amountsCol: {
+    flexDirection: 'row',
+    flexShrink: 0,
+    flexWrap: 'nowrap',
+    alignItems: 'baseline',
+    justifyContent: 'flex-end',
+  },
+  spentAmount: {
+    flexShrink: 0,
+  },
+  limitText: {
+    flexShrink: 0,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: spacing.xs,
   },
 });

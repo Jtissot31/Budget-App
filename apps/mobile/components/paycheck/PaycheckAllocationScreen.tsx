@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -50,8 +51,8 @@ function TransferConfirmRow({ line, checked, onToggle }: TransferRowProps) {
       style={({ pressed }) => [
         styles.transferCard,
         {
-          backgroundColor: colors.containerBackground,
-          borderColor: checked ? 'rgba(74,222,128,0.28)' : colors.containerBorder,
+          backgroundColor: checked ? colors.surface : colors.containerBackground,
+          borderColor: checked ? colors.borderStrong : colors.containerBorder,
         },
         pressed && styles.pressed,
       ]}
@@ -78,17 +79,11 @@ function TransferConfirmRow({ line, checked, onToggle }: TransferRowProps) {
         </Text>
       </View>
 
-      <View
-        style={[
-          styles.checkbox,
-          {
-            borderColor: checked ? AVAILABLE_GREEN : colors.containerBorder,
-            backgroundColor: checked ? 'rgba(74,222,128,0.12)' : 'transparent',
-          },
-        ]}
-      >
-        {checked ? <AppIcon family="ionicons" name="checkmark" size={16} color={AVAILABLE_GREEN} /> : null}
-      </View>
+      {checked ? (
+        <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+      ) : (
+        <View style={[styles.selectionRing, { borderColor: colors.borderStrong }]} />
+      )}
     </Pressable>
   );
 }
@@ -223,7 +218,7 @@ export function PaycheckAllocationScreen() {
               pressed && styles.pressed,
             ]}
           >
-            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
+            <Ionicons name="chevron-back" size={22} color={colors.text} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: colors.text }, jakartaExtraBoldText]} numberOfLines={1}>
             Répartition de la paie
@@ -365,7 +360,7 @@ const styles = StyleSheet.create({
   backButton: {
     width: 38,
     height: 38,
-    borderRadius: 8,
+    borderRadius: 19,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
@@ -511,13 +506,11 @@ const styles = StyleSheet.create({
     fontSize: typography.caption,
     fontVariant: ['tabular-nums'],
   },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
+  selectionRing: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
   },
   successBanner: {
     flexDirection: 'row',

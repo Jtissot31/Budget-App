@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import {
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -18,6 +19,8 @@ const CHART_MAX_WIDTH = 330;
 const CHART_BASE_SIZE = 283;
 const TWO_PI = Math.PI * 2;
 const SEGMENT_GAP = 0.008;
+/** Theme-consistent amber — over-budget donut segments (see categoryBudgetUsage). */
+const BUDGET_WARNING_COLOR = '#FBBF24';
 
 export type BudgetDonutCategory = {
   id: string;
@@ -38,6 +41,18 @@ function greenShades(n: number): string[] {
     const t = n <= 1 ? 0 : i / (n - 1);
     return `hsl(140, ${Math.round(72 - t * 30)}%, ${Math.round(63 - t * 55)}%)`;
   });
+}
+
+/** Subtle amber palette when monthly budget is exceeded. */
+function amberShades(n: number): string[] {
+  return Array.from({ length: n }, (_, i) => {
+    const t = n <= 1 ? 0 : i / (n - 1);
+    return `hsl(43, ${Math.round(68 - t * 26)}%, ${Math.round(58 - t * 46)}%)`;
+  });
+}
+
+function segmentShades(n: number, isMonthOverBudget: boolean): string[] {
+  return isMonthOverBudget ? amberShades(n) : greenShades(n);
 }
 
 type Props = {
@@ -162,9 +177,10 @@ function buildSegments(
   outerRadius: number,
   thickness: number,
   gap: number,
+  isMonthOverBudget: boolean,
 ): Segment[] {
   const sorted = [...categories].sort((left, right) => right.spent - left.spent);
-  const shades = greenShades(sorted.length);
+  const shades = segmentShades(sorted.length, isMonthOverBudget);
   const spentTotal = sorted.reduce((sum, category) => sum + category.spent, 0) || 1;
   let angle = -Math.PI / 2;
 
@@ -207,10 +223,11 @@ export function BudgetDonut({
   const gap = SEGMENT_GAP;
   const trackColor = isLight ? colors.border : '#181818';
   const hubSize = innerRadius * 1.9;
+  const isMonthOverBudget = totalSpent > totalAllocated;
 
   const segments = useMemo(
-    () => buildSegments(categories, cx, cy, outerRadius, thickness, gap),
-    [categories, cx, cy, outerRadius, thickness],
+    () => buildSegments(categories, cx, cy, outerRadius, thickness, gap, isMonthOverBudget),
+    [categories, cx, cy, outerRadius, thickness, isMonthOverBudget],
   );
 
   const hubMetrics = useMemo(() => {
@@ -229,7 +246,9 @@ export function BudgetDonut({
   }, [scale]);
 
   const selectedSegment = segments.find((segment) => segment.id === selectedId) ?? null;
-  const brightestSegmentGreen = greenShades(Math.max(categories.length, 1))[0];
+  const brightestSegmentAccent = isMonthOverBudget
+    ? BUDGET_WARNING_COLOR
+    : segmentShades(Math.max(categories.length, 1), false)[0];
 
   const globalStatus = useMemo(
     () => getBudgetHubStatus(totalAllocated, totalSpent, isCurrentMonth, formatDisplayMoneyAbsolute),
@@ -252,12 +271,25 @@ export function BudgetDonut({
   const statusColor = (tone: BudgetHubStatus['tone']) =>
     tone === 'danger' ? colors.danger : colors.accentGreen;
 
+  const isWeb = Platform.OS === 'web';
+
+  const pressCoordinates = (event: GestureResponderEvent) => {
+    const native = event.nativeEvent;
+    const webOffsetX = (native as { offsetX?: number }).offsetX;
+    const webOffsetY = (native as { offsetY?: number }).offsetY;
+    if (isWeb && webOffsetX != null && webOffsetY != null) {
+      return { x: webOffsetX, y: webOffsetY };
+    }
+    return { x: native.locationX, y: native.locationY };
+  };
+
   const handleChartPress = (event: GestureResponderEvent) => {
     if (!onSelectCategory) return;
 
+    const { x, y } = pressCoordinates(event);
     const hitId = touchPointToBudgetSegment(
-      event.nativeEvent.locationX,
-      event.nativeEvent.locationY,
+      x,
+      y,
       segments,
       cx,
       cy,
@@ -270,6 +302,7 @@ export function BudgetDonut({
       onSelectCategory(selectedId === hitId ? null : hitId);
       return;
     }
+
     if (selectedId != null) {
       onSelectCategory(null);
     }
@@ -325,7 +358,7 @@ export function BudgetDonut({
                   styles.hubCategoryName,
                   typographyKit.rowTitle,
                   {
-                    color: brightestSegmentGreen,
+                    color: brightestSegmentAccent,
                     ...hubMetrics.category,
                   },
                 ]}
@@ -476,7 +509,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,
-    gap: 2,
+    gap: 1,
+    overflow: 'hidden',
   },
   hubCategoryName: {
     textAlign: 'center',

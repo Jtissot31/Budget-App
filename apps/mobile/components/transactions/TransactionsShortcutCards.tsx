@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { fontFamilies } from '@/constants/theme';
+import { fontFamilies, spacing } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { resolveLucideIcon } from '@/lib/lucideIconCatalog';
 import ChartPieMod from 'lucide-react-native/dist/cjs/icons/chart-pie.js';
@@ -33,15 +33,15 @@ export function TransactionsShortcutCards({
         }}
         style={({ pressed }) => [styles.badge, styles.badgeAnalyse, pressed && styles.pressed]}
       >
-        <ChartPie size={11} color="#4ADE80" strokeWidth={2.25} />
+        <ChartPie size={13} color="#4ADE80" strokeWidth={2.25} />
         <Text style={styles.badgeAnalyseText}>Analyse</Text>
       </Pressable>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={
           pendingCount > 0
-            ? `Compléter ${pendingCount} dépense${pendingCount > 1 ? 's' : ''} scannée${pendingCount > 1 ? 's' : ''} sans articles`
-            : 'Revoir les dépenses scannées sans articles'
+            ? `Compléter ${pendingCount} dépense${pendingCount > 1 ? 's' : ''} incomplète${pendingCount > 1 ? 's' : ''}`
+            : 'Revoir les dépenses à compléter'
         }
         onPress={() => {
           tapHaptic();
@@ -49,7 +49,7 @@ export function TransactionsShortcutCards({
         }}
         style={({ pressed }) => [styles.badge, styles.badgeReview, pressed && styles.pressed]}
       >
-        <CircleCheck size={11} color="#666" strokeWidth={2.25} />
+        <CircleCheck size={13} color="#666" strokeWidth={2.25} />
         <Text style={styles.badgeReviewText}>À compléter</Text>
         {pendingCount > 0 ? (
           <View style={styles.countBadge}>
@@ -68,15 +68,16 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   rowEmbedded: {
-    marginTop: 0,
+    marginTop: spacing.sm,
   },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    minHeight: 32,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderWidth: 1,
   },
   badgeAnalyse: {
@@ -85,8 +86,8 @@ const styles = StyleSheet.create({
   },
   badgeAnalyseText: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 12,
+    lineHeight: 16,
     color: '#4ADE80',
     includeFontPadding: false,
   },
@@ -96,15 +97,15 @@ const styles = StyleSheet.create({
   },
   badgeReviewText: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 12,
+    lineHeight: 16,
     color: '#666',
     includeFontPadding: false,
   },
   countBadge: {
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
@@ -113,8 +114,8 @@ const styles = StyleSheet.create({
   },
   countBadgeText: {
     fontFamily: fontFamilies.bold,
-    fontSize: 9,
-    lineHeight: 11,
+    fontSize: 10,
+    lineHeight: 12,
     color: '#C9974A',
     includeFontPadding: false,
   },

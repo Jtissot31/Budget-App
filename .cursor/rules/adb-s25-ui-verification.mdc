@@ -13,6 +13,7 @@ Pour **toute modification ou création de design** dans `apps/mobile/` (layout, 
 
 - Device : Samsung S25 Ultra — ADB sans fil (`adb devices` ; souvent `192.168.1.60:xxxx`)
 - Metro : `exp://192.168.1.171:8081` (IP LAN variable — `ipconfig` pour l’hôte actuel)
+- **Ne pas** lancer Metro depuis Cursor — l'utilisateur le démarre lui-même (`expo-no-auto-browser`).
 
 ## Workflow obligatoire
 

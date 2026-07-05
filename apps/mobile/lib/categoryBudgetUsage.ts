@@ -13,6 +13,83 @@ export type CategoryBudgetUsage = {
   statusLabel: string | null;
 };
 
+export type BudgetStatus = {
+  color: string;
+  label: string | null;
+  percentage: number;
+};
+
+/** At-limit threshold — green bar + checkmark only at exactly 100 %. */
+export const BUDGET_GREEN_MAX_PERCENT = 100;
+/** Amber bar: 101 <= usagePercent <= 115 (mild overspend). */
+export const BUDGET_AMBER_MIN_PERCENT = 101;
+export const BUDGET_AMBER_MAX_PERCENT = 115;
+
+/** Under-budget bar — white-gray fill below 100 %. */
+export const BUDGET_UNDER_BUDGET_COLOR = 'rgba(255,255,255,0.35)';
+/** Green bar — limit exactly met (100 % only). */
+export const BUDGET_GREEN_COLOR = '#4ADE80';
+/** Amber warning — mild overspend (101–115 %). */
+export const BUDGET_WARNING_COLOR = '#C9974A';
+/** Muted red — zero-limit overspend or significant overspend (>115 %). */
+export const BUDGET_DANGER_COLOR = '#C96560';
+
+/** Status tag shows at exactly 100 % or when overspent. */
+export const CATEGORY_STATUS_TAG_THRESHOLD = BUDGET_GREEN_MAX_PERCENT;
+
+/**
+ * Single source of truth for budget color, status label, and usage percentage.
+ * Edge cases: limit=0 & spent=0 → gray, no label; limit=0 & spent>0 → red, overspend.
+ */
+export function getBudgetStatus(spent: number, allocated: number): BudgetStatus {
+  const spentValue = Math.max(0, spent);
+  const allocatedValue = Math.max(0, allocated);
+
+  if (allocatedValue === 0 && spentValue === 0) {
+    return { color: BUDGET_UNDER_BUDGET_COLOR, label: null, percentage: 0 };
+  }
+
+  if (allocatedValue === 0 && spentValue > 0) {
+    return {
+      color: BUDGET_DANGER_COLOR,
+      label: 'Fortement dépassé',
+      percentage: 100,
+    };
+  }
+
+  const percentage = Math.round((spentValue / allocatedValue) * 100);
+
+  if (percentage < BUDGET_GREEN_MAX_PERCENT) {
+    return {
+      color: BUDGET_UNDER_BUDGET_COLOR,
+      label: null,
+      percentage,
+    };
+  }
+
+  if (percentage === BUDGET_GREEN_MAX_PERCENT) {
+    return {
+      color: BUDGET_GREEN_COLOR,
+      label: 'Limite respectée',
+      percentage,
+    };
+  }
+
+  if (percentage <= BUDGET_AMBER_MAX_PERCENT) {
+    return {
+      color: BUDGET_WARNING_COLOR,
+      label: 'Légèrement dépassé',
+      percentage,
+    };
+  }
+
+  return {
+    color: BUDGET_DANGER_COLOR,
+    label: 'Fortement dépassé',
+    percentage,
+  };
+}
+
 export function getCategoryBudgetUsage(limitAmount: number, spent: number): CategoryBudgetUsage {
   const limit = Math.max(0, limitAmount);
   const spentValue = Math.max(0, spent);
@@ -25,55 +102,62 @@ export function getCategoryBudgetUsage(limitAmount: number, spent: number): Cate
       ? Math.min(spentValue / limit, 1)
       : 0;
 
-  const usagePercent =
-    limit > 0
-      ? Math.round((spentValue / limit) * 100)
-      : isZeroLimitOverspend
-        ? 100
-        : 0;
-
-  let statusLabel: string | null = null;
-  if (isZeroLimitOverspend) {
-    statusLabel = 'Budget dépassé';
-  } else if (limit > 0 && isOverBudget) {
-    statusLabel = 'Budget dépassé';
-  } else if (limit > 0 && usagePercent >= 80) {
-    statusLabel = 'Limite presque atteinte';
-  }
+  const budgetStatus = getBudgetStatus(spentValue, limit);
 
   return {
     limit,
     spent: spentValue,
     progress,
-    usagePercent,
+    usagePercent: budgetStatus.percentage,
     isZeroLimitOverspend,
     isOverBudget,
-    statusLabel,
+    statusLabel: budgetStatus.label,
   };
 }
 
-/** Amber warning — 95–100 % usage. */
-const BUDGET_WARNING_COLOR = '#FBBF24';
-/** Muted red — over budget. */
-const BUDGET_DANGER_COLOR = '#C96560';
+/** List sort tier: red (overspend) → amber (mild) → green (on track). */
+export type CategoryBudgetPriorityTier = 'red' | 'amber' | 'green';
 
-/**
- * Budget category progress bar fill:
- * 0–94 % → green accent (#4ADE80), 95–100 % → amber, >100 % → muted red.
- * Category tint stays on the dot only — not the bar.
- */
+const PRIORITY_TIER_ORDER: Record<CategoryBudgetPriorityTier, number> = {
+  red: 0,
+  amber: 1,
+  green: 2,
+};
+
+export function categoryBudgetPriorityTier(usage: CategoryBudgetUsage): CategoryBudgetPriorityTier {
+  if (usage.isZeroLimitOverspend || usage.usagePercent > BUDGET_AMBER_MAX_PERCENT) {
+    return 'red';
+  }
+  if (usage.usagePercent > BUDGET_GREEN_MAX_PERCENT) {
+    return 'amber';
+  }
+  return 'green';
+}
+
+export function categoryBudgetPrioritySortKey(usage: CategoryBudgetUsage): number {
+  return PRIORITY_TIER_ORDER[categoryBudgetPriorityTier(usage)];
+}
+
+/** Budget category progress bar fill — delegates to {@link getBudgetStatus}. */
 export function categoryBudgetBarColor(
-  usagePercent: number,
-  isZeroLimitOverspend: boolean,
-  _isLight: boolean,
-  _categoryTint: string,
-  colors: AppColors,
+  spent: number,
+  allocated: number,
+  _isLight?: boolean,
+  _categoryTint?: string,
+  _colors?: AppColors,
 ): string {
-  if (isZeroLimitOverspend || usagePercent > 100) {
-    return BUDGET_DANGER_COLOR;
-  }
-  if (usagePercent >= 95) {
-    return BUDGET_WARNING_COLOR;
-  }
-  return colors.accentGreen;
+  return getBudgetStatus(spent, allocated).color;
+}
+
+export function shouldShowCategoryStatusTag(usage: CategoryBudgetUsage): boolean {
+  return usage.statusLabel !== null;
+}
+
+export function categoryStatusTagLabel(usage: CategoryBudgetUsage): string {
+  return usage.statusLabel ?? '';
+}
+
+/** Bar fill opacity — under-budget gray is pre-muted via color alpha. */
+export function categoryBudgetBarOpacity(_usage: CategoryBudgetUsage): number {
+  return 1;
 }

@@ -74,6 +74,38 @@ export const netWorthHeroAmount = typographyKit.netWorthHero;
 /** Max width for right-column amounts in row layouts */
 export const ROW_VALUE_MAX_WIDTH = '40%' as const;
 
+/** Detail section row label — truncates before the value column grows */
+export const detailRowLabel = {
+  flexShrink: 1,
+  minWidth: 0,
+  maxWidth: '45%',
+} as const;
+
+/** Detail section row value slot — fills remaining row width */
+export const detailRowValueSlot = {
+  flex: 1,
+  minWidth: 0,
+  flexDirection: 'row' as const,
+  alignItems: 'center' as const,
+  justifyContent: 'flex-end' as const,
+} as const;
+
+/** Alias for callers preferring "container" naming */
+export const detailRowValueContainer = detailRowValueSlot;
+
+/** EditableField container inside a detail row value column */
+export const detailRowEditableContainer = {
+  flex: 1,
+  minWidth: 0,
+  alignSelf: 'stretch' as const,
+} as const;
+
+/** Text props for detail row values (account names, categories, dates) */
+export const detailRowValueTextProps = {
+  numberOfLines: 1 as const,
+  ellipsizeMode: 'tail' as const,
+};
+
 /** Minimum scale when auto-shrinking single-line numeric labels */
 export const SINGLE_LINE_MIN_FONT_SCALE = 0.85;
 

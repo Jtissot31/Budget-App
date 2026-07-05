@@ -1,6 +1,7 @@
 import { assignCategoryColor, getColorForCategoryIndex } from '@/constants/budgetCategoryColors';
 import type { BudgetCategory } from '@/lib/budgetCategories';
 import {
+  categoryBudgetPrioritySortKey,
   getCategoryBudgetUsage,
   type CategoryBudgetUsage,
 } from '@/lib/categoryBudgetUsage';
@@ -98,6 +99,25 @@ export function sortBudgetCategoriesByLimitDesc(
   categories: readonly BudgetCategoryUiModel[],
 ): BudgetCategoryUiModel[] {
   return [...categories].sort((a, b) => {
+    if (b.limit !== a.limit) return b.limit - a.limit;
+    return a.name.localeCompare(b.name, 'fr');
+  });
+}
+
+/**
+ * Category list order: red (>115 % or zero-limit overspend) → amber (101–115 %) → green (≤100 %).
+ * Within a tier: highest usage % first, then limit desc, then name (fr).
+ */
+export function sortBudgetCategoriesByPriority(
+  categories: readonly BudgetCategoryUiModel[],
+): BudgetCategoryUiModel[] {
+  return [...categories].sort((a, b) => {
+    const tierDiff = categoryBudgetPrioritySortKey(a.usage) - categoryBudgetPrioritySortKey(b.usage);
+    if (tierDiff !== 0) return tierDiff;
+
+    if (b.usage.usagePercent !== a.usage.usagePercent) {
+      return b.usage.usagePercent - a.usage.usagePercent;
+    }
     if (b.limit !== a.limit) return b.limit - a.limit;
     return a.name.localeCompare(b.name, 'fr');
   });

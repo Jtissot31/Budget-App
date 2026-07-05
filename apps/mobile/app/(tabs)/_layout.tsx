@@ -100,7 +100,9 @@ export default function TabLayout() {
   return (
     <GestureDetector gesture={swipeGesture}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <Animated.View style={[styles.container, { backgroundColor: colors.background }, animatedStyle]}>
+        <Animated.View
+          style={[styles.container, { backgroundColor: colors.background }, animatedStyle]}
+        >
           <Tabs
             tabBar={(props) => <FloatingTabBar {...props} />}
             screenOptions={{

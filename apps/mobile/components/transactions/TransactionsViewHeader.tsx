@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: spacing.md,
-    marginBottom: spacing.sm,
+    marginBottom: 18,
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
   title: {

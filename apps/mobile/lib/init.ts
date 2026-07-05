@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { UNCATEGORIZED_TRANSACTION_CATEGORY } from '@/constants/categoryOptions';
 
 import { repairOrphanTransactionCategories, upsertCategory } from './db';
@@ -8,11 +9,40 @@ import { hydrateRFAOnBoot } from './ai/rfaService';
 import { evaluateAlerts } from './ai/alertService';
 import { ensureAverageUserBudgetBaseline, seedDemoTransactionsIfMissing } from './seed';
 
+const INIT_SINGLETON_KEY = '__budgetTrackerDbInit__';
 
+interface InitSingletonState {
+  schemaReady: boolean;
+  bootComplete: boolean;
+  schemaInitPromise: Promise<void> | null;
+  bootPromise: Promise<void> | null;
+}
 
-let schemaReady = false;
+const nativeInitState: InitSingletonState = {
+  schemaReady: false,
+  bootComplete: false,
+  schemaInitPromise: null,
+  bootPromise: null,
+};
 
-let schemaInitPromise: Promise<void> | null = null;
+/** Web Fast Refresh resets module state while OPFS handles stay open — persist init flags globally. */
+function getInitSingletonState(): InitSingletonState {
+  if (Platform.OS === 'web') {
+    const globalState = globalThis as typeof globalThis & {
+      [INIT_SINGLETON_KEY]?: InitSingletonState;
+    };
+    if (!globalState[INIT_SINGLETON_KEY]) {
+      globalState[INIT_SINGLETON_KEY] = {
+        schemaReady: false,
+        bootComplete: false,
+        schemaInitPromise: null,
+        bootPromise: null,
+      };
+    }
+    return globalState[INIT_SINGLETON_KEY]!;
+  }
+  return nativeInitState;
+}
 
 
 
@@ -75,45 +105,43 @@ async function runSchemaInit(): Promise<void> {
  */
 
 export async function ensureDbReady(): Promise<void> {
+  const initState = getInitSingletonState();
+  if (initState.bootComplete) return;
 
-  if (!schemaReady) {
-
-    if (!schemaInitPromise) {
-
-      schemaInitPromise = withTimeout(runSchemaInit(), 'Database schema initialization', DB_INIT_TIMEOUT_MS)
-
-        .then(() => {
-
-          schemaReady = true;
-
-        })
-
-        .catch((error: unknown) => {
-
-          console.warn('[Boot] database schema init failed (non-blocking)', error);
-
-        })
-
-        .finally(() => {
-
-          schemaInitPromise = null;
-
-        });
-
-    }
-
-    await schemaInitPromise;
-
+  if (!initState.bootPromise) {
+    initState.bootPromise = runBootSequence(initState).finally(() => {
+      initState.bootPromise = null;
+    });
   }
 
+  await initState.bootPromise;
+}
 
+async function runBootSequence(initState: InitSingletonState): Promise<void> {
+  if (!initState.schemaReady) {
+    if (!initState.schemaInitPromise) {
+      initState.schemaInitPromise = withTimeout(
+        runSchemaInit(),
+        'Database schema initialization',
+        DB_INIT_TIMEOUT_MS,
+      )
+        .then(() => {
+          initState.schemaReady = true;
+        })
+        .catch((error: unknown) => {
+          console.warn('[Boot] database schema init failed (non-blocking)', error);
+        })
+        .finally(() => {
+          initState.schemaInitPromise = null;
+        });
+    }
 
-  if (!schemaReady) return;
+    await initState.schemaInitPromise;
+  }
 
-
+  if (!initState.schemaReady) return;
 
   try {
-
     await withTimeout(ensureAverageUserBudgetBaseline(), 'Budget baseline seeding', DB_INIT_TIMEOUT_MS);
     await withTimeout(seedDemoTransactionsIfMissing(), 'Demo data seeding', DB_INIT_TIMEOUT_MS);
 
@@ -121,13 +149,10 @@ export async function ensureDbReady(): Promise<void> {
     await hydrateRuntimePreferences();
     void hydrateRFAOnBoot();
     void evaluateAlerts();
-
+    initState.bootComplete = true;
   } catch (error: unknown) {
-
     console.warn('[Boot] demo seed failed (non-blocking)', error);
-
   }
-
 }
 
 

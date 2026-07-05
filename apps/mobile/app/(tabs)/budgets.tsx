@@ -13,6 +13,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AddBudgetCategoryModal } from '@/components/budget/AddBudgetCategoryModal';
+import { BudgetCategoryDetailSheet } from '@/components/budget/BudgetCategoryDetailSheet';
+import { BudgetCategoryAddRow } from '@/components/budget/BudgetCategoryAddRow';
 import { BudgetCategoryRow } from '@/components/budget/BudgetCategoryRow';
 import { MonthSelector } from '@/components/MonthSelector';
 import { BudgetDonut, type BudgetDonutCategory } from '@/components/BudgetDonut';
@@ -37,7 +39,7 @@ import {
   canAddBudgetCategory,
   computeBudgetTotals,
   mapBudgetCategoriesToUi,
-  sortBudgetCategoriesByLimitDesc,
+  sortBudgetCategoriesByPriority,
   type BudgetCategoryUiModel,
 } from '@/lib/budgetCategoryModel';
 import {
@@ -80,7 +82,7 @@ export default function BudgetScreen() {
   const listRef = useRef<FlatList<BudgetCategoryUiModel>>(null);
 
   const [categories, setCategories] = useState<BudgetCategoryUiModel[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detailCategoryId, setDetailCategoryId] = useState<string | null>(null);
   const [addVisible, setAddVisible] = useState(false);
   /** Month shown in the donut hub and category list — always matches `categories`. */
   const [displayMonth, setDisplayMonth] = useState(currentMonthStart);
@@ -113,7 +115,7 @@ export default function BudgetScreen() {
     const budgets = await getCategoriesForMonth(month);
     if (requestId !== loadRequestIdRef.current) return;
 
-    const mapped = sortBudgetCategoriesByLimitDesc(mapBudgetCategoriesToUi(budgets));
+    const mapped = mapBudgetCategoriesToUi(budgets);
     displayMonthRef.current = month;
     setDisplayMonth(month);
     setCategories(mapped);
@@ -124,7 +126,7 @@ export default function BudgetScreen() {
       const next = startOfMonth(month);
       pendingMonthRef.current = next;
       setPendingMonth(next);
-      setSelectedId(null);
+      setDetailCategoryId(null);
       void loadMonth(next);
     },
     [loadMonth],
@@ -149,6 +151,10 @@ export default function BudgetScreen() {
   );
 
   const totals = useMemo(() => computeBudgetTotals(categories), [categories]);
+  const listCategories = useMemo(
+    () => sortBudgetCategoriesByPriority(categories),
+    [categories],
+  );
   const donutCategories = useMemo<readonly BudgetDonutCategory[]>(
     () =>
       categories
@@ -172,13 +178,14 @@ export default function BudgetScreen() {
 
   const showAddButton = canAddBudgetCategory(categories.length);
 
-  const handleDonutSelect = useCallback((id: string | null) => {
-    setSelectedId(id);
+  const openCategoryDetail = useCallback((id: string) => {
+    setDetailCategoryId(id);
   }, []);
 
-  const handleCategoryRowPress = useCallback((id: string) => {
-    setSelectedId((prev) => (prev === id ? null : id));
-  }, []);
+  const detailCategory = useMemo(
+    () => categories.find((category) => category.id === detailCategoryId) ?? null,
+    [categories, detailCategoryId],
+  );
 
   const budgetMonth = startOfMonth(pendingMonth);
   const budgetEarliest = startOfMonth(earliestMonth);
@@ -194,16 +201,7 @@ export default function BudgetScreen() {
     navigateToMonth(new Date(budgetMonth.getFullYear(), budgetMonth.getMonth() + 1, 1));
   }, [budgetMonth, navigateToMonth]);
 
-  const renderItem: ListRenderItem<BudgetCategoryUiModel> = useCallback(
-    ({ item }) => (
-      <BudgetCategoryRow
-        category={item}
-        selected={selectedId === item.id}
-        onPress={handleCategoryRowPress}
-      />
-    ),
-    [handleCategoryRowPress, selectedId],
-  );
+  const renderItem: ListRenderItem<BudgetCategoryUiModel> = useCallback(() => null, []);
 
   const listHeaderComponent = useMemo(
     () => (
@@ -234,8 +232,9 @@ export default function BudgetScreen() {
               categories={donutCategories}
               totalAllocated={totals.totalAllocated}
               totalSpent={totals.totalSpent}
-              selectedId={selectedId}
-              onSelectCategory={handleDonutSelect}
+              onSelectCategory={(id) => {
+                if (id) openCategoryDetail(id);
+              }}
               hubEyebrow={hubEyebrow}
               isCurrentMonth={isCurrentMonth(displayMonth)}
             />
@@ -266,25 +265,43 @@ export default function BudgetScreen() {
             </Pressable>
           ) : null}
         </View>
+
+        {listCategories.length > 0 ? (
+          <View style={pageStyles.categoriesSection}>
+            <DashboardCard padding={0} innerStyle={pageStyles.categoriesCard}>
+              {listCategories.map((item, index) => (
+                <BudgetCategoryRow
+                  key={item.id}
+                  category={item}
+                  onPress={openCategoryDetail}
+                  embedded
+                  isLast={!showAddButton && index === listCategories.length - 1}
+                />
+              ))}
+              {showAddButton ? (
+                <BudgetCategoryAddRow onPress={() => setAddVisible(true)} />
+              ) : null}
+            </DashboardCard>
+          </View>
+        ) : null}
       </View>
     ),
     [
+      budgetMonth,
+      canGoBudgetNext,
+      canGoBudgetPrevious,
+      listCategories,
       colors.containerBackground,
       colors.containerBorder,
       colors.textSecondary,
       donutCategories,
-      canGoBudgetNext,
-      canGoBudgetPrevious,
       displayMonth,
       goBudgetNext,
       goBudgetPrevious,
-      handleDonutSelect,
       hubEyebrow,
       insets.top,
-      latestMonth,
-      pendingMonth,
+      openCategoryDetail,
       router,
-      selectedId,
       showAddButton,
       totals.totalAllocated,
       totals.totalSpent,
@@ -345,24 +362,32 @@ export default function BudgetScreen() {
 
         <FlatList
           ref={listRef}
-          data={categories}
+          data={[]}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           style={styles.list}
           nestedScrollEnabled
           ListHeaderComponent={listHeaderComponent}
-          ItemSeparatorComponent={() => <View style={pageStyles.rowGap} />}
           contentContainerStyle={{
             paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING + spacing.xl,
           }}
           showsVerticalScrollIndicator={false}
-          ListEmptyComponent={listEmptyComponent}
+          ListEmptyComponent={categories.length === 0 ? listEmptyComponent : null}
         />
 
         <AddBudgetCategoryModal
           visible={addVisible}
           onClose={() => setAddVisible(false)}
           onCreated={refreshDisplayedMonth}
+        />
+
+        <BudgetCategoryDetailSheet
+          category={detailCategory}
+          visible={detailCategory != null}
+          onClose={() => setDetailCategoryId(null)}
+          onSaved={refreshDisplayedMonth}
+          displayMonth={displayMonth}
+          isCurrentMonth={isCurrentMonth(displayMonth)}
         />
       </View>
     </PageTransition>
@@ -394,10 +419,14 @@ const pageStyles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     marginTop: SECTION_BREAK,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
   },
-  rowGap: {
-    height: spacing.md,
+  categoriesSection: {
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+    marginBottom: spacing.md,
+  },
+  categoriesCard: {
+    overflow: 'hidden',
   },
   addButton: {
     width: 36,

@@ -14,6 +14,7 @@ import {
   TextInput,
   useWindowDimensions,
   View,
+  type TextStyle,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
@@ -26,6 +27,8 @@ import { AddArticleSheet } from '@/components/AddArticleSheet';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { DetailSectionsList } from '@/components/DetailSectionRows';
 import type { DetailSection } from '@/components/DetailSectionRows';
+import { EditableField } from '@/components/EditableField';
+import type { SettingsPickerOption } from '@/components/SettingsPickerSheet';
 import type { TransactionInsight } from '@/lib/transactionInsight';
 import { OverflowMenuButton } from '@/components/OverflowMenuButton';
 import { SurfaceCard } from '@/components/SurfaceCard';
@@ -37,6 +40,7 @@ import {
   transactionAmountDirectionFromType,
 } from '@/components/TransactionAmountLabel';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
+import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
 import {
   accountDetailHeroBlockStyle,
   articlesReceiptTypography,
@@ -48,6 +52,7 @@ import {
   jakartaBoldText,
   jakartaExtraBoldText,
   jakartaMediumText,
+  moneyAmountTypography,
   radius,
   spacing,
   typography,
@@ -60,7 +65,10 @@ import {
   floatingGlassFabSurface,
 } from '@/constants/floatingGlassButton';
 import {
+  findInsufficientFundsViolation,
   getReceiptStatusLabel,
+  getTransactionAccountDeltas,
+  insufficientFundsAlertCopy,
   parseAccountIdFromNote,
   parseMotifFromNote,
   parseRaisonFromNote,
@@ -72,23 +80,54 @@ import { resolveContactPhotoUriForTransaction } from '@/lib/contactHistory';
 import { buildArticlesNoteLine, parseItemizedNote } from '@/lib/itemizedNote';
 import type { ItemizedNote } from '@/lib/itemizedNote';
 import {
+  adjustSimulatedAccountBalance,
   deleteTransactionById,
+  getCategories,
   getSavingsGoals,
   getSimulatedAccounts,
   getTransactionById,
   insertTransaction,
 } from '@/lib/db';
-import { detailHeroAmount } from '@/lib/textLayout';
+import { detailHeroAmount, detailRowEditableContainer, rowValue } from '@/lib/textLayout';
 import { pickReceiptFromGallery } from '@/lib/receiptCapture';
 import { receiptDownloadErrorMessage, saveReceiptToPhotos, shareReceiptImage } from '@/lib/receiptDownload';
 import { EMPTY_DETAIL_VALUE } from '@/lib/detailDisplay';
+import { HandledSaveError } from '@/lib/editableSaveError';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { parseFormattedNumber } from '@/lib/formatNumber';
 import { getTransactionInsight } from '@/lib/transactionInsight';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
 import { dataEvents } from '@/lib/events';
 import { useAppTheme } from '@/lib/themeContext';
 import { useContactPhotoMap } from '@/hooks/useContactPhotoMap';
-import type { SavingsGoal, SimulatedAccount, Transaction } from '@/types';
+import type { Category, SavingsGoal, SimulatedAccount, Transaction } from '@/types';
+
+type PaymentAccountOption = {
+  id: string;
+  label: string;
+};
+
+type TransactionFieldEditors = {
+  accountId: string | null;
+  accountLabel: string;
+  accountOptions: SettingsPickerOption<string>[];
+  categoryId: string;
+  categoryLabel: string;
+  categoryOptions: SettingsPickerOption<string>[];
+  onSaveAccount: (accountId: string) => Promise<void>;
+  onSaveCategory: (categoryId: string) => Promise<void>;
+};
+
+type AmountFieldEditor = {
+  amountValue: string;
+  onSaveAmount: (amountStr: string) => Promise<void>;
+};
+
+const detailRowSelectTextStyle: TextStyle = {
+  ...typographyKit.metaMedium,
+  ...rowValue,
+  textAlign: 'right',
+};
 
 function transactionTypeLabel(type: Transaction['type']): string {
   if (type === 'income') return 'Revenu';
@@ -112,6 +151,36 @@ function formatTransactionTime(isoDate: string): string {
   const date = new Date(isoDate);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function buildPaymentAccountOptions(accounts: SimulatedAccount[]): PaymentAccountOption[] {
+  if (accounts.length > 0) {
+    return accounts.map((account) => ({
+      id: account.id,
+      label: account.last4 ? `${account.name} • ${account.last4}` : account.name,
+    }));
+  }
+  return MANUAL_ENTRY_ACCOUNTS.map((account) => ({
+    id: account.id,
+    label: account.label,
+  }));
+}
+
+function buildCategoryPickerOptions(categories: Category[]): SettingsPickerOption<string>[] {
+  return categories.map((category) => ({
+    id: category.id,
+    label: category.name,
+  }));
+}
+
+function updateAccountInNote(note: string | undefined, newAccountId: string): string {
+  const lines = (note ?? '').split('\n');
+  const hasCompte = lines.some((line) => line.startsWith('compte:'));
+  if (hasCompte) {
+    return lines.map((line) => (line.startsWith('compte:') ? `compte:${newAccountId}` : line)).join('\n');
+  }
+  const trimmed = (note ?? '').trim();
+  return trimmed ? `compte:${newAccountId}\n${trimmed}` : `compte:${newAccountId}`;
 }
 
 function buildTransferDetailSection(
@@ -147,6 +216,8 @@ function buildTransactionDetailSections(
   accounts: SimulatedAccount[],
   savingsGoals: readonly Pick<SavingsGoal, 'id' | 'name'>[],
   amountColor: string,
+  editors?: TransactionFieldEditors,
+  amountEditor?: AmountFieldEditor,
 ): DetailSection[] {
   const transferSection = buildTransferDetailSection(tx, accounts, savingsGoals);
   const accountId = tx.type !== 'transfer' ? parseAccountIdFromNote(tx.note) : null;
@@ -158,8 +229,24 @@ function buildTransactionDetailSections(
       {
         label: 'Montant',
         value: formatDisplayMoneyAbsolute(tx.amount),
-        icon: 'cash-outline',
+        icon: 'cash-outline' as const,
         valueColor: amountColor,
+        valueLayout: 'amount' as const,
+        ...(amountEditor
+          ? {
+              valueContent: (
+                <EditableField
+                  type="money"
+                  value={amountEditor.amountValue}
+                  onSave={amountEditor.onSaveAmount}
+                  align="right"
+                  accessibilityLabel="Modifier le montant"
+                  containerStyle={detailRowEditableContainer}
+                  textStyle={[moneyAmountTypography({ tier: 'row' }), { color: amountColor }]}
+                />
+              ),
+            }
+          : null),
       },
       {
         label: 'Type',
@@ -181,18 +268,64 @@ function buildTransactionDetailSections(
 
   const compteSection: DetailSection = {
     title: 'Compte',
-    rows: accountLabel
-      ? [{ label: 'Compte', value: accountLabel, icon: 'wallet-outline' as const }]
-      : [],
+    rows:
+      tx.type !== 'transfer' && editors
+        ? [
+            {
+              label: 'Compte',
+              value: editors.accountLabel,
+              icon: 'wallet-outline' as const,
+              valueContent: (
+                <EditableField
+                  type="select"
+                  value={editors.accountLabel}
+                  selectedId={editors.accountId ?? editors.accountOptions[0]?.id ?? ''}
+                  selectOptions={editors.accountOptions}
+                  pickerTitle="Compte de paiement"
+                  onSave={editors.onSaveAccount}
+                  align="right"
+                  accessibilityLabel="Modifier le compte de paiement"
+                  containerStyle={detailRowEditableContainer}
+                  textStyle={detailRowSelectTextStyle}
+                />
+              ),
+            },
+          ]
+        : accountLabel
+          ? [{ label: 'Compte', value: accountLabel, icon: 'wallet-outline' as const }]
+          : [],
   };
 
   const categorySection: DetailSection = {
     title: 'Catégorie',
-    rows: [
-      tx.categoryName
-        ? { label: 'Catégorie', value: tx.categoryName, icon: 'pricetag-outline' as const }
-        : null,
-    ].filter(Boolean) as DetailSection['rows'],
+    rows:
+      tx.type !== 'transfer' && editors
+        ? [
+            {
+              label: 'Catégorie',
+              value: editors.categoryLabel,
+              icon: 'pricetag-outline' as const,
+              valueContent: (
+                <EditableField
+                  type="select"
+                  value={editors.categoryLabel}
+                  selectedId={editors.categoryId}
+                  selectOptions={editors.categoryOptions}
+                  pickerTitle="Catégorie"
+                  onSave={editors.onSaveCategory}
+                  align="right"
+                  accessibilityLabel="Modifier la catégorie"
+                  containerStyle={detailRowEditableContainer}
+                  textStyle={detailRowSelectTextStyle}
+                />
+              ),
+            },
+          ]
+        : [
+            tx.categoryName
+              ? { label: 'Catégorie', value: tx.categoryName, icon: 'pricetag-outline' as const }
+              : null,
+          ].filter(Boolean) as DetailSection['rows'],
   };
 
   const incomeReason = tx.type === 'income' ? parseRaisonFromNote(tx.note) : null;
@@ -1168,6 +1301,7 @@ export default function TransactionDetailScreen() {
   const { colors } = useAppTheme();
   const [transaction, setTransaction] = useState<Transaction | null>(null);
   const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
@@ -1182,16 +1316,19 @@ export default function TransactionDetailScreen() {
     if (!transactionId) {
       setTransaction(null);
       setAccounts([]);
+      setCategories([]);
       setSavingsGoals([]);
       return;
     }
-    const [nextTransaction, nextAccounts, nextSavingsGoals] = await Promise.all([
+    const [nextTransaction, nextAccounts, nextCategories, nextSavingsGoals] = await Promise.all([
       getTransactionById(transactionId),
       getSimulatedAccounts(),
+      getCategories(),
       getSavingsGoals(),
     ]);
     setTransaction(nextTransaction);
     setAccounts(nextAccounts);
+    setCategories(nextCategories);
     setSavingsGoals(nextSavingsGoals);
   }, [transactionId]);
 
@@ -1211,9 +1348,183 @@ export default function TransactionDetailScreen() {
     [transaction, contactPhotoByKey],
   );
 
+  const accountOptions = useMemo(() => buildPaymentAccountOptions(accounts), [accounts]);
+  const categoryOptions = useMemo(() => buildCategoryPickerOptions(categories), [categories]);
+
+  const persistTransactionUpdate = useCallback(
+    async (
+      updates: Partial<
+        Pick<Transaction, 'label' | 'note' | 'amount' | 'categoryId' | 'categoryName' | 'categoryIcon' | 'categoryColor'>
+      >,
+      options?: { previousTx?: Transaction; adjustAccountBalances?: boolean },
+    ) => {
+      if (!transaction) return;
+      const previousTx = options?.previousTx ?? transaction;
+      const nextTx: Transaction = { ...transaction, ...updates };
+      setTransaction(nextTx);
+
+      try {
+        await insertTransaction({
+          id: nextTx.id,
+          label: nextTx.label,
+          amount: nextTx.amount,
+          type: nextTx.type,
+          date: nextTx.date,
+          categoryId: nextTx.categoryId,
+          transactionIcon: nextTx.transactionIcon,
+          receiptUri: nextTx.receiptUri,
+          receiptStatus: nextTx.receiptStatus,
+          note: nextTx.note,
+          wealthAssetId: nextTx.wealthAssetId,
+          savingsGoalId: nextTx.savingsGoalId,
+          syncStatus: 'pending',
+        });
+
+        if (
+          options?.adjustAccountBalances
+          && (updates.note !== undefined || updates.amount !== undefined)
+        ) {
+          const previousDeltas = getTransactionAccountDeltas(previousTx);
+          const nextDeltas = getTransactionAccountDeltas(nextTx);
+          for (const delta of previousDeltas) {
+            await adjustSimulatedAccountBalance(delta.id, -delta.delta, { emit: false });
+          }
+          for (const delta of nextDeltas) {
+            await adjustSimulatedAccountBalance(delta.id, delta.delta, { emit: false });
+          }
+          dataEvents.emit();
+        }
+
+        successHaptic();
+      } catch {
+        setTransaction(previousTx);
+        throw new Error('save failed');
+      }
+    },
+    [transaction],
+  );
+
+  const handleSaveAccount = useCallback(
+    async (newAccountId: string) => {
+      if (!transaction || transaction.type === 'transfer') return;
+      const newNote = updateAccountInNote(transaction.note, newAccountId);
+      const violation = findInsufficientFundsViolation(
+        accounts,
+        getTransactionAccountDeltas({ ...transaction, note: newNote }),
+        transaction,
+      );
+      if (violation) {
+        const { title, message } = insufficientFundsAlertCopy(violation);
+        Alert.alert(title, message);
+        throw new HandledSaveError();
+      }
+
+      await persistTransactionUpdate(
+        { note: newNote },
+        { previousTx: transaction, adjustAccountBalances: true },
+      );
+    },
+    [accounts, persistTransactionUpdate, transaction],
+  );
+
+  const handleSaveCategory = useCallback(
+    async (newCategoryId: string) => {
+      if (!transaction || transaction.type === 'transfer') return;
+      const category = categories.find((item) => item.id === newCategoryId);
+      if (!category) throw new Error('category not found');
+      await persistTransactionUpdate({
+        categoryId: category.id,
+        categoryName: category.name,
+        categoryIcon: category.icon,
+        categoryColor: category.color,
+      });
+    },
+    [categories, persistTransactionUpdate, transaction],
+  );
+
+  const handleSaveAmount = useCallback(
+    async (newAmountStr: string) => {
+      if (!transaction) return;
+      const parsed = parseFormattedNumber(newAmountStr);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        Alert.alert('Montant invalide', 'Le montant doit être supérieur à 0.');
+        throw new HandledSaveError();
+      }
+      if (parsed === transaction.amount) return;
+
+      const nextTx = { ...transaction, amount: parsed };
+      const violation = findInsufficientFundsViolation(
+        accounts,
+        getTransactionAccountDeltas(nextTx),
+        transaction,
+      );
+      if (violation) {
+        const { title, message } = insufficientFundsAlertCopy(violation);
+        Alert.alert(title, message);
+        throw new HandledSaveError();
+      }
+
+      await persistTransactionUpdate(
+        { amount: parsed },
+        { previousTx: transaction, adjustAccountBalances: true },
+      );
+    },
+    [accounts, persistTransactionUpdate, transaction],
+  );
+
+  const fieldEditors = useMemo<TransactionFieldEditors | undefined>(() => {
+    if (!transaction || transaction.type === 'transfer') return undefined;
+    const accountId = parseAccountIdFromNote(transaction.note);
+    const accountLabel = accountId
+      ? resolveAccountIdLabel(accountId, accounts)
+      : accountOptions[0]?.label ?? EMPTY_DETAIL_VALUE;
+    const categoryLabel = transaction.categoryName?.trim() || EMPTY_DETAIL_VALUE;
+    const resolvedCategoryOptions =
+      categoryOptions.length > 0
+        ? categoryOptions
+        : transaction.categoryId && transaction.categoryName
+          ? [{ id: transaction.categoryId, label: transaction.categoryName }]
+          : [];
+    return {
+      accountId,
+      accountLabel,
+      accountOptions: accountOptions.map((option) => ({ id: option.id, label: option.label })),
+      categoryId: transaction.categoryId,
+      categoryLabel,
+      categoryOptions: resolvedCategoryOptions,
+      onSaveAccount: handleSaveAccount,
+      onSaveCategory: handleSaveCategory,
+    };
+  }, [
+    accountOptions,
+    accounts,
+    categoryOptions,
+    handleSaveAccount,
+    handleSaveCategory,
+    transaction,
+  ]);
+
+  const amountEditor = useMemo<AmountFieldEditor | undefined>(() => {
+    if (!transaction) return undefined;
+    return {
+      amountValue: String(transaction.amount),
+      onSaveAmount: handleSaveAmount,
+    };
+  }, [handleSaveAmount, transaction]);
+
   const detailSections = useMemo(
-    () => (transaction ? buildTransactionDetailSections(transaction, accounts, savingsGoals, amountColor) : []),
-    [transaction, accounts, savingsGoals, amountColor],
+    () =>
+      transaction
+        ? buildTransactionDetailSections(
+            transaction,
+            accounts,
+            savingsGoals,
+            amountColor,
+            fieldEditors,
+            amountEditor,
+          )
+        : [],
+    [transaction, accounts, savingsGoals, amountColor, fieldEditors, amountEditor],
   );
 
   const insight = useMemo(
@@ -1455,7 +1766,7 @@ export default function TransactionDetailScreen() {
           }
         >
           {transaction ? (
-            <>
+            <View style={styles.scrollContent}>
               <View style={[accountDetailHeroBlockStyle(), { gap: spacing.lg }]}>
                 <View style={styles.heroIdentityRow}>
                   <TransactionAvatar transaction={transaction} contactPhotoUri={contactPhotoUri} size={isTransfer ? 46 : 56} />
@@ -1507,7 +1818,7 @@ export default function TransactionDetailScreen() {
                   }}
                 />
               ) : null}
-            </>
+            </View>
           ) : (
             <Text style={[styles.empty, { color: colors.textMuted }]}>
               {transactionId ? 'Transaction introuvable.' : 'Aucune transaction sélectionnée.'}
@@ -1629,6 +1940,8 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
+  },
+  scrollContent: {
     gap: spacing.xl,
   },
   heroAmountContainer: {

@@ -27,14 +27,87 @@ import type {
   WealthAsset,
 } from '@/types';
 
-let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
-let dbOpenFailed = false;
+const DB_SINGLETON_KEY = '__budgetTrackerSqlite__';
+
+interface DbSingletonState {
+  promise: Promise<SQLite.SQLiteDatabase> | null;
+  openFailed: boolean;
+}
+
+const nativeDbState: DbSingletonState = { promise: null, openFailed: false };
+
+/** Web OPFS handles survive Fast Refresh module resets — keep the open promise on globalThis. */
+function getDbSingletonState(): DbSingletonState {
+  if (Platform.OS === 'web') {
+    const globalState = globalThis as typeof globalThis & {
+      [DB_SINGLETON_KEY]?: DbSingletonState;
+    };
+    if (!globalState[DB_SINGLETON_KEY]) {
+      globalState[DB_SINGLETON_KEY] = { promise: null, openFailed: false };
+    }
+    return globalState[DB_SINGLETON_KEY]!;
+  }
+  return nativeDbState;
+}
 
 /** Web needs extra time for WASM worker + OPFS; native can be slower on cold start with WAL. */
 const DB_OPEN_TIMEOUT_MS = Platform.OS === 'web' ? 30_000 : 15_000;
 
+const webDbOpenQueue: { tail: Promise<void> } = { tail: Promise.resolve() };
+
+async function withWebDbOpenQueue<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = webDbOpenQueue.tail;
+  let release!: () => void;
+  webDbOpenQueue.tail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
+
 export function isDatabaseAvailable(): boolean {
-  return !dbOpenFailed;
+  return !getDbSingletonState().openFailed;
+}
+
+async function openDatabaseWithName(databaseName: string): Promise<SQLite.SQLiteDatabase> {
+  const open = async (): Promise<SQLite.SQLiteDatabase> => {
+    const db = await withDbOpenTimeout(SQLite.openDatabaseAsync(databaseName), 'SQLite open');
+    await initializeDatabaseSchema(db);
+    return db;
+  };
+
+  if (Platform.OS !== 'web') {
+    return open();
+  }
+
+  return withWebDbOpenQueue(async () => {
+    if (typeof navigator !== 'undefined' && 'locks' in navigator) {
+      return navigator.locks.request('budget-tracker-sqlite-opfs', { mode: 'exclusive' }, open);
+    }
+    return open();
+  });
+}
+
+async function openDatabaseOnce(): Promise<SQLite.SQLiteDatabase> {
+  return openDatabaseWithName('budget.db');
+}
+
+async function openDatabaseResilient(): Promise<SQLite.SQLiteDatabase> {
+  try {
+    return await openDatabaseOnce();
+  } catch (error) {
+    if (Platform.OS !== 'web') throw error;
+
+    console.warn(
+      '[Boot] OPFS SQLite open failed; trying in-memory database for this session.',
+      error,
+    );
+    return openDatabaseWithName(':memory:');
+  }
 }
 
 function withDbOpenTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
@@ -213,22 +286,16 @@ async function initializeDatabaseSchema(db: SQLite.SQLiteDatabase): Promise<void
 }
 
 export async function getDb(): Promise<SQLite.SQLiteDatabase> {
-  if (!dbPromise) {
-    dbPromise = (async () => {
-      const db = await withDbOpenTimeout(
-        SQLite.openDatabaseAsync('budget.db'),
-        'SQLite open',
-      );
-      await initializeDatabaseSchema(db);
-      return db;
-    })().catch((error: unknown) => {
-      dbPromise = null;
-      dbOpenFailed = true;
+  const state = getDbSingletonState();
+  if (!state.promise) {
+    state.openFailed = false;
+    state.promise = openDatabaseResilient().catch((error: unknown) => {
+      state.openFailed = true;
       console.warn('[Boot] SQLite open failed', error);
       throw error;
     });
   }
-  return dbPromise;
+  return state.promise;
 }
 
 async function ensureSavingsGoalColumns(db: SQLite.SQLiteDatabase): Promise<void> {
@@ -433,13 +500,19 @@ export async function getSetting(key: string, fallback: string): Promise<string>
   return row?.value ?? fallback;
 }
 
-export async function setSetting(key: string, value: string): Promise<void> {
+export async function setSetting(
+  key: string,
+  value: string,
+  options?: { emit?: boolean },
+): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     'INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
     [key, value],
   );
-  dataEvents.emit();
+  if (options?.emit !== false) {
+    dataEvents.emit();
+  }
 }
 
 export async function getSimulatedAccounts(): Promise<SimulatedAccount[]> {
@@ -557,7 +630,11 @@ export async function adjustSimulatedAccountBalance(
   }
 }
 
-export async function adjustSavingsGoalCurrentAmount(id: string, delta: number): Promise<void> {
+export async function adjustSavingsGoalCurrentAmount(
+  id: string,
+  delta: number,
+  options?: { emit?: boolean },
+): Promise<void> {
   const trimmedId = id.trim();
   if (!trimmedId || !Number.isFinite(delta) || delta === 0) return;
 
@@ -566,7 +643,9 @@ export async function adjustSavingsGoalCurrentAmount(id: string, delta: number):
     'UPDATE savings_goals SET current_amount = MAX(0, current_amount + ?) WHERE id = ?',
     [delta, trimmedId],
   );
-  dataEvents.emit();
+  if (options?.emit !== false) {
+    dataEvents.emit();
+  }
 }
 
 export async function getWealthAssets(): Promise<WealthAsset[]> {
@@ -1344,6 +1423,33 @@ export async function getTransactionsForBudgetCategory(categoryId: string): Prom
      WHERE t.category_id = ? AND t.type = 'expense'
      ORDER BY datetime(t.date) DESC, t.id DESC`,
     [trimmed],
+  );
+}
+
+/** Expense transactions for a budget category within a calendar month (budget page month selector). */
+export async function getTransactionsForBudgetCategoryInMonth(
+  categoryId: string,
+  monthDate: Date,
+): Promise<Transaction[]> {
+  const trimmed = categoryId.trim();
+  if (!trimmed) return [];
+  const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1, 0, 0, 0, 0);
+  const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1, 0, 0, 0, 0);
+  const monthStartIso = monthStart.toISOString();
+  const monthEndIso = monthEnd.toISOString();
+  const db = await getDb();
+  return db.getAllAsync<Transaction>(
+    `SELECT t.id, t.label, t.amount, t.type, t.date, t.category_id AS categoryId,
+            t.transaction_icon AS transactionIcon, t.receipt_uri AS receiptUri,
+            t.receipt_status AS receiptStatus, t.note, t.sync_status AS syncStatus,
+            t.wealth_asset_id AS wealthAssetId, t.savings_goal_id AS savingsGoalId,
+            c.name AS categoryName, c.icon AS categoryIcon, c.color AS categoryColor
+     FROM transactions t
+     JOIN categories c ON c.id = t.category_id
+     WHERE t.category_id = ? AND t.type = 'expense'
+       AND t.date >= ? AND t.date < ?
+     ORDER BY datetime(t.date) DESC, t.id DESC`,
+    [trimmed, monthStartIso, monthEndIso],
   );
 }
 

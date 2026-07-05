@@ -1,0 +1,23 @@
+---
+description: Metro Expo — ne pas lancer Metro ni ouvrir navigateur/terminal automatiquement
+alwaysApply: true
+---
+
+# Expo dev server — l'utilisateur gère Metro lui-même
+
+## Ne jamais lancer Metro depuis Cursor
+
+- **Interdit** d'exécuter `npm start`, `npx expo start`, ou toute commande Metro dans un terminal Cursor **sauf si l'utilisateur le demande explicitement** (ex. « démarre Metro », « relance le serveur »).
+- **Ne pas** ouvrir un terminal intégré Cursor pour démarrer Metro en fin de tâche design, debug, ou vérification visuelle.
+- **Présumer** que Metro tourne déjà sur le port **8081** (lancé par l'utilisateur dans son propre terminal).
+
+## Si l'utilisateur demande de démarrer Metro
+
+- Une seule instance : `npm start` depuis `apps/mobile`.
+- Utiliser `scripts/expo-start.mjs` (via `npm start`) — `BROWSER=none`, flag `--web` ignoré.
+- Ne pas lancer un second Metro sur 8082/8083.
+
+## Navigateur / webview
+
+- **Interdit** d'ouvrir Edge, Chrome, ou la webview Cursor (`browser_navigate`, Simple Browser) sauf **demande explicite** dans le message utilisateur.
+- Ne pas ouvrir `localhost:8081` en réaction à une tâche design.

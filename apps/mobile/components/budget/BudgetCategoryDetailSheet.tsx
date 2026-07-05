@@ -1,80 +1,266 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
+
 import { useRouter } from 'expo-router';
+
 import { BottomSheet } from '@/components/BottomSheet';
-import { CategoryBudgetProgress } from '@/components/CategoryBudgetProgress';
-import { ModifierButton } from '@/components/ModifierButton';
-import { NumericAmountInput } from '@/components/NumericAmountInput';
-import { PrimarySaveButton } from '@/components/PrimarySaveButton';
-import { spacing, containerSurfaceStyle, radius, typographyKit } from '@/constants/theme';
-import { updateCategoryLimit } from '@/lib/budgetCategories';
+
+import { DetailSingleLineRow, type DetailSectionRow } from '@/components/DetailSectionRows';
+
+import { EditableField } from '@/components/EditableField';
+
+import { ProgressBar } from '@/components/ProgressBar';
+
+import { SurfaceCard } from '@/components/SurfaceCard';
+
+import { TransactionRow } from '@/components/TransactionRow';
+
+import { getCategoryIconName } from '@/constants/categoryOptions';
+
+import {
+  accountDetailHeroBlockStyle,
+  detailSectionLabelStyle,
+  detailSingleLineRowStyle,
+  jakartaExtraBoldText,
+  jakartaMediumText,
+  moneyAmountTypography,
+  radius,
+  spacing,
+  typography,
+  typographyKit,
+} from '@/constants/theme';
+
+import { updateCategoryLimit, updateCategoryName } from '@/lib/budgetCategories';
+
 import type { BudgetCategoryUiModel } from '@/lib/budgetCategoryModel';
-import { upsertCategoryBudget } from '@/lib/db';
+
+import { formatBudgetMonthLabel } from '@/lib/budgetMonth';
+
+import {
+  getBudgetStatus,
+  getCategoryBudgetUsage,
+  shouldShowCategoryStatusTag,
+} from '@/lib/categoryBudgetUsage';
+
+import {
+  getTransactionsForBudgetCategoryInMonth,
+  sortTransactionsNewestFirst,
+  upsertCategory,
+  upsertCategoryBudget,
+} from '@/lib/db';
+
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+
+import { parseFormattedNumber } from '@/lib/formatNumber';
+
 import { successHaptic, tapHaptic } from '@/lib/haptics';
+
+import { detailHeroAmount, flexText, rowValue } from '@/lib/textLayout';
+
 import { useAppTheme } from '@/lib/themeContext';
-import type { CategoryBudget } from '@/types';
+
+import type { Transaction } from '@/types';
 
 type Props = {
   category: BudgetCategoryUiModel | null;
   visible: boolean;
   onClose: () => void;
   onSaved?: () => void;
+  displayMonth: Date;
+  isCurrentMonth?: boolean;
 };
 
-export function BudgetCategoryDetailSheet({ category, visible, onClose, onSaved }: Props) {
+const DETAIL_SHEET_TOP_RADIUS = 22;
+const TRANSACTIONS_LIST_MAX_HEIGHT = 280;
+
+function pillBackground(barColor: string): string {
+  return `${barColor}1F`;
+}
+
+function buildBudgetDetailRows(
+  limit: number,
+  spent: number,
+  usage: BudgetCategoryUiModel['usage'],
+): DetailSectionRow[] {
+  const budgetStatus = getBudgetStatus(spent, limit);
+  const barColor = budgetStatus.color;
+
+  const rows: DetailSectionRow[] = [
+    {
+      label: 'Dépensé',
+      value: formatDisplayMoneyAbsolute(spent),
+      icon: 'cash-outline',
+    },
+  ];
+
+  if (usage.isOverBudget) {
+    rows.push({
+      label: 'Dépassement',
+      value: `Dépassé de ${formatDisplayMoneyAbsolute(Math.max(0, spent - limit))}`,
+      icon: 'trending-up-outline',
+      valueColor: barColor,
+    });
+  }
+
+  if (limit > 0 || usage.isZeroLimitOverspend) {
+    rows.push({
+      label: 'Utilisation',
+      value: `${budgetStatus.percentage} %`,
+      icon: 'pie-chart-outline',
+      valueColor: barColor,
+    });
+  }
+
+  return rows;
+}
+
+export function BudgetCategoryDetailSheet({
+  category,
+  visible,
+  onClose,
+  onSaved,
+  displayMonth,
+  isCurrentMonth = true,
+}: Props) {
   const router = useRouter();
   const { colors, isLight } = useAppTheme();
-  const [editing, setEditing] = useState(false);
-  const [limitDraft, setLimitDraft] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [localName, setLocalName] = useState('');
+  const [localLimit, setLocalLimit] = useState(0);
+  const [transactionsExpanded, setTransactionsExpanded] = useState(false);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
 
   useEffect(() => {
     if (!category) return;
-    setLimitDraft(String(Math.max(0, category.limit)));
-    setEditing(false);
-  }, [category?.id, category?.limit, visible]);
+    setLocalName(category.name);
+    setLocalLimit(Math.max(0, category.limit));
+  }, [category?.id, category?.name, category?.limit, visible]);
 
-  const budgetForProgress = useMemo((): CategoryBudget | null => {
+  useEffect(() => {
+    setTransactionsExpanded(false);
+    setTransactions([]);
+    setTransactionsLoading(false);
+  }, [category?.id, visible, displayMonth]);
+
+  const usage = useMemo(() => {
     if (!category) return null;
-    return {
-      categoryId: category.id,
-      categoryName: category.name,
-      categoryIcon: category.icon,
-      categoryColor: category.color,
-      limitAmount: category.limit,
-      spent: category.spent,
-    };
-  }, [category]);
+    return getCategoryBudgetUsage(localLimit, category.spent);
+  }, [category, localLimit]);
 
-  const handleSaveLimit = useCallback(async () => {
-    if (!category) return;
-    const parsed = Number.parseFloat(limitDraft.replace(',', '.'));
-    if (!Number.isFinite(parsed) || parsed < 0) return;
+  const budgetStatus = useMemo(
+    () => (category ? getBudgetStatus(category.spent, localLimit) : null),
+    [category, localLimit],
+  );
 
-    setSaving(true);
-    try {
-      await Promise.all([
-        upsertCategoryBudget(category.id, parsed),
-        updateCategoryLimit(category.id, parsed),
-      ]);
-      successHaptic();
-      setEditing(false);
-      onSaved?.();
-    } finally {
-      setSaving(false);
-    }
-  }, [category, limitDraft, onSaved]);
+  const budgetDetailRows = useMemo(
+    () => (category && usage ? buildBudgetDetailRows(localLimit, category.spent, usage) : []),
+    [category, localLimit, usage],
+  );
+
+  const barColor = budgetStatus?.color ?? colors.accentGreen;
+  const showStatusTag = usage ? shouldShowCategoryStatusTag(usage) : false;
+  const statusText = budgetStatus?.label ?? '';
+  const iconName = category
+    ? getCategoryIconName({ icon: category.icon, name: localName })
+    : 'pricetag-outline';
+  const iconWellBg = isLight ? colors.surfaceElevated : colors.input;
+
+  const handleSaveName = useCallback(
+    async (newName: string) => {
+      if (!category) return;
+      const trimmed = newName.trim();
+      const previous = localName;
+      setLocalName(trimmed);
+      try {
+        await Promise.all([
+          upsertCategory({
+            id: category.id,
+            name: trimmed,
+            icon: category.icon,
+            color: category.color,
+          }),
+          updateCategoryName(category.id, trimmed),
+        ]);
+        successHaptic();
+        onSaved?.();
+      } catch {
+        setLocalName(previous);
+        throw new Error('save failed');
+      }
+    },
+    [category, localName, onSaved],
+  );
+
+  const handleSaveLimit = useCallback(
+    async (raw: string) => {
+      if (!category) return;
+      const parsed = parseFormattedNumber(raw);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        throw new Error('invalid');
+      }
+      const previous = localLimit;
+      setLocalLimit(parsed);
+      try {
+        await Promise.all([
+          upsertCategoryBudget(category.id, parsed),
+          updateCategoryLimit(category.id, parsed),
+        ]);
+        successHaptic();
+        onSaved?.();
+      } catch {
+        setLocalLimit(previous);
+        throw new Error('save failed');
+      }
+    },
+    [category, localLimit, onSaved],
+  );
 
   const openTransactions = useCallback(() => {
-    if (!category) return;
     tapHaptic();
-    onClose();
-    router.push({
-      pathname: '/budget-category-transactions',
-      params: { id: category.id, name: category.name },
-    });
-  }, [category, onClose, router]);
+    setTransactionsExpanded((prev) => !prev);
+  }, []);
+
+  useEffect(() => {
+    if (!transactionsExpanded || !category) return;
+
+    let cancelled = false;
+    setTransactionsLoading(true);
+
+    void getTransactionsForBudgetCategoryInMonth(category.id, displayMonth)
+      .then((rows) => {
+        if (!cancelled) {
+          setTransactions(sortTransactionsNewestFirst(rows));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setTransactionsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [transactionsExpanded, category?.id, displayMonth]);
+
+  const emptyTransactionsLabel = useMemo(
+    () =>
+      isCurrentMonth
+        ? 'Aucune transaction ce mois-ci'
+        : `Aucune transaction en ${formatBudgetMonthLabel(displayMonth).toLowerCase()}`,
+    [displayMonth, isCurrentMonth],
+  );
+
+  const handlePressTransaction = useCallback(
+    (transactionId: string) => {
+      tapHaptic();
+      router.push({ pathname: '/transaction-detail', params: { transactionId } });
+    },
+    [router],
+  );
 
   if (!category) return null;
 
@@ -82,87 +268,350 @@ export function BudgetCategoryDetailSheet({ category, visible, onClose, onSaved 
     <BottomSheet
       visible={visible}
       onClose={onClose}
-      title={category.name}
-      titleAccessory={
-        !editing ? (
-          <ModifierButton
-            accessibilityLabel="Modifier la limite mensuelle"
-            onPress={() => setEditing(true)}
-            hitSlop={10}
-          />
-        ) : null
-      }
+      sheetStyle={styles.sheet}
+      scrollContentContainerStyle={styles.scrollContent}
     >
-      <View style={styles.body}>
-        <View style={[styles.colorStripe, { backgroundColor: category.color }]} />
+      <View style={styles.header}>
+        <View
+          style={[
+            styles.iconWell,
+            {
+              backgroundColor: iconWellBg,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <Ionicons name={iconName} size={24} color={colors.textSecondary} />
+        </View>
 
-        {budgetForProgress ? (
-          <CategoryBudgetProgress budget={budgetForProgress} />
-        ) : null}
-
-        {editing ? (
-          <View style={styles.editBlock}>
-            <Text style={[styles.fieldLabel, typographyKit.metaMedium, { color: colors.textMuted }]}>
-              Limite mensuelle
-            </Text>
-            <NumericAmountInput value={limitDraft} onChangeText={setLimitDraft} autoFocus />
-            <PrimarySaveButton
-              label="Enregistrer"
-              onPress={() => void handleSaveLimit()}
-              loading={saving}
-            />
-          </View>
-        ) : null}
+        <View style={styles.headerText}>
+          <EditableField
+            type="text"
+            value={localName}
+            onSave={handleSaveName}
+            accessibilityLabel="Modifier le nom de la catégorie"
+            textStyle={styles.heroLabel}
+            containerStyle={styles.heroLabelField}
+            placeholder="Nom de catégorie"
+          />
+        </View>
 
         <Pressable
           accessibilityRole="button"
-          onPress={openTransactions}
+          accessibilityLabel="Fermer les détails"
+          hitSlop={10}
+          onPress={onClose}
           style={({ pressed }) => [
-            styles.linkRow,
-            containerSurfaceStyle(isLight),
+            styles.closeButton,
+            {
+              backgroundColor: colors.surfaceSolid,
+              borderColor: colors.borderStrong,
+            },
             pressed && styles.pressed,
           ]}
         >
-          <Ionicons name="list-outline" size={18} color={colors.text} />
-          <Text style={[styles.linkLabel, { color: colors.text }]}>Voir les transactions</Text>
-          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          <Ionicons name="close" size={18} color={colors.text} />
         </Pressable>
+      </View>
+
+      <View style={[accountDetailHeroBlockStyle(), styles.heroBlock]}>
+        <View style={styles.heroAmountRow}>
+          <Text style={[detailHeroAmount, styles.heroSpent, { color: colors.text }]}>
+            {formatDisplayMoneyAbsolute(category.spent)}
+          </Text>
+          <Text style={[styles.heroLimit, typographyKit.caption, { color: colors.textMuted }]}>
+            {' / '}
+            {formatDisplayMoneyAbsolute(localLimit)}
+          </Text>
+        </View>
+
+        {showStatusTag ? (
+          <View style={[styles.statusPill, { backgroundColor: pillBackground(barColor) }]}>
+            <Text style={[styles.statusPillText, jakartaMediumText, { color: barColor }]} numberOfLines={1}>
+              {statusText}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      {usage ? (
+        <SurfaceCard style={styles.budgetCard} padding={spacing.lg}>
+          <Text style={[detailSectionLabelStyle(), styles.budgetEyebrow, { color: colors.textMuted }]}>
+            BUDGET
+          </Text>
+          <ProgressBar progress={usage.progress} color={barColor} height={6} />
+          <View style={[styles.budgetRows, { borderTopColor: colors.border }]}>
+            <View
+              style={[
+                detailSingleLineRowStyle(),
+                budgetDetailRows.length > 0 && {
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                  borderBottomColor: colors.border,
+                },
+              ]}
+            >
+              <Ionicons name="wallet-outline" size={17} color={colors.textMuted} style={styles.rowIcon} />
+              <Text style={[styles.rowLabel, flexText, { color: colors.textMuted }]}>
+                Limite mensuelle
+              </Text>
+              <EditableField
+                type="money"
+                value={String(localLimit)}
+                onSave={handleSaveLimit}
+                accessibilityLabel="Modifier la limite mensuelle"
+                textStyle={[styles.rowValue, rowValue, moneyAmountTypography()]}
+                containerStyle={styles.limitValueField}
+                align="right"
+              />
+            </View>
+
+            {budgetDetailRows.map((row, rowIndex) => (
+              <DetailSingleLineRow
+                key={row.label}
+                row={row}
+                colors={colors}
+                isLast={rowIndex === budgetDetailRows.length - 1}
+              />
+            ))}
+          </View>
+        </SurfaceCard>
+      ) : null}
+
+      <View style={styles.transactionsSection}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: transactionsExpanded }}
+          accessibilityLabel="Voir les transactions"
+          onPress={openTransactions}
+          style={({ pressed }) => [
+            styles.ctaRow,
+            transactionsExpanded && styles.ctaRowExpanded,
+            {
+              backgroundColor: isLight ? colors.surfaceElevated : colors.input,
+              borderColor: colors.border,
+            },
+            pressed && styles.pressed,
+          ]}
+        >
+          <View style={[styles.ctaIconWell, { backgroundColor: colors.surfaceSolid }]}>
+            <Ionicons name="list-outline" size={18} color={colors.text} />
+          </View>
+          <Text style={[styles.ctaLabel, { color: colors.text }]}>Voir les transactions</Text>
+          <Ionicons
+            name="chevron-forward"
+            size={16}
+            color={colors.textMuted}
+            style={transactionsExpanded ? styles.ctaChevronExpanded : undefined}
+          />
+        </Pressable>
+
+        {transactionsExpanded ? (
+          <View
+            style={[
+              styles.transactionsPanel,
+              {
+                backgroundColor: isLight ? colors.surfaceElevated : colors.input,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            {transactionsLoading ? (
+              <View style={styles.transactionsLoading}>
+                <ActivityIndicator size="small" color={colors.textMuted} />
+                <Text style={[styles.transactionsLoadingText, { color: colors.textMuted }]}>
+                  Chargement...
+                </Text>
+              </View>
+            ) : transactions.length === 0 ? (
+              <Text style={[styles.transactionsEmpty, { color: colors.textMuted }]}>
+                {emptyTransactionsLabel}
+              </Text>
+            ) : (
+              <ScrollView
+                style={styles.transactionsScroll}
+                contentContainerStyle={styles.transactionsList}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={false}
+              >
+                {transactions.map((tx) => (
+                  <TransactionRow
+                    key={tx.id}
+                    transaction={tx}
+                    embedded
+                    onPressId={handlePressTransaction}
+                  />
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        ) : null}
       </View>
     </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  body: {
+  sheet: {
+    borderTopLeftRadius: DETAIL_SHEET_TOP_RADIUS,
+    borderTopRightRadius: DETAIL_SHEET_TOP_RADIUS,
+  },
+  scrollContent: {
     gap: spacing.lg,
+    paddingTop: 0,
   },
-  colorStripe: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'flex-start',
-  },
-  editBlock: {
-    gap: spacing.sm,
-  },
-  fieldLabel: {
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  linkRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  iconWell: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  headerText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  heroLabelField: {
+    alignSelf: 'stretch',
+  },
+  heroLabel: {
+    ...jakartaExtraBoldText,
+    fontSize: typography.dashboardGreeting,
+    letterSpacing: -0.4,
+    lineHeight: 28,
+  },
+  closeButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 36,
+    height: 36,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  heroBlock: {
+    alignItems: 'center',
+  },
+  heroAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 2,
+  },
+  heroSpent: {
+    textAlign: 'center',
+  },
+  heroLimit: {
+    fontSize: typography.body,
+    lineHeight: typography.body + 4,
+  },
+  statusPill: {
+    alignSelf: 'center',
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  statusPillText: {
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  budgetCard: {
+    gap: spacing.sm,
+  },
+  budgetEyebrow: {
+    marginBottom: spacing.xs,
+  },
+  budgetRows: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: spacing.xs,
+  },
+  rowIcon: {
+    width: 18,
+    marginTop: 1,
+  },
+  rowLabel: {
+    ...typographyKit.metaMedium,
+    marginRight: spacing.sm,
+  },
+  rowValue: {
+    flexShrink: 0,
+    textAlign: 'right',
+  },
+  limitValueField: {
+    flexShrink: 0,
+    maxWidth: '50%',
+    alignItems: 'flex-end',
+  },
+  transactionsSection: {
+    gap: 0,
+  },
+  ctaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: radius.card,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  linkLabel: {
+  ctaRowExpanded: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  ctaIconWell: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaLabel: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
+    ...typographyKit.caption,
+  },
+  ctaChevronExpanded: {
+    transform: [{ rotate: '90deg' }],
+  },
+  transactionsPanel: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: radius.card,
+    borderBottomRightRadius: radius.card,
+    overflow: 'hidden',
+  },
+  transactionsLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
+  },
+  transactionsLoadingText: {
+    ...typographyKit.caption,
+  },
+  transactionsEmpty: {
+    ...typographyKit.caption,
+    textAlign: 'center',
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
+  },
+  transactionsScroll: {
+    maxHeight: TRANSACTIONS_LIST_MAX_HEIGHT,
+  },
+  transactionsList: {
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.xs,
   },
   pressed: {
-    opacity: 0.85,
+    opacity: 0.78,
   },
 });

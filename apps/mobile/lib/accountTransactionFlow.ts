@@ -245,6 +245,15 @@ export type InsufficientFundsViolation = {
   accountLabel: string;
 };
 
+export function insufficientFundsAlertCopy(
+  violation: InsufficientFundsViolation,
+): { title: string; message: string } {
+  return {
+    title: 'Fonds insuffisants',
+    message: `Le solde de ${violation.accountLabel} est insuffisant pour cette opération.`,
+  };
+}
+
 /** Returns the first checking/savings account that would drop below zero after applying transaction deltas. */
 export function findInsufficientFundsViolation(
   accounts: readonly SimulatedAccount[],

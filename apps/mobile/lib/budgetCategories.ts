@@ -16,7 +16,7 @@ export type BudgetCategory = {
 };
 
 const STORAGE_KEY = 'budget_tracker_categories';
-const MOCK_VERSION = '2';
+const MOCK_VERSION = '4';
 const VERSION_KEY = 'budget_tracker_categories_version';
 
 /** Green-toned palette — one unique color per mock category (shuffled). */
@@ -43,7 +43,7 @@ type MockCategoryDef = {
 /** Lucide icon names (PascalCase) — baseline mock budget categories. */
 const MOCK_CATEGORY_DEFS: MockCategoryDef[] = [
   { id: 'cat-budget-logement', name: 'Logement', icon: 'House', limit: 1200, spent: 1200 },
-  { id: 'cat-budget-epicerie', name: 'Épicerie', icon: 'ShoppingBag', limit: 400, spent: 320 },
+  { id: 'cat-budget-epicerie', name: 'Épicerie', icon: 'ShoppingBag', limit: 400, spent: 450 },
   { id: 'cat-budget-transport', name: 'Transport', icon: 'Car', limit: 300, spent: 245 },
   { id: 'cat-budget-telephone', name: 'Téléphone', icon: 'Smartphone', limit: 100, spent: 100 },
   { id: 'cat-budget-restaurants', name: 'Restaurants', icon: 'Utensils', limit: 200, spent: 158 },
@@ -207,6 +207,18 @@ export async function updateCategoryLimit(id: string, limit: number): Promise<vo
     await saveCategories(next);
   } catch (error) {
     console.warn('[budgetCategories] updateCategoryLimit failed', error);
+  }
+}
+
+export async function updateCategoryName(id: string, name: string): Promise<void> {
+  try {
+    const categories = await readStoredCategories();
+    const next = categories.map((category) =>
+      category.id === id ? { ...category, name } : category,
+    );
+    await saveCategories(next);
+  } catch (error) {
+    console.warn('[budgetCategories] updateCategoryName failed', error);
   }
 }
 
