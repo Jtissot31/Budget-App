@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,6 +37,7 @@ export default function ScanScreen() {
     merchant?: string;
     amount?: string;
     label?: string;
+    source?: string;
   }>();
   const insets = useSafeAreaInsets();
   const { colors, isLight } = useAppTheme();
@@ -47,6 +48,8 @@ export default function ScanScreen() {
     (typeof params.merchant === 'string' ? params.merchant : '') ||
     (typeof params.label === 'string' ? params.label : '');
   const totalHint = typeof params.amount === 'string' ? parseFormattedNumberOrZero(params.amount) : 0;
+  const captureSource =
+    params.source === 'gallery' || params.source === 'camera' ? params.source : null;
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [phase, setPhase] = useState<ScanPhase>('idle');
@@ -54,6 +57,7 @@ export default function ScanScreen() {
   const [items, setItems] = useState<ItemizedNote[]>([]);
   const [scanSource, setScanSource] = useState<'api' | 'text' | 'heuristic' | null>(null);
   const [error, setError] = useState<{ title: string; message: string } | null>(null);
+  const autoCaptureHandled = useRef(false);
 
   useEffect(() => {
     void getCategories().then(setCategories);
@@ -87,17 +91,7 @@ export default function ScanScreen() {
     [categories, merchantHint, totalHint],
   );
 
-  const handleCapture = async () => {
-    try {
-      const result = await captureReceiptPhoto();
-      if (result.cancelled || !result.uri) return;
-      await processImage(result.uri);
-    } catch (err) {
-      setError(formValidationError('Permission requise', err instanceof Error ? err.message : 'Accès caméra refusé.'));
-    }
-  };
-
-  const handleImport = async () => {
+  const handleImport = useCallback(async () => {
     try {
       const result = await pickReceiptFromGallery();
       if (result.cancelled || !result.uri) return;
@@ -105,7 +99,27 @@ export default function ScanScreen() {
     } catch (err) {
       setError(formValidationError('Permission requise', err instanceof Error ? err.message : 'Accès galerie refusé.'));
     }
-  };
+  }, [processImage]);
+
+  const handleCapture = useCallback(async () => {
+    try {
+      const result = await captureReceiptPhoto();
+      if (result.cancelled || !result.uri) return;
+      await processImage(result.uri);
+    } catch (err) {
+      setError(formValidationError('Permission requise', err instanceof Error ? err.message : 'Accès caméra refusé.'));
+    }
+  }, [processImage]);
+
+  useEffect(() => {
+    if (!captureSource || autoCaptureHandled.current || phase !== 'idle') return;
+    autoCaptureHandled.current = true;
+    if (captureSource === 'gallery') {
+      void handleImport();
+      return;
+    }
+    void handleCapture();
+  }, [captureSource, handleCapture, handleImport, phase]);
 
   const handleScan = async () => {
     tapHaptic();

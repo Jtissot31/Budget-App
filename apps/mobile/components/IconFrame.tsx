@@ -8,7 +8,7 @@ import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import {
   logoIconWellStyle,
-  userPickedIconLogoSize,
+  remoteLogoImageStyle,
   userPickedIconWellStyle,
 } from '@/lib/userPickedIcon';
 
@@ -40,90 +40,92 @@ export function IconFrame({ size = 46, style, children }: IconFrameProps) {
 
 
 
-type LogoIconFrameProps = {
-
+type RemoteLogoImageProps = {
   uri: string;
-
-  size?: number;
-
-  style?: StyleProp<ViewStyle>;
-
+  size: number;
   contentFit?: ImageContentFit;
-
+  /** When true, logo uses the full box (no padded inset) — for frameless calendar markers. */
+  fullSize?: boolean;
   recyclingKey?: string;
-
   onError?: () => void;
-
+  onLoad?: () => void;
 };
 
-
-
-/** Remote logo inside the shared rounded-square frame (no tint). */
-
-export function LogoIconFrame({
-
+/** Remote favicon/logo — integer box, centered contain, no stretch. */
+export function RemoteLogoImage({
   uri,
-
-  size = 46,
-
-  style,
-
+  size,
   contentFit = 'contain',
-
+  fullSize = false,
   recyclingKey,
-
   onError,
-
-}: LogoIconFrameProps) {
-
-  const { isLight } = useAppTheme();
-
-  const logoSize = userPickedIconLogoSize(size);
-
-
+  onLoad,
+}: RemoteLogoImageProps) {
+  const imageStyle = fullSize
+    ? { width: size, height: size }
+    : remoteLogoImageStyle(size);
 
   return (
-
-    <View style={[logoIconWellStyle(size, isLight), style]}>
-
-      <Image
-
-        source={{ uri }}
-
-        style={{ width: logoSize, height: logoSize }}
-
-        contentFit={contentFit}
-
-        transition={150}
-
-        cachePolicy="memory-disk"
-
-        recyclingKey={recyclingKey ?? uri}
-
-        onError={onError}
-
-      />
-
-    </View>
-
+    <Image
+      source={{ uri }}
+      style={imageStyle}
+      contentFit={contentFit}
+      contentPosition="center"
+      placeholderContentFit="contain"
+      transition={size <= 46 ? 0 : 150}
+      cachePolicy="memory-disk"
+      recyclingKey={recyclingKey ?? uri}
+      onError={onError}
+      onLoad={onLoad}
+    />
   );
+}
 
+type LogoIconFrameProps = {
+  uri: string;
+  size?: number;
+  style?: StyleProp<ViewStyle>;
+  contentFit?: ImageContentFit;
+  recyclingKey?: string;
+  onError?: () => void;
+};
+
+/** Remote logo inside the shared rounded-square frame (no tint). */
+export function LogoIconFrame({
+  uri,
+  size = 46,
+  style,
+  contentFit = 'contain',
+  recyclingKey,
+  onError,
+}: LogoIconFrameProps) {
+  const { isLight } = useAppTheme();
+
+  return (
+    <View style={[logoIconWellStyle(size, isLight), styles.logoWell, style]}>
+      <RemoteLogoImage
+        uri={uri}
+        size={size}
+        contentFit={contentFit}
+        recyclingKey={recyclingKey}
+        onError={onError}
+      />
+    </View>
+  );
 }
 
 
 
 const styles = StyleSheet.create({
-
-  center: {
-
-    alignItems: 'center',
-
-    justifyContent: 'center',
-
+  logoWell: {
+    position: 'relative',
     flexShrink: 0,
-
   },
-
+  center: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
 });
 
 

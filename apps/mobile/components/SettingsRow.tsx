@@ -1,7 +1,8 @@
 import { ReactNode } from 'react';
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { PremiumSwitch } from '@/components/PremiumSwitch';
 import {
   jakartaMediumText,
   jakartaSemiboldText,
@@ -167,21 +168,16 @@ export function SettingsToggleRow({
   isLast,
   accessibilityLabel,
 }: ToggleProps) {
-  const { colors } = useAppTheme();
-
   return (
     <RowShell isLast={isLast}>
       <RowCopy label={label} hint={hint} icon={icon} />
-      <Switch
+      <PremiumSwitch
         accessibilityLabel={accessibilityLabel ?? label}
         value={value}
         onValueChange={(enabled) => {
           tapHaptic();
           onValueChange(enabled);
         }}
-        trackColor={{ false: colors.borderStrong, true: colors.primary }}
-        thumbColor={value ? colors.surfaceSolid : undefined}
-        ios_backgroundColor={colors.borderStrong}
       />
     </RowShell>
   );

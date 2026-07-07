@@ -5,6 +5,68 @@ export type ItemizedNote = {
   categoryName?: string | null;
 };
 
+/** Rounds to cents — matches article price storage in notes. */
+export function roundArticlePrice(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+export function sumArticlePrices(articles: ItemizedNote[]): number {
+  return roundArticlePrice(articles.reduce((sum, article) => sum + article.price, 0));
+}
+
+/** Absolute transaction amount used as the articles budget ceiling. */
+export function getTransactionArticlesBudget(transactionAmount: number): number {
+  if (!Number.isFinite(transactionAmount)) return 0;
+  return roundArticlePrice(Math.abs(transactionAmount));
+}
+
+/**
+ * Remaining budget for a new or edited manual article.
+ * @param excludeArticleIndex — when editing, omit that article from the existing sum.
+ */
+export function getRemainingArticleBudget(
+  transactionAmount: number,
+  articles: ItemizedNote[],
+  excludeArticleIndex?: number,
+): number {
+  const budget = getTransactionArticlesBudget(transactionAmount);
+  const existingSum = articles.reduce((sum, article, index) => {
+    if (excludeArticleIndex != null && index === excludeArticleIndex) return sum;
+    return sum + article.price;
+  }, 0);
+  return roundArticlePrice(Math.max(0, budget - roundArticlePrice(existingSum)));
+}
+
+export function isArticlePriceWithinBudget(price: number, maxArticlePrice: number): boolean {
+  if (!Number.isFinite(price) || price <= 0) return false;
+  return roundArticlePrice(price) <= roundArticlePrice(maxArticlePrice) + 1e-9;
+}
+
+export type DerivedArticleCategory = {
+  id: string | null;
+  name: string;
+};
+
+/** Unique categories from line items (order preserved, id preferred for dedup). */
+export function deriveUniqueCategoriesFromArticles(articles: ItemizedNote[]): DerivedArticleCategory[] {
+  const seen = new Set<string>();
+  const result: DerivedArticleCategory[] = [];
+
+  for (const article of articles) {
+    const name = article.categoryName?.trim();
+    if (!name) continue;
+    const key = article.categoryId?.trim() || name;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({
+      id: article.categoryId?.trim() || null,
+      name,
+    });
+  }
+
+  return result;
+}
+
 export function parseItemizedNote(note?: string): ItemizedNote[] {
   const line = note?.split('\n').find((part) => part.startsWith('articles:'));
   if (!line) return [];

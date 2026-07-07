@@ -124,6 +124,7 @@ import {
 } from '@/lib/goalProjection';
 
 import { tapHaptic, successHaptic } from '@/lib/haptics';
+import { openTransactionDetail } from '@/lib/openTransactionDetail';
 
 import { parseItemizedNote } from '@/lib/itemizedNote';
 
@@ -1490,7 +1491,7 @@ export default function GoalDetailScreen() {
 
                               tapHaptic();
 
-                              router.push({ pathname: '/transaction-detail', params: { transactionId: tx.id } });
+                              openTransactionDetail(tx.id);
 
                             }}
 

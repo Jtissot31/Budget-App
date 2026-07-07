@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react';
-import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import {
@@ -10,14 +10,15 @@ import {
   detailSubSectionHeaderStyle,
   detailSubSectionsGap,
   spacing,
-  typographyKit,
   type AppColors,
 } from '@/constants/theme';
 import {
-  detailRowLabel,
+  detailRowLabelSlot,
+  detailRowLabelText,
+  detailRowValueMoney,
   detailRowValueSlot,
+  detailRowValueText,
   detailRowValueTextProps,
-  rowValue,
   singleLineAmountProps,
 } from '@/lib/textLayout';
 
@@ -29,6 +30,8 @@ export type DetailSectionRow = {
   /** `amount` keeps the compact right column for money; default `text` lets values grow. */
   valueLayout?: 'amount' | 'text';
   valueContent?: ReactNode;
+  /** Override the default `rowValue` typography for this row's value text. */
+  valueStyle?: TextStyle;
 };
 
 export type DetailSection = {
@@ -191,13 +194,11 @@ export function DetailSingleLineRow({
       ) : (
         <View style={styles.rowIconSpacer} />
       )}
-      <Text
-        style={[styles.rowLabel, detailRowLabel, { color: colors.textMuted }]}
-        numberOfLines={1}
-        ellipsizeMode="tail"
-      >
-        {row.label}
-      </Text>
+      <View style={detailRowLabelSlot}>
+        <Text style={[styles.rowLabel, detailRowLabelText, { color: colors.textMuted }]}>
+          {row.label}
+        </Text>
+      </View>
       {row.valueContent ? (
         <View style={styles.rowValueSlot}>{row.valueContent}</View>
       ) : (
@@ -205,7 +206,8 @@ export function DetailSingleLineRow({
           <Text
             style={[
               styles.rowValue,
-              rowValue,
+              row.valueLayout === 'amount' ? detailRowValueMoney : detailRowValueText,
+              row.valueStyle,
               { color: row.valueColor ?? colors.text },
             ]}
             {...(row.valueLayout === 'amount' ? singleLineAmountProps : detailRowValueTextProps)}
@@ -239,7 +241,6 @@ const styles = StyleSheet.create({
     width: 18,
   },
   rowLabel: {
-    ...typographyKit.metaMedium,
     marginRight: spacing.sm,
   },
   rowValue: {

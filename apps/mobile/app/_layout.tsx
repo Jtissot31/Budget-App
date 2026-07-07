@@ -7,6 +7,7 @@ import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DMMono_400Regular, DMMono_500Medium } from '@expo-google-fonts/dm-mono';
+import { Onest_800ExtraBold } from '@expo-google-fonts/onest';
 import {
   PlusJakartaSans_400Regular,
   PlusJakartaSans_500Medium,
@@ -56,6 +57,7 @@ function RootLayoutContent() {
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
     PlusJakartaSans_800ExtraBold,
+    Onest_800ExtraBold,
     DMMono_400Regular,
     DMMono_500Medium,
   });

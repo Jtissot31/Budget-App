@@ -81,7 +81,7 @@ type MinimalDatePickerProps = {
   onConfirm: (value: string) => void;
 };
 
-function MinimalDatePicker({ visible, value, allowClear, onCancel, onConfirm }: MinimalDatePickerProps) {
+export function MinimalDatePicker({ visible, value, allowClear, onCancel, onConfirm }: MinimalDatePickerProps) {
   const { colors, ghost } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, ghost), [colors, ghost]);
   const initialDate = useMemo(() => parseIsoDate(value) ?? startOfToday(), [value]);

@@ -221,3 +221,18 @@ export interface RecurringPayment {
   logoUrl?: string | null;
   createdAt: string;
 }
+
+export type AgendaBill = {
+  name: string;
+  amount: number;
+  account: string;
+  recurring?: boolean;
+  date?: string;
+  kind?: 'payment' | 'income';
+  sourceId?: string;
+  icon?: string;
+  color?: string;
+  logoUrl?: string | null;
+  categoryName?: string | null;
+  categoryId?: string | null;
+};

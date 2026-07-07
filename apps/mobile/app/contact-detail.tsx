@@ -5,7 +5,6 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -14,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PremiumSwitch } from '@/components/PremiumSwitch';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionRow } from '@/components/TransactionRow';
 import { PageTransition } from '@/components/PageTransition';
@@ -35,6 +35,7 @@ import { isContactIncomeTx, parseRaisonFromNote } from '@/lib/accountTransaction
 import { getContactTransactions } from '@/lib/contactHistory';
 import { dataEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
+import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import { captureReceiptPhoto, pickReceiptFromGallery } from '@/lib/receiptCapture';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
@@ -150,16 +151,13 @@ function EmployerToggleRow({
   return (
     <View style={styles.detailRow}>
       <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Employeur</Text>
-      <Switch
+      <PremiumSwitch
         accessibilityLabel="Marquer comme employeur"
         value={isEmployer}
         onValueChange={(enabled) => {
           tapHaptic();
           onChange(enabled);
         }}
-        trackColor={{ false: colors.borderStrong, true: colors.primary }}
-        thumbColor={isEmployer ? colors.surfaceSolid : undefined}
-        ios_backgroundColor={colors.borderStrong}
       />
     </View>
   );
@@ -578,7 +576,7 @@ export default function ContactDetailScreen() {
                       <TransactionRow
                         key={tx.id}
                         transaction={{ ...tx, label: getTransactionTitle(tx, contactName) }}
-                        onPress={() => { tapHaptic(); router.push({ pathname: '/transaction-detail', params: { transactionId: tx.id } }); }}
+                        onPress={() => { tapHaptic(); openTransactionDetail(tx.id); }}
                       />
                     ))}
                   </View>

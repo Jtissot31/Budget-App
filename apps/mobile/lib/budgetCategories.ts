@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getCategoryBudgets, getCategorySpentForMonth } from '@/lib/db';
 import { isSameMonth } from '@/lib/budgetMonth';
 import { getMockBudgetSnapshotForMonth } from '@/lib/budgetMonthMock';
+import type { Category } from '@/types';
 
 export type BudgetCategory = {
   id: string;
@@ -285,4 +286,20 @@ export async function syncSpentFromDatabase(): Promise<void> {
   } catch (error) {
     console.warn('[budgetCategories] syncSpentFromDatabase failed', error);
   }
+}
+
+export function mapBudgetCategoryToCategory(budgetCategory: BudgetCategory): Category {
+  return {
+    id: budgetCategory.id,
+    name: budgetCategory.name,
+    icon: budgetCategory.icon,
+    color: budgetCategory.color,
+  };
+}
+
+/** Budget page categories (AsyncStorage), shaped for pickers and inference. */
+export async function loadBudgetCategoriesForPicker(monthDate = new Date()): Promise<Category[]> {
+  await initializeCategories();
+  const budgets = await getCategoriesForMonth(monthDate);
+  return budgets.map(mapBudgetCategoryToCategory);
 }

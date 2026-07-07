@@ -10,6 +10,7 @@ import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { radius, spacing, typography } from '@/constants/theme';
 import { getMerchantOverrides, getTransactions, sortTransactionsNewestFirst } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
+import { normalizeMerchantKey } from '@/lib/merchantLogo';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { normalizeArticleSearch, parseItemizedNote } from '@/lib/itemizedNote';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
@@ -64,15 +65,16 @@ export default function MerchantReceiptsScreen() {
   useRefreshOnFocus(load);
 
   const override = useMemo(
-    () => overrides.find((item) => item.originalName === merchantKey),
+    () => overrides.find((item) => normalizeMerchantKey(item.originalName) === normalizeMerchantKey(merchantKey)),
     [merchantKey, overrides],
   );
   const merchantName = override?.displayName?.trim() || merchantKey || 'Marchand';
 
   const receiptEntries = useMemo(() => {
     if (!merchantKey || override?.hidden) return [];
+    const merchantNorm = normalizeMerchantKey(merchantKey);
     const merchantTransactions = sortTransactionsNewestFirst(
-      transactions.filter((tx) => tx.label === merchantKey),
+      transactions.filter((tx) => normalizeMerchantKey(tx.label) === merchantNorm),
     );
 
     return merchantTransactions.flatMap((tx): ReceiptEntry[] => {

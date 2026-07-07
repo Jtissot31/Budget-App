@@ -1,6 +1,6 @@
 import type { AppColors } from '@/constants/theme';
 import { darkColors, ICON_WELL_SIZE, radius } from '@/constants/theme';
-import type { ViewStyle } from 'react-native';
+import type { ImageStyle, ViewStyle } from 'react-native';
 
 export { ICON_GLYPH_SIZE, ICON_WELL_SIZE } from '@/constants/theme';
 
@@ -36,7 +36,25 @@ export function userPickedIconCornerRadius(size: number): number {
 }
 
 export function userPickedIconLogoSize(containerSize: number): number {
-  return containerSize * USER_PICKED_ICON_LOGO_INSET_RATIO;
+  return Math.round(containerSize * USER_PICKED_ICON_LOGO_INSET_RATIO);
+}
+
+/** Integer inset so remote logos sit centered without fractional stretch. */
+export function userPickedIconLogoInset(containerSize: number): number {
+  return Math.round((containerSize - userPickedIconLogoSize(containerSize)) / 2);
+}
+
+/** Absolute layout for favicons inside a sized, overflow-hidden well. */
+export function remoteLogoImageStyle(containerSize: number): ImageStyle {
+  const inset = userPickedIconLogoInset(containerSize);
+  const logoSide = userPickedIconLogoSize(containerSize);
+  return {
+    position: 'absolute',
+    top: inset,
+    left: inset,
+    width: logoSide,
+    height: logoSide,
+  };
 }
 
 export function normalizeUserIconColor(value?: string | null): string | null {

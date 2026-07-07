@@ -106,6 +106,7 @@ import { formatMoneyAmountInput } from '@/lib/formatMoneyAmountInput';
 import {
   formatNumberDisplay,
   formatNumberInputFromValue,
+  parseFormattedNumber,
   parseFormattedNumberOrZero,
 } from '@/lib/formatNumber';
 import {
@@ -114,7 +115,7 @@ import {
   normalizeSearch,
 } from '@/lib/categoryInference';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
-import { buildArticlesNoteLine, parseItemizedNote, type ItemizedNote } from '@/lib/itemizedNote';
+import { buildArticlesNoteLine, getRemainingArticleBudget, isArticlePriceWithinBudget, parseItemizedNote, type ItemizedNote } from '@/lib/itemizedNote';
 import { parseScanItemsFromRoute } from '@/lib/receiptScan';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { getLocalDateInputValue, toLocalDateInputValue } from '@/lib/localDateInput';
@@ -713,6 +714,12 @@ export default function AddTransactionScreen() {
     () => articles.reduce((sum, article) => sum + article.price, 0),
     [articles],
   );
+  const maxArticlePrice = useMemo(() => {
+    if (type !== 'expense') return undefined;
+    const transactionTotal = parseFormattedNumber(amount);
+    if (!Number.isFinite(transactionTotal) || transactionTotal <= 0) return 0;
+    return getRemainingArticleBudget(transactionTotal, articles);
+  }, [amount, articles, type]);
   const categorySearchText = useMemo(() => {
     if (type === 'transfer' && (transferMode === 'person' || transferMode === 'person_from')) {
       return [transferReason, label].filter(Boolean).join(' ');
@@ -736,7 +743,14 @@ export default function AddTransactionScreen() {
 
   const handleAddArticle = useCallback(
     (name: string, price: string, articleCategoryId: string | null, categoryName: string | null) => {
-      const priceValue = Number(price) || 0;
+      const priceValue = parseFormattedNumber(price);
+      if (!Number.isFinite(priceValue) || priceValue <= 0) return;
+      if (type === 'expense') {
+        const transactionTotal = parseFormattedNumber(amount);
+        if (!Number.isFinite(transactionTotal) || transactionTotal <= 0) return;
+        const remaining = getRemainingArticleBudget(transactionTotal, articles);
+        if (!isArticlePriceWithinBudget(priceValue, remaining)) return;
+      }
       setArticles((current) => [
         ...current,
         {
@@ -747,7 +761,7 @@ export default function AddTransactionScreen() {
         },
       ]);
     },
-    [],
+    [amount, articles, type],
   );
 
   const handleRemoveArticle = useCallback((index: number) => {
@@ -2334,8 +2348,7 @@ export default function AddTransactionScreen() {
                         <AddArticleSheet
                           variant="inline"
                           visible={inlineArticleExpanded}
-                          defaultCategoryId={categoryId}
-                          merchantHint={label}
+                          maxArticlePrice={maxArticlePrice}
                           scrollToOffset={scrollToInlineArticle}
                           onAdd={(name, price, articleCategoryId, categoryName) =>
                             handleAddArticle(name, price, articleCategoryId, categoryName)

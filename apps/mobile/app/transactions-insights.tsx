@@ -42,6 +42,7 @@ import {
 } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
+import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import { ensureDbReady } from '@/lib/init';
 import {
   aggregateExpenseCategories,
@@ -215,18 +216,18 @@ export default function TransactionsInsightsScreen() {
     (transactionId: string) => {
       tapHaptic();
       void markSeen([transactionId]);
-      router.push({ pathname: '/transaction-detail', params: { transactionId } });
+      openTransactionDetail(transactionId);
     },
-    [markSeen, router],
+    [markSeen],
   );
 
   const handleEnterInfo = useCallback(
     (transactionId: string) => {
       tapHaptic();
       void markSeen([transactionId]);
-      router.push({ pathname: '/transaction-detail', params: { transactionId } });
+      openTransactionDetail(transactionId);
     },
-    [markSeen, router],
+    [markSeen],
   );
 
   const handleIgnore = useCallback(

@@ -28,6 +28,8 @@ export function resolvePaymentStatusBadge(
     /** Dépôt de paie estimé — « REÇU » seulement si un revenu réel est confirmé. */
     isEstimatedPay?: boolean;
     hasConfirmedIncome?: boolean;
+    /** Paiement récurrent / dépense — « PAYÉ » seulement si une transaction correspondante existe. */
+    hasConfirmedPayment?: boolean;
   } = {},
 ) {
   if (eventDateKey > todayKey) {
@@ -39,5 +41,7 @@ export function resolvePaymentStatusBadge(
     return 'ESTIMÉ';
   }
   if (options.isIncome || options.isPay) return 'REÇU';
-  return 'PAYÉ';
+  if (options.hasConfirmedPayment) return 'PAYÉ';
+  if (eventDateKey === todayKey) return "AUJOURD'HUI";
+  return 'EN ATTENTE';
 }

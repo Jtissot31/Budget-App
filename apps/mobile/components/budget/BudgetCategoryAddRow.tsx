@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { jakartaSemiboldText, radius, spacing } from '@/constants/theme';
+import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
+import { jakartaSemiboldText, spacing } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -9,8 +9,7 @@ type Props = {
 };
 
 export function BudgetCategoryAddRow({ onPress }: Props) {
-  const { colors, isLight } = useAppTheme();
-  const iconWellBg = isLight ? colors.surfaceElevated : colors.input;
+  const { colors } = useAppTheme();
 
   return (
     <Pressable
@@ -23,17 +22,7 @@ export function BudgetCategoryAddRow({ onPress }: Props) {
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
       <View style={styles.mainRow}>
-        <View
-          style={[
-            styles.iconWell,
-            {
-              backgroundColor: iconWellBg,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <Ionicons name="add" size={18} color={colors.textSecondary} />
-        </View>
+        <BudgetCategoryIcon variant="add" />
 
         <Text
           style={[styles.label, jakartaSemiboldText, { color: colors.textSecondary }]}
@@ -58,15 +47,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-  },
-  iconWell: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
   },
   label: {
     flex: 1,

@@ -10,66 +10,82 @@ import {
   Text,
   TextInput,
   View,
+  type TextStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { DetailSingleLineRow, DetailSubSection } from '@/components/DetailSectionRows';
+import { EditableField } from '@/components/EditableField';
 import { GhostNumpad } from '@/components/GhostNumpad';
-import { getCategoryIconName } from '@/constants/categoryOptions';
+import { NumericAmountInput } from '@/components/NumericAmountInput';
+import type { SettingsPickerOption } from '@/components/SettingsPickerSheet';
 import {
-  articlesReceiptTypography,
-  chipSelectableShellStyle,
   containerSurfaceStyle,
   detailSectionLabelStyle,
   detailSubSectionHeaderStyle,
-  jakartaBoldText,
+  moneyAmountTypography,
   radius,
   spacing,
-  tagContainerStyle,
-  tagTypography,
-  typography,
   typographyKit,
 } from '@/constants/theme';
-import { getCategorySearchChoices, inferCategoryId } from '@/lib/categoryInference';
-import {
-  filterActiveCategoryBudgets,
-  getArticleNameHistory,
-  getCategories,
-  getCategoryBudgets,
-} from '@/lib/db';
+import { loadBudgetCategoriesForPicker } from '@/lib/budgetCategories';
+import { inferCategoryId } from '@/lib/categoryInference';
+import { dataEvents } from '@/lib/events';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { formatMoneyAmountInput } from '@/lib/formatMoneyAmountInput';
+import { parseFormattedNumber } from '@/lib/formatNumber';
+import { isArticlePriceWithinBudget } from '@/lib/itemizedNote';
 import { tapHaptic } from '@/lib/haptics';
-import { normalizeArticleSearch } from '@/lib/itemizedNote';
-import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
+import { detailRowEditableContainer, detailRowSelectValueText } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
 import type { Category } from '@/types';
 
-const FRENCH_ARTICLE_PRESETS = [
-  'Pain', 'Lait', 'Café', 'Eau', 'Légumes', 'Fruits', 'Viande', 'Fromage',
-  'Beurre', 'Œufs', 'Pâtes', 'Riz', 'Sucre', 'Sel', 'Huile', 'Farine',
-  'Yaourt', 'Jus', 'Savon', 'Shampoing',
-];
+const detailRowSelectTextStyle: TextStyle = {
+  ...detailRowSelectValueText,
+  textAlign: 'right',
+};
 
 type AddArticleStep = 'name' | 'category' | 'price';
 type AddArticleVariant = 'sheet' | 'inline';
+
+export type InlineArticleScrollTarget = {
+  /** Y of the name input row top, relative to the inline form container. */
+  nameTop: number;
+  /** Y of the bottom edge of the name input, relative to the inline form container. */
+  nameBottom: number;
+  /** Bottom edge to keep above the keyboard (suggestions list or name input). */
+  extentBottom: number;
+};
+
+export function isInlineArticleScrollTargetReady(target: InlineArticleScrollTarget): boolean {
+  return target.extentBottom > 0 || target.nameBottom > 0;
+}
 
 export type AddArticleSheetProps = {
   visible: boolean;
   onAdd: (name: string, price: string, categoryId: string | null, categoryName: string | null) => void;
   onClose: () => void;
-  defaultCategoryId?: string | null;
-  merchantHint?: string;
   variant?: AddArticleVariant;
+  /** Max price allowed for this article (transaction total minus existing articles). Omit for no cap. */
+  maxArticlePrice?: number;
   scrollToOffset?: (localY: number, offset?: number) => void;
+  onInlineScrollTargetChange?: (target: InlineArticleScrollTarget) => void;
+  onNameFocusChange?: (focused: boolean) => void;
+  onContentLayout?: () => void;
 };
+
+const MIN_NAME_CHARS_FOR_INFERENCE = 2;
 
 export function AddArticleSheet({
   visible,
   onAdd,
   onClose,
-  defaultCategoryId,
-  merchantHint,
   variant = 'sheet',
+  maxArticlePrice,
   scrollToOffset,
+  onInlineScrollTargetChange,
+  onNameFocusChange,
+  onContentLayout,
 }: AddArticleSheetProps) {
   const { colors, isLight } = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -80,12 +96,16 @@ export function AddArticleSheet({
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [categoryManuallySelected, setCategoryManuallySelected] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [suggestionPool, setSuggestionPool] = useState<string[]>([]);
   const nameInputRef = useRef<TextInput>(null);
+  const nameInputFocusedRef = useRef(false);
   const sheetScrollRef = useRef<ScrollView>(null);
+  const nameSectionY = useRef(0);
+  const nameInputBottomY = useRef(0);
+  const formExtentBottomY = useRef(0);
   const categorySectionY = useRef(0);
   const priceSectionY = useRef(0);
   const numpadSectionY = useRef(0);
+  const prevInlineExtentBottom = useRef(0);
 
   const displayPrice = useMemo(
     () => (price.length ? formatMoneyAmountInput(price) : '0,00'),
@@ -94,69 +114,82 @@ export function AddArticleSheet({
 
   useEffect(() => {
     if (!visible) return;
-    setCategoryId(defaultCategoryId ?? null);
+    setCategoryId(null);
     setCategoryManuallySelected(false);
-    getArticleNameHistory()
-      .then((history) => {
-        const historyLower = new Set(history.map((n) => n.toLowerCase()));
-        const extras = FRENCH_ARTICLE_PRESETS.filter((p) => !historyLower.has(p.toLowerCase()));
-        setSuggestionPool([...history, ...extras]);
-      })
-      .catch(() => {
-        setSuggestionPool(FRENCH_ARTICLE_PRESETS);
-      });
-    void Promise.all([getCategories(), getCategoryBudgets()])
-      .then(([cats, budgets]) => {
-        const budgetIds = new Set(filterActiveCategoryBudgets(budgets).map((b) => b.categoryId));
-        setCategories(cats.filter((c) => c.name !== 'Revenus' && budgetIds.has(c.id)));
-      })
-      .catch(() => {
-        void getCategories().then((cats) => setCategories(cats.filter((c) => c.name !== 'Revenus')));
-      });
-  }, [defaultCategoryId, visible]);
+    let cancelled = false;
+
+    const loadCategories = () =>
+      loadBudgetCategoriesForPicker()
+        .then((cats) => {
+          if (!cancelled) setCategories(cats);
+        })
+        .catch(() => {
+          if (!cancelled) setCategories([]);
+        });
+
+    void loadCategories();
+    const unsubscribe = dataEvents.subscribe(() => {
+      void loadCategories();
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [visible]);
 
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
 
   const inferredCategoryId = useMemo(() => {
-    const searchText = name.trim() || merchantHint?.trim() || '';
-    if (!searchText || categories.length === 0) return null;
-    return inferCategoryId(searchText, categories, defaultCategoryId ?? null);
-  }, [categories, defaultCategoryId, merchantHint, name]);
+    const articleName = name.trim();
+    if (articleName.length < MIN_NAME_CHARS_FOR_INFERENCE || categories.length === 0) return null;
+    return inferCategoryId(articleName, categories, null);
+  }, [categories, name]);
 
   const effectiveCategoryId = categoryManuallySelected ? categoryId : (categoryId ?? inferredCategoryId);
 
-  const categoryChoices = useMemo(
-    () => getCategorySearchChoices(name.trim() || merchantHint?.trim() || '', categories, effectiveCategoryId),
-    [categories, effectiveCategoryId, merchantHint, name],
+  const categoryOptions = useMemo<SettingsPickerOption<string>[]>(
+    () => categories.map((category) => ({ id: category.id, label: category.name })),
+    [categories],
   );
 
-  const filteredSuggestions = useMemo(() => {
-    const query = name.trim();
-    if (!query) return [];
-    const normalizedQuery = normalizeArticleSearch(query);
-    const prefixMatches: string[] = [];
-    const containsMatches: string[] = [];
-    for (const item of suggestionPool) {
-      const normalizedItem = normalizeArticleSearch(item);
-      if (normalizedItem === normalizedQuery) continue;
-      if (normalizedItem.startsWith(normalizedQuery)) {
-        prefixMatches.push(item);
-      } else if (normalizedItem.includes(normalizedQuery)) {
-        containsMatches.push(item);
-      }
-    }
-    return [...prefixMatches, ...containsMatches].slice(0, 6);
-  }, [name, suggestionPool]);
+  const categoryLabel = useMemo(() => {
+    if (!effectiveCategoryId) return '';
+    return categoryById.get(effectiveCategoryId)?.name ?? '';
+  }, [categoryById, effectiveCategoryId]);
 
-  const showSuggestionSection = name.trim().length > 0;
+  const trimmedName = name.trim();
+
+  const buildInlineScrollTarget = useCallback((): InlineArticleScrollTarget => {
+    const nameTop = nameSectionY.current;
+    const nameBottom =
+      nameInputBottomY.current > 0 ? nameTop + nameInputBottomY.current : nameTop;
+    const extentBottom = formExtentBottomY.current > 0 ? formExtentBottomY.current : nameBottom;
+    return { nameTop, nameBottom, extentBottom };
+  }, []);
 
   const scrollToY = useCallback((y: number, offset = 16) => {
-    if (isInline && scrollToOffset) {
-      scrollToOffset(y, offset);
+    if (isInline) {
+      if (scrollToOffset) {
+        scrollToOffset(y, offset);
+      }
       return;
     }
     sheetScrollRef.current?.scrollTo({ y: Math.max(y - offset, 0), animated: true });
   }, [isInline, scrollToOffset]);
+
+  const notifyInlineContentLayout = useCallback((force = false) => {
+    if (!isInline) return;
+    const target = buildInlineScrollTarget();
+    const extentChanged = target.extentBottom !== prevInlineExtentBottom.current;
+    prevInlineExtentBottom.current = target.extentBottom;
+    if (isInlineArticleScrollTargetReady(target)) {
+      onInlineScrollTargetChange?.(target);
+    }
+    if (force || extentChanged) {
+      onContentLayout?.();
+    }
+  }, [buildInlineScrollTarget, isInline, onContentLayout, onInlineScrollTargetChange]);
 
   const scrollToPriceNumpad = useCallback(() => {
     const targetY =
@@ -193,27 +226,15 @@ export function AddArticleSheet({
     });
   }, [categories.length, goToPriceStep, name, scrollToY]);
 
-  const selectSuggestion = useCallback((item: string) => {
-    tapHaptic();
-    setName(item);
-    Keyboard.dismiss();
-    nameInputRef.current?.blur();
-    if (categories.length === 0) {
-      setStep('price');
-      scrollToPriceNumpad();
-      return;
-    }
-    setStep('category');
-    requestAnimationFrame(() => {
-      scrollToY(categorySectionY.current);
-    });
-  }, [categories.length, scrollToPriceNumpad, scrollToY]);
-
   const onCategorySelect = useCallback((selectedCategoryId: string) => {
     setCategoryId(selectedCategoryId);
     setCategoryManuallySelected(true);
+    if (isInline) {
+      Keyboard.dismiss();
+      return;
+    }
     goToPriceStep();
-  }, [goToPriceStep]);
+  }, [goToPriceStep, isInline]);
 
   const reset = useCallback(() => {
     setName('');
@@ -221,28 +242,58 @@ export function AddArticleSheet({
     setStep('name');
     setCategoryId(null);
     setCategoryManuallySelected(false);
+    nameInputFocusedRef.current = false;
+    prevInlineExtentBottom.current = 0;
   }, []);
 
   useEffect(() => {
     if (!visible) return;
     setStep('name');
+    prevInlineExtentBottom.current = 0;
     const focusTimer = setTimeout(() => {
-      if (isInline) {
-        scrollToY(0, 24);
-      }
       nameInputRef.current?.focus();
     }, isInline ? 120 : 400);
     return () => clearTimeout(focusTimer);
-  }, [isInline, scrollToY, visible]);
+  }, [isInline, visible]);
 
   const handleClose = () => {
     reset();
     onClose();
   };
 
+  const hasBudgetCap = maxArticlePrice != null && Number.isFinite(maxArticlePrice);
+  const budgetExhausted = hasBudgetCap && maxArticlePrice <= 0;
+
+  const handlePriceChange = useCallback((next: string) => {
+    if (!hasBudgetCap || budgetExhausted) {
+      if (!budgetExhausted) setPrice(next);
+      return;
+    }
+    if (next.length === 0) {
+      setPrice('');
+      return;
+    }
+    const parsed = parseFormattedNumber(next);
+    if (!Number.isFinite(parsed) || isArticlePriceWithinBudget(parsed, maxArticlePrice)) {
+      setPrice(next);
+    }
+  }, [budgetExhausted, hasBudgetCap, maxArticlePrice]);
+
+  const parsedPrice = parseFormattedNumber(price);
+  const hasValidPrice = price.length > 0 && Number.isFinite(parsedPrice) && parsedPrice > 0;
+  const priceWithinBudget =
+    budgetExhausted
+      ? false
+      : !hasBudgetCap
+        ? hasValidPrice
+        : hasValidPrice && isArticlePriceWithinBudget(parsedPrice, maxArticlePrice);
+  const canAdvanceFromName = trimmedName.length > 0;
+  const canAdvanceFromCategory = effectiveCategoryId != null || categories.length === 0;
+  const canSave = canAdvanceFromName && canAdvanceFromCategory && priceWithinBudget;
+
   const handleSave = () => {
     const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!trimmed || !canSave) return;
     tapHaptic();
     const resolvedCategoryId = categoryManuallySelected ? categoryId : (categoryId ?? inferredCategoryId);
     const resolvedCategory = resolvedCategoryId ? categoryById.get(resolvedCategoryId) : undefined;
@@ -251,16 +302,52 @@ export function AddArticleSheet({
     onClose();
   };
 
-  const canSave = name.trim().length > 0;
+  const handlePrimaryAction = () => {
+    if (!isInline && step === 'name') {
+      goToCategoryStep();
+      return;
+    }
+    if (!isInline && step === 'category') {
+      if (!canAdvanceFromCategory) return;
+      goToPriceStep();
+      return;
+    }
+    handleSave();
+  };
+
+  const primaryLabel = !isInline && step !== 'price' ? 'Suivant' : 'Ajouter';
+  const primaryDisabled = isInline ? !canSave : (
+    step === 'name' ? !canAdvanceFromName : step === 'category' ? !canAdvanceFromCategory : !canSave
+  );
   const inputSurface = containerSurfaceStyle(isLight);
-  const chipBorderMuted = colors.border;
 
   if (isInline && !visible) {
     return null;
   }
 
-  const nameField = (
-    <View style={styles.articleFieldGroup}>
+  const categoryPickerField = (
+    <EditableField
+      type="select"
+      value={categoryLabel}
+      selectedId={effectiveCategoryId ?? ''}
+      selectOptions={categoryOptions}
+      pickerTitle="Catégorie"
+      onSave={onCategorySelect}
+      placeholder="Choisir une catégorie"
+      accessibilityLabel="Choisir la catégorie"
+      align="right"
+      containerStyle={detailRowEditableContainer}
+      textStyle={detailRowSelectTextStyle}
+    />
+  );
+
+  const sheetNameField = (
+    <View
+      style={styles.articleFieldGroup}
+      onLayout={(event) => {
+        nameSectionY.current = event.nativeEvent.layout.y;
+      }}
+    >
       <Text style={[detailSubSectionHeaderStyle(), { color: colors.textMuted }]}>Nom</Text>
       <View
         style={[
@@ -273,6 +360,7 @@ export function AddArticleSheet({
         ]}
       >
         <TextInput
+          key="article-name-input"
           ref={nameInputRef}
           style={[styles.articleNameInput, { color: colors.text }]}
           placeholder="Nom de l'article…"
@@ -282,9 +370,21 @@ export function AddArticleSheet({
           autoComplete="off"
           onChangeText={(text) => {
             setName(text);
-            if (step === 'price' || step === 'category') setStep('name');
+            if (step === 'price' || step === 'category') {
+              setStep('name');
+              setCategoryId(null);
+              setCategoryManuallySelected(false);
+            }
           }}
-          onFocus={() => setStep('name')}
+          onFocus={() => {
+            nameInputFocusedRef.current = true;
+            setStep('name');
+            onNameFocusChange?.(true);
+          }}
+          onBlur={() => {
+            nameInputFocusedRef.current = false;
+            onNameFocusChange?.(false);
+          }}
           returnKeyType="next"
           blurOnSubmit={false}
           onSubmitEditing={goToCategoryStep}
@@ -293,114 +393,175 @@ export function AddArticleSheet({
     </View>
   );
 
-  const suggestionField = showSuggestionSection ? (
-    <View style={styles.articleSuggestionsGroup}>
-      <Text style={[detailSubSectionHeaderStyle(), { color: colors.textMuted }]}>Suggestions</Text>
-      <View style={styles.articleChipsRow}>
-        {filteredSuggestions.length > 0 ? (
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator={false}
-            keyboardShouldPersistTaps="always"
-            contentContainerStyle={styles.articleChipsContent}
-          >
-            {filteredSuggestions.map((item) => (
-              <Pressable
-                key={item}
-                onPress={() => selectSuggestion(item)}
-                style={({ pressed }) => [
-                  tagContainerStyle({
-                    backgroundColor: colors.surfaceElevated,
-                    borderColor: colors.border,
-                    bordered: true,
-                    pill: true,
-                  }),
-                  pressed && styles.articlePressed,
-                ]}
-              >
-                <Text style={tagTypography({ color: colors.text })}>{item}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        ) : null}
+  const inlineNameAmountRow = (
+    <View
+      style={styles.inlineNameAmountRow}
+      onLayout={(event) => {
+        const { y, height } = event.nativeEvent.layout;
+        nameSectionY.current = y;
+        nameInputBottomY.current = height;
+        notifyInlineContentLayout();
+      }}
+    >
+      <TextInput
+        key="article-name-input"
+        ref={nameInputRef}
+        style={[styles.inlineNameInput, { color: colors.text }]}
+        placeholder="Nom article…"
+        placeholderTextColor={colors.textMuted}
+        value={name}
+        autoCorrect={false}
+        autoComplete="off"
+        onChangeText={(text) => {
+          setName(text);
+          if (!text.trim()) {
+            setCategoryId(null);
+            setCategoryManuallySelected(false);
+          }
+        }}
+        onFocus={() => {
+          nameInputFocusedRef.current = true;
+          notifyInlineContentLayout(true);
+          onNameFocusChange?.(true);
+        }}
+        onBlur={() => {
+          nameInputFocusedRef.current = false;
+          onNameFocusChange?.(false);
+        }}
+        returnKeyType="done"
+        blurOnSubmit={false}
+        onSubmitEditing={() => {
+          Keyboard.dismiss();
+          nameInputRef.current?.blur();
+        }}
+      />
+      <View style={styles.inlineAmountSlot}>
+        <NumericAmountInput
+          style={[
+            styles.inlineAmountInput,
+            moneyAmountTypography({ tier: 'row' }),
+            { color: colors.text },
+          ]}
+          placeholder="0,00"
+          placeholderTextColor={colors.textMuted}
+          value={price}
+          onChangeText={handlePriceChange}
+          keyboardType="decimal-pad"
+          accessibilityLabel="Montant de l'article"
+        />
+        <Text style={[styles.inlineAmountCurrency, typographyKit.metaMedium, { color: colors.textMuted }]}>
+          $
+        </Text>
       </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Ajouter l'article"
+        disabled={!canSave}
+        onPress={handleSave}
+        hitSlop={8}
+        style={({ pressed }) => [
+          styles.inlineConfirmBtn,
+          pressed && canSave && styles.pressed,
+        ]}
+      >
+        <Ionicons
+          name="checkmark-circle"
+          size={22}
+          color={canSave ? colors.primary : colors.textMuted}
+          style={!canSave ? styles.inlineConfirmBtnDisabled : undefined}
+        />
+      </Pressable>
     </View>
+  );
+
+  const inlineBudgetHint = hasBudgetCap && !budgetExhausted ? (
+    <Text style={[styles.inlineBudgetHint, typographyKit.microMedium, { color: colors.textMuted }]}>
+      Max. {formatDisplayMoneyAbsolute(maxArticlePrice)}
+    </Text>
   ) : null;
 
-  const categoryField = categories.length > 0 ? (
+  const inlineBudgetError = budgetExhausted ? (
+    <Text style={[styles.inlineBudgetError, typographyKit.microMedium, { color: colors.danger }]}>
+      Montant transaction entièrement réparti
+    </Text>
+  ) : null;
+
+  const inlineCancelLink = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Annuler"
+      onPress={handleClose}
+      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+      style={({ pressed }) => [styles.inlineCancelLink, pressed && styles.pressed]}
+    >
+      <Text style={[typographyKit.microMedium, { color: colors.textMuted }]}>Annuler</Text>
+    </Pressable>
+  );
+
+  const sheetCategoryField = categories.length > 0 ? (
     <View
-      style={styles.articleFieldGroup}
       onLayout={(event) => {
         categorySectionY.current = event.nativeEvent.layout.y;
       }}
     >
-      <Text style={[detailSubSectionHeaderStyle(), { color: colors.textMuted }]}>Catégorie</Text>
-      <View
-        style={[
-          styles.articleCategoryShell,
-          {
-            backgroundColor: inputSurface.backgroundColor,
-            borderColor: inputSurface.borderColor,
-            borderWidth: inputSurface.borderWidth,
-          },
-        ]}
-      >
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="always"
-          contentContainerStyle={styles.articleCategoryContent}
-        >
-          {categoryChoices.map((category) => {
-            const selected = effectiveCategoryId === category.id;
-            const isInferredOnly =
-              selected && !categoryManuallySelected && categoryId === null && inferredCategoryId === category.id;
-            return (
-              <Pressable
-                key={category.id}
-                onPress={() => onCategorySelect(category.id)}
-                style={({ pressed }) => [
-                  styles.articleCategoryChip,
-                  chipSelectableShellStyle(selected ? colors.primary : chipBorderMuted),
-                  {
-                    backgroundColor: selected ? colors.successMuted : colors.surfaceElevated,
-                  },
-                  pressed && styles.articlePressed,
-                ]}
-              >
-                <Ionicons
-                  name={getCategoryIconName(category)}
-                  size={13}
-                  color={selected ? colors.primary : colors.textSecondary}
-                />
-                <Text
-                  style={[
-                    styles.articleCategoryChipText,
-                    singleLineLabelStyle,
-                    { color: selected ? colors.primary : colors.text },
-                  ]}
-                  {...chipLabelTextProps()}
-                >
-                  {isInferredOnly ? `→ ${category.name}` : category.name}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
+      <DetailSubSection
+        section={{
+          title: 'Catégorie',
+          rows: [
+            {
+              label: 'Catégorie',
+              value: categoryLabel,
+              icon: 'pricetag-outline',
+              valueContent: categoryPickerField,
+            },
+          ],
+        }}
+        colors={colors}
+      />
     </View>
   ) : null;
 
-  const priceField = (
+  const inlineCategoryField = categories.length > 0 ? (
+    <View
+      style={[styles.inlineCategoryRow, { borderTopColor: colors.border }]}
+      onLayout={() => {
+        notifyInlineContentLayout();
+      }}
+    >
+      <DetailSingleLineRow
+        row={{
+          label: 'Catégorie',
+          value: categoryLabel,
+          icon: 'pricetag-outline',
+          valueContent: categoryPickerField,
+        }}
+        colors={colors}
+        isLast
+        rowPaddingVertical={spacing.sm}
+      />
+    </View>
+  ) : null;
+
+  const sheetPriceField = (
     <View
       style={styles.articleFieldGroup}
       onLayout={(event) => {
         priceSectionY.current = event.nativeEvent.layout.y;
       }}
     >
-      <Text style={[detailSubSectionHeaderStyle(), { color: colors.textMuted }]}>Prix</Text>
+      <View style={styles.articlePriceHeaderRow}>
+        <Text style={[detailSubSectionHeaderStyle(), { color: colors.textMuted }]}>Prix</Text>
+        {hasBudgetCap && !budgetExhausted ? (
+          <Text style={[styles.articlePriceBudgetHint, typographyKit.metaMedium, { color: colors.textMuted }]}>
+            Max. {formatDisplayMoneyAbsolute(maxArticlePrice)}
+          </Text>
+        ) : null}
+      </View>
+      {budgetExhausted ? (
+        <Text style={[styles.articlePriceBudgetError, typographyKit.metaMedium, { color: colors.danger }]}>
+          Montant transaction entièrement réparti
+        </Text>
+      ) : null}
       <View
         style={[
           styles.articlePriceShell,
@@ -411,10 +572,10 @@ export function AddArticleSheet({
           },
         ]}
       >
-        <Text style={[styles.articleCurrencySymbol, articlesReceiptTypography('medium'), { color: colors.textMuted }]}>
+        <Text style={[styles.articleCurrencySymbol, moneyAmountTypography({ tier: 'stat' }), { color: colors.textMuted }]}>
           $
         </Text>
-        <Text style={[styles.articlePriceInput, articlesReceiptTypography('medium'), { color: colors.text }]}>
+        <Text style={[styles.articlePriceInput, moneyAmountTypography({ tier: 'stat' }), { color: colors.text }]}>
           {displayPrice}
         </Text>
       </View>
@@ -423,7 +584,7 @@ export function AddArticleSheet({
           numpadSectionY.current = event.nativeEvent.layout.y;
         }}
       >
-        <GhostNumpad value={price} onChange={setPrice} />
+        <GhostNumpad value={price} onChange={handlePriceChange} />
       </View>
     </View>
   );
@@ -444,49 +605,38 @@ export function AddArticleSheet({
       </Pressable>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Confirmer l'article"
-        disabled={!canSave}
-        onPress={handleSave}
+        accessibilityLabel={!isInline && step !== 'price' ? 'Étape suivante' : "Confirmer l'article"}
+        disabled={primaryDisabled}
+        onPress={handlePrimaryAction}
         style={({ pressed }) => [
           styles.articleSaveButton,
           { backgroundColor: colors.primary },
-          !canSave && styles.articleSaveButtonDisabled,
-          pressed && canSave && styles.pressed,
+          primaryDisabled && styles.articleSaveButtonDisabled,
+          pressed && !primaryDisabled && styles.pressed,
         ]}
       >
-        <Text style={styles.articleSaveButtonText}>Ajouter</Text>
+        <Text style={styles.articleSaveButtonText}>{primaryLabel}</Text>
       </Pressable>
     </View>
   );
 
-  const scrollableFields = (
-    <>
-      {categoryField}
-      {priceField}
-    </>
+  const inlineFormBody = (
+    <View
+      style={styles.inlineArticleForm}
+      onLayout={(event) => {
+        formExtentBottomY.current = event.nativeEvent.layout.height;
+        notifyInlineContentLayout();
+      }}
+    >
+      {inlineNameAmountRow}
+      {inlineBudgetHint}
+      {inlineBudgetError}
+      {inlineCategoryField}
+      {inlineCancelLink}
+    </View>
   );
 
-  const formBody = isInline ? (
-    <View
-      style={[
-        styles.inlineArticleForm,
-        {
-          backgroundColor: inputSurface.backgroundColor,
-          borderColor: inputSurface.borderColor,
-          borderWidth: inputSurface.borderWidth,
-        },
-      ]}
-    >
-      <View style={styles.inlineArticleHeader}>
-        <Text style={[detailSectionLabelStyle(), { color: colors.textMuted }]}>ARTICLE</Text>
-        <Text style={[typographyKit.bodyBold, { color: colors.text }]}>Ajouter un article</Text>
-      </View>
-      {nameField}
-      {suggestionField}
-      {scrollableFields}
-      {actionRow}
-    </View>
-  ) : (
+  const sheetFormBody = (
     <>
       <View style={styles.articleSheetHeader}>
         <Text style={[detailSectionLabelStyle(), { color: colors.textMuted }]}>ARTICLE</Text>
@@ -494,8 +644,7 @@ export function AddArticleSheet({
       </View>
 
       <View style={styles.articleSheetFixedTop}>
-        {nameField}
-        {suggestionField}
+        {sheetNameField}
       </View>
 
       <ScrollView
@@ -506,7 +655,8 @@ export function AddArticleSheet({
         style={styles.articleSheetScroll}
         contentContainerStyle={styles.articleSheetScrollContent}
       >
-        {scrollableFields}
+        {sheetCategoryField}
+        {sheetPriceField}
       </ScrollView>
 
       {actionRow}
@@ -514,7 +664,7 @@ export function AddArticleSheet({
   );
 
   if (isInline) {
-    return formBody;
+    return inlineFormBody;
   }
 
   return (
@@ -541,7 +691,7 @@ export function AddArticleSheet({
           onStartShouldSetResponder={() => true}
         >
           <View style={[styles.articleSheetHandle, { backgroundColor: colors.border }]} />
-          {formBody}
+          {sheetFormBody}
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -579,13 +729,66 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   inlineArticleForm: {
-    borderRadius: radius.md,
-    padding: spacing.md,
-    gap: spacing.md,
-    marginTop: spacing.sm,
-  },
-  inlineArticleHeader: {
     gap: spacing.xs,
+    overflow: 'visible' as const,
+    zIndex: 10,
+  },
+  inlineNameAmountRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  inlineNameInput: {
+    ...typographyKit.bodyMedium,
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 0,
+    backgroundColor: 'transparent',
+  },
+  inlineAmountSlot: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flexShrink: 0,
+    minWidth: 72,
+    gap: 2,
+  },
+  inlineAmountInput: {
+    minWidth: 48,
+    maxWidth: 80,
+    paddingVertical: 0,
+    textAlign: 'right' as const,
+    backgroundColor: 'transparent',
+  },
+  inlineAmountCurrency: {
+    flexShrink: 0,
+  },
+  inlineConfirmBtn: {
+    width: 26,
+    height: 26,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    flexShrink: 0,
+  },
+  inlineConfirmBtnDisabled: {
+    opacity: 0.35,
+  },
+  inlineBudgetHint: {
+    textAlign: 'right' as const,
+    marginTop: -spacing.xs,
+    paddingRight: 32,
+  },
+  inlineBudgetError: {
+    marginTop: -spacing.xs,
+    paddingRight: 32,
+  },
+  inlineCategoryRow: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: spacing.xs,
+  },
+  inlineCancelLink: {
+    alignSelf: 'flex-start' as const,
+    paddingVertical: spacing.xs,
   },
   articleSheetFixedTop: {
     gap: spacing.md,
@@ -601,11 +804,18 @@ const styles = StyleSheet.create({
   articleFieldGroup: {
     gap: spacing.xs,
   },
-  articleSuggestionsGroup: {
-    gap: spacing.xs,
+  articlePriceHeaderRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    gap: spacing.sm,
   },
-  articleChipsRow: {
-    minHeight: 36,
+  articlePriceBudgetHint: {
+    flexShrink: 1,
+    textAlign: 'right' as const,
+  },
+  articlePriceBudgetError: {
+    marginTop: -spacing.xs,
   },
   articleInputShell: {
     borderRadius: radius.md,
@@ -617,30 +827,6 @@ const styles = StyleSheet.create({
     ...typographyKit.bodyMedium,
     paddingVertical: spacing.sm,
     backgroundColor: 'transparent',
-  },
-  articleChipsContent: {
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  articleCategoryShell: {
-    borderRadius: radius.md,
-    overflow: 'hidden' as const,
-  },
-  articleCategoryContent: {
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  articleCategoryChip: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 6,
-    borderRadius: radius.pill,
-    paddingVertical: spacing.sm,
-  },
-  articleCategoryChipText: {
-    ...jakartaBoldText,
-    fontSize: typography.micro,
-    letterSpacing: 0.1,
   },
   articlePriceShell: {
     flexDirection: 'row' as const,
@@ -660,9 +846,6 @@ const styles = StyleSheet.create({
     letterSpacing: -1,
     paddingVertical: spacing.sm,
     minHeight: 48,
-  },
-  articlePressed: {
-    opacity: 0.75,
   },
   articleSheetActions: {
     flexDirection: 'row' as const,

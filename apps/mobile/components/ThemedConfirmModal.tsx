@@ -17,6 +17,33 @@ type Props = {
   onCancel?: () => void;
 };
 
+type ConfirmButtonStyle = {
+  backgroundColor: string;
+  borderColor?: string;
+  borderWidth?: number;
+  textColor: string;
+};
+
+const NEUTRAL_DISMISS_BUTTON = (colors: AppColors): ConfirmButtonStyle => ({
+  backgroundColor: colors.input,
+  borderColor: colors.containerBorder,
+  borderWidth: StyleSheet.hairlineWidth,
+  textColor: colors.text,
+});
+
+const CONFIRM_BUTTON_BY_VARIANT: Record<
+  ThemedConfirmVariant,
+  (colors: AppColors, isLight: boolean) => ConfirmButtonStyle
+> = {
+  success: (colors, isLight) => ({
+    backgroundColor: colors.primary,
+    textColor: isLight ? '#FFFFFF' : '#0a0a0a',
+  }),
+  error: (colors) => NEUTRAL_DISMISS_BUTTON(colors),
+  warning: (colors) => NEUTRAL_DISMISS_BUTTON(colors),
+  info: (colors) => NEUTRAL_DISMISS_BUTTON(colors),
+};
+
 const VARIANT_DEFAULTS: Record<
   ThemedConfirmVariant,
   { icon: keyof typeof Ionicons.glyphMap; iconBg: (colors: AppColors) => string; iconColor: (colors: AppColors) => string }
@@ -57,6 +84,7 @@ export function ThemedConfirmModal({
 }: Props) {
   const { colors, isLight } = useAppTheme();
   const variantDefaults = VARIANT_DEFAULTS[variant];
+  const confirmButton = CONFIRM_BUTTON_BY_VARIANT[variant](colors, isLight);
   const resolvedIcon = icon ?? variantDefaults.icon;
 
   const handleClose = () => {
@@ -87,11 +115,15 @@ export function ThemedConfirmModal({
             onPress={onConfirm}
             style={({ pressed }) => [
               styles.confirmBtn,
-              { backgroundColor: colors.primary },
+              {
+                backgroundColor: confirmButton.backgroundColor,
+                borderColor: confirmButton.borderColor,
+                borderWidth: confirmButton.borderWidth ?? 0,
+              },
               pressed && styles.pressed,
             ]}
           >
-            <Text style={[styles.confirmText, { color: isLight ? '#FFFFFF' : '#0a0a0a' }]}>
+            <Text style={[styles.confirmText, { color: confirmButton.textColor }]}>
               {confirmLabel}
             </Text>
           </Pressable>

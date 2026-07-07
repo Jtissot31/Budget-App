@@ -2,7 +2,11 @@ import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { ProgressBar } from '@/components/ProgressBar';
 import { spacing, typography } from '@/constants/theme';
-import { categoryBudgetBarColor, getCategoryBudgetUsage } from '@/lib/categoryBudgetUsage';
+import {
+  categoryBudgetBarColor,
+  categoryBudgetBarTrackColor,
+  getCategoryBudgetUsage,
+} from '@/lib/categoryBudgetUsage';
 import { useAppTheme } from '@/lib/themeContext';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { portfolioNumericText } from '@/lib/textLayout';
@@ -36,6 +40,7 @@ export function CategoryBudgetProgress({ budget, compactOverspendOnly = false }:
     budget.categoryColor,
     colors,
   );
+  const barTrackColor = categoryBudgetBarTrackColor(budget.spent, budget.limitAmount);
   const labelColor = usage.isOverBudget ? barColor : colors.textMuted;
 
   return (
@@ -52,7 +57,7 @@ export function CategoryBudgetProgress({ budget, compactOverspendOnly = false }:
           <Text style={[styles.status, { color: labelColor }]}>{`${usage.usagePercent} %`}</Text>
         ) : null}
       </View>
-      <ProgressBar progress={usage.progress} color={barColor} />
+      <ProgressBar progress={usage.progress} color={barColor} trackColor={barTrackColor} />
       <Text style={[styles.meta, { color: colors.textMuted }]}>
         {usage.isZeroLimitOverspend
           ? `${formatMoney(usage.spent)} dépensé · 0$ alloué`

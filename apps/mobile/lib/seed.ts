@@ -43,6 +43,10 @@ const DEMO_WEEKS = 12;
 /** Full demo seed: 12 weekly cycles + recurring + occasional (~170 visible rows). */
 export const DEMO_EXPECTED_VISIBLE_TX = 170;
 
+/** Bump to force wipe + reseed of demo transactions (QC merchants). */
+const DEMO_TRANSACTIONS_SEED_VERSION = '1';
+const DEMO_TRANSACTIONS_SEED_KEY = 'demo_transactions_seed_version';
+
 /** In __DEV__, wipe and reseed when Historique has fewer visible rows than this. */
 const DEV_DEMO_RESEED_THRESHOLD = 50;
 
@@ -93,10 +97,15 @@ function pickPaymentAccount(index: number, type: 'expense' | 'income', label: st
 
   const lower = label.toLowerCase();
   if (
-    lower.includes('courses') ||
-    lower.includes('boulangerie') ||
-    lower.includes('métro') ||
-    lower.includes('navigo') ||
+    lower.includes('iga') ||
+    lower.includes('super c') ||
+    lower.includes('loblaws') ||
+    lower.includes('maxi') ||
+    lower.includes('provigo') ||
+    lower.includes('couche-tard') ||
+    lower.includes('stm') ||
+    lower.includes('opus') ||
+    lower.includes('tim hortons') ||
     lower.includes('stationnement')
   ) {
     return index % 2 === 0 ? PAYMENT_ACCOUNT_IDS.cash : PAYMENT_ACCOUNT_IDS.checking;
@@ -104,11 +113,17 @@ function pickPaymentAccount(index: number, type: 'expense' | 'income', label: st
   if (
     lower.includes('netflix') ||
     lower.includes('spotify') ||
-    lower.includes('amazon') ||
-    lower.includes('zara') ||
-    lower.includes('decathlon') ||
-    lower.includes('fnac') ||
-    lower.includes('uber eats')
+    lower.includes('walmart') ||
+    lower.includes('canadian tire') ||
+    lower.includes('videotron') ||
+    lower.includes('bell') ||
+    lower.includes('hydro') ||
+    lower.includes('disney') ||
+    lower.includes('bureau en gros') ||
+    lower.includes('home depot') ||
+    lower.includes('saq') ||
+    lower.includes('winners') ||
+    lower.includes('sport expert')
   ) {
     return PAYMENT_ACCOUNT_IDS.credit;
   }
@@ -224,23 +239,28 @@ function buildDemoTransactions(now: Date): SeedTransaction[] {
       accountId: pickPaymentAccount(week, 'income', 'Salaire'),
     });
 
+    const grocers = ['IGA', 'Super C', 'Maxi', 'Metro', 'Provigo', 'Loblaws', 'Walmart', 'Costco'];
+    const grocer = grocers[week % grocers.length];
+    const restos = ['Tim Hortons', "McDonald's", 'Starbucks', 'Subway'];
+    const resto = restos[week % restos.length];
+
     const weekExpenses: Array<{
       daysAgo: number;
       hour?: number;
       label: string;
       base: number;
     }> = [
-      { daysAgo: weekBase + 0, label: 'Courses Carrefour', base: 87 },
-      { daysAgo: weekBase + 1, label: 'Métro — Navigo', base: 2.15 },
-      { daysAgo: weekBase + 1, label: 'Café Le Petit Nuage', base: 4.8 },
-      { daysAgo: weekBase + 2, label: 'Essence Total', base: 58 },
-      { daysAgo: weekBase + 3, label: 'Courses Monoprix', base: 43 },
-      { daysAgo: weekBase + 3, label: 'Uber Eats — Sushi', base: 26.5 },
-      { daysAgo: weekBase + 4, label: 'Pharmacie Citypharma', base: 18.9 },
-      { daysAgo: weekBase + 5, label: 'Restaurant Le Comptoir', base: 42 },
-      { daysAgo: weekBase + 5, label: 'SNCF — Paris Lyon', base: 32 },
-      { daysAgo: weekBase + 6, label: 'Courses Intermarché', base: 64 },
-      { daysAgo: weekBase + 6, label: 'Boulangerie du Marché', base: 6.2 },
+      { daysAgo: weekBase + 0, label: grocer, base: 112 },
+      { daysAgo: weekBase + 1, label: 'STM — Opus', base: 94 },
+      { daysAgo: weekBase + 1, label: resto, base: 8.5 },
+      { daysAgo: weekBase + 2, label: 'Petro-Canada', base: 68 },
+      { daysAgo: weekBase + 3, label: grocers[(week + 1) % grocers.length], base: 54 },
+      { daysAgo: weekBase + 3, label: 'Couche-Tard', base: 12.4 },
+      { daysAgo: weekBase + 4, label: 'Jean Coutu', base: 28.9 },
+      { daysAgo: weekBase + 5, label: 'St-Hubert', base: 38 },
+      { daysAgo: weekBase + 5, label: 'REM — Billet', base: 4.5 },
+      { daysAgo: weekBase + 6, label: grocers[(week + 2) % grocers.length], base: 76 },
+      { daysAgo: weekBase + 6, label: 'Dollarama', base: 14.2 },
     ];
 
     weekExpenses.forEach((item, index) => {
@@ -262,24 +282,24 @@ function buildDemoTransactions(now: Date): SeedTransaction[] {
     label: string;
     base: number;
   }> = [
-    { monthOffset: 0, day: 3, label: 'Netflix', base: 15.99 },
-    { monthOffset: 0, day: 5, label: 'Spotify', base: 11.99 },
-    { monthOffset: 0, day: 8, label: 'Forfait Orange', base: 29.99 },
-    { monthOffset: 0, day: 12, label: 'Électricité EDF', base: 78 },
-    { monthOffset: 0, day: 18, label: 'Amazon', base: 34.9 },
-    { monthOffset: 0, day: 22, label: 'Basic Fit', base: 29.99 },
-    { monthOffset: 1, day: 3, label: 'Netflix', base: 15.99 },
-    { monthOffset: 1, day: 5, label: 'Spotify', base: 11.99 },
-    { monthOffset: 1, day: 8, label: 'Forfait Orange', base: 29.99 },
-    { monthOffset: 1, day: 12, label: 'Électricité EDF', base: 82 },
-    { monthOffset: 1, day: 15, label: 'Decathlon', base: 67 },
-    { monthOffset: 1, day: 22, label: 'Basic Fit', base: 29.99 },
-    { monthOffset: 2, day: 3, label: 'Netflix', base: 15.99 },
-    { monthOffset: 2, day: 5, label: 'Spotify', base: 11.99 },
-    { monthOffset: 2, day: 8, label: 'Forfait Orange', base: 29.99 },
-    { monthOffset: 2, day: 12, label: 'Électricité EDF', base: 75 },
-    { monthOffset: 2, day: 20, label: 'Zara', base: 89 },
-    { monthOffset: 2, day: 22, label: 'Basic Fit', base: 29.99 },
+    { monthOffset: 0, day: 3, label: 'Netflix', base: 20.99 },
+    { monthOffset: 0, day: 6, label: 'Spotify', base: 11.99 },
+    { monthOffset: 0, day: 8, label: 'Vidéotron', base: 84.99 },
+    { monthOffset: 0, day: 12, label: 'Hydro-Québec', base: 94.5 },
+    { monthOffset: 0, day: 18, label: 'Walmart', base: 48.9 },
+    { monthOffset: 0, day: 22, label: 'Éconofitness', base: 24.15 },
+    { monthOffset: 1, day: 3, label: 'Netflix', base: 20.99 },
+    { monthOffset: 1, day: 6, label: 'Spotify', base: 11.99 },
+    { monthOffset: 1, day: 8, label: 'Bell Mobilité', base: 65 },
+    { monthOffset: 1, day: 12, label: 'Hydro-Québec', base: 102 },
+    { monthOffset: 1, day: 15, label: 'Sport Expert', base: 89 },
+    { monthOffset: 1, day: 22, label: 'Éconofitness', base: 24.15 },
+    { monthOffset: 2, day: 3, label: 'Netflix', base: 20.99 },
+    { monthOffset: 2, day: 6, label: 'Spotify', base: 11.99 },
+    { monthOffset: 2, day: 8, label: 'Vidéotron', base: 84.99 },
+    { monthOffset: 2, day: 12, label: 'Hydro-Québec', base: 88 },
+    { monthOffset: 2, day: 20, label: 'Winners', base: 72 },
+    { monthOffset: 2, day: 22, label: 'Éconofitness', base: 24.15 },
   ];
 
   monthlyRecurring.forEach((item, index) => {
@@ -300,16 +320,16 @@ function buildDemoTransactions(now: Date): SeedTransaction[] {
     label: string;
     base: number;
   }> = [
-    { daysAgo: 10, label: 'Leroy Merlin', base: 124 },
-    { daysAgo: 17, label: 'Cinéma UGC', base: 13.5 },
-    { daysAgo: 24, label: 'Coiffeur', base: 35 },
-    { daysAgo: 31, label: 'Fnac — écouteurs', base: 79 },
-    { daysAgo: 38, label: 'Vétérinaire', base: 52 },
-    { daysAgo: 45, label: 'Train OUIGO', base: 29 },
-    { daysAgo: 52, label: 'Cadeau anniversaire', base: 45 },
-    { daysAgo: 60, label: 'Stationnement Indigo', base: 12 },
-    { daysAgo: 68, label: 'IKEA', base: 156 },
-    { daysAgo: 75, label: 'Frais bancaires', base: 4.2 },
+    { daysAgo: 10, label: 'Home Depot', base: 156 },
+    { daysAgo: 17, label: 'Cineplex', base: 16.5 },
+    { daysAgo: 24, label: 'Uniprix', base: 42 },
+    { daysAgo: 31, label: 'Bureau en Gros', base: 67 },
+    { daysAgo: 38, label: 'Pharmaprix', base: 38 },
+    { daysAgo: 45, label: 'VIA Rail', base: 89 },
+    { daysAgo: 52, label: 'Canadian Tire', base: 124 },
+    { daysAgo: 60, label: 'Stationnement Indigo', base: 18 },
+    { daysAgo: 68, label: 'RONA', base: 98 },
+    { daysAgo: 75, label: 'SAQ', base: 54 },
   ];
 
   occasional.forEach((item, index) => {
@@ -391,8 +411,11 @@ export async function seedDemoTransactionsIfMissing(): Promise<boolean> {
   await upsertCategory(UNCATEGORIZED_TRANSACTION_CATEGORY);
   await repairOrphanTransactionCategories(UNCATEGORIZED_TRANSACTION_CATEGORY.id);
 
+  const seedVersion = await getSetting(DEMO_TRANSACTIONS_SEED_KEY, '0');
+  const needsVersionReseed = seedVersion !== DEMO_TRANSACTIONS_SEED_VERSION;
+
   const visibleCount = await getVisibleTransactionCount();
-  if (!shouldReseedDemoTransactions(visibleCount)) return false;
+  if (!needsVersionReseed && !shouldReseedDemoTransactions(visibleCount)) return false;
 
   const rawCount = await getTransactionCount();
   if (rawCount > 0 || visibleCount > 0) {
@@ -405,6 +428,7 @@ export async function seedDemoTransactionsIfMissing(): Promise<boolean> {
   }
 
   const inserted = await insertBuiltDemoTransactions();
+  await setSetting(DEMO_TRANSACTIONS_SEED_KEY, DEMO_TRANSACTIONS_SEED_VERSION);
   if (isDevDemoReseedEnabled()) {
     console.log(`[Seed] demo transactions inserted: ${inserted} (visible was ${visibleCount})`);
   }
@@ -526,6 +550,7 @@ export async function resetAndSeedDemoData(): Promise<void> {
   await ensureSeedCatalog();
   await seedDemoAccounts({ forceResetBalances: true });
   const inserted = await insertBuiltDemoTransactions();
+  await setSetting(DEMO_TRANSACTIONS_SEED_KEY, DEMO_TRANSACTIONS_SEED_VERSION);
   if (isDevDemoReseedEnabled()) {
     console.log(`[Seed] resetAndSeedDemoData inserted ${inserted} transactions`);
   }

@@ -1,14 +1,19 @@
 import { memo, useCallback, useMemo } from 'react';
-import { StyleSheet } from 'react-native';
-import { PaymentListRow } from '@/components/PaymentListRow';
-import { TransactionAvatar } from '@/components/TransactionAvatar';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { TransactionAvatar, shouldFramelessMerchantLogo } from '@/components/TransactionAvatar';
 import {
   TransactionAmountLabel,
   transactionAmountDirectionFromType,
 } from '@/components/TransactionAmountLabel';
-import type { SimulatedAccount, Transaction } from '@/types';
-import { type AppColors } from '@/constants/theme';
-import { rowValue } from '@/lib/textLayout';
+import type { MerchantOverride, SimulatedAccount, Transaction } from '@/types';
+import { getMerchantOverrideForLabel } from '@/lib/merchantLogo';
+import {
+  jakartaMediumText,
+  jakartaSemiboldText,
+  spacing,
+  transactionRowAmountTypography,
+  typographyKit,
+} from '@/constants/theme';
 import { resolveContactPhotoUriForTransaction } from '@/lib/contactHistory';
 import { useContactPhotoMap } from '@/hooks/useContactPhotoMap';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
@@ -20,9 +25,13 @@ import {
   resolveTransactionHistorySubtitle,
 } from '@/lib/accountTransactionFlow';
 import { useSavingsGoals } from '@/hooks/useSavingsGoals';
+import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
-const AVATAR_SIZE = 48;
+const ICON_WELL_SIZE = 36;
+const EMBEDDED_ICON_WELL_SIZE = 34;
+const EMBEDDED_ROW_TITLE_SIZE = 15.5;
+const EMBEDDED_ROW_META_SIZE = 12.5;
 
 type Props = {
   transaction: Transaction;
@@ -31,11 +40,14 @@ type Props = {
   savingsGoals?: readonly { id: string; name: string }[];
   /** Pass from list parent to avoid per-row store subscriptions. */
   contactPhotoByKey?: ReadonlyMap<string, string>;
+  /** Pass from list parent for merchant logo overrides in Historique. */
+  merchantOverrideByLabel?: ReadonlyMap<string, MerchantOverride>;
   onPress?: () => void;
   /** Stable list handler — preferred over inline `onPress` closures in virtualized lists. */
   onPressId?: (transactionId: string) => void;
-  /** Renders without an outer card — for nested card layouts. */
+  /** Flat row inside a parent card — adds hairline dividers between rows. */
   embedded?: boolean;
+  isLast?: boolean;
 };
 
 function isUnresolvedHistorySubtitle(transaction: Transaction, label: string): boolean {
@@ -76,6 +88,7 @@ function getTransactionRowMeta(
 type TransactionRowBaseProps = Props & {
   savingsGoals: readonly { id: string; name: string }[];
   contactPhotoByKey: ReadonlyMap<string, string>;
+  merchantOverrideByLabel?: ReadonlyMap<string, MerchantOverride>;
 };
 
 const TransactionRowBase = memo(function TransactionRowBase({
@@ -83,16 +96,18 @@ const TransactionRowBase = memo(function TransactionRowBase({
   accounts,
   savingsGoals,
   contactPhotoByKey,
+  merchantOverrideByLabel,
   onPress,
   onPressId,
   embedded = false,
+  isLast = false,
 }: TransactionRowBaseProps) {
-  const { colors: themeColors } = useAppTheme();
-  const styles = useMemo(() => createStyles(themeColors), [themeColors]);
+  const { colors } = useAppTheme();
   const isTransfer = transaction.type === 'transfer';
   const isIncome = transaction.type === 'income';
 
   const handlePress = useCallback(() => {
+    tapHaptic();
     if (onPressId) {
       onPressId(transaction.id);
       return;
@@ -113,32 +128,99 @@ const TransactionRowBase = memo(function TransactionRowBase({
   const direction = transactionAmountDirectionFromType(transaction.type);
 
   const amountColor =
-    isIncome ? themeColors.success : isTransfer ? themeColors.textMuted : themeColors.text;
+    isIncome ? colors.success : isTransfer ? colors.textMuted : colors.text;
+
+  const pressable = onPress || onPressId;
+  const avatarSize = embedded ? EMBEDDED_ICON_WELL_SIZE : ICON_WELL_SIZE;
+  // Amounts: Onest 800 ExtraBold (scoped exception — merchant name/subtitle stay Jakarta).
+  const amountTextStyle = embedded
+    ? styles.embeddedAmount
+    : transactionRowAmountTypography();
+  const merchantOverride = merchantOverrideByLabel
+    ? getMerchantOverrideForLabel(transaction.label, merchantOverrideByLabel)
+    : undefined;
+  const framelessLogo =
+    embedded &&
+    shouldFramelessMerchantLogo(transaction, {
+      contactPhotoUri,
+      preferContactIcon: true,
+      merchantOverride,
+    });
 
   return (
-    <PaymentListRow
-      embedded={embedded}
-      onPress={onPress || onPressId ? handlePress : undefined}
-      avatar={
+    <Pressable
+      accessibilityRole={pressable ? 'button' : undefined}
+      onPress={pressable ? handlePress : undefined}
+      style={({ pressed }) => [
+        styles.row,
+        embedded && styles.rowEmbedded,
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={[styles.mainRow, embedded && styles.mainRowEmbedded]}>
         <TransactionAvatar
           transaction={transaction}
           contactPhotoUri={contactPhotoUri}
-          size={AVATAR_SIZE}
+          merchantOverride={merchantOverride}
+          size={avatarSize}
+          iconSize={18}
           preferContactIcon
-          style={styles.avatar}
+          wellGlyphWhite
+          framelessRemoteLogo={embedded}
+          style={[
+            styles.avatar,
+            embedded && !framelessLogo && styles.avatarEmbedded,
+            embedded && !framelessLogo && { borderColor: colors.borderSubtle },
+          ]}
         />
-      }
-      title={name}
-      meta={meta}
-      amount={
-        <TransactionAmountLabel
-          amount={formatDisplayMoneyAbsolute(Math.abs(transaction.amount))}
-          direction={direction}
-          color={amountColor}
-          textStyle={[styles.amount, isIncome && styles.amountIncome]}
-        />
-      }
-    />
+
+        <View style={[styles.content, embedded && styles.contentEmbedded]}>
+          <View style={styles.titleRow}>
+            <View style={styles.nameCol}>
+              <Text
+                style={[
+                  styles.name,
+                  embedded && styles.nameEmbedded,
+                  jakartaSemiboldText,
+                  { color: colors.text },
+                ]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {name}
+              </Text>
+            </View>
+            <View style={styles.amountCol}>
+              <TransactionAmountLabel
+                amount={formatDisplayMoneyAbsolute(Math.abs(transaction.amount))}
+                direction={direction}
+                color={amountColor}
+                textStyle={amountTextStyle}
+              />
+            </View>
+          </View>
+
+          {meta ? (
+            <Text
+              style={[
+                styles.meta,
+                embedded && styles.metaEmbedded,
+                embedded ? jakartaMediumText : typographyKit.caption,
+                { color: colors.textMuted },
+              ]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {meta}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+
+      {embedded && !isLast ? (
+        <View style={[styles.dividerEmbedded, { backgroundColor: colors.borderSubtle }]} />
+      ) : null}
+    </Pressable>
   );
 });
 
@@ -171,18 +253,83 @@ export const TransactionRow = memo(function TransactionRow({
   return <TransactionRowWithStores {...rest} />;
 });
 
-function createStyles(colors: AppColors) {
-  return StyleSheet.create({
-    avatar: {
-      flexShrink: 0,
-    },
-    amount: {
-      ...rowValue,
-      color: colors.text,
-      textAlign: 'right',
-    },
-    amountIncome: {
-      color: colors.success,
-    },
-  });
-}
+const styles = StyleSheet.create({
+  row: {
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  rowEmbedded: {
+    gap: spacing.lg,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: 0,
+  },
+  mainRowEmbedded: {
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  contentEmbedded: {
+    gap: spacing.xs,
+  },
+  avatarEmbedded: {
+    borderWidth: 1,
+  },
+  pressed: {
+    opacity: 0.88,
+  },
+  mainRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  avatar: {
+    flexShrink: 0,
+  },
+  content: {
+    flex: 1,
+    minWidth: 0,
+    gap: 5,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  nameCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  name: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  nameEmbedded: {
+    fontSize: EMBEDDED_ROW_TITLE_SIZE,
+    lineHeight: 20,
+    letterSpacing: -0.1,
+  },
+  embeddedAmount: {
+    ...transactionRowAmountTypography({
+      fontSize: EMBEDDED_ROW_TITLE_SIZE,
+      lineHeight: 20,
+      letterSpacing: -0.1,
+    }),
+  },
+  amountCol: {
+    flexShrink: 0,
+    alignItems: 'flex-end',
+  },
+  meta: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  metaEmbedded: {
+    fontSize: EMBEDDED_ROW_META_SIZE,
+    lineHeight: 16,
+  },
+  dividerEmbedded: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: spacing.lg,
+  },
+});

@@ -13,6 +13,7 @@ import { radius, spacing, typography, type AppColors } from '@/constants/theme';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { getCategoryBudgets, getTransactionsForBudgetCategory, sortTransactionsNewestFirst } from '@/lib/db';
 import { tapHaptic } from '@/lib/haptics';
+import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import { useAppTheme } from '@/lib/themeContext';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { heroStatAmount } from '@/lib/textLayout';
@@ -300,7 +301,7 @@ export default function BudgetCategoryTransactionsScreen() {
                     <TransactionRow
                       key={tx.id}
                       transaction={{ ...tx, label: getTransactionTitle(tx) }}
-                      onPress={() => { tapHaptic(); router.push({ pathname: '/transaction-detail', params: { transactionId: tx.id } }); }}
+                      onPress={() => { tapHaptic(); openTransactionDetail(tx.id); }}
                     />
                   ))}
                 </View>

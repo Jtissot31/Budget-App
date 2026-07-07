@@ -1,23 +1,25 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View, ScrollView } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, ScrollView, type TextStyle, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { frequencyLabel } from '@/lib/recurringPaymentsForm';
 import { MonthSelector } from '@/components/MonthSelector';
 import { DashboardCard } from '@/components/DashboardCard';
 import { DashboardDateBadge } from '@/components/DashboardDateBadge';
-import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { PaymentDetailSheet, type PaymentDetailPayload } from '@/components/PaymentDetailSheet';
-import { UserPickedIconWell } from '@/components/UserPickedIconWell';
+import { AgendaPaymentRow } from '@/components/AgendaPaymentRow';
 import {
+  CONTROL_HAIRLINE_BORDER_WIDTH,
   FLOATING_NAV_CONTENT_PADDING,
-  radius,
+  jakartaMediumText,
+  jakartaSemiboldText,
+  screenHorizontalGutter,
   spacing,
   typography,
   type AppColors,
 } from '@/constants/theme';
 import { typographyKit } from '@/constants/typographyKit';
-import { portfolioNumericText, rowValue } from '@/lib/textLayout';
 import { UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import { dataEvents } from '@/lib/events';
@@ -30,9 +32,6 @@ import {
 import { tapHaptic } from '@/lib/haptics';
 import { isMonthAfter, startOfMonth } from '@/lib/budgetMonth';
 import { useAppTheme } from '@/lib/themeContext';
-import { PaymentListRow, type PaymentListRowBadgeVariant } from '@/components/PaymentListRow';
-import { TransactionAmountLabel, recurringPaymentAmountDirection } from '@/components/TransactionAmountLabel';
-import { formatDisplayMoneyAbsolute, formatRecurringPaymentAmount } from '@/lib/formatDisplayMoney';
 import { getMerchantLogoUrl } from '@/lib/merchantLogo';
 import { resolvePaymentStatusBadge } from '@/lib/paymentStatusBadge';
 import {
@@ -65,7 +64,11 @@ export type AgendaViewRef = {
   resetToTop: () => void;
 };
 
-const DAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+const DAYS = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
+const CALENDAR_DAY_SIZE = 36;
+/** Frameless merchant logos under day numbers — match Historique row `noBackground` sizing. */
+const CALENDAR_LOGO_SIZE = 16;
+const MAX_CALENDAR_LOGOS = 3;
 
 const PAY_LABEL = ESTIMATED_PAYCHECK_LABEL;
 
@@ -300,10 +303,6 @@ function isPayBill(bill: AgendaBill) {
   return isActualPayBill(bill) || isEstimatedPayBill(bill);
 }
 
-function isRecurringExpenseBill(bill: AgendaBill) {
-  return Boolean(bill.recurring) && (bill.kind ?? 'payment') === 'payment';
-}
-
 function formatAgendaUpcomingDate(dateKey: string) {
   return new Date(`${dateKey}T12:00:00`).toLocaleDateString('fr-FR', {
     weekday: 'short',
@@ -326,10 +325,6 @@ function resolveBillDisplayIcon(
   return resolveAgendaBillDisplayIcon(bill, loanByRecurringPaymentId, {
     isPayBill: (item) => isPayBill(item as AgendaBill),
   });
-}
-
-function getPaymentCardMeta(bill: AgendaBill) {
-  return bill.account;
 }
 
 function hasMatchingIncomeBill(items: AgendaBill[], bill: AgendaBill) {
@@ -492,10 +487,56 @@ function calendarDayMarkers(dateKey: string, billsByDate: Record<string, AgendaB
   return { hasConfirmedPay, hasEstimatedPay, hasPayment };
 }
 
+function getCalendarLogoBills(bills: AgendaBill[]) {
+  return bills
+    .filter((bill) => !isEstimatedPayBill(bill) && (bill.kind ?? 'payment') !== 'income')
+    .slice(0, MAX_CALENDAR_LOGOS)
+    .filter((bill) => Boolean(resolveBillDisplayLogo(bill)?.trim()));
+}
+
+function CalendarDayEventMarks({
+  bills,
+  showEstimatedDot,
+  styles,
+  colors,
+  loanByRecurringPaymentId,
+}: {
+  bills: AgendaBill[];
+  showEstimatedDot: boolean;
+  styles: AgendaViewStyles;
+  colors: AppColors;
+  loanByRecurringPaymentId: Map<string, Loan>;
+}) {
+  const logoBills = getCalendarLogoBills(bills);
+  if (!showEstimatedDot && logoBills.length === 0) {
+    return <View style={styles.eventMarkSpacer} />;
+  }
+
+  return (
+    <View style={styles.eventMarksRow}>
+      {showEstimatedDot ? (
+        <View style={[styles.eventDot, { backgroundColor: colors.accentGreen }]} />
+      ) : null}
+      {logoBills.map((bill, index) => (
+        <UserPickedIconWell
+          key={`${bill.sourceId ?? bill.name}-${index}`}
+          icon={resolveBillDisplayIcon(bill, loanByRecurringPaymentId)}
+          color={bill.color}
+          size={CALENDAR_LOGO_SIZE}
+          logoUrl={resolveBillDisplayLogo(bill)}
+          merchantLabel={bill.name}
+          noBackground
+        />
+      ))}
+    </View>
+  );
+}
+
 export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function AgendaView({ headerComponent, onEditRecurring }, ref) {
   const today = useMemo(() => startOfToday(), []);
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const contentGutter = Platform.OS === 'web' ? 0 : screenHorizontalGutter(insets);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const scrollRef = useRef<ScrollView>(null);
   const [year, setYear] = useState(today.getFullYear());
@@ -689,22 +730,22 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
     openBillDetail(b, dateKey);
   };
 
-  const renderAgendaPaymentCards = (items: { key: string; b: AgendaBill }[]) => (
-    <View style={styles.agendaPaymentList}>
-      {items.map(({ key, b }, index) => (
-        <AgendaPaymentCard
-          key={`${key}-${index}-${b.sourceId ?? b.name}`}
+  const renderAgendaPaymentGroup = (dateKey: string, bills: AgendaBill[]) => (
+    <DashboardCard padding={0} innerStyle={styles.agendaGroupCardInner}>
+      {bills.map((b, index) => (
+        <AgendaPaymentRow
+          key={`${dateKey}-${index}-${b.sourceId ?? b.name}`}
           bill={b}
-          dateKey={key}
-          statusLabel={resolveAgendaBillStatusLabel(key, todayKey, b, recentIncomeTransactions)}
+          dateKey={dateKey}
+          statusLabel={resolveAgendaBillStatusLabel(dateKey, todayKey, b, recentIncomeTransactions)}
           todayKey={todayKey}
-          onPress={() => onBillRowPress(b, key)}
-          styles={styles}
-          colors={colors}
+          onPress={() => onBillRowPress(b, dateKey)}
           loanByRecurringPaymentId={loanByRecurringPaymentId}
+          embedded
+          isLast={index === bills.length - 1}
         />
       ))}
-    </View>
+    </DashboardCard>
   );
 
   const scrollBottomPadding = insets.bottom + FLOATING_NAV_CONTENT_PADDING;
@@ -732,6 +773,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
               onNext={nextMonth}
               canGoPrevious={canGoAgendaPrevious}
               canGoNext={canGoAgendaNext}
+              appearance="calendar"
             />
             <View style={styles.dowRow}>
               {DAYS.map((d, i) => (
@@ -746,11 +788,9 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
                   return <View key={i} style={styles.cell} />;
                 }
                 const key = dateKey(year, month, cell.day);
-                const { hasConfirmedPay, hasEstimatedPay, hasPayment } = calendarDayMarkers(
-                  key,
-                  billsByDate,
-                );
-                const showEstimatedLine = hasEstimatedPay && !hasConfirmedPay;
+                const dayBills = billsByDate[key] ?? [];
+                const { hasConfirmedPay, hasEstimatedPay } = calendarDayMarkers(key, billsByDate);
+                const showEstimatedDot = hasEstimatedPay && !hasConfirmedPay;
                 const isToday = key === todayKey;
                 const isSel = key === selectedKey;
                 const past = key < todayKey;
@@ -762,63 +802,64 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
                     accessibilityRole="button"
                     accessibilityState={{ selected: isSel }}
                   >
-                    <View
-                      style={[
-                        styles.dayPlate,
-                        isSel && styles.dayPlateSelected,
-                        isToday && !isSel && styles.dayPlateToday,
-                      ]}
-                    >
-                      {hasConfirmedPay ? (
-                        <Text style={styles.confirmedPayMark}>$</Text>
-                      ) : null}
-                      <Text
+                    <View style={styles.dayCellShell}>
+                      <View
                         style={[
-                          styles.dayNum,
-                          past && styles.dayPast,
-                          isToday && styles.dayNumToday,
-                          isSel && styles.dayNumSelected,
+                          styles.dayInner,
+                          isSel && styles.dayInnerSelected,
+                          isToday && !isSel && styles.dayInnerToday,
+                          isToday && isSel && styles.dayInnerTodaySelected,
                         ]}
                       >
-                        {cell.day}
-                      </Text>
-                      {showEstimatedLine || hasPayment ? (
-                        <View style={styles.markStack}>
-                          {showEstimatedLine ? (
-                            <View style={[styles.markBar, styles.markBarPay]} />
-                          ) : null}
-                          {hasPayment ? (
-                            <View style={[styles.markBar, styles.markBarPayment]} />
-                          ) : null}
-                        </View>
-                      ) : (
-                        <View style={styles.eventMarkSpacer} />
-                      )}
+                        {hasConfirmedPay ? (
+                          <Text style={[styles.confirmedPayMark, { color: colors.accentGreen }]}>$</Text>
+                        ) : null}
+                        <Text
+                          style={[
+                            styles.dayNum,
+                            past && !isSel && styles.dayPast,
+                            isToday && !isSel && styles.dayNumToday,
+                            isSel && styles.dayNumSelected,
+                            isToday && isSel && styles.dayNumTodaySelected,
+                          ]}
+                        >
+                          {cell.day}
+                        </Text>
+                      </View>
+                      <CalendarDayEventMarks
+                        bills={dayBills}
+                        showEstimatedDot={showEstimatedDot}
+                        styles={styles}
+                        colors={colors}
+                        loanByRecurringPaymentId={loanByRecurringPaymentId}
+                      />
                     </View>
                   </Pressable>
                 );
               })}
             </View>
+            <View style={[styles.calendarLegendDivider, { backgroundColor: colors.borderSubtle }]} />
+            <View style={styles.calendarLegend}>
+              <View style={styles.calendarLegendItem}>
+                <View style={styles.calendarLegendMarkerSlot}>
+                  <View style={[styles.eventDot, styles.calendarLegendDot, { backgroundColor: colors.warning }]} />
+                </View>
+                <Text style={styles.calendarLegendLabel}>Paiement</Text>
+              </View>
+              <View style={styles.calendarLegendItem}>
+                <View style={[styles.eventDot, styles.calendarLegendDot, { backgroundColor: colors.accentGreen }]} />
+                <Text style={styles.calendarLegendLabel}>Paie estimée</Text>
+              </View>
+              <View style={styles.calendarLegendItem}>
+                <Text style={[styles.calendarLegendPayMark, { color: colors.accentGreen }]}>$</Text>
+                <Text style={styles.calendarLegendLabel}>Revenu confirmé</Text>
+              </View>
+            </View>
           </DashboardCard>
         </View>
 
-        <View style={styles.calendarLegend}>
-          <View style={styles.calendarLegendItem}>
-            <View style={[styles.markBar, styles.markBarPayment]} />
-            <Text style={styles.calendarLegendLabel}>Paiement</Text>
-          </View>
-          <View style={styles.calendarLegendItem}>
-            <View style={[styles.markBar, styles.markBarPay]} />
-            <Text style={styles.calendarLegendLabel}>Jour de paie estimé</Text>
-          </View>
-          <View style={styles.calendarLegendItem}>
-            <Text style={styles.calendarLegendPayMark}>$</Text>
-            <Text style={styles.calendarLegendLabel}>Dépôt de revenu confirmé</Text>
-          </View>
-        </View>
-
         {selBills && selBills.length > 0 ? (
-          <View style={styles.section}>
+          <View style={[styles.section, { paddingHorizontal: contentGutter }]}>
             <View style={styles.sectionHeaderBlock}>
               <View style={styles.sectionLabelRow}>
                 <DashboardDateBadge dateKey={selectedKey!} />
@@ -831,10 +872,10 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
                 </Text>
               </View>
             </View>
-            {renderAgendaPaymentCards(selBills.map((b) => ({ key: selectedKey!, b })))}
+            {renderAgendaPaymentGroup(selectedKey!, selBills)}
           </View>
         ) : selectedKey ? (
-          <View style={styles.section}>
+          <View style={[styles.section, { paddingHorizontal: contentGutter }]}>
             <View style={styles.sectionHeaderBlock}>
               <View style={styles.sectionLabelRow}>
                 <DashboardDateBadge dateKey={selectedKey} />
@@ -855,37 +896,16 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
             </DashboardCard>
           </View>
         ) : (
-          <View style={styles.section}>
-            <DashboardSectionLabel style={styles.sectionEyebrow}>À venir</DashboardSectionLabel>
+          <View style={[styles.section, { paddingHorizontal: contentGutter }]}>
+            <Text style={styles.upcomingSectionTitle}>À venir</Text>
             {upcomingCount > 0 ? (
               <View style={styles.upcomingGroupsList}>
                 {upcoming.map(([key, bills]) => (
                   <View key={key} style={styles.upcomingGroup}>
-                    <View style={styles.upcomingGroupHeader}>
-                      <Text style={styles.upcomingGroupDate}>
-                        {formatAgendaUpcomingDate(key)}
-                      </Text>
-                    </View>
-                    <View style={styles.upcomingGroupItems}>
-                      {bills.map((b, index) => (
-                        <AgendaPaymentCard
-                          key={`${key}-${index}-${b.sourceId ?? b.name}`}
-                          bill={b}
-                          dateKey={key}
-                          statusLabel={resolveAgendaBillStatusLabel(
-                            key,
-                            todayKey,
-                            b,
-                            recentIncomeTransactions,
-                          )}
-                          todayKey={todayKey}
-                          onPress={() => onBillRowPress(b, key)}
-                          styles={styles}
-                          colors={colors}
-                          loanByRecurringPaymentId={loanByRecurringPaymentId}
-                        />
-                      ))}
-                    </View>
+                    <Text style={styles.upcomingGroupDate}>
+                      {formatAgendaUpcomingDate(key)}
+                    </Text>
+                    {renderAgendaPaymentGroup(key, bills)}
                   </View>
                 ))}
               </View>
@@ -913,90 +933,54 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
   );
 });
 
-function resolveAgendaPaymentBadgeVariant(
-  dateKey: string,
-  todayKey: string,
-  statusLabel: string,
-  isIncome: boolean,
-): PaymentListRowBadgeVariant {
-  if (dateKey > todayKey) {
-    return isIncome ? 'upcomingIncome' : 'upcoming';
-  }
-  if (statusLabel === 'REÇU') return 'received';
-  if (statusLabel === 'ESTIMÉ' || statusLabel === "AUJOURD'HUI") {
-    return isIncome ? 'upcomingIncome' : 'upcoming';
-  }
-  return 'paid';
-}
+type AgendaViewStyles = {
+  root: ViewStyle;
+  scrollView: ViewStyle;
+  scroll: ViewStyle;
+  agendaContentAfterHeader: ViewStyle;
+  calendarCard: ViewStyle;
+  calendarCardInner: ViewStyle;
+  dowRow: ViewStyle;
+  dow: TextStyle;
+  grid: ViewStyle;
+  cell: ViewStyle;
+  dayCellShell: ViewStyle;
+  dayInner: ViewStyle;
+  dayInnerSelected: ViewStyle;
+  dayInnerToday: ViewStyle;
+  dayInnerTodaySelected: ViewStyle;
+  dayNum: TextStyle;
+  dayNumToday: TextStyle;
+  dayNumSelected: TextStyle;
+  dayNumTodaySelected: TextStyle;
+  dayPast: TextStyle;
+  confirmedPayMark: TextStyle;
+  eventMarksRow: ViewStyle;
+  eventMarkSpacer: ViewStyle;
+  eventDot: ViewStyle;
+  calendarLegendMarkerSlot: ViewStyle;
+  calendarLegendDivider: ViewStyle;
+  calendarLegend: ViewStyle;
+  calendarLegendItem: ViewStyle;
+  calendarLegendDot: ViewStyle;
+  calendarLegendLabel: TextStyle;
+  calendarLegendPayMark: TextStyle;
+  section: ViewStyle;
+  sectionHeaderBlock: ViewStyle;
+  sectionLabelRow: ViewStyle;
+  sectionTitle: TextStyle;
+  upcomingSectionTitle: TextStyle;
+  agendaGroupCardInner: ViewStyle;
+  upcomingGroupsList: ViewStyle;
+  upcomingGroup: ViewStyle;
+  upcomingGroupDate: TextStyle;
+  emptyCardInner: ViewStyle;
+  emptyIcon: ViewStyle;
+  emptyTitle: TextStyle;
+  emptyHint: TextStyle;
+};
 
-function AgendaPaymentCard({
-  bill,
-  dateKey,
-  statusLabel,
-  todayKey,
-  onPress,
-  styles,
-  colors,
-  loanByRecurringPaymentId,
-}: {
-  bill: AgendaBill;
-  dateKey: string;
-  statusLabel: string;
-  todayKey: string;
-  onPress: () => void;
-  styles: ReturnType<typeof createStyles>;
-  colors: AppColors;
-  loanByRecurringPaymentId: Map<string, Loan>;
-}) {
-  const isIncome = isPayBill(bill) || bill.kind === 'income';
-  const badgeVariant = resolveAgendaPaymentBadgeVariant(dateKey, todayKey, statusLabel, isIncome);
-  const displayLogoUrl = resolveBillDisplayLogo(bill);
-  const displayIcon = resolveBillDisplayIcon(bill, loanByRecurringPaymentId);
-  const displayTint = bill.color ?? (isIncome ? colors.success : colors.warning);
-
-  return (
-    <PaymentListRow
-      onPress={onPress}
-      avatar={
-        <UserPickedIconWell
-          icon={displayIcon}
-          color={displayTint}
-          size={48}
-          logoUrl={displayLogoUrl}
-          wellGlyphWhite={Boolean(bill.recurring) && !isIncome}
-          style={styles.agendaPaymentAvatar}
-        />
-      }
-      title={bill.name}
-      meta={getPaymentCardMeta(bill)}
-      statusBadge={{ label: statusLabel, variant: badgeVariant }}
-      amount={
-        <TransactionAmountLabel
-          amount={
-            bill.recurring
-              ? formatRecurringPaymentAmount(bill.amount, bill.kind ?? 'payment')
-              : formatDisplayMoneyAbsolute(bill.amount)
-          }
-          direction={
-            isIncome
-              ? 'income'
-              : bill.recurring || isRecurringExpenseBill(bill)
-                ? recurringPaymentAmountDirection(bill.kind ?? 'payment')
-                : 'neutral'
-          }
-          color={isIncome ? colors.success : colors.text}
-          textStyle={[
-            styles.agendaPaymentAmount,
-            isPayBill(bill) && styles.agendaPaymentAmountIncome,
-            isRecurringExpenseBill(bill) && styles.agendaPaymentAmountRecurring,
-          ]}
-        />
-      }
-    />
-  );
-}
-
-function createStyles(colors: AppColors) {
+function createStyles(colors: AppColors): AgendaViewStyles {
   return StyleSheet.create({
   root: {
     flex: 1,
@@ -1012,134 +996,156 @@ function createStyles(colors: AppColors) {
     backgroundColor: colors.background,
   },
   agendaContentAfterHeader: {
-    marginTop: 20,
+    marginTop: spacing.lg,
   },
   calendarCard: {
-    paddingTop: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: 3.5,
+    paddingTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
   },
   calendarCardInner: {
-    gap: spacing.md,
+    gap: spacing.sm,
     overflow: 'hidden',
   },
   dowRow: {
     flexDirection: 'row',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
     paddingHorizontal: spacing.xs,
   },
   dow: {
     flex: 1,
     textAlign: 'center',
+    ...jakartaMediumText,
     color: colors.textMuted,
-    fontSize: typography.meta,
-    fontWeight: '700',
-    letterSpacing: 0.2,
+    fontSize: 11,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    includeFontPadding: false,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    rowGap: spacing.xs,
   },
   cell: {
     width: '14.28%',
-    paddingHorizontal: 2,
-    paddingTop: 2,
-    paddingBottom: 0,
-  },
-  dayPlate: {
-    minHeight: 44,
     alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.md,
     paddingVertical: spacing.xs,
   },
-  dayPlateToday: {
-    borderWidth: StyleSheet.hairlineWidth * 2,
-    borderColor: colors.text,
+  dayCellShell: {
+    alignItems: 'center',
+    minHeight: 56,
+    gap: spacing.xs,
   },
-  dayPlateSelected: {
+  dayInner: {
+    width: CALENDAR_DAY_SIZE,
+    height: CALENDAR_DAY_SIZE,
+    borderRadius: CALENDAR_DAY_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayInnerSelected: {
     backgroundColor: colors.scopeActive,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+  },
+  dayInnerToday: {
+    borderWidth: CONTROL_HAIRLINE_BORDER_WIDTH * 2,
+    borderColor: colors.accentGreen,
+  },
+  dayInnerTodaySelected: {
+    backgroundColor: colors.successMuted,
+    borderWidth: CONTROL_HAIRLINE_BORDER_WIDTH * 2,
+    borderColor: colors.accentGreen,
   },
   dayNum: {
-    ...portfolioNumericText,
+    ...jakartaSemiboldText,
     color: colors.text,
-    fontSize: typography.caption,
-  },
-  dayNumToday: {
-    ...portfolioNumericText,
-    color: colors.text,
-    fontSize: typography.caption,
-  },
-  dayNumSelected: {
-    ...portfolioNumericText,
-    color: colors.text,
-    fontSize: typography.caption,
-  },
-  dayPast: { color: colors.textMuted, opacity: 0.62 },
-  confirmedPayMark: {
-    ...portfolioNumericText,
-    position: 'absolute',
-    top: 2,
-    right: 3,
-    color: colors.success,
-    fontSize: typography.micro,
-    lineHeight: typography.micro + 1,
+    fontSize: typography.meta,
+    lineHeight: typography.meta + 2,
     includeFontPadding: false,
   },
-  markStack: {
-    marginTop: 4,
+  dayNumToday: {
+    color: colors.accentGreen,
+  },
+  dayNumSelected: {
+    color: colors.text,
+  },
+  dayNumTodaySelected: {
+    color: colors.accentGreen,
+  },
+  dayPast: {
+    color: colors.textMuted,
+    opacity: 0.55,
+  },
+  confirmedPayMark: {
+    ...jakartaSemiboldText,
+    position: 'absolute',
+    top: 1,
+    right: 2,
+    fontSize: 9,
+    lineHeight: 10,
+    includeFontPadding: false,
+  },
+  eventMarksRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    justifyContent: 'center',
+    gap: 3,
+    minHeight: CALENDAR_LOGO_SIZE,
   },
-  markBar: {
-    width: 16,
-    height: 3,
-    borderRadius: 1.5,
+  eventMarkSpacer: {
+    height: CALENDAR_LOGO_SIZE,
   },
-  markBarPay: {
-    backgroundColor: colors.success,
+  eventDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
   },
-  markBarPayment: {
-    backgroundColor: colors.warning,
+  calendarLegendMarkerSlot: {
+    width: CALENDAR_LOGO_SIZE,
+    height: CALENDAR_LOGO_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  eventMarkSpacer: { height: 8, marginTop: 4 },
+  calendarLegendDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: spacing.sm,
+  },
   calendarLegend: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    columnGap: spacing.md,
+    columnGap: spacing.lg,
     rowGap: spacing.sm,
-    marginTop: spacing.md,
+    paddingTop: spacing.sm,
   },
   calendarLegendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.xs,
+  },
+  calendarLegendDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
   },
   calendarLegendLabel: {
-    ...typographyKit.metaMedium,
+    ...typographyKit.microMedium,
     color: colors.textMuted,
+    fontSize: 11,
   },
   calendarLegendPayMark: {
-    ...portfolioNumericText,
-    width: 16,
+    ...jakartaSemiboldText,
+    width: 14,
     textAlign: 'center',
-    color: colors.success,
-    fontSize: typography.micro,
-    lineHeight: typography.micro + 1,
+    fontSize: 10,
+    lineHeight: 11,
     includeFontPadding: false,
   },
   section: {
     gap: spacing.md,
-    marginTop: 28,
+    marginTop: spacing.xl,
   },
   sectionHeaderBlock: {
     minHeight: UNIFORM_SECTION_HEADER_MIN_HEIGHT,
-  },
-  sectionEyebrow: {
-    marginBottom: spacing.xs,
-    letterSpacing: 1.5,
   },
   sectionLabelRow: {
     flexDirection: 'row',
@@ -1154,43 +1160,27 @@ function createStyles(colors: AppColors) {
     color: colors.text,
     textTransform: 'capitalize',
   },
-  agendaPaymentList: {
-    gap: spacing.md,
+  upcomingSectionTitle: {
+    ...typographyKit.sectionTitle,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  agendaGroupCardInner: {
+    overflow: 'hidden',
   },
   upcomingGroupsList: {
-    gap: 26,
+    gap: spacing.xl,
   },
   upcomingGroup: {
     gap: spacing.sm,
   },
-  upcomingGroupHeader: {
-    minHeight: UNIFORM_SECTION_HEADER_MIN_HEIGHT,
-    justifyContent: 'center',
-    paddingBottom: spacing.xs,
-  },
   upcomingGroupDate: {
+    ...jakartaMediumText,
     color: colors.textMuted,
-    fontSize: typography.caption,
-    fontWeight: '700',
+    fontSize: typography.meta,
+    lineHeight: typography.meta + 4,
     textTransform: 'capitalize',
-    letterSpacing: 0.2,
-  },
-  upcomingGroupItems: {
-    gap: spacing.md,
-  },
-  agendaPaymentAvatar: {
-    flexShrink: 0,
-  },
-  agendaPaymentAmount: {
-    ...rowValue,
-    color: colors.text,
-    textAlign: 'right',
-  },
-  agendaPaymentAmountIncome: {
-    color: colors.success,
-  },
-  agendaPaymentAmountRecurring: {
-    color: colors.danger,
+    letterSpacing: -0.1,
   },
   emptyCardInner: {
     alignItems: 'center',
@@ -1216,5 +1206,5 @@ function createStyles(colors: AppColors) {
     lineHeight: typography.caption + 6,
     textAlign: 'center',
   },
-  });
+  }) as AgendaViewStyles;
 }

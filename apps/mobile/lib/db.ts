@@ -1856,7 +1856,7 @@ export async function getAccountMonthlyFlow(accountId: string, yearMonth: string
 export async function getArticleNameHistory(): Promise<string[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<{ note: string }>(
-    `SELECT note FROM transactions WHERE note LIKE '%articles:%' ORDER BY datetime(date) DESC LIMIT 300`,
+    `SELECT note FROM transactions WHERE note LIKE '%articles:%' ORDER BY datetime(date) DESC LIMIT 1000`,
   );
   const seen = new Set<string>();
   const names: string[] = [];

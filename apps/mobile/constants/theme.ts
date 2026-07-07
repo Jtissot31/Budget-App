@@ -82,7 +82,8 @@ export const liquidSegmentedSettleSpring = {
  * - Sizes: `sm` · `section` · `md` (default) · `lg`.
  * - Colors: `segmentedTabBarDark` / `segmentedTabBarLight`, or `colors.segmentedTab*` / `scopeTrack`.
  *
- * Not for: boolean on/off (`Switch`), wrap chips in forms ({@link chipSelectableShellStyle}),
+ * Not for: boolean on/off — use {@link PremiumSwitch} (`components/PremiumSwitch.tsx`);
+ * wrap chips in forms ({@link chipSelectableShellStyle}),
  * icon-card grids ({@link TransferModePicker}), or picker sheets.
  */
 export const segmentedTabBarDark = {
@@ -133,6 +134,14 @@ export const darkColors = {
   surfaceElevated: '#1F1F23',
   input: dashboardPalette.iconBox,
   accentGreen: '#4ADE80',
+  /** Premium boolean toggle — off track (muted charcoal) */
+  toggleTrackOff: '#28282E',
+  /** Premium boolean toggle — on track (accentGreen at reduced opacity) */
+  toggleTrackOn: 'rgba(74, 222, 128, 0.32)',
+  /** Premium boolean toggle — thumb (light gray / white) */
+  toggleThumb: '#F4F4F5',
+  /** Premium boolean toggle — track hairline */
+  toggleBorder: 'rgba(255, 255, 255, 0.08)',
   codeBg: '#161618',
   borderSubtle: 'rgba(255, 255, 255, 0.07)',
   border: dashboardPalette.border,
@@ -188,6 +197,10 @@ export const lightColors = {
   surfaceElevated: '#E8E8ED',
   input: '#E8E8ED',
   accentGreen: '#4ADE80',
+  toggleTrackOff: '#D4D4DC',
+  toggleTrackOn: 'rgba(0, 168, 84, 0.24)',
+  toggleThumb: '#FFFFFF',
+  toggleBorder: 'rgba(0, 0, 0, 0.08)',
   codeBg: '#E4E4EA',
   borderSubtle: 'rgba(0, 0, 0, 0.07)',
   border: CONTAINER_BORDER_LIGHT,
@@ -456,7 +469,8 @@ export const typography = {
  * Forbidden surfaces (use Inter + {@link moneyAmountTypography} instead):
  * - Dashboard / Accueil (`app/(tabs)/index.tsx`)
  * - Portefeuille cards (`BankAccountCard`, `CashAccountCard`, `LoanCard`)
- * - Transaction list rows (`TransactionRow`)
+ * - Transaction list rows (`TransactionRow` — {@link transactionRowAmountTypography})
+ * - Transaction detail hero (`transaction-detail` — {@link transactionDetailHeroAmountTypography})
  * - Debt, cash, portfolio, chart metrics
  *
  * Import only in transaction-detail articles components; prefer {@link articlesReceiptTypography}.
@@ -492,11 +506,63 @@ export function goalProgressTrackColor(isLight: boolean): string {
   return isLight ? GOAL_PROGRESS_TRACK_LIGHT : GOAL_PROGRESS_TRACK_DARK;
 }
 
+/** Loaded key for Onest 800 — transaction amounts (list rows + detail hero). */
+export const TRANSACTION_ROW_AMOUNT_FONT = 'Onest_800ExtraBold';
+
+const onestExtraBoldText = {
+  fontFamily: TRANSACTION_ROW_AMOUNT_FONT,
+  fontWeight: 'normal' as const,
+};
+
 /**
- * Standard Inter ExtraBold money typography for all monetary amounts **except**
- * transaction-detail ARTICLES/receipt lines (those use {@link articlesReceiptTypography}).
+ * Transaction list row amounts (`TransactionRow` → `TransactionAmountLabel` in Historique).
+ * Onest 800 ExtraBold — intentional scoped exception to the Plus Jakarta Sans system;
+ * merchant name and subtitle stay Jakarta.
  *
- * Use for: dashboard cards, portfolio cards, debt amounts, chart metrics, transaction row amounts, etc.
+ * Do not use for dashboard cards, portfolio, or other money surfaces ({@link moneyAmountTypography}).
+ */
+export function transactionRowAmountTypography(options?: {
+  fontSize?: number;
+  lineHeight?: number;
+  letterSpacing?: number;
+}): TextStyle {
+  const preset = typographyKit.rowAmount;
+  return {
+    ...onestExtraBoldText,
+    fontVariant: preset.fontVariant,
+    fontSize: options?.fontSize ?? preset.fontSize,
+    lineHeight: options?.lineHeight ?? preset.lineHeight,
+    letterSpacing: options?.letterSpacing ?? preset.letterSpacing,
+  };
+}
+
+/**
+ * Transaction detail hero amount (`transaction-detail.tsx` — large centered −105,68$).
+ * Onest 800 ExtraBold at `typographyKit.detailHero` size (36px).
+ */
+export function transactionDetailHeroAmountTypography(options?: {
+  fontSize?: number;
+  lineHeight?: number;
+  letterSpacing?: number;
+}): TextStyle {
+  const preset = typographyKit.detailHero;
+  return {
+    ...onestExtraBoldText,
+    fontVariant: preset.fontVariant,
+    fontSize: options?.fontSize ?? preset.fontSize,
+    lineHeight: options?.lineHeight ?? preset.lineHeight,
+    letterSpacing: options?.letterSpacing ?? preset.letterSpacing,
+    textAlign: preset.textAlign,
+  };
+}
+
+/**
+ * Standard Plus Jakarta ExtraBold money typography for all monetary amounts **except**
+ * transaction-detail ARTICLES/receipt lines (those use {@link articlesReceiptTypography}),
+ * transaction list row amounts (those use {@link transactionRowAmountTypography}), and
+ * transaction detail hero amounts (those use {@link transactionDetailHeroAmountTypography}).
+ *
+ * Use for: dashboard cards, portfolio cards, debt amounts, chart metrics, etc.
  */
 export function moneyAmountTypography(options?: {
   /** Preset size tier; default `card` (16px). Use `hero` for large card balances. */
@@ -647,7 +713,7 @@ export function getFloatingTabBarBottomInset(safeBottom: number): number {
   return Math.max(safeBottom, spacing.sm);
 }
 
-/** Tab pill row height in `FloatingTabBar` (excludes safe-area padding on nav shell). */
+/** Tab row height in `FloatingTabBar` (excludes safe-area padding on nav shell). */
 export const FLOATING_TAB_BAR_PILL_HEIGHT = Platform.OS === 'android' ? 9 + 50 + 7 : 11 + 50 + 11;
 
 /** Minimal gap between chat input and the Android system navigation bar at rest. */
@@ -680,7 +746,8 @@ export function getFloatingTabBarOverlayInset(
   return safeBottom + FLOATING_TAB_BAR_PILL_HEIGHT;
 }
 
-const FLOATING_NAV_BASE_PADDING = 112;
+/** Scroll clearance above fixed tab bar (icon row + former floating bottom gap removed). */
+const FLOATING_NAV_BASE_PADDING = 104;
 
 export const FLOATING_NAV_CONTENT_PADDING =
   FLOATING_NAV_BASE_PADDING +
@@ -960,7 +1027,7 @@ export function accountDetailSectionDividerStyle(isLight: boolean): ViewStyle {
  * 3. **Ligne stats transfert** — Reçu (+) · Net (prominent, vert/rouge) · Envoyé (−)
  *    ({@link accountDetailStatementStatsRowStyle}) ; net = total reçu − total envoyé
  * 4. **DetailRows secondaires** — Opérations, Période (hairline entre lignes)
- * 5. **Toggle employeur** — rangée compacte type DetailRow (eyebrow « Employeur » + Switch), sans GlassContainer
+ * 5. **Toggle employeur** — rangée compacte type DetailRow (eyebrow « Employeur » + {@link PremiumSwitch}), sans GlassContainer
  * 6. **Historique** — recherche + filtres SegmentedTabs (Tous · Envoyés · Reçus) + groupes {@link TransactionRow}
  *
  * Règles couleur des valeurs stats :
@@ -1060,6 +1127,7 @@ export function detailSubSectionHeaderStyle(): TextStyle {
 export function detailSingleLineRowStyle(): ViewStyle {
   return {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'flex-start',
     paddingVertical: spacing.sm,
     gap: spacing.sm,

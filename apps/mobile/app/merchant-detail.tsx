@@ -22,13 +22,14 @@ import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   accountDetailHeroActionsStyle,
   accountDetailHeroBlockStyle,
-  accountDetailRecurringHeaderStyle,
   accountDetailSectionDividerStyle,
   accountDetailStatementStatColStyle,
   accountDetailStatementStatLabelStyle,
   accountDetailStatementStatsRowStyle,
   accountDetailStatementStatValueStyle,
   jakartaExtraBoldText,
+  jakartaMediumText,
+  jakartaSemiboldText,
   MERCHANT_LOGO_SIZE,
   radius,
   spacing,
@@ -36,7 +37,9 @@ import {
 } from '@/constants/theme';
 import { getMerchantOverrides, getTransactions, sortTransactionsNewestFirst } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
+import { normalizeMerchantKey, resolveCanonicalMerchantOriginalName } from '@/lib/merchantLogo';
 import { tapHaptic } from '@/lib/haptics';
+import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import { parseItemizedNote } from '@/lib/itemizedNote';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
@@ -174,13 +177,16 @@ export default function MerchantDetailScreen() {
   useRefreshOnFocus(load);
 
   const override = useMemo(
-    () => overrides.find((item) => item.originalName === merchantKey),
+    () => overrides.find((item) => normalizeMerchantKey(item.originalName) === normalizeMerchantKey(merchantKey)),
     [merchantKey, overrides],
   );
   const merchantName = override?.displayName?.trim() || merchantKey || 'Marchand';
   const visibleTransactions = useMemo(() => {
     if (!merchantKey || override?.hidden) return [];
-    return sortTransactionsNewestFirst(transactions.filter((tx) => tx.label === merchantKey));
+    const merchantNorm = normalizeMerchantKey(merchantKey);
+    return sortTransactionsNewestFirst(
+      transactions.filter((tx) => normalizeMerchantKey(tx.label) === merchantNorm),
+    );
   }, [merchantKey, override?.hidden, transactions]);
 
   const expenseTransactions = useMemo(
@@ -329,16 +335,26 @@ export default function MerchantDetailScreen() {
           <FlowDivider />
 
           <View style={styles.receiptSection}>
-            <View style={accountDetailRecurringHeaderStyle(isLight)}>
+            <View
+              style={[
+                styles.receiptLibraryHeader,
+                { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
+              ]}
+            >
               <View style={styles.receiptSectionTitleRow}>
-                <Ionicons name="receipt-outline" size={18} color={colors.primary} />
+                <Ionicons name="receipt-outline" size={18} color={colors.textMuted} />
                 <Text style={[styles.receiptSectionTitle, { color: colors.text }]}>
                   Bibliothèque de reçus
                 </Text>
               </View>
               <View style={styles.receiptSectionMeta}>
-                <View style={[styles.receiptCountBadge, { backgroundColor: colors.blueMuted }]}>
-                  <Text style={[styles.receiptCountBadgeText, { color: colors.primary }]}>
+                <View
+                  style={[
+                    styles.receiptCountBadge,
+                    { backgroundColor: colors.borderSubtle, borderColor: colors.border },
+                  ]}
+                >
+                  <Text style={[styles.receiptCountBadgeText, { color: colors.textMuted }]}>
                     {receiptCount}
                   </Text>
                 </View>
@@ -459,7 +475,7 @@ export default function MerchantDetailScreen() {
                       <TransactionRow
                         key={tx.id}
                         transaction={{ ...tx, label: getTransactionTitle(tx, merchantName) }}
-                        onPress={() => { tapHaptic(); router.push({ pathname: '/transaction-detail', params: { transactionId: tx.id } }); }}
+                        onPress={() => { tapHaptic(); openTransactionDetail(tx.id); }}
                       />
                     ))}
                   </View>
@@ -481,6 +497,10 @@ export default function MerchantDetailScreen() {
           visible={Boolean(editTarget)}
           merchant={editTarget}
           showDelete={false}
+          resolveOriginalName={(displayName) =>
+            resolveCanonicalMerchantOriginalName(displayName, transactions.map((tx) => tx.label))
+          }
+          transactionMerchantNames={transactions.map((tx) => tx.label)}
           onClose={() => setEditTarget(null)}
           onSaved={load}
         />
@@ -541,6 +561,17 @@ const styles = StyleSheet.create({
   receiptSection: {
     gap: spacing.sm,
   },
+  receiptLibraryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    minHeight: 44,
+  },
   receiptSectionTitleRow: {
     flex: 1,
     flexDirection: 'row',
@@ -549,9 +580,9 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   receiptSectionTitle: {
-    ...jakartaExtraBoldText,
+    ...jakartaSemiboldText,
     fontSize: typography.body,
-    letterSpacing: -0.2,
+    letterSpacing: -0.1,
     flexShrink: 1,
   },
   receiptSectionMeta: {
@@ -561,16 +592,17 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   receiptCountBadge: {
-    minWidth: 24,
-    height: 24,
-    borderRadius: 12,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },
   receiptCountBadgeText: {
-    ...jakartaExtraBoldText,
-    fontSize: typography.meta,
+    ...jakartaMediumText,
+    fontSize: typography.micro,
     fontVariant: ['tabular-nums'],
   },
   receiptThumbnailRow: {

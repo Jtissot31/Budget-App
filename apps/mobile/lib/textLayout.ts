@@ -1,18 +1,19 @@
-import type { TextStyle } from 'react-native';
+﻿import type { TextStyle } from 'react-native';
 
+import { moneyAmountTypography } from '@/constants/theme';
 import { typographyKit } from '@/constants/typographyKit';
 
 /**
  * Text display rules (chips, tabs, pills):
- * - Never break/cut a word in the middle — `numberOfLines` + `ellipsizeMode="tail"` at end of line only, or wrap at word boundaries.
+ * - Never break/cut a word in the middle â€” `numberOfLines` + `ellipsizeMode="tail"` at end of line only, or wrap at word boundaries.
  * - Single-line chip labels: chip needs min padding + minWidth; `adjustsFontSizeToFit` + `minimumFontScale` only as last resort.
- * - Selected chip state must keep the same inner content box — see `CHIP_BORDER_WIDTH` in `constants/theme.ts`.
+ * - Selected chip state must keep the same inner content box â€” see `CHIP_BORDER_WIDTH` in `constants/theme.ts`.
  */
 
 /** Default minimum scale when auto-shrinking single-line chip/tab labels (last resort). */
 export const CHIP_LABEL_MIN_FONT_SCALE = 0.82;
 
-/** Props for single-line chip / tab / pill labels — tail ellipsis only, never mid-word break. */
+/** Props for single-line chip / tab / pill labels â€” tail ellipsis only, never mid-word break. */
 export function chipLabelTextProps(options?: { minScale?: number }) {
   const minScale = options?.minScale ?? CHIP_LABEL_MIN_FONT_SCALE;
   return noMidWordClipTextProps({ minScale, singleLine: true });
@@ -51,7 +52,7 @@ export const singleLineLabelStyle: Pick<TextStyle, 'flexShrink' | 'minWidth'> = 
 };
 
 /**
- * Numeric & list layout helpers — built on `typographyKit` (Portefeuille reference).
+ * Numeric & list layout helpers â€” built on `typographyKit` (Portefeuille reference).
  */
 export const portfolioNumericText = {
   ...typographyKit.cardMetric,
@@ -67,6 +68,21 @@ export const heroStatAmount = typographyKit.heroStat;
 
 export const detailHeroAmount = typographyKit.detailHero;
 
+/** Secondary hero amount (e.g. budget limit beside spent) â€” one tier below hero. */
+export const detailHeroSecondaryAmount = moneyAmountTypography({ tier: 'row' });
+
+/** Detail sheet row label (Limite mensuelle, Type, Dateâ€¦). */
+export const detailRowLabelText = typographyKit.metaMedium;
+
+/** Detail sheet row value â€” money (14px ExtraBold tabular). */
+export const detailRowValueMoney = moneyAmountTypography({ tier: 'row' });
+
+/** Detail sheet row value â€” text (dates, categories, %). */
+export const detailRowValueText = typographyKit.metaMedium;
+
+/** Select / picker values (Compte, Catégorie) — smaller, wraps to 2 lines. */
+export const detailRowSelectValueText = typographyKit.metaMedium;
+
 export const percentStat = typographyKit.percent;
 
 export const netWorthHeroAmount = typographyKit.netWorthHero;
@@ -74,19 +90,22 @@ export const netWorthHeroAmount = typographyKit.netWorthHero;
 /** Max width for right-column amounts in row layouts */
 export const ROW_VALUE_MAX_WIDTH = '40%' as const;
 
-/** Detail section row label — truncates before the value column grows */
-export const detailRowLabel = {
-  flexShrink: 1,
-  minWidth: 0,
-  maxWidth: '45%',
+/** Detail section row label â€” truncates before the value column grows */
+export const detailRowLabelSlot = {
+  flexShrink: 0,
+  alignSelf: 'flex-start' as const,
 } as const;
 
-/** Detail section row value slot — fills remaining row width */
+/** @deprecated Use detailRowLabelSlot on a wrapper View */
+export const detailRowLabel = detailRowLabelSlot;
+
+/** Detail section row value slot â€” fills remaining row width */
 export const detailRowValueSlot = {
   flex: 1,
+  flexShrink: 1,
   minWidth: 0,
   flexDirection: 'row' as const,
-  alignItems: 'center' as const,
+  alignItems: 'flex-start' as const,
   justifyContent: 'flex-end' as const,
 } as const;
 
@@ -103,6 +122,12 @@ export const detailRowEditableContainer = {
 /** Text props for detail row values (account names, categories, dates) */
 export const detailRowValueTextProps = {
   numberOfLines: 1 as const,
+  ellipsizeMode: 'tail' as const,
+};
+
+/** Select / picker values in detail rows â€” two lines before tail ellipsis */
+export const detailRowSelectValueTextProps = {
+  numberOfLines: 2 as const,
   ellipsizeMode: 'tail' as const,
 };
 
@@ -129,7 +154,7 @@ export const rowLabel = {
   ...typographyKit.rowTitle,
 } as const;
 
-/** List row title — Historique, Portefeuille lists */
+/** List row title â€” Historique, Portefeuille lists */
 export const listRowTitle = {
   ...rowLabel,
 } as const;
@@ -162,7 +187,7 @@ export const rowTitleTextProps = {
   ellipsizeMode: 'tail' as const,
 };
 
-/** Single-line list row titles — tail ellipsis only, no font scaling. */
+/** Single-line list row titles â€” tail ellipsis only, no font scaling. */
 export const singleLineRowTitleTextProps = {
   numberOfLines: 1 as const,
   ellipsizeMode: 'tail' as const,

@@ -7,6 +7,7 @@ type Props = {
   color?: string;
   height?: number;
   fillOpacity?: number;
+  trackColor?: string;
 };
 
 export function ProgressBar({
@@ -14,6 +15,7 @@ export function ProgressBar({
   color,
   height = PROGRESS_BAR_TRACK_HEIGHT,
   fillOpacity = 1,
+  trackColor,
 }: Props) {
   const { colors } = useAppTheme();
   const clamped = Math.max(0, Math.min(1, progress));
@@ -23,7 +25,7 @@ export function ProgressBar({
     <View
       style={[
         styles.track,
-        { height, borderRadius: trackRadius, backgroundColor: 'rgba(255,255,255,0.08)' },
+        { height, borderRadius: trackRadius, backgroundColor: trackColor ?? colors.border },
       ]}
     >
       <View

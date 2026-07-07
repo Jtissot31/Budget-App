@@ -3,15 +3,12 @@ import {
   AppState,
   BackHandler,
   Dimensions,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   TouchableWithoutFeedback,
   View,
-  type ViewStyle,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { useFocusEffect } from '@react-navigation/native';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,11 +18,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { usePathname, useRouter } from 'expo-router';
 import {
-  TRANSACTIONS_FAB_BLUR_INTENSITY,
-  TRANSACTIONS_FAB_BLUR_TINT,
-  TRANSACTIONS_FAB_ICON_COLOR_BLUR,
   TRANSACTIONS_FAB_ICON_COLOR_ORIGINAL,
-  TRANSACTIONS_FAB_STYLE_BLUR,
   TRANSACTIONS_FAB_STYLE_ORIGINAL,
 } from '@/constants/fabStyles';
 import {
@@ -128,84 +121,6 @@ const HISTORY_FAB_OPTION_PILL_WIDTH = 132;
 const HISTORY_FAB_ARC_STAGGER_MS = 55;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
-// Android: no live BlurView — causes scroll sampling artifacts (dimezisBlurView live-samples
-// the framebuffer behind absolutely-positioned nav; any transparency brings scroll ghosts).
-const ANDROID_FAKE_GLASS = {
-  dark: {
-    fill: 'rgba(10, 10, 10, 0.90)',
-    sheen: 'rgba(255, 255, 255, 0.06)',
-  },
-  light: {
-    fill: 'rgba(255, 255, 255, 0.90)',
-    sheen: 'rgba(255, 255, 255, 0.10)',
-  },
-} as const;
-
-/** iOS only — BlurView + opaque underlay keeps frosted glass stable without ghost bleed. */
-const IOS_FLOATING_GLASS = {
-  dark: {
-    underlay: 'rgba(10, 10, 10, 0.75)',
-    blurOverlay: 'rgba(10, 10, 10, 0.32)',
-    sheen: 'rgba(255, 255, 255, 0.04)',
-  },
-  light: {
-    underlay: 'rgba(255, 255, 255, 0.75)',
-    blurOverlay: 'rgba(255, 255, 255, 0.30)',
-    sheen: 'rgba(255, 255, 255, 0.10)',
-  },
-} as const;
-
-const ANDROID_HISTORY_FAB_GLOW: Pick<
-  ViewStyle,
-  'shadowColor' | 'shadowOffset' | 'shadowOpacity' | 'shadowRadius' | 'elevation'
-> = {
-  shadowColor: '#4ADE80',
-  shadowOffset: { width: 0, height: 0 },
-  shadowOpacity: 0.35,
-  shadowRadius: 12,
-  elevation: 0,
-};
-
-type FloatingGlassFillStyle = ReturnType<typeof StyleSheet.absoluteFillObject> | typeof StyleSheet.absoluteFill;
-
-function FloatingGlassBackground({
-  intensity,
-  tint,
-  isLight,
-  fillStyle = StyleSheet.absoluteFill,
-}: {
-  intensity: number;
-  tint: 'light' | 'dark';
-  isLight: boolean;
-  fillStyle?: FloatingGlassFillStyle;
-}) {
-  if (Platform.OS === 'android') {
-    const glass = isLight ? ANDROID_FAKE_GLASS.light : ANDROID_FAKE_GLASS.dark;
-    return (
-      <>
-        <View pointerEvents="none" collapsable={false} style={[fillStyle, { backgroundColor: glass.fill }]} />
-        <View pointerEvents="none" collapsable={false} style={[fillStyle, { backgroundColor: glass.sheen }]} />
-      </>
-    );
-  }
-
-  const glass = isLight ? IOS_FLOATING_GLASS.light : IOS_FLOATING_GLASS.dark;
-
-  return (
-    <>
-      <View pointerEvents="none" collapsable={false} style={[fillStyle, { backgroundColor: glass.underlay }]} />
-      <BlurView
-        intensity={intensity}
-        tint={tint}
-        collapsable={false}
-        style={[fillStyle, { overflow: 'hidden' }]}
-      />
-      <View pointerEvents="none" collapsable={false} style={[fillStyle, { backgroundColor: glass.blurOverlay }]} />
-      <View pointerEvents="none" collapsable={false} style={[fillStyle, { backgroundColor: glass.sheen }]} />
-    </>
-  );
-}
-
 const AGENDA_FAB_OPTION_PILL_WIDTH = 132;
 
 const AGENDA_FAB_ADD_ACTIONS: {
@@ -282,7 +197,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     !isTransactionsMerchantsView;
   const showHistoryFabOptions = isTransactionsHistoryView && isHistoryFabExpanded;
   const showAgendaFabOptions = isTransactionsAgendaView && isAgendaFabExpanded;
-  const rightThumbFabBottom = bottom + FLOATING_FAB_SIZE;
+  const rightThumbFabBottom = bottom + FLOATING_FAB_SIZE - spacing.sm;
 
   const collapseSpeedDials = useCallback(() => {
     setIsHistoryFabExpanded(false);
@@ -369,7 +284,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     router.push('/add-transaction');
   };
 
-  const tabBarBlurIntensity = isLight ? 65 : 72;
   const tabBarBorderColor = isLight ? colors.border : 'rgba(255, 255, 255, 0.12)';
 
   return (
@@ -547,17 +461,12 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           pointerEvents="auto"
           style={({ pressed }) => [
             styles.fabPosition,
-            isTransactionsHistoryView ? TRANSACTIONS_FAB_STYLE_BLUR : styles.addOuter,
+            styles.addOuter,
             {
               bottom: rightThumbFabBottom + FAB_STACK_OFFSET_ADD,
+              backgroundColor: colors.accentGreen,
+              shadowColor: colors.accentGreen,
             },
-            isTransactionsHistoryView && Platform.OS === 'android' ? ANDROID_HISTORY_FAB_GLOW : null,
-            !isTransactionsHistoryView
-              ? {
-                  backgroundColor: colors.primary,
-                  shadowColor: colors.primary,
-                }
-              : null,
             pressed && floatingGlassButtonPressed,
           ]}
           onPress={handleAddPress}
@@ -576,14 +485,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
               : 'Nouvelle transaction'
           }
         >
-          {isTransactionsHistoryView ? (
-            <FloatingGlassBackground
-              intensity={TRANSACTIONS_FAB_BLUR_INTENSITY}
-              tint={TRANSACTIONS_FAB_BLUR_TINT}
-              isLight={isLight}
-              fillStyle={styles.addBlurFill}
-            />
-          ) : null}
           <MotiView
             animate={{
               rotate:
@@ -595,14 +496,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
             transition={{ type: 'timing', duration: 180 }}
             style={styles.addIconWrap}
           >
-            <PlusFabIcon
-              size={24}
-              color={
-                isTransactionsHistoryView
-                  ? TRANSACTIONS_FAB_ICON_COLOR_BLUR
-                  : TRANSACTIONS_FAB_ICON_COLOR_ORIGINAL
-              }
-            />
+            <PlusFabIcon size={24} color={TRANSACTIONS_FAB_ICON_COLOR_ORIGINAL} />
           </MotiView>
         </Pressable>
       ) : null}
@@ -610,30 +504,18 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
       <View
         pointerEvents="box-none"
         collapsable={false}
-        style={[
-          styles.floatingNavShell,
-          {
-            marginBottom: bottom + spacing.sm,
-            marginHorizontal: spacing.lg,
-          },
-        ]}
+        style={[styles.fixedNavShell, { paddingBottom: bottom }]}
       >
         <View
           pointerEvents="none"
           style={[
-            styles.floatingNavBlurLayer,
+            styles.fixedNavBackground,
             {
-              borderColor: tabBarBorderColor,
-              borderRadius: PILL_BORDER_RADIUS,
+              backgroundColor: colors.background,
+              borderTopColor: tabBarBorderColor,
             },
           ]}
-        >
-          <FloatingGlassBackground
-            intensity={tabBarBlurIntensity}
-            tint={isLight ? 'light' : 'dark'}
-            isLight={isLight}
-          />
-        </View>
+        />
         <View style={styles.navContent} pointerEvents="box-none">
           {state.routes.map((route, index) => {
             if (HIDDEN_ROUTES.has(route.name)) return null;
@@ -709,13 +591,13 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     backgroundColor: 'transparent',
   },
-  floatingNavShell: {
+  fixedNavShell: {
+    width: '100%',
     backgroundColor: 'transparent',
   },
-  floatingNavBlurLayer: {
+  fixedNavBackground: {
     ...StyleSheet.absoluteFillObject,
-    borderWidth: 1,
-    overflow: 'hidden',
+    borderTopWidth: 1,
   },
   navContent: {
     flexDirection: 'row',
@@ -765,11 +647,6 @@ const styles = StyleSheet.create({
   },
   addOuter: {
     ...TRANSACTIONS_FAB_STYLE_ORIGINAL,
-  },
-  addBlurFill: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 27,
-    overflow: 'hidden',
   },
   addIconWrap: {
     alignItems: 'center',

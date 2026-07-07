@@ -13,6 +13,7 @@ import { radius, spacing, typography, type AppColors } from '@/constants/theme';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { getTransactionsForWealthAsset, getWealthAssetById, sortTransactionsNewestFirst } from '@/lib/db';
 import { tapHaptic } from '@/lib/haptics';
+import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import { useAppTheme } from '@/lib/themeContext';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { wealthAssetHeroSubtitleWithFallback } from '@/lib/wealthAssetPresentation';
@@ -292,7 +293,7 @@ export default function WealthAssetTransactionsScreen() {
                         ...tx,
                         label: getTransactionTitle(tx, tx.categoryName?.trim() || displayName),
                       }}
-                      onPress={() => { tapHaptic(); router.push({ pathname: '/transaction-detail', params: { transactionId: tx.id } }); }}
+                      onPress={() => { tapHaptic(); openTransactionDetail(tx.id); }}
                     />
                   ))}
                 </View>

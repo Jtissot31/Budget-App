@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type RefObject } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
@@ -14,15 +14,23 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
+import { MinimalDatePicker } from '@/components/MinimalDatePicker';
 import { SettingsPickerSheet, type SettingsPickerOption } from '@/components/SettingsPickerSheet';
+import { formatFriendlyDateLabel } from '@/lib/formatFriendlyDateLabel';
+import { toLocalDateInputValue } from '@/lib/localDateInput';
 import { moneyAmountTypography, radius, spacing, typographyKit } from '@/constants/theme';
+import { detailRowSelectValueTextProps } from '@/lib/textLayout';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { parseFormattedNumber } from '@/lib/formatNumber';
 import { isHandledSaveError } from '@/lib/editableSaveError';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
-export type EditableFieldType = 'text' | 'money' | 'icon' | 'select';
+export type EditableFieldType = 'text' | 'money' | 'icon' | 'select' | 'date';
+
+export type EditableFieldHandle = {
+  startEditing: () => void;
+};
 
 type Props = {
   value: string;
@@ -39,6 +47,12 @@ type Props = {
   selectedId?: string;
   selectOptions?: SettingsPickerOption<string>[];
   pickerTitle?: string;
+  /** ISO date string → display label when type is `date`. */
+  formatDateLabel?: (isoDate: string) => string;
+  /** Ref attached to the field wrapper — use with parent scroll-into-view. */
+  fieldRef?: RefObject<View | null>;
+  /** Imperative handle — e.g. header + button to focus the same inline field. */
+  editHandleRef?: RefObject<EditableFieldHandle | null>;
   /** Called when inline edit mode begins (before focus). Use to scroll parent. */
   onEditStart?: () => void;
   /** Called when the text input receives focus (e.g. after keyboard opens). */
@@ -64,6 +78,9 @@ export function EditableField({
   selectedId = '',
   selectOptions = [],
   pickerTitle = 'Choisir',
+  formatDateLabel,
+  fieldRef,
+  editHandleRef,
   onEditStart,
   onFocusEdit,
 }: Props) {
@@ -97,7 +114,12 @@ export function EditableField({
   const displayValue =
     type === 'money'
       ? formatDisplayMoneyAbsolute(Math.max(0, parseFormattedNumber(value) || 0))
-      : value;
+      : type === 'date'
+        ? (formatDateLabel?.(value) ?? formatFriendlyDateLabel(toLocalDateInputValue(value)))
+        : type === 'select'
+          ? (selectOptions.find((option) => option.id === selectedId)?.label?.trim()
+              || (value.trim() && !/^\d+$/.test(value.trim()) ? value : ''))
+          : value;
 
   const validate = useCallback(
     (raw: string): string | null => {
@@ -169,12 +191,12 @@ export function EditableField({
 
   commitSaveRef.current = commitSave;
 
-  const deferFocusForScroll = multiline && Boolean(onEditStart);
+  const deferFocusForScroll = Boolean(onEditStart);
 
   useEffect(() => {
     if (!editing || type === 'select') return;
 
-    const focusDelayMs = deferFocusForScroll ? 200 : 0;
+    const focusDelayMs = deferFocusForScroll ? (multiline ? 200 : 80) : 0;
     const frame = requestAnimationFrame(() => {
       setTimeout(() => inputRef.current?.focus(), focusDelayMs);
     });
@@ -201,10 +223,21 @@ export function EditableField({
     setPickerVisible(true);
   }, [disabled]);
 
+  const openDatePicker = useCallback(() => {
+    if (disabled) return;
+    tapHaptic();
+    setErrorHint(null);
+    setPickerVisible(true);
+  }, [disabled]);
+
   const startEditing = useCallback(() => {
     if (disabled || type === 'icon') return;
     if (type === 'select') {
       openSelectPicker();
+      return;
+    }
+    if (type === 'date') {
+      openDatePicker();
       return;
     }
     tapHaptic();
@@ -213,7 +246,9 @@ export function EditableField({
     setSaveState('idle');
     setEditing(true);
     onEditStart?.();
-  }, [disabled, onEditStart, openSelectPicker, type, value]);
+  }, [disabled, onEditStart, openDatePicker, openSelectPicker, type, value]);
+
+  useImperativeHandle(editHandleRef, () => ({ startEditing }), [startEditing]);
 
   const handleSelect = useCallback(
     async (id: string) => {
@@ -225,6 +260,19 @@ export function EditableField({
       }
     },
     [runSave, selectedId],
+  );
+
+  const handleDateConfirm = useCallback(
+    async (nextDayYmd: string) => {
+      setPickerVisible(false);
+      if (nextDayYmd === toLocalDateInputValue(value)) return;
+      try {
+        await runSave(nextDayYmd);
+      } catch {
+        // error state handled in runSave
+      }
+    },
+    [runSave, value],
   );
 
   const handleBlur = useCallback(() => {
@@ -263,7 +311,7 @@ export function EditableField({
   const affordanceBg = isLight ? 'rgba(10, 10, 10, 0.04)' : 'rgba(255, 255, 255, 0.06)';
 
   return (
-    <View style={[styles.wrapper, containerStyle]}>
+    <View ref={fieldRef} style={[styles.wrapper, containerStyle]} collapsable={false}>
       {editing ? (
         type === 'money' ? (
           <NumericAmountInput
@@ -308,9 +356,10 @@ export function EditableField({
           onPress={startEditing}
           style={({ pressed }) => [
             styles.displayPressable,
-            (type === 'text' || multiline || type === 'select' || align === 'right')
+            (type === 'text' || multiline || type === 'select' || type === 'date' || align === 'right')
               && styles.displayPressableStretch,
-            (type === 'select' || align === 'right') && styles.displayPressableRight,
+            (type === 'select' || type === 'date' || align === 'right') && styles.displayPressableRight,
+            type === 'select' && styles.displayPressableSelect,
             { backgroundColor: pressed || saveState === 'saved' ? affordanceBg : 'transparent' },
             disabled && styles.disabled,
           ]}
@@ -319,14 +368,21 @@ export function EditableField({
             style={[
               type === 'money' ? moneyAmountTypography() : null,
               multiline ? typographyKit.metaMedium : null,
-              (type === 'select' || (type === 'money' && align === 'right')) ? styles.selectValueText : null,
+              (type === 'select' || type === 'date' || (type === 'money' && align === 'right'))
+                ? styles.selectValueText
+                : null,
               textStyle,
               {
                 color: displayValue ? colors.text : colors.textMuted,
               },
             ]}
-            numberOfLines={multiline ? undefined : type === 'text' ? 2 : 1}
-            ellipsizeMode={!multiline ? 'tail' : undefined}
+            {...(multiline
+              ? {}
+              : type === 'select' || type === 'date'
+                ? detailRowSelectValueTextProps
+                : type === 'text'
+                  ? { numberOfLines: 2 as const, ellipsizeMode: 'tail' as const }
+                  : { numberOfLines: 1 as const, ellipsizeMode: 'tail' as const })}
           >
             {displayValue || placeholder}
           </Text>
@@ -352,6 +408,15 @@ export function EditableField({
           selectedId={selectedId}
           onClose={() => setPickerVisible(false)}
           onSelect={(id) => void handleSelect(id)}
+        />
+      ) : null}
+      {type === 'date' ? (
+        <MinimalDatePicker
+          visible={pickerVisible}
+          value={toLocalDateInputValue(value)}
+          allowClear={false}
+          onCancel={() => setPickerVisible(false)}
+          onConfirm={(nextDayYmd) => void handleDateConfirm(nextDayYmd)}
         />
       ) : null}
     </View>
@@ -380,8 +445,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
     justifyContent: 'flex-end',
   },
+  displayPressableSelect: {
+    alignItems: 'flex-start',
+    width: '100%',
+  },
   selectValueText: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
     minWidth: 0,
     textAlign: 'right',
   },
@@ -408,6 +478,7 @@ const styles = StyleSheet.create({
   selectIndicator: {
     flexShrink: 0,
     width: 14,
+    marginTop: 3,
   },
   errorHint: {
     fontSize: 11,

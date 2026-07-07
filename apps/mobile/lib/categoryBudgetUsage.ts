@@ -27,6 +27,8 @@ export const BUDGET_AMBER_MAX_PERCENT = 115;
 
 /** Under-budget bar — white-gray fill below 100 %. */
 export const BUDGET_UNDER_BUDGET_COLOR = 'rgba(255,255,255,0.35)';
+/** Under-budget track — muted white below 100 %. */
+export const BUDGET_UNDER_BUDGET_TRACK_COLOR = 'rgba(255,255,255,0.08)';
 /** Green bar — limit exactly met (100 % only). */
 export const BUDGET_GREEN_COLOR = '#4ADE80';
 /** Amber warning — mild overspend (101–115 %). */
@@ -147,6 +149,14 @@ export function categoryBudgetBarColor(
   _colors?: AppColors,
 ): string {
   return getBudgetStatus(spent, allocated).color;
+}
+
+/** Under-budget track color; undefined for green / amber / red tiers. */
+export function categoryBudgetBarTrackColor(spent: number, allocated: number): string | undefined {
+  if (getBudgetStatus(spent, allocated).percentage < BUDGET_GREEN_MAX_PERCENT) {
+    return BUDGET_UNDER_BUDGET_TRACK_COLOR;
+  }
+  return undefined;
 }
 
 export function shouldShowCategoryStatusTag(usage: CategoryBudgetUsage): boolean {

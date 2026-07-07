@@ -4,11 +4,11 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 
 import { Ionicons } from '@expo/vector-icons';
 
-import { useRouter } from 'expo-router';
-
 import { BottomSheet } from '@/components/BottomSheet';
 
 import { DetailSingleLineRow, type DetailSectionRow } from '@/components/DetailSectionRows';
+
+import { TransactionInsightCard } from '@/components/TransactionInsightCard';
 
 import { EditableField } from '@/components/EditableField';
 
@@ -26,7 +26,6 @@ import {
   detailSingleLineRowStyle,
   jakartaExtraBoldText,
   jakartaMediumText,
-  moneyAmountTypography,
   radius,
   spacing,
   typography,
@@ -39,7 +38,9 @@ import type { BudgetCategoryUiModel } from '@/lib/budgetCategoryModel';
 
 import { formatBudgetMonthLabel } from '@/lib/budgetMonth';
 
+import { getCategoryBudgetInsight } from '@/lib/categoryBudgetInsight';
 import {
+  categoryBudgetBarTrackColor,
   getBudgetStatus,
   getCategoryBudgetUsage,
   shouldShowCategoryStatusTag,
@@ -57,8 +58,15 @@ import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { parseFormattedNumber } from '@/lib/formatNumber';
 
 import { successHaptic, tapHaptic } from '@/lib/haptics';
+import { openTransactionDetail } from '@/lib/openTransactionDetail';
 
-import { detailHeroAmount, flexText, rowValue } from '@/lib/textLayout';
+import {
+  detailHeroAmount,
+  detailHeroSecondaryAmount,
+  detailRowLabelSlot,
+  detailRowLabelText,
+  detailRowValueMoney,
+} from '@/lib/textLayout';
 
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -93,6 +101,7 @@ function buildBudgetDetailRows(
       label: 'Dépensé',
       value: formatDisplayMoneyAbsolute(spent),
       icon: 'cash-outline',
+      valueLayout: 'amount',
     },
   ];
 
@@ -102,6 +111,7 @@ function buildBudgetDetailRows(
       value: `Dépassé de ${formatDisplayMoneyAbsolute(Math.max(0, spent - limit))}`,
       icon: 'trending-up-outline',
       valueColor: barColor,
+      valueLayout: 'amount',
     });
   }
 
@@ -125,7 +135,6 @@ export function BudgetCategoryDetailSheet({
   displayMonth,
   isCurrentMonth = true,
 }: Props) {
-  const router = useRouter();
   const { colors, isLight } = useAppTheme();
   const [localName, setLocalName] = useState('');
   const [localLimit, setLocalLimit] = useState(0);
@@ -160,7 +169,15 @@ export function BudgetCategoryDetailSheet({
     [category, localLimit, usage],
   );
 
+  const insight = useMemo(() => {
+    if (!category || !usage) return null;
+    return getCategoryBudgetInsight(localName, category.spent, localLimit, usage);
+  }, [category, localName, localLimit, usage]);
+
   const barColor = budgetStatus?.color ?? colors.accentGreen;
+  const barTrackColor = category
+    ? categoryBudgetBarTrackColor(category.spent, localLimit)
+    : undefined;
   const showStatusTag = usage ? shouldShowCategoryStatusTag(usage) : false;
   const statusText = budgetStatus?.label ?? '';
   const iconName = category
@@ -257,9 +274,9 @@ export function BudgetCategoryDetailSheet({
   const handlePressTransaction = useCallback(
     (transactionId: string) => {
       tapHaptic();
-      router.push({ pathname: '/transaction-detail', params: { transactionId } });
+      openTransactionDetail(transactionId);
     },
-    [router],
+    [],
   );
 
   if (!category) return null;
@@ -319,7 +336,7 @@ export function BudgetCategoryDetailSheet({
           <Text style={[detailHeroAmount, styles.heroSpent, { color: colors.text }]}>
             {formatDisplayMoneyAbsolute(category.spent)}
           </Text>
-          <Text style={[styles.heroLimit, typographyKit.caption, { color: colors.textMuted }]}>
+          <Text style={[detailHeroSecondaryAmount, { color: colors.textMuted }]}>
             {' / '}
             {formatDisplayMoneyAbsolute(localLimit)}
           </Text>
@@ -334,12 +351,19 @@ export function BudgetCategoryDetailSheet({
         ) : null}
       </View>
 
+      {insight ? <TransactionInsightCard insight={insight} /> : null}
+
       {usage ? (
         <SurfaceCard style={styles.budgetCard} padding={spacing.lg}>
           <Text style={[detailSectionLabelStyle(), styles.budgetEyebrow, { color: colors.textMuted }]}>
             BUDGET
           </Text>
-          <ProgressBar progress={usage.progress} color={barColor} height={6} />
+          <ProgressBar
+            progress={usage.progress}
+            color={barColor}
+            height={6}
+            trackColor={barTrackColor}
+          />
           <View style={[styles.budgetRows, { borderTopColor: colors.border }]}>
             <View
               style={[
@@ -351,15 +375,17 @@ export function BudgetCategoryDetailSheet({
               ]}
             >
               <Ionicons name="wallet-outline" size={17} color={colors.textMuted} style={styles.rowIcon} />
-              <Text style={[styles.rowLabel, flexText, { color: colors.textMuted }]}>
-                Limite mensuelle
-              </Text>
+              <View style={detailRowLabelSlot}>
+                <Text style={[styles.rowLabel, detailRowLabelText, { color: colors.textMuted }]}>
+                  Limite mensuelle
+                </Text>
+              </View>
               <EditableField
                 type="money"
                 value={String(localLimit)}
                 onSave={handleSaveLimit}
                 accessibilityLabel="Modifier la limite mensuelle"
-                textStyle={[styles.rowValue, rowValue, moneyAmountTypography()]}
+                textStyle={[styles.rowValue, detailRowValueMoney]}
                 containerStyle={styles.limitValueField}
                 align="right"
               />
@@ -508,10 +534,6 @@ const styles = StyleSheet.create({
   heroSpent: {
     textAlign: 'center',
   },
-  heroLimit: {
-    fontSize: typography.body,
-    lineHeight: typography.body + 4,
-  },
   statusPill: {
     alignSelf: 'center',
     borderRadius: radius.pill,
@@ -537,7 +559,6 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   rowLabel: {
-    ...typographyKit.metaMedium,
     marginRight: spacing.sm,
   },
   rowValue: {

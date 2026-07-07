@@ -1,11 +1,9 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import { ProgressBar } from '@/components/ProgressBar';
-import { getCategoryIconName } from '@/constants/categoryOptions';
 import {
   jakartaSemiboldText,
   moneyAmountTypography,
-  radius,
   spacing,
   typographyKit,
 } from '@/constants/theme';
@@ -13,8 +11,7 @@ import {
   BUDGET_GREEN_MAX_PERCENT,
   categoryBudgetBarColor,
   categoryBudgetBarOpacity,
-  categoryStatusTagLabel,
-  shouldShowCategoryStatusTag,
+  categoryBudgetBarTrackColor,
 } from '@/lib/categoryBudgetUsage';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import type { BudgetCategoryUiModel } from '@/lib/budgetCategoryModel';
@@ -29,29 +26,6 @@ type Props = {
   isLast?: boolean;
 };
 
-function CategoryStatusIndicator({
-  statusText,
-  barColor,
-  usagePercent,
-}: {
-  statusText: string;
-  barColor: string;
-  usagePercent: number;
-}) {
-  const isAtLimit = usagePercent === BUDGET_GREEN_MAX_PERCENT;
-
-  return (
-    <View style={styles.statusInline} accessibilityLabel={statusText}>
-      {isAtLimit ? (
-        <Ionicons name="checkmark-circle" size={14} color={barColor} />
-      ) : (
-        <View style={[styles.statusDot, { backgroundColor: barColor }]} />
-      )}
-      <Text style={[styles.statusCaption, { color: barColor }]}>{statusText}</Text>
-    </View>
-  );
-}
-
 export function BudgetCategoryRow({
   category,
   selected = false,
@@ -60,7 +34,6 @@ export function BudgetCategoryRow({
   isLast = false,
 }: Props) {
   const { colors, isLight } = useAppTheme();
-  const iconWellBg = isLight ? colors.surfaceElevated : colors.input;
   const barColor = categoryBudgetBarColor(
     category.spent,
     category.limit,
@@ -69,12 +42,9 @@ export function BudgetCategoryRow({
     colors,
   );
   const barOpacity = categoryBudgetBarOpacity(category.usage);
-  const showStatusTag = shouldShowCategoryStatusTag(category.usage);
-  const statusText = categoryStatusTagLabel(category.usage);
-  const iconName = getCategoryIconName({
-    icon: category.icon,
-    name: category.name,
-  });
+  const barTrackColor = categoryBudgetBarTrackColor(category.spent, category.limit);
+  const showUsagePercent =
+    category.limit > 0 && category.usage.usagePercent >= BUDGET_GREEN_MAX_PERCENT;
 
   return (
     <Pressable
@@ -94,17 +64,7 @@ export function BudgetCategoryRow({
       ]}
     >
       <View style={styles.mainRow}>
-        <View
-          style={[
-            styles.iconWell,
-            {
-              backgroundColor: iconWellBg,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <Ionicons name={iconName} size={18} color={colors.textSecondary} />
-        </View>
+        <BudgetCategoryIcon icon={category.icon} name={category.name} id={category.id} />
 
         <View style={styles.content}>
           <View style={styles.titleRow}>
@@ -116,13 +76,6 @@ export function BudgetCategoryRow({
               >
                 {category.name}
               </Text>
-              {showStatusTag ? (
-                <CategoryStatusIndicator
-                  statusText={statusText}
-                  barColor={barColor}
-                  usagePercent={category.usage.usagePercent}
-                />
-              ) : null}
             </View>
             <View style={styles.amountsCol}>
               <Text
@@ -137,13 +90,23 @@ export function BudgetCategoryRow({
             </View>
           </View>
 
-          <View>
-            <ProgressBar
-              progress={category.usage.progress}
-              color={barColor}
-              height={3}
-              fillOpacity={barOpacity}
-            />
+          <View style={styles.barRow}>
+            <View style={styles.barTrack}>
+              <ProgressBar
+                progress={category.usage.progress}
+                color={barColor}
+                height={3}
+                fillOpacity={barOpacity}
+                trackColor={barTrackColor}
+              />
+            </View>
+            {showUsagePercent ? (
+              <Text
+                style={[styles.barPercent, typographyKit.microMedium, { color: barColor }]}
+              >
+                {category.usage.usagePercent} %
+              </Text>
+            ) : null}
           </View>
         </View>
       </View>
@@ -169,17 +132,8 @@ const styles = StyleSheet.create({
   },
   mainRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.md,
-  },
-  iconWell: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
   },
   content: {
     flex: 1,
@@ -195,28 +149,10 @@ const styles = StyleSheet.create({
   nameCol: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
   },
   name: {
     fontSize: 14,
     lineHeight: 18,
-  },
-  statusInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    alignSelf: 'flex-start',
-    flexShrink: 0,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    flexShrink: 0,
-  },
-  statusCaption: {
-    ...typographyKit.metaMedium,
-    flexShrink: 0,
   },
   amountsCol: {
     flexDirection: 'row',
@@ -232,6 +168,22 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     fontSize: 12,
     lineHeight: 16,
+  },
+  barRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  barTrack: {
+    flex: 1,
+    minWidth: 0,
+  },
+  barPercent: {
+    flexShrink: 0,
+    fontSize: 11,
+    lineHeight: 14,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -0.2,
   },
   divider: {
     height: StyleSheet.hairlineWidth,

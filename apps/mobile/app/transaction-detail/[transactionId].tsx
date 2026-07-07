@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -11,7 +12,6 @@ import {
   Share,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
   type TextStyle,
@@ -23,8 +23,9 @@ import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AddArticleSheet } from '@/components/AddArticleSheet';
+import { AddArticleSheet, isInlineArticleScrollTargetReady, type InlineArticleScrollTarget } from '@/components/AddArticleSheet';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
+import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
 import { DetailSectionsList } from '@/components/DetailSectionRows';
 import type { DetailSection } from '@/components/DetailSectionRows';
 import { EditableField } from '@/components/EditableField';
@@ -44,7 +45,6 @@ import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
 import {
   accountDetailHeroBlockStyle,
   articlesReceiptTypography,
-  chipSelectableShellStyle,
   detailSectionLabelStyle,
   detailSectionsCardStyle,
   detailSubSectionHeaderStyle,
@@ -52,9 +52,9 @@ import {
   jakartaBoldText,
   jakartaExtraBoldText,
   jakartaMediumText,
-  moneyAmountTypography,
   radius,
   spacing,
+  transactionDetailHeroAmountTypography,
   typography,
   typographyKit,
   type AppColors,
@@ -77,8 +77,15 @@ import {
   resolveEndpointLabel,
 } from '@/lib/accountTransactionFlow';
 import { resolveContactPhotoUriForTransaction } from '@/lib/contactHistory';
-import { buildArticlesNoteLine, parseItemizedNote } from '@/lib/itemizedNote';
-import type { ItemizedNote } from '@/lib/itemizedNote';
+import {
+  buildArticlesNoteLine,
+  deriveUniqueCategoriesFromArticles,
+  getRemainingArticleBudget,
+  isArticlePriceWithinBudget,
+  parseItemizedNote,
+  type DerivedArticleCategory,
+  type ItemizedNote,
+} from '@/lib/itemizedNote';
 import {
   adjustSimulatedAccountBalance,
   deleteTransactionById,
@@ -88,13 +95,13 @@ import {
   getTransactionById,
   insertTransaction,
 } from '@/lib/db';
-import { detailHeroAmount, detailRowEditableContainer, rowValue } from '@/lib/textLayout';
-import { pickReceiptFromGallery } from '@/lib/receiptCapture';
+import { detailRowEditableContainer, detailRowValueMoney, detailRowSelectValueText } from '@/lib/textLayout';
 import { receiptDownloadErrorMessage, saveReceiptToPhotos, shareReceiptImage } from '@/lib/receiptDownload';
 import { EMPTY_DETAIL_VALUE } from '@/lib/detailDisplay';
 import { HandledSaveError } from '@/lib/editableSaveError';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { parseFormattedNumber } from '@/lib/formatNumber';
+import { toLocalDateInputValue } from '@/lib/localDateInput';
 import { getTransactionInsight } from '@/lib/transactionInsight';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
 import { dataEvents } from '@/lib/events';
@@ -121,11 +128,18 @@ type TransactionFieldEditors = {
 type AmountFieldEditor = {
   amountValue: string;
   onSaveAmount: (amountStr: string) => Promise<void>;
+  fieldRef?: RefObject<View | null>;
+  onEditStart?: () => void;
+  onFocusEdit?: () => void;
+};
+
+type DateFieldEditor = {
+  dateValue: string;
+  onSaveDate: (dayYmd: string) => Promise<void>;
 };
 
 const detailRowSelectTextStyle: TextStyle = {
-  ...typographyKit.metaMedium,
-  ...rowValue,
+  ...detailRowSelectValueText,
   textAlign: 'right',
 };
 
@@ -153,6 +167,16 @@ function formatTransactionTime(isoDate: string): string {
   return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
+function mergeTransactionDate(isoDate: string, newDayYmd: string): string {
+  const [year, month, day] = newDayYmd.split('-').map(Number);
+  const existing = new Date(isoDate);
+  if (Number.isNaN(existing.getTime())) {
+    return new Date(`${newDayYmd}T12:00:00`).toISOString();
+  }
+  existing.setFullYear(year, month - 1, day);
+  return existing.toISOString();
+}
+
 function buildPaymentAccountOptions(accounts: SimulatedAccount[]): PaymentAccountOption[] {
   if (accounts.length > 0) {
     return accounts.map((account) => ({
@@ -171,6 +195,37 @@ function buildCategoryPickerOptions(categories: Category[]): SettingsPickerOptio
     id: category.id,
     label: category.name,
   }));
+}
+
+function formatDerivedCategoryLabel(categories: DerivedArticleCategory[]): string {
+  return categories.map((category) => category.name).join(', ');
+}
+
+function TransactionCategoryChips({ categories }: { categories: DerivedArticleCategory[] }) {
+  const { colors, isLight } = useAppTheme();
+  const chipFill = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.07)';
+  const chipBorder = isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)';
+
+  return (
+    <View
+      style={styles.categoryChipsWrap}
+      accessibilityLabel={`Catégories : ${formatDerivedCategoryLabel(categories)}`}
+    >
+      {categories.map((category) => (
+        <View
+          key={category.id ?? category.name}
+          style={[styles.categoryChip, { backgroundColor: chipFill, borderColor: chipBorder }]}
+        >
+          <Text
+            style={[styles.categoryChipText, detailRowSelectTextStyle, { color: colors.text }]}
+            numberOfLines={1}
+          >
+            {category.name}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 function updateAccountInNote(note: string | undefined, newAccountId: string): string {
@@ -218,6 +273,8 @@ function buildTransactionDetailSections(
   amountColor: string,
   editors?: TransactionFieldEditors,
   amountEditor?: AmountFieldEditor,
+  dateEditor?: DateFieldEditor,
+  articles: ItemizedNote[] = [],
 ): DetailSection[] {
   const transferSection = buildTransferDetailSection(tx, accounts, savingsGoals);
   const accountId = tx.type !== 'transfer' ? parseAccountIdFromNote(tx.note) : null;
@@ -242,7 +299,10 @@ function buildTransactionDetailSections(
                   align="right"
                   accessibilityLabel="Modifier le montant"
                   containerStyle={detailRowEditableContainer}
-                  textStyle={[moneyAmountTypography({ tier: 'row' }), { color: amountColor }]}
+                  textStyle={[detailRowValueMoney, { color: amountColor }]}
+                  fieldRef={amountEditor.fieldRef}
+                  onEditStart={amountEditor.onEditStart}
+                  onFocusEdit={amountEditor.onFocusEdit}
                 />
               ),
             }
@@ -257,6 +317,22 @@ function buildTransactionDetailSections(
         label: 'Date',
         value: formatTransactionDate(tx.date),
         icon: 'calendar-outline',
+        ...(dateEditor
+          ? {
+              valueContent: (
+                <EditableField
+                  type="date"
+                  value={dateEditor.dateValue}
+                  formatDateLabel={formatTransactionDate}
+                  onSave={dateEditor.onSaveDate}
+                  align="right"
+                  accessibilityLabel="Modifier la date"
+                  containerStyle={detailRowEditableContainer}
+                  textStyle={detailRowSelectTextStyle}
+                />
+              ),
+            }
+          : null),
       },
       {
         label: 'Heure',
@@ -296,36 +372,50 @@ function buildTransactionDetailSections(
           : [],
   };
 
+  const derivedArticleCategories =
+    tx.type !== 'transfer' ? deriveUniqueCategoriesFromArticles(articles) : [];
+  const categoriesDerivedFromArticles = articles.length > 0 && derivedArticleCategories.length > 0;
+
   const categorySection: DetailSection = {
     title: 'Catégorie',
     rows:
-      tx.type !== 'transfer' && editors
+      tx.type !== 'transfer' && categoriesDerivedFromArticles
         ? [
             {
               label: 'Catégorie',
-              value: editors.categoryLabel,
+              value: formatDerivedCategoryLabel(derivedArticleCategories),
               icon: 'pricetag-outline' as const,
-              valueContent: (
-                <EditableField
-                  type="select"
-                  value={editors.categoryLabel}
-                  selectedId={editors.categoryId}
-                  selectOptions={editors.categoryOptions}
-                  pickerTitle="Catégorie"
-                  onSave={editors.onSaveCategory}
-                  align="right"
-                  accessibilityLabel="Modifier la catégorie"
-                  containerStyle={detailRowEditableContainer}
-                  textStyle={detailRowSelectTextStyle}
-                />
-              ),
+              valueLayout: 'text' as const,
+              valueContent: <TransactionCategoryChips categories={derivedArticleCategories} />,
             },
           ]
-        : [
-            tx.categoryName
-              ? { label: 'Catégorie', value: tx.categoryName, icon: 'pricetag-outline' as const }
-              : null,
-          ].filter(Boolean) as DetailSection['rows'],
+        : tx.type !== 'transfer' && editors
+          ? [
+              {
+                label: 'Catégorie',
+                value: editors.categoryLabel,
+                icon: 'pricetag-outline' as const,
+                valueContent: (
+                  <EditableField
+                    type="select"
+                    value={editors.categoryLabel}
+                    selectedId={editors.categoryId}
+                    selectOptions={editors.categoryOptions}
+                    pickerTitle="Catégorie"
+                    onSave={editors.onSaveCategory}
+                    align="right"
+                    accessibilityLabel="Modifier la catégorie"
+                    containerStyle={detailRowEditableContainer}
+                    textStyle={detailRowSelectTextStyle}
+                  />
+                ),
+              },
+            ]
+          : [
+              tx.categoryName
+                ? { label: 'Catégorie', value: tx.categoryName, icon: 'pricetag-outline' as const }
+                : null,
+            ].filter(Boolean) as DetailSection['rows'],
   };
 
   const incomeReason = tx.type === 'income' ? parseRaisonFromNote(tx.note) : null;
@@ -385,47 +475,40 @@ function TransactionDetailCard({
   sections,
   noteText,
   colors,
-  onEditNote,
+  onSaveNote,
+  notesFieldRef,
+  onNotesEditStart,
+  onNotesFocusEdit,
 }: {
   sections: DetailSection[];
   noteText: string;
   colors: DetailCardColors;
-  onEditNote?: () => void;
+  onSaveNote: (text: string) => Promise<void>;
+  notesFieldRef?: RefObject<View | null>;
+  onNotesEditStart?: () => void;
+  onNotesFocusEdit?: () => void;
 }) {
-  const hasNote = noteText.length > 0;
   return (
     <SurfaceCard style={[detailSectionsCardStyle(), { gap: spacing.md }]}>
       <Text style={[detailSectionLabelStyle(), { color: colors.textMuted }]}>DÉTAILS</Text>
       <DetailSectionsList sections={sections} colors={colors} />
       <View style={styles.notesSection}>
-        <View style={styles.notesSectionHeader}>
-          <Text style={[detailSubSectionHeaderStyle(), { color: colors.textMuted }]}>Notes</Text>
-          {onEditNote ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={hasNote ? 'Modifier la note' : 'Ajouter une note'}
-              hitSlop={10}
-              onPress={onEditNote}
-              style={({ pressed }) => [styles.notesEditButton, pressed && styles.pressed]}
-            >
-              <Ionicons
-                name={hasNote ? 'create-outline' : 'add-circle-outline'}
-                size={17}
-                color={colors.textMuted}
-              />
-            </Pressable>
-          ) : null}
-        </View>
+        <Text style={[detailSubSectionHeaderStyle(), { color: colors.textMuted }]}>Notes</Text>
         <View style={[styles.notesBlock, { borderTopColor: colors.border }]}>
-          <Text
-            style={[
-              typographyKit.metaMedium,
-              styles.noteBody,
-              { color: noteText ? colors.text : colors.textMuted },
-            ]}
-          >
-            {noteText || EMPTY_DETAIL_VALUE}
-          </Text>
+          <EditableField
+            type="text"
+            multiline
+            allowEmpty
+            value={noteText}
+            onSave={onSaveNote}
+            placeholder={EMPTY_DETAIL_VALUE}
+            accessibilityLabel="Modifier la note"
+            textStyle={styles.noteBody}
+            containerStyle={styles.noteEditableField}
+            fieldRef={notesFieldRef}
+            onEditStart={onNotesEditStart}
+            onFocusEdit={onNotesFocusEdit}
+          />
         </View>
       </View>
     </SurfaceCard>
@@ -607,188 +690,6 @@ function updateArticlesInNote(note: string | undefined, articles: ItemizedNote[]
   return [...withoutArticles, articleLine].join('\n');
 }
 
-function NoteEditSheet({
-  visible,
-  initialText,
-  onSave,
-  onClose,
-}: {
-  visible: boolean;
-  initialText: string;
-  onSave: (text: string) => void;
-  onClose: () => void;
-}) {
-  const { colors, isLight } = useAppTheme();
-  const insets = useSafeAreaInsets();
-  const [text, setText] = useState(initialText);
-  const hasExisting = initialText.length > 0;
-
-  useEffect(() => {
-    if (visible) setText(initialText);
-  }, [visible, initialText]);
-
-  const handleSave = () => {
-    onSave(text);
-    onClose();
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.sheetBackdrop}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View
-          style={[
-            styles.sheet,
-            {
-              backgroundColor: colors.containerBackground,
-              borderColor: colors.containerBorder,
-              paddingBottom: Math.max(insets.bottom + spacing.lg, spacing.xl),
-            },
-          ]}
-        >
-          <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
-          <Text style={[styles.sheetTitle, { color: colors.text }]}>
-            {hasExisting ? 'Modifier la note' : 'Ajouter une note'}
-          </Text>
-
-          <TextInput
-            style={[
-              styles.sheetInput,
-              styles.noteTextInput,
-              { color: colors.text, backgroundColor: colors.input, borderColor: colors.border },
-            ]}
-            placeholder="Votre note…"
-            placeholderTextColor={colors.textMuted}
-            value={text}
-            onChangeText={setText}
-            multiline
-            autoFocus
-            textAlignVertical="top"
-          />
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Enregistrer la note"
-            onPress={handleSave}
-            style={({ pressed }) => [
-              styles.sheetSaveButton,
-              {
-                backgroundColor: colors.primary,
-                borderColor: colors.surfaceSolid,
-                shadowColor: colors.primary,
-              },
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text
-              style={[
-                styles.sheetSaveButtonText,
-                { color: isLight ? '#FFFFFF' : colors.background },
-              ]}
-            >
-              Enregistrer
-            </Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Annuler"
-            onPress={onClose}
-            style={({ pressed }) => [
-              styles.sheetCancelButton,
-              { borderColor: colors.border },
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={[styles.sheetCancelButtonText, { color: colors.textMuted }]}>Annuler</Text>
-          </Pressable>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
-
-function ReceiptImportSheet({
-  visible,
-  onScan,
-  onImport,
-  onClose,
-}: {
-  visible: boolean;
-  onScan: () => void;
-  onImport: () => void;
-  onClose: () => void;
-}) {
-  const { colors } = useAppTheme();
-  const insets = useSafeAreaInsets();
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.sheetBackdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View
-          style={[
-            styles.sheet,
-            {
-              backgroundColor: colors.containerBackground,
-              borderColor: colors.containerBorder,
-              paddingBottom: Math.max(insets.bottom + spacing.lg, spacing.xl),
-            },
-          ]}
-        >
-          <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Scanner un reçu"
-            onPress={() => { onClose(); onScan(); }}
-            style={({ pressed }) => [
-              styles.importMenuRow,
-              styles.importMenuRowBorder,
-              { borderBottomColor: colors.border },
-              pressed && styles.pressed,
-            ]}
-          >
-            <View style={[styles.importMenuIconWell, { backgroundColor: colors.surfaceElevated }]}>
-              <Ionicons name="scan-outline" size={20} color={colors.text} />
-            </View>
-            <Text style={[styles.importMenuRowText, { color: colors.text }]}>Scanner un reçu</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Importer un reçu"
-            onPress={() => { onClose(); onImport(); }}
-            style={({ pressed }) => [styles.importMenuRow, pressed && styles.pressed]}
-          >
-            <View style={[styles.importMenuIconWell, { backgroundColor: colors.surfaceElevated }]}>
-              <Ionicons name="image-outline" size={20} color={colors.text} />
-            </View>
-            <Text style={[styles.importMenuRowText, { color: colors.text }]}>Importer un reçu</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Annuler"
-            onPress={onClose}
-            style={({ pressed }) => [
-              styles.sheetCancelButton,
-              { borderColor: colors.border, marginTop: spacing.sm },
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={[styles.sheetCancelButtonText, { color: colors.textMuted }]}>Annuler</Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 /** Fixed card width for the shareable screenshot — standard content width */
 const SHARE_CARD_WIDTH = 360;
 
@@ -868,7 +769,16 @@ function TransactionShareCard({
   const isTransfer = transaction.type === 'transfer';
   const shareAmountColor = isIncome ? SHARE_THEME.success : isTransfer ? SHARE_THEME.textMuted : SHARE_THEME.text;
   const amountPrefix = isIncome ? '+' : isTransfer ? '' : '−';
-  const detailSections = buildTransactionDetailSections(transaction, accounts, savingsGoals, shareAmountColor);
+  const detailSections = buildTransactionDetailSections(
+    transaction,
+    accounts,
+    savingsGoals,
+    shareAmountColor,
+    undefined,
+    undefined,
+    undefined,
+    articles,
+  );
   const shareColors = {
     text: SHARE_THEME.text,
     textMuted: SHARE_THEME.textMuted,
@@ -1078,17 +988,33 @@ function TransactionReceiptCard({
   transaction,
   colors,
   articles,
-  onAddArticle,
+  inlineArticleExpanded,
+  onOpenInlineArticle,
+  onCloseInlineArticle,
+  onInlineArticleAdd,
+  onInlineArticleScrollTargetChange,
+  onInlineArticleScrollToOffset,
+  inlineArticleFormRef,
+  onInlineArticleNameFocusChange,
+  onInlineArticleContentLayout,
   onRemoveArticle,
-  onOpenReceiptMenu,
+  onScanArticles,
   onViewReceipt,
 }: {
   transaction: Transaction;
   colors: DetailCardColors;
   articles: ItemizedNote[];
-  onAddArticle: () => void;
+  inlineArticleExpanded: boolean;
+  onOpenInlineArticle: () => void;
+  onCloseInlineArticle: () => void;
+  onInlineArticleAdd: (name: string, price: string, categoryId: string | null, categoryName: string | null) => void;
+  onInlineArticleScrollTargetChange?: (target: InlineArticleScrollTarget) => void;
+  onInlineArticleScrollToOffset?: (localY: number, offset?: number) => void;
+  inlineArticleFormRef?: RefObject<View | null>;
+  onInlineArticleNameFocusChange?: (focused: boolean) => void;
+  onInlineArticleContentLayout?: () => void;
   onRemoveArticle: (index: number) => void;
-  onOpenReceiptMenu: () => void;
+  onScanArticles: (source: 'gallery' | 'camera') => void;
   onViewReceipt: () => void;
 }) {
   const { isLight } = useAppTheme();
@@ -1100,6 +1026,10 @@ function TransactionReceiptCard({
     : null;
   const canPreviewReceipt = isPreviewableReceipt(transaction.receiptUri);
   const total = articles.reduce((sum, a) => sum + a.price, 0);
+  const maxArticlePrice = useMemo(
+    () => getRemainingArticleBudget(transaction.amount, articles),
+    [articles, transaction.amount],
+  );
 
   // Monochrome palette — BankAccountCard shell language, no colour accents
   const cardFill = isLight ? '#FAFAFA' : '#0F0F10';
@@ -1114,6 +1044,7 @@ function TransactionReceiptCard({
   const cardWidth = measuredCardWidth > 0 ? measuredCardWidth : windowWidth - spacing.lg * 2;
   // Tooth depth used for extra padding so content doesn't sit under the zigzag
   const zigzagDepth = 7;
+  const [scanSourcePickerOpen, setScanSourcePickerOpen] = useState(false);
 
   return (
     <View
@@ -1138,32 +1069,16 @@ function TransactionReceiptCard({
           },
         ]}
       >
-      {/* Header: receipt icon + "ARTICLES" eyebrow + add-article pill */}
-      <View style={styles.receiptHeaderRow}>
-        <View style={styles.receiptHeaderLeft}>
-          <Ionicons name="receipt-outline" size={12} color={colors.textMuted} />
-          <Text style={[detailSectionLabelStyle(), { color: colors.textMuted }]}>ARTICLES</Text>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Ajouter un article"
-          hitSlop={8}
-          onPress={onAddArticle}
-          style={({ pressed }) => [
-            styles.receiptAddButton,
-            chipSelectableShellStyle(ghostBorder),
-            pressed && styles.pressed,
-          ]}
-        >
-          <Ionicons name="add" size={13} color={colors.textMuted} />
-          <Text style={[styles.receiptAddButtonText, { color: colors.textMuted }]}>Ajouter</Text>
-        </Pressable>
+      {/* Header: receipt icon + "ARTICLES" eyebrow only */}
+      <View style={styles.receiptHeaderLeft}>
+        <Ionicons name="receipt-outline" size={12} color={colors.textMuted} />
+        <Text style={[detailSectionLabelStyle(), { color: colors.textMuted }]}>ARTICLES</Text>
       </View>
 
       {/* Dashed tear-line — receipt paper separation effect */}
       <View style={[styles.receiptTearLine, { borderColor: tearColor }]} />
 
-      {/* Article list */}
+      {/* Article list — above inline add form when articles exist */}
       {articles.length > 0 ? (
         <View style={styles.receiptArticlesBlock}>
           <View style={styles.receiptTableHead}>
@@ -1224,11 +1139,52 @@ function TransactionReceiptCard({
             </View>
           ) : null}
         </View>
-      ) : (
+      ) : !inlineArticleExpanded ? (
         <Text style={[styles.receiptEmptyText, articlesReceiptTypography('regular'), { color: colors.textMuted }]}>
           Aucun article
         </Text>
-      )}
+      ) : null}
+
+      {inlineArticleExpanded ? (
+        <View
+          ref={inlineArticleFormRef}
+          style={[
+            styles.receiptInlineFormWrap,
+            articles.length > 0 && styles.receiptInlineFormWrapBelowArticles,
+            articles.length > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: rowDivider },
+          ]}
+        >
+          <AddArticleSheet
+            variant="inline"
+            visible={inlineArticleExpanded}
+            maxArticlePrice={maxArticlePrice}
+            scrollToOffset={onInlineArticleScrollToOffset}
+            onInlineScrollTargetChange={onInlineArticleScrollTargetChange}
+            onNameFocusChange={onInlineArticleNameFocusChange}
+            onContentLayout={onInlineArticleContentLayout}
+            onAdd={onInlineArticleAdd}
+            onClose={onCloseInlineArticle}
+          />
+        </View>
+      ) : null}
+
+      {!inlineArticleExpanded ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Ajouter un article"
+          onPress={onOpenInlineArticle}
+          style={({ pressed }) => [
+            styles.receiptJoinButton,
+            { borderColor: ghostBorder },
+            pressed && styles.pressed,
+          ]}
+        >
+          <Ionicons name="add-outline" size={14} color={colors.textMuted} />
+          <Text style={[styles.receiptJoinButtonText, typographyKit.metaMedium, { color: colors.textMuted }]}>
+            Ajouter
+          </Text>
+        </Pressable>
+      ) : null}
 
       {/* Receipt attachment section */}
       {receiptLabel ? (
@@ -1268,23 +1224,80 @@ function TransactionReceiptCard({
             ) : null}
           </Pressable>
         </>
-      ) : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Joindre un reçu"
-          onPress={onOpenReceiptMenu}
-          style={({ pressed }) => [
-            styles.receiptJoinButton,
-            { borderColor: ghostBorder },
-            pressed && styles.pressed,
-          ]}
-        >
-          <Ionicons name="scan-outline" size={14} color={colors.textMuted} />
-          <Text style={[styles.receiptJoinButtonText, typographyKit.metaMedium, { color: colors.textMuted }]}>
-            Joindre un reçu
-          </Text>
-        </Pressable>
-      )}
+      ) : !inlineArticleExpanded ? (
+        <View style={styles.receiptScanBlock}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Scan automatique des articles"
+            accessibilityState={{ expanded: scanSourcePickerOpen }}
+            onPress={() => {
+              tapHaptic();
+              setScanSourcePickerOpen((open) => !open);
+            }}
+            style={({ pressed }) => [
+              styles.receiptScanButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Ionicons name="scan-outline" size={16} color={colors.textMuted} />
+            <View style={styles.receiptScanCopy}>
+              <Text style={[styles.receiptScanLabel, typographyKit.bodyMedium, { color: colors.text }]}>
+                Scan automatique des articles
+              </Text>
+              <Text style={[styles.receiptScanHint, typographyKit.microMedium, { color: colors.textMuted }]}>
+                Galerie ou caméra
+              </Text>
+            </View>
+            <Ionicons
+              name={scanSourcePickerOpen ? 'chevron-up' : 'chevron-down'}
+              size={15}
+              color={colors.textMuted}
+            />
+          </Pressable>
+          {scanSourcePickerOpen ? (
+            <View style={styles.receiptScanSourceRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Galerie"
+                onPress={() => {
+                  tapHaptic();
+                  setScanSourcePickerOpen(false);
+                  onScanArticles('gallery');
+                }}
+                style={({ pressed }) => [
+                  styles.receiptScanSourceOption,
+                  { borderColor: ghostBorder },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons name="images-outline" size={16} color={colors.text} />
+                <Text style={[styles.receiptScanSourceLabel, typographyKit.metaMedium, { color: colors.text }]}>
+                  Galerie
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Caméra"
+                onPress={() => {
+                  tapHaptic();
+                  setScanSourcePickerOpen(false);
+                  onScanArticles('camera');
+                }}
+                style={({ pressed }) => [
+                  styles.receiptScanSourceOption,
+                  { borderColor: ghostBorder },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons name="camera-outline" size={16} color={colors.text} />
+                <Text style={[styles.receiptScanSourceLabel, typographyKit.metaMedium, { color: colors.text }]}>
+                  Caméra
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
       </View>
 
       {/* Bottom zigzag — sits over screen canvas below the card body */}
@@ -1295,8 +1308,14 @@ function TransactionReceiptCard({
 
 export default function TransactionDetailScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ transactionId?: string }>();
-  const transactionId = typeof params.transactionId === 'string' ? params.transactionId.trim() : '';
+  const params = useLocalSearchParams<{ transactionId?: string | string[] }>();
+  const transactionIdRaw = params.transactionId;
+  const transactionId =
+    typeof transactionIdRaw === 'string'
+      ? transactionIdRaw.trim()
+      : Array.isArray(transactionIdRaw)
+        ? (transactionIdRaw[0] ?? '').trim()
+        : '';
   const insets = useSafeAreaInsets();
   const { colors } = useAppTheme();
   const [transaction, setTransaction] = useState<Transaction | null>(null);
@@ -1305,12 +1324,33 @@ export default function TransactionDetailScreen() {
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
+  const [insufficientFundsAlert, setInsufficientFundsAlert] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
   const [receiptPreviewVisible, setReceiptPreviewVisible] = useState(false);
-  const [addArticleSheetVisible, setAddArticleSheetVisible] = useState(false);
-  const [receiptMenuSheetVisible, setReceiptMenuSheetVisible] = useState(false);
-  const [noteEditSheetVisible, setNoteEditSheetVisible] = useState(false);
+  const [inlineArticleExpanded, setInlineArticleExpanded] = useState(false);
   const [sharing, setSharing] = useState(false);
   const shareCardRef = useRef<View>(null);
+  const { height: windowHeight } = useWindowDimensions();
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollContentRef = useRef<View>(null);
+  const heroLabelFieldRef = useRef<View>(null);
+  const amountFieldRef = useRef<View>(null);
+  const notesFieldRef = useRef<View>(null);
+  const inlineArticleFormRef = useRef<View>(null);
+  const inlineArticleEditingRef = useRef(false);
+  const inlineArticleScrollTargetRef = useRef<InlineArticleScrollTarget>({
+    nameTop: 0,
+    nameBottom: 0,
+    extentBottom: 0,
+  });
+  const inlineArticleScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inlineArticleScrollRafRef = useRef<number | null>(null);
+  const notesFieldActiveRef = useRef(false);
+  const [topBarHeight, setTopBarHeight] = useState(0);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  const [notesEditingActive, setNotesEditingActive] = useState(false);
 
   const load = useCallback(async () => {
     if (!transactionId) {
@@ -1354,7 +1394,7 @@ export default function TransactionDetailScreen() {
   const persistTransactionUpdate = useCallback(
     async (
       updates: Partial<
-        Pick<Transaction, 'label' | 'note' | 'amount' | 'categoryId' | 'categoryName' | 'categoryIcon' | 'categoryColor'>
+        Pick<Transaction, 'label' | 'note' | 'amount' | 'date' | 'categoryId' | 'categoryName' | 'categoryIcon' | 'categoryColor'>
       >,
       options?: { previousTx?: Transaction; adjustAccountBalances?: boolean },
     ) => {
@@ -1414,8 +1454,7 @@ export default function TransactionDetailScreen() {
         transaction,
       );
       if (violation) {
-        const { title, message } = insufficientFundsAlertCopy(violation);
-        Alert.alert(title, message);
+        setInsufficientFundsAlert(insufficientFundsAlertCopy(violation));
         throw new HandledSaveError();
       }
 
@@ -1442,6 +1481,15 @@ export default function TransactionDetailScreen() {
     [categories, persistTransactionUpdate, transaction],
   );
 
+  const handleSaveDate = useCallback(
+    async (newDayYmd: string) => {
+      if (!transaction) return;
+      if (newDayYmd === toLocalDateInputValue(transaction.date)) return;
+      await persistTransactionUpdate({ date: mergeTransactionDate(transaction.date, newDayYmd) });
+    },
+    [persistTransactionUpdate, transaction],
+  );
+
   const handleSaveAmount = useCallback(
     async (newAmountStr: string) => {
       if (!transaction) return;
@@ -1459,8 +1507,7 @@ export default function TransactionDetailScreen() {
         transaction,
       );
       if (violation) {
-        const { title, message } = insufficientFundsAlertCopy(violation);
-        Alert.alert(title, message);
+        setInsufficientFundsAlert(insufficientFundsAlertCopy(violation));
         throw new HandledSaveError();
       }
 
@@ -1471,6 +1518,326 @@ export default function TransactionDetailScreen() {
     },
     [accounts, persistTransactionUpdate, transaction],
   );
+
+  const handleSaveLabel = useCallback(
+    async (newLabel: string) => {
+      if (!transaction) return;
+      const trimmed = newLabel.trim();
+      if (!trimmed) {
+        Alert.alert('Nom requis', 'Le nom de la transaction ne peut pas être vide.');
+        throw new HandledSaveError();
+      }
+      if (trimmed === transaction.label) return;
+      await persistTransactionUpdate({ label: trimmed });
+    },
+    [persistTransactionUpdate, transaction],
+  );
+
+  const NOTES_SCROLL_OFFSET = 120;
+  const INLINE_ARTICLE_SCROLL_OFFSET = 24;
+  const INLINE_ARTICLE_FORM_PADDING = 96;
+  const INLINE_ARTICLE_FORM_TOP_OFFSET = 16;
+  const INLINE_ARTICLE_NAME_VIEWPORT_RATIO = 0.24;
+  const INLINE_ARTICLE_NAME_MIN_TOP = spacing.lg + INLINE_ARTICLE_FORM_TOP_OFFSET;
+  const inlineArticleForcedScrollExtent = Math.round(windowHeight * 0.12);
+
+  const estimateInlineArticleKeyboardInset = useCallback(() => {
+    if (keyboardInset > 0) return keyboardInset;
+    if (!inlineArticleEditingRef.current) return 0;
+    return Math.min(Math.round(windowHeight * 0.38), 360);
+  }, [keyboardInset, windowHeight]);
+
+  const scrollFieldIntoView = useCallback((fieldRef: RefObject<View | null>, offset = 48) => {
+    const content = scrollContentRef.current;
+    const field = fieldRef.current;
+    if (!content || !field) return;
+
+    field.measureLayout(
+      content,
+      (_x, y) => {
+        requestAnimationFrame(() => {
+          scrollRef.current?.scrollTo({
+            y: Math.max(y - offset, 0),
+            animated: true,
+          });
+        });
+      },
+      () => {},
+    );
+  }, []);
+
+  const scrollNotesIntoView = useCallback(() => {
+    scrollFieldIntoView(notesFieldRef, NOTES_SCROLL_OFFSET);
+  }, [scrollFieldIntoView]);
+
+  const cancelPendingInlineArticleScroll = useCallback(() => {
+    if (inlineArticleScrollTimerRef.current != null) {
+      clearTimeout(inlineArticleScrollTimerRef.current);
+      inlineArticleScrollTimerRef.current = null;
+    }
+    if (inlineArticleScrollRafRef.current != null) {
+      cancelAnimationFrame(inlineArticleScrollRafRef.current);
+      inlineArticleScrollRafRef.current = null;
+    }
+  }, []);
+
+  const performInlineArticleScroll = useCallback(() => {
+    const content = scrollContentRef.current;
+    const field = inlineArticleFormRef.current;
+    if (!content || !field) return;
+
+    const { nameTop, nameBottom, extentBottom } = inlineArticleScrollTargetRef.current;
+    if (!isInlineArticleScrollTargetReady({ nameTop, nameBottom, extentBottom })) return;
+
+    field.measureLayout(
+      content,
+      (_x, formY) => {
+        const viewportHeight = Math.max(windowHeight - topBarHeight, 1);
+        const effectiveKeyboardInset = estimateInlineArticleKeyboardInset();
+        const visibleBottom = viewportHeight - effectiveKeyboardInset;
+
+        const nameTopY = formY + nameTop;
+        const extentBottomY = formY + (extentBottom > 0 ? extentBottom : nameBottom);
+
+        const desiredNameTop = Math.max(
+          INLINE_ARTICLE_NAME_MIN_TOP,
+          Math.round(visibleBottom * INLINE_ARTICLE_NAME_VIEWPORT_RATIO),
+        );
+
+        let scrollY = Math.max(nameTopY - desiredNameTop, 0);
+
+        if (effectiveKeyboardInset > 0 && extentBottom > 0) {
+          const scrollForKeyboard = extentBottomY - visibleBottom + INLINE_ARTICLE_SCROLL_OFFSET;
+          if (scrollForKeyboard > 0) {
+            scrollY = Math.max(scrollY, scrollForKeyboard);
+          }
+        }
+
+        const maxScrollBeforeOvershoot = Math.max(nameTopY - INLINE_ARTICLE_NAME_MIN_TOP, 0);
+        if (effectiveKeyboardInset <= 0) {
+          scrollY = Math.min(scrollY, maxScrollBeforeOvershoot);
+        }
+
+        scrollRef.current?.scrollTo({
+          y: Math.max(scrollY, 0),
+          animated: true,
+        });
+      },
+      () => {},
+    );
+  }, [
+    estimateInlineArticleKeyboardInset,
+    topBarHeight,
+    windowHeight,
+  ]);
+
+  const scheduleInlineArticleScroll = useCallback((delayMs = 100) => {
+    cancelPendingInlineArticleScroll();
+    inlineArticleScrollTimerRef.current = setTimeout(() => {
+      inlineArticleScrollTimerRef.current = null;
+      inlineArticleScrollRafRef.current = requestAnimationFrame(() => {
+        inlineArticleScrollRafRef.current = requestAnimationFrame(() => {
+          inlineArticleScrollRafRef.current = null;
+          performInlineArticleScroll();
+        });
+      });
+    }, delayMs);
+  }, [cancelPendingInlineArticleScroll, performInlineArticleScroll]);
+
+  const handleInlineArticleScrollTargetChange = useCallback((target: InlineArticleScrollTarget) => {
+    if (!isInlineArticleScrollTargetReady(target)) return;
+    const prev = inlineArticleScrollTargetRef.current;
+    const changed =
+      prev.nameTop !== target.nameTop
+      || prev.nameBottom !== target.nameBottom
+      || prev.extentBottom !== target.extentBottom;
+    inlineArticleScrollTargetRef.current = target;
+    if (changed) {
+      scheduleInlineArticleScroll();
+    }
+  }, [scheduleInlineArticleScroll]);
+
+  const scrollToInlineArticleOffset = useCallback((localY: number, offset = 16) => {
+    const content = scrollContentRef.current;
+    const field = inlineArticleFormRef.current;
+    if (!content || !field) return;
+
+    field.measureLayout(
+      content,
+      (_x, formY) => {
+        requestAnimationFrame(() => {
+          scrollRef.current?.scrollTo({
+            y: Math.max(formY + localY - offset, 0),
+            animated: true,
+          });
+        });
+      },
+      () => {},
+    );
+  }, []);
+
+  const handleInlineArticleContentLayout = useCallback(() => {
+    if (!inlineArticleExpanded) return;
+    scheduleInlineArticleScroll();
+  }, [inlineArticleExpanded, scheduleInlineArticleScroll]);
+
+  const handleInlineArticleNameFocusChange = useCallback((focused: boolean) => {
+    inlineArticleEditingRef.current = focused;
+    if (focused) {
+      scheduleInlineArticleScroll();
+    }
+  }, [scheduleInlineArticleScroll]);
+
+  const scheduleNotesScrollIntoView = useCallback(() => {
+    scrollNotesIntoView();
+    setTimeout(scrollNotesIntoView, 120);
+    setTimeout(scrollNotesIntoView, 280);
+    setTimeout(scrollNotesIntoView, 450);
+  }, [scrollNotesIntoView]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardInset(event.endCoordinates.height);
+      if (notesFieldActiveRef.current) {
+        scheduleNotesScrollIntoView();
+      }
+      if (inlineArticleEditingRef.current) {
+        scheduleInlineArticleScroll();
+      }
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardInset(0);
+      notesFieldActiveRef.current = false;
+      setNotesEditingActive(false);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [scheduleInlineArticleScroll, scheduleNotesScrollIntoView]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const syncWebKeyboardInset = () => {
+      if (!inlineArticleExpanded && !notesEditingActive) return;
+      const inset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      setKeyboardInset((current) => {
+        const next = inset > 72 ? Math.round(inset) : 0;
+        return current === next ? current : next;
+      });
+      if (inset > 72 && inlineArticleEditingRef.current) {
+        scheduleInlineArticleScroll();
+      }
+    };
+
+    viewport.addEventListener('resize', syncWebKeyboardInset);
+    viewport.addEventListener('scroll', syncWebKeyboardInset);
+    return () => {
+      viewport.removeEventListener('resize', syncWebKeyboardInset);
+      viewport.removeEventListener('scroll', syncWebKeyboardInset);
+    };
+  }, [inlineArticleExpanded, notesEditingActive, scheduleInlineArticleScroll]);
+
+  useEffect(() => () => cancelPendingInlineArticleScroll(), [cancelPendingInlineArticleScroll]);
+
+  const makeFieldScrollHandlers = useCallback(
+    (fieldRef: RefObject<View | null>) => ({
+      onEditStart: () => {
+        scrollFieldIntoView(fieldRef);
+        setTimeout(() => scrollFieldIntoView(fieldRef), 250);
+      },
+      onFocusEdit: () => scrollFieldIntoView(fieldRef),
+    }),
+    [scrollFieldIntoView],
+  );
+
+  const heroLabelScrollHandlers = useMemo(
+    () => makeFieldScrollHandlers(heroLabelFieldRef),
+    [makeFieldScrollHandlers],
+  );
+  const amountScrollHandlers = useMemo(
+    () => makeFieldScrollHandlers(amountFieldRef),
+    [makeFieldScrollHandlers],
+  );
+  const notesScrollHandlers = useMemo(
+    () => ({
+      onEditStart: () => {
+        notesFieldActiveRef.current = true;
+        setNotesEditingActive(true);
+        scheduleNotesScrollIntoView();
+      },
+      onFocusEdit: () => {
+        notesFieldActiveRef.current = true;
+        setNotesEditingActive(true);
+        scheduleNotesScrollIntoView();
+      },
+    }),
+    [scheduleNotesScrollIntoView],
+  );
+
+  const scrollContentContainerStyle = useMemo(() => {
+    const basePaddingBottom = Math.max(insets.bottom + spacing.xxl, 72);
+    const keyboardPaddingBottom =
+      keyboardInset > 0 ? Math.max(basePaddingBottom, keyboardInset + spacing.xl) : basePaddingBottom;
+    let activePaddingBottom = keyboardPaddingBottom;
+
+    if (notesEditingActive && keyboardInset > 0) {
+      activePaddingBottom = Math.max(activePaddingBottom, keyboardInset + spacing.xxl * 2);
+    }
+
+    if (inlineArticleExpanded) {
+      activePaddingBottom = Math.max(
+        activePaddingBottom,
+        basePaddingBottom + INLINE_ARTICLE_FORM_PADDING,
+        inlineArticleForcedScrollExtent,
+      );
+    }
+
+    if (inlineArticleExpanded && keyboardInset > 0) {
+      activePaddingBottom = Math.max(
+        activePaddingBottom,
+        keyboardInset + spacing.xl + INLINE_ARTICLE_FORM_PADDING,
+      );
+    }
+
+    const minHeightFromNotes =
+      notesEditingActive && keyboardInset > 0 && topBarHeight > 0
+        ? windowHeight - topBarHeight + keyboardInset + NOTES_SCROLL_OFFSET
+        : undefined;
+    const minHeightFromInlineArticle =
+      inlineArticleExpanded && keyboardInset > 0 && topBarHeight > 0
+        ? windowHeight - topBarHeight + keyboardInset + spacing.lg
+        : undefined;
+    const minHeight = Math.max(minHeightFromNotes ?? 0, minHeightFromInlineArticle ?? 0) || undefined;
+
+    return [
+      styles.content,
+      {
+        paddingBottom: activePaddingBottom,
+        ...(minHeight != null ? { minHeight } : {}),
+      },
+    ];
+  }, [
+    insets.bottom,
+    inlineArticleExpanded,
+    keyboardInset,
+    notesEditingActive,
+    topBarHeight,
+    windowHeight,
+    inlineArticleForcedScrollExtent,
+  ]);
+
+  const handleScrollContentSizeChange = useCallback(() => {
+    if (!inlineArticleExpanded) return;
+    scheduleInlineArticleScroll();
+  }, [inlineArticleExpanded, scheduleInlineArticleScroll]);
 
   const fieldEditors = useMemo<TransactionFieldEditors | undefined>(() => {
     if (!transaction || transaction.type === 'transfer') return undefined;
@@ -1509,8 +1876,24 @@ export default function TransactionDetailScreen() {
     return {
       amountValue: String(transaction.amount),
       onSaveAmount: handleSaveAmount,
+      fieldRef: amountFieldRef,
+      onEditStart: amountScrollHandlers.onEditStart,
+      onFocusEdit: amountScrollHandlers.onFocusEdit,
     };
-  }, [handleSaveAmount, transaction]);
+  }, [amountScrollHandlers.onEditStart, amountScrollHandlers.onFocusEdit, handleSaveAmount, transaction]);
+
+  const dateEditor = useMemo<DateFieldEditor | undefined>(() => {
+    if (!transaction) return undefined;
+    return {
+      dateValue: transaction.date,
+      onSaveDate: handleSaveDate,
+    };
+  }, [handleSaveDate, transaction]);
+
+  const articles = useMemo(
+    () => (transaction ? parseItemizedNote(transaction.note) : []),
+    [transaction],
+  );
 
   const detailSections = useMemo(
     () =>
@@ -1522,9 +1905,11 @@ export default function TransactionDetailScreen() {
             amountColor,
             fieldEditors,
             amountEditor,
+            dateEditor,
+            articles,
           )
         : [],
-    [transaction, accounts, savingsGoals, amountColor, fieldEditors, amountEditor],
+    [transaction, accounts, savingsGoals, amountColor, fieldEditors, amountEditor, dateEditor, articles],
   );
 
   const insight = useMemo(
@@ -1538,28 +1923,21 @@ export default function TransactionDetailScreen() {
     router.push({ pathname: '/add-transaction', params: { editId: transaction.id } });
   };
 
-  const persistReceiptAttachment = useCallback(
-    async (uri: string) => {
-      if (!transaction) return;
-      await insertTransaction({
-        id: transaction.id,
-        label: transaction.label,
-        amount: transaction.amount,
-        type: transaction.type,
-        date: transaction.date,
-        categoryId: transaction.categoryId,
-        transactionIcon: transaction.transactionIcon,
-        receiptUri: uri,
-        receiptStatus: 'attached',
-        note: transaction.note,
-        wealthAssetId: transaction.wealthAssetId,
-        savingsGoalId: transaction.savingsGoalId,
-        syncStatus: 'pending',
+  const handleScanReceipt = useCallback(
+    (source: 'gallery' | 'camera') => {
+      if (!transaction || transaction.type !== 'expense') return;
+      tapHaptic();
+      router.push({
+        pathname: '/scan',
+        params: {
+          editId: transaction.id,
+          merchant: transaction.label,
+          amount: String(transaction.amount),
+          source,
+        },
       });
-      successHaptic();
-      await load();
     },
-    [load, transaction],
+    [router, transaction],
   );
 
   const persistNoteUpdate = useCallback(
@@ -1589,8 +1967,11 @@ export default function TransactionDetailScreen() {
   const handleAddArticle = useCallback(
     async (name: string, price: string, categoryId: string | null, categoryName: string | null) => {
       if (!transaction) return;
-      const priceValue = Number(price) || 0;
+      const priceValue = parseFormattedNumber(price);
+      if (!Number.isFinite(priceValue) || priceValue <= 0) return;
       const existing = parseItemizedNote(transaction.note);
+      const remaining = getRemainingArticleBudget(transaction.amount, existing);
+      if (!isArticlePriceWithinBudget(priceValue, remaining)) return;
       const updated: ItemizedNote[] = [
         ...existing,
         {
@@ -1618,49 +1999,9 @@ export default function TransactionDetailScreen() {
     [persistNoteUpdate, transaction],
   );
 
-  const handleScanReceipt = useCallback(() => {
-    if (!transaction) return;
-    router.push({
-      pathname: '/scan',
-      params: {
-        editId: transaction.id,
-        merchant: transaction.label,
-        amount: String(transaction.amount),
-      },
-    });
-  }, [router, transaction]);
-
-  const attachReceiptFromGallery = useCallback(async () => {
-    try {
-      const result = await pickReceiptFromGallery();
-      if (result.cancelled || !result.uri) return;
-      await persistReceiptAttachment(result.uri);
-    } catch {
-      Alert.alert('Erreur', 'Impossible d’accéder à la galerie.');
-    }
-  }, [persistReceiptAttachment]);
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _deadCode = useCallback(async () => {
-    try {
-      const result = await pickReceiptFromGallery();
-      if (result.cancelled || !result.uri) return;
-      await persistReceiptAttachment(result.uri);
-    } catch {
-      Alert.alert('Erreur', 'Impossible d’accéder à la caméra.');
-    }
-  }, [persistReceiptAttachment]);
-
-  const openReceiptMenu = useCallback(() => {
-    if (!transaction || transaction.type !== 'expense') return;
-    tapHaptic();
-    setReceiptMenuSheetVisible(true);
-  }, [transaction]);
-
   const handleSaveNote = useCallback(
     async (newVisibleText: string) => {
       if (!transaction) return;
-      tapHaptic();
       const newNote = buildNoteWithUpdatedVisibleText(transaction.note, newVisibleText);
       await persistNoteUpdate(newNote);
     },
@@ -1704,7 +2045,13 @@ export default function TransactionDetailScreen() {
   return (
     <PageTransition>
       <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
-        <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.lg + spacing.md }]}>
+        <View
+          style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.lg + spacing.md }]}
+          onLayout={(event) => {
+            const nextHeight = event.nativeEvent.layout.height;
+            setTopBarHeight((current) => (current === nextHeight ? current : nextHeight));
+          }}
+        >
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Retour"
@@ -1750,81 +2097,122 @@ export default function TransactionDetailScreen() {
           )}
         </View>
 
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom + spacing.xxl, 72) }]}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={async () => {
-                setRefreshing(true);
-                await load();
-                setRefreshing(false);
-              }}
-              tintColor={colors.primary}
-            />
-          }
+        <KeyboardAvoidingView
+          style={[styles.keyboardAvoid, { backgroundColor: colors.background }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? topBarHeight : 0}
         >
-          {transaction ? (
-            <View style={styles.scrollContent}>
-              <View style={[accountDetailHeroBlockStyle(), { gap: spacing.lg }]}>
-                <View style={styles.heroIdentityRow}>
-                  <TransactionAvatar transaction={transaction} contactPhotoUri={contactPhotoUri} size={isTransfer ? 46 : 56} />
-                  <View style={styles.heroIdentityCopy}>
-                    <Text style={[styles.heroLabel, { color: colors.text }]} numberOfLines={2}>
-                      {transaction.label}
-                    </Text>
-                  </View>
-                </View>
-
-                <TransactionAmountLabel
-                  amount={formatDisplayMoneyAbsolute(transaction.amount)}
-                  direction={transactionAmountDirectionFromType(transaction.type)}
-                  color={amountColor}
-                  textStyle={styles.heroAmount}
-                  iconSize={16}
-                  containerStyle={styles.heroAmountContainer}
-                  showDirectionIcon={!isTransfer}
-                />
-              </View>
-
-              {insight ? <TransactionInsightCard insight={insight} /> : null}
-
-              <TransactionDetailCard
-                sections={detailSections}
-                noteText={parseVisibleNoteText(transaction.note)}
-                colors={colors}
-                onEditNote={() => {
-                  tapHaptic();
-                  setNoteEditSheetVisible(true);
+          <ScrollView
+            ref={scrollRef}
+            style={[styles.scroll, { backgroundColor: colors.background }]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            contentContainerStyle={scrollContentContainerStyle}
+            onContentSizeChange={handleScrollContentSizeChange}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={async () => {
+                  setRefreshing(true);
+                  await load();
+                  setRefreshing(false);
                 }}
+                tintColor={colors.primary}
               />
+            }
+          >
+            <View ref={scrollContentRef} collapsable={false}>
+              {transaction ? (
+                <View style={styles.scrollContent}>
+                  <View style={[accountDetailHeroBlockStyle(), { gap: spacing.lg }]}>
+                    <View style={styles.heroIdentityRow}>
+                      <TransactionAvatar transaction={transaction} contactPhotoUri={contactPhotoUri} size={isTransfer ? 46 : 56} />
+                      <View style={styles.heroIdentityCopy}>
+                        <EditableField
+                          type="text"
+                          value={transaction.label}
+                          onSave={handleSaveLabel}
+                          accessibilityLabel="Modifier le nom de la transaction"
+                          textStyle={styles.heroLabel}
+                          containerStyle={styles.heroLabelField}
+                          placeholder="Nom de transaction"
+                          fieldRef={heroLabelFieldRef}
+                          onEditStart={heroLabelScrollHandlers.onEditStart}
+                          onFocusEdit={heroLabelScrollHandlers.onFocusEdit}
+                        />
+                      </View>
+                    </View>
 
-              {transaction.type === 'expense' ? (
-                <TransactionReceiptCard
-                  transaction={transaction}
-                  colors={colors}
-                  articles={parseItemizedNote(transaction.note)}
-                  onAddArticle={() => {
-                    tapHaptic();
-                    setAddArticleSheetVisible(true);
-                  }}
-                  onRemoveArticle={(index) => void handleRemoveArticle(index)}
-                  onOpenReceiptMenu={openReceiptMenu}
-                  onViewReceipt={() => {
-                    if (!isPreviewableReceipt(transaction.receiptUri)) return;
-                    tapHaptic();
-                    setReceiptPreviewVisible(true);
-                  }}
-                />
-              ) : null}
+                    <TransactionAmountLabel
+                      amount={formatDisplayMoneyAbsolute(transaction.amount)}
+                      direction={transactionAmountDirectionFromType(transaction.type)}
+                      color={amountColor}
+                      textStyle={styles.heroAmount}
+                      iconSize={16}
+                      containerStyle={styles.heroAmountContainer}
+                      showDirectionIcon={!isTransfer}
+                    />
+                  </View>
+
+                  {insight ? <TransactionInsightCard insight={insight} /> : null}
+
+                  <TransactionDetailCard
+                    sections={detailSections}
+                    noteText={parseVisibleNoteText(transaction.note)}
+                    colors={colors}
+                    onSaveNote={handleSaveNote}
+                    notesFieldRef={notesFieldRef}
+                    onNotesEditStart={notesScrollHandlers.onEditStart}
+                    onNotesFocusEdit={notesScrollHandlers.onFocusEdit}
+                  />
+
+                  {transaction.type === 'expense' ? (
+                    <TransactionReceiptCard
+                      transaction={transaction}
+                      colors={colors}
+                      articles={articles}
+                      inlineArticleExpanded={inlineArticleExpanded}
+                      inlineArticleFormRef={inlineArticleFormRef}
+                      onInlineArticleScrollTargetChange={handleInlineArticleScrollTargetChange}
+                      onInlineArticleScrollToOffset={scrollToInlineArticleOffset}
+                      onInlineArticleNameFocusChange={handleInlineArticleNameFocusChange}
+                      onInlineArticleContentLayout={handleInlineArticleContentLayout}
+                      onOpenInlineArticle={() => {
+                        tapHaptic();
+                        setInlineArticleExpanded(true);
+                        scheduleInlineArticleScroll(120);
+                      }}
+                      onCloseInlineArticle={() => {
+                        setInlineArticleExpanded(false);
+                        inlineArticleEditingRef.current = false;
+                        inlineArticleScrollTargetRef.current = {
+                          nameTop: 0,
+                          nameBottom: 0,
+                          extentBottom: 0,
+                        };
+                      }}
+                      onInlineArticleAdd={(name, price, categoryId, categoryName) =>
+                        void handleAddArticle(name, price, categoryId, categoryName)
+                      }
+                      onRemoveArticle={(index) => void handleRemoveArticle(index)}
+                      onScanArticles={handleScanReceipt}
+                      onViewReceipt={() => {
+                        if (!isPreviewableReceipt(transaction.receiptUri)) return;
+                        tapHaptic();
+                        setReceiptPreviewVisible(true);
+                      }}
+                    />
+                  ) : null}
+                </View>
+              ) : (
+                <Text style={[styles.empty, { color: colors.textMuted }]}>
+                  {transactionId ? 'Transaction introuvable.' : 'Aucune transaction sélectionnée.'}
+                </Text>
+              )}
             </View>
-          ) : (
-            <Text style={[styles.empty, { color: colors.textMuted }]}>
-              {transactionId ? 'Transaction introuvable.' : 'Aucune transaction sélectionnée.'}
-            </Text>
-          )}
-        </ScrollView>
+          </ScrollView>
+        </KeyboardAvoidingView>
 
         <ConfirmDeleteModal
           visible={confirmDeleteVisible}
@@ -1840,6 +2228,15 @@ export default function TransactionDetailScreen() {
           onCancel={() => setConfirmDeleteVisible(false)}
         />
 
+        <ThemedConfirmModal
+          visible={insufficientFundsAlert !== null}
+          title={insufficientFundsAlert?.title ?? ''}
+          message={insufficientFundsAlert?.message ?? ''}
+          confirmLabel="Compris"
+          variant="warning"
+          onConfirm={() => setInsufficientFundsAlert(null)}
+        />
+
         {transaction && isPreviewableReceipt(transaction.receiptUri) ? (
           <ReceiptPreviewModal
             visible={receiptPreviewVisible}
@@ -1847,34 +2244,6 @@ export default function TransactionDetailScreen() {
             onClose={() => setReceiptPreviewVisible(false)}
           />
         ) : null}
-
-        <AddArticleSheet
-          visible={addArticleSheetVisible}
-          defaultCategoryId={transaction?.categoryId ?? null}
-          merchantHint={transaction?.label}
-          onAdd={(name, price, categoryId, categoryName) => void handleAddArticle(name, price, categoryId, categoryName)}
-          onClose={() => setAddArticleSheetVisible(false)}
-        />
-
-        <NoteEditSheet
-          visible={noteEditSheetVisible}
-          initialText={transaction ? parseVisibleNoteText(transaction.note) : ''}
-          onSave={(text) => void handleSaveNote(text)}
-          onClose={() => setNoteEditSheetVisible(false)}
-        />
-
-        <ReceiptImportSheet
-          visible={receiptMenuSheetVisible}
-          onScan={() => {
-            setReceiptMenuSheetVisible(false);
-            handleScanReceipt();
-          }}
-          onImport={() => {
-            setReceiptMenuSheetVisible(false);
-            void attachReceiptFromGallery();
-          }}
-          onClose={() => setReceiptMenuSheetVisible(false)}
-        />
 
         {/* Off-screen share card — captured by react-native-view-shot */}
         {transaction ? (
@@ -1898,6 +2267,8 @@ export default function TransactionDetailScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
+  keyboardAvoid: { flex: 1 },
+  scroll: { flex: 1 },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1936,6 +2307,10 @@ const styles = StyleSheet.create({
     fontSize: typography.dashboardGreeting,
     letterSpacing: -0.4,
   },
+  heroLabelField: {
+    flex: 1,
+    minWidth: 0,
+  },
   topBarSpacer: { width: 38 },
   content: {
     paddingHorizontal: spacing.lg,
@@ -1949,7 +2324,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   heroAmount: {
-    ...detailHeroAmount,
+    ...transactionDetailHeroAmountTypography(),
   },
   empty: {
     fontSize: typography.caption,
@@ -1960,13 +2335,8 @@ const styles = StyleSheet.create({
   notesSection: {
     marginTop: detailSubSectionsGap,
   },
-  notesSectionHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-  },
-  notesEditButton: {
-    padding: 2,
+  noteEditableField: {
+    width: '100%',
   },
   notesBlock: {
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -1981,6 +2351,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
     gap: spacing.md,
+    overflow: 'visible' as const,
   },
   receiptZigzag: {
     position: 'absolute' as const,
@@ -1994,11 +2365,6 @@ const styles = StyleSheet.create({
     right: 0,
     height: 1.5,
   },
-  receiptHeaderRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-  },
   receiptHeaderLeft: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -2008,20 +2374,16 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderStyle: 'dashed' as const,
   },
-  receiptAddButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: spacing.xs,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+  receiptInlineFormWrap: {
+    marginTop: -spacing.xs,
+    overflow: 'visible' as const,
+    zIndex: 10,
   },
-  receiptAddButtonText: {
-    ...typographyKit.metaMedium,
-    letterSpacing: 0.2,
+  receiptInlineFormWrapBelowArticles: {
+    marginTop: 0,
   },
   noteBody: {
-    lineHeight: 21,
+    ...typographyKit.body,
   },
   receiptAttachmentRow: {
     flexDirection: 'row' as const,
@@ -2056,6 +2418,45 @@ const styles = StyleSheet.create({
   },
   receiptJoinButtonText: {
     letterSpacing: 0.2,
+  },
+  receiptScanBlock: {
+    gap: spacing.xs,
+  },
+  receiptScanButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  receiptScanCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  receiptScanLabel: {
+    letterSpacing: 0.1,
+  },
+  receiptScanHint: {
+    letterSpacing: 0.15,
+  },
+  receiptScanSourceRow: {
+    flexDirection: 'row' as const,
+    gap: spacing.sm,
+  },
+  receiptScanSourceOption: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: spacing.xs,
+    minHeight: 42,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  receiptScanSourceLabel: {
+    letterSpacing: 0.15,
   },
   receiptPreviewBackdrop: {
     flex: 1,
@@ -2095,6 +2496,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pressed: { opacity: 0.78 },
+
+  categoryChipsWrap: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    justifyContent: 'flex-end' as const,
+    gap: 6,
+  },
+  categoryChip: {
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    maxWidth: '100%',
+  },
+  categoryChipText: {
+    fontSize: typography.caption,
+    letterSpacing: 0.1,
+  },
 
   // Article rows (premium receipt layout)
   receiptArticlesBlock: {
@@ -2182,96 +2603,6 @@ const styles = StyleSheet.create({
   },
   receiptStatusHint: {
     lineHeight: 15,
-  },
-
-  // Bottom sheet (shared)
-  sheetBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    justifyContent: 'flex-end' as const,
-  },
-  sheet: {
-    borderTopLeftRadius: radius.card,
-    borderTopRightRadius: radius.card,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    paddingTop: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-  },
-  sheetHandle: {
-    width: 38,
-    height: 4,
-    borderRadius: radius.pill,
-    alignSelf: 'center' as const,
-    marginBottom: spacing.sm,
-  },
-  sheetTitle: {
-    ...typographyKit.bodyBold,
-    marginBottom: spacing.xs,
-  },
-  sheetFields: {
-    gap: spacing.md,
-  },
-  sheetInput: {
-    minHeight: 48,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    ...typographyKit.bodyMedium,
-  },
-  noteTextInput: {
-    minHeight: 110,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
-  },
-  sheetPriceWrap: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    minHeight: 48,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-  },
-  sheetPriceInput: {
-    flex: 1,
-    textAlign: 'right' as const,
-    ...typographyKit.bodyMedium,
-    fontVariant: ['tabular-nums'] as const,
-    paddingVertical: spacing.sm,
-  },
-  sheetCurrency: {
-    ...jakartaBoldText,
-    fontSize: typography.body,
-    marginLeft: spacing.xs,
-  },
-  sheetSaveButton: {
-    minHeight: 48,
-    borderRadius: radius.lg,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginTop: spacing.xs,
-    paddingVertical: spacing.lg,
-    borderWidth: 1,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.28,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  sheetSaveButtonText: {
-    ...jakartaExtraBoldText,
-    fontSize: typography.body,
-    letterSpacing: 0.2,
-  },
-  sheetCancelButton: {
-    minHeight: 44,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  sheetCancelButtonText: {
-    ...typographyKit.metaMedium,
   },
 
   // ── AddArticleSheet ────────────────────────────────────────────────────────
@@ -2402,28 +2733,6 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
 
-  // Receipt import menu rows
-  importMenuRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  importMenuRowBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  importMenuIconWell: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  importMenuRowText: {
-    flex: 1,
-    ...typographyKit.caption,
-  },
-
   // Off-screen capture container for the share card
   shareCardOffscreen: {
     position: 'absolute' as const,
@@ -2456,9 +2765,9 @@ const shareCardStyles = StyleSheet.create({
     lineHeight: 28,
   },
   heroAmount: {
-    ...detailHeroAmount,
-    textAlign: 'center' as const,
+    ...transactionDetailHeroAmountTypography(),
     alignSelf: 'stretch' as const,
+    textAlign: 'center' as const,
   },
   surfaceCard: {
     borderRadius: radius.card,

@@ -27,6 +27,8 @@ export const CATEGORY_RULES: CategoryRule[] = [
       'sushi',
       'boulangerie',
       'brunch',
+      'st-hubert',
+      'a&w',
     ],
   },
   {
@@ -49,6 +51,7 @@ export const CATEGORY_RULES: CategoryRule[] = [
       'loblaws',
       'fruiterie',
       'marche',
+      'marche tradition',
       'pain',
       'lait',
       'oeuf',
@@ -60,6 +63,11 @@ export const CATEGORY_RULES: CategoryRule[] = [
     categoryIds: ['cat-gas', 'cat-transport'],
     categoryNames: ['gas', 'essence', 'transport', 'carburant'],
     keywords: ['gas', 'gaz', 'essence', 'fuel', 'shell', 'esso', 'petro-canada', 'petro canada', 'carburant', 'station service'],
+  },
+  {
+    categoryIds: ['cat-sports'],
+    categoryNames: ['sports', 'gym', 'fitness'],
+    keywords: ['gym', 'fitness', 'econofitness', 'sport expert', 'barbell'],
   },
   {
     categoryIds: ['cat-fun'],
@@ -93,6 +101,11 @@ export const CATEGORY_RULES: CategoryRule[] = [
     keywords: ['telephone', 'cellulaire', 'internet', 'telus', 'bell', 'rogers', 'videotron', 'phone', 'fizz', 'koodo', 'virgin'],
   },
   {
+    categoryIds: ['cat-utilities'],
+    categoryNames: ['electricite', 'services', 'hydro', 'chauffage'],
+    keywords: ['hydro-quebec', 'hydro quebec', 'energir', 'gaz metro'],
+  },
+  {
     categoryIds: ['cat-home-maintenance', 'cat-home'],
     categoryNames: ['entretien maison', 'renovation', 'quincaillerie', 'outil', 'outils', 'reparations'],
     keywords: [
@@ -108,6 +121,7 @@ export const CATEGORY_RULES: CategoryRule[] = [
       'reparations',
       'entretien maison',
       'home depot',
+      'bureau en gros',
       'rona',
       'canac',
       'bmr',
@@ -138,22 +152,22 @@ export const CATEGORY_RULES: CategoryRule[] = [
   {
     categoryIds: ['cat-fun'],
     categoryNames: ['loisir', 'loisirs', 'divertissement', 'sortie', 'fun'],
-    keywords: ['cinema', 'film', 'jeu', 'jeux', 'concert', 'billet', 'sortie', 'bar', 'arcade', 'theatre', 'loisir', 'loisirs'],
+    keywords: ['cinema', 'cineplex', 'film', 'jeu', 'jeux', 'concert', 'billet', 'sortie', 'bar', 'arcade', 'theatre', 'loisir', 'loisirs'],
   },
   {
-    categoryIds: [],
+    categoryIds: ['cat-health'],
     categoryNames: ['sante', 'pharmacie', 'medical', 'medicament'],
     keywords: ['pharmacie', 'pharmaprix', 'jean coutu', 'uniprix', 'medicament', 'dentiste', 'docteur', 'clinique', 'lunettes'],
   },
   {
-    categoryIds: [],
+    categoryIds: ['cat-shopping'],
     categoryNames: ['vetement', 'vetements', 'shopping', 'magasin', 'achats', 'chaussure'],
-    keywords: ['amazon', 'zara', 'hm', 'h&m', 'uniqlo', 'simons', 'winners', 'marshalls', 'vetement', 'vetements', 'linge', 'chaussure', 'chaussures'],
+    keywords: ['amazon', 'zara', 'hm', 'h&m', 'uniqlo', 'simons', 'winners', 'marshalls', 'dollarama', 'saq', 'vetement', 'vetements', 'linge', 'chaussure', 'chaussures'],
   },
   {
-    categoryIds: [],
+    categoryIds: ['cat-travel'],
     categoryNames: ['voyage', 'vacances', 'hotel', 'avion'],
-    keywords: ['airbnb', 'hotel', 'vol', 'avion', 'air canada', 'transat', 'uber', 'taxi', 'train', 'bus', 'opus', 'stm', 'voyage'],
+    keywords: ['airbnb', 'hotel', 'vol', 'avion', 'air canada', 'transat', 'uber', 'taxi', 'train', 'bus', 'opus', 'stm', 'rem', 'via rail', 'voyage'],
   },
 ];
 

@@ -77,6 +77,7 @@ import {
 } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
+import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import { getAccountLogoUrl } from '@/lib/merchantLogo';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
@@ -1072,7 +1073,7 @@ export default function AccountDetailScreen() {
                           key={tx.id}
                           transaction={tx}
                           accounts={accounts}
-                          onPress={() => { tapHaptic(); router.push({ pathname: '/transaction-detail', params: { transactionId: tx.id } }); }}
+                          onPress={() => { tapHaptic(); openTransactionDetail(tx.id); }}
                         />
                       ))}
                     </View>

@@ -8,6 +8,7 @@ import { ensureDisplayLanguageFromDevice, hydrateRuntimePreferences } from './se
 import { hydrateRFAOnBoot } from './ai/rfaService';
 import { evaluateAlerts } from './ai/alertService';
 import { ensureAverageUserBudgetBaseline, seedDemoTransactionsIfMissing } from './seed';
+import { seedRecurringPaymentsIfMissing } from './seedRecurringPayments';
 
 const INIT_SINGLETON_KEY = '__budgetTrackerDbInit__';
 
@@ -144,6 +145,7 @@ async function runBootSequence(initState: InitSingletonState): Promise<void> {
   try {
     await withTimeout(ensureAverageUserBudgetBaseline(), 'Budget baseline seeding', DB_INIT_TIMEOUT_MS);
     await withTimeout(seedDemoTransactionsIfMissing(), 'Demo data seeding', DB_INIT_TIMEOUT_MS);
+    await withTimeout(seedRecurringPaymentsIfMissing(), 'Recurring payments seeding', DB_INIT_TIMEOUT_MS);
 
     await ensureDisplayLanguageFromDevice();
     await hydrateRuntimePreferences();

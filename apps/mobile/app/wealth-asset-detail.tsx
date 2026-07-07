@@ -40,6 +40,7 @@ import {
 import { dataEvents } from '@/lib/events';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
+import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import { parseItemizedNote } from '@/lib/itemizedNote';
 import { formatLoanDisplayTitle } from '@/lib/loanPresentation';
 import { useAppTheme } from '@/lib/themeContext';
@@ -342,7 +343,7 @@ export default function WealthAssetDetailScreen() {
                                 ...tx,
                                 label: getTransactionTitle(tx, tx.categoryName?.trim() || displayTitle),
                               }}
-                              onPress={() => { tapHaptic(); router.push({ pathname: '/transaction-detail', params: { transactionId: tx.id } }); }}
+                              onPress={() => { tapHaptic(); openTransactionDetail(tx.id); }}
                             />
                           ))}
                         </View>

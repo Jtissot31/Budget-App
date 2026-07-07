@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode, type RefObject } from 'react';
 import {
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -9,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DashboardCard } from '@/components/DashboardCard';
 import { ContactRow, filterContacts, type ContactDirectoryRow } from '@/components/ContactDirectory';
 import { GlassContainer } from '@/components/GlassContainer';
@@ -17,7 +19,7 @@ import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { floatingGlassButtonPressed } from '@/constants/floatingGlassButton';
 import {
   MERCHANT_LOGO_SIZE,
-  PAGE_PADDING_HORIZONTAL,
+  screenHorizontalGutter,
   radius,
   spacing,
   typography,
@@ -45,19 +47,16 @@ type MerchantFlatListRef = RefObject<FlatList<MerchantDirectoryRow | ContactDire
 type Props = {
   merchants: MerchantDirectoryRow[];
   contacts?: ContactDirectoryRow[];
-  isEditing: boolean;
   headerComponent?: ReactNode;
   listRef?: MerchantFlatListRef | null;
   contentPaddingBottom: number;
   refreshing: boolean;
   onRefresh: () => void;
-  onToggleEdit: () => void;
+  onAddMerchant?: () => void;
   onPressMerchant: (merchant: MerchantDirectoryRow) => void;
   onPressContact?: (contact: ContactDirectoryRow) => void;
   onAddContact?: () => void;
 };
-
-const EDIT_OUTLINE = ['rgba(0,245,160,0.55)', 'rgba(0,245,160,0.18)', 'rgba(0,245,160,0.42)'] as const;
 
 function filterMerchants(merchants: MerchantDirectoryRow[], query: string) {
   const needle = query.trim().toLowerCase();
@@ -71,11 +70,9 @@ function filterMerchants(merchants: MerchantDirectoryRow[], query: string) {
 
 function MerchantRow({
   merchant,
-  isEditing,
   onPress,
 }: {
   merchant: MerchantDirectoryRow;
-  isEditing: boolean;
   onPress: () => void;
 }) {
   const { colors } = useAppTheme();
@@ -83,17 +80,11 @@ function MerchantRow({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={
-        isEditing ? `Modifier ${merchant.name}` : `Voir l'historique de ${merchant.name}`
-      }
+      accessibilityLabel={`Voir l'historique de ${merchant.name}`}
       onPress={onPress}
       style={({ pressed }) => [pressed && styles.pressed]}
     >
-      <GlassContainer
-        borderRadius={radius.card}
-        padding={spacing.md}
-        outlineColors={isEditing ? EDIT_OUTLINE : undefined}
-      >
+      <GlassContainer borderRadius={radius.card} padding={spacing.md}>
         <View style={styles.rowInner}>
           <MerchantLogo
             name={merchant.name}
@@ -109,16 +100,9 @@ function MerchantRow({
             >
               {merchant.name}
             </Text>
-            {isEditing ? (
-              <Text style={[styles.editHint, { color: colors.textMuted }]}>Touchez pour modifier</Text>
-            ) : null}
           </View>
           <View style={styles.chevronSlot}>
-            <Ionicons
-              name={isEditing ? 'pencil-outline' : 'chevron-forward'}
-              size={14}
-              color={isEditing ? colors.primary : colors.textMuted}
-            />
+            <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
           </View>
         </View>
       </GlassContainer>
@@ -129,18 +113,19 @@ function MerchantRow({
 export function MerchantDirectory({
   merchants,
   contacts = [],
-  isEditing,
   headerComponent,
   listRef,
   contentPaddingBottom,
   refreshing,
   onRefresh,
-  onToggleEdit,
+  onAddMerchant,
   onPressMerchant,
   onPressContact,
   onAddContact,
 }: Props) {
   const { colors, isLight } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const contentGutter = Platform.OS === 'web' ? 0 : screenHorizontalGutter(insets);
   const [search, setSearch] = useState('');
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>('merchants');
 
@@ -163,25 +148,24 @@ export function MerchantDirectory({
   const handleModeChange = (mode: DirectoryMode) => {
     tapHaptic();
     setDirectoryMode(mode);
-    if (mode === 'contacts' && isEditing) {
-      onToggleEdit();
-    }
   };
 
   const listHeader = (
     <>
-      {headerComponent ? <View style={styles.scrollHeaderBleed}>{headerComponent}</View> : null}
-      <View style={styles.headerBlock}>
+      {headerComponent ?? null}
+      <View style={[styles.headerBlock, { paddingHorizontal: contentGutter }]}>
       {showContactsTab ? (
-        <SegmentedTabs
-          tabs={[
-            { id: 'merchants', label: 'Marchands' },
-            { id: 'contacts', label: 'Contacts' },
-          ]}
-          active={directoryMode}
-          onChange={handleModeChange}
-          showDivider={false}
-        />
+        <View style={styles.directoryTabsWrap}>
+          <SegmentedTabs
+            tabs={[
+              { id: 'merchants', label: 'Marchands' },
+              { id: 'contacts', label: 'Contacts' },
+            ]}
+            active={directoryMode}
+            onChange={handleModeChange}
+            showDivider={false}
+          />
+        </View>
       ) : null}
 
       <View
@@ -214,41 +198,32 @@ export function MerchantDirectory({
       <View style={styles.toolbar}>
         <Text style={[styles.toolbarHint, { color: colors.textMuted }]} numberOfLines={2}>
           {isMerchantsMode
-            ? isEditing
-              ? 'Touchez un marchand pour le modifier ou le retirer.'
-              : `${merchants.length} marchand${merchants.length > 1 ? 's' : ''}`
+            ? `${merchants.length} marchand${merchants.length > 1 ? 's' : ''}`
             : `${contacts.length} contact${contacts.length > 1 ? 's' : ''}`}
         </Text>
-        {isMerchantsMode ? (
+        {isMerchantsMode && onAddMerchant ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={isEditing ? "Terminer l'édition des marchands" : 'Modifier les marchands'}
+            accessibilityLabel="Ajouter un marchand"
             style={({ pressed }) => [
               styles.editButton,
               {
-                backgroundColor: isEditing ? colors.text : colors.surfaceSolid,
-                borderColor: isEditing ? colors.text : colors.borderStrong,
+                backgroundColor: colors.surfaceSolid,
+                borderColor: colors.borderStrong,
               },
               pressed && styles.pressed,
             ]}
             onPress={() => {
               tapHaptic();
-              onToggleEdit();
+              onAddMerchant();
             }}
           >
-            <Ionicons
-              name={isEditing ? 'checkmark-outline' : 'pencil-outline'}
-              size={14}
-              color={isEditing ? colors.background : colors.textSecondary}
-            />
+            <Ionicons name="add-outline" size={14} color={colors.textSecondary} />
             <Text
-              style={[
-                styles.editButtonText,
-                { color: isEditing ? colors.background : colors.textSecondary },
-              ]}
+              style={[styles.editButtonText, { color: colors.textSecondary }]}
               numberOfLines={1}
             >
-              {isEditing ? 'Terminer' : 'Modifier'}
+              Ajouter
             </Text>
           </Pressable>
         ) : onAddContact ? (
@@ -297,6 +272,7 @@ export function MerchantDirectory({
       }
       ItemSeparatorComponent={() => <View style={styles.itemGap} />}
       ListEmptyComponent={
+        <View style={{ paddingHorizontal: contentGutter }}>
         <DashboardCard padding={spacing.lg} innerStyle={styles.emptyCard}>
           <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceElevated }]}>
             <Ionicons
@@ -320,25 +296,29 @@ export function MerchantDirectory({
                 : 'Les contacts apparaîtront après tes premiers transferts.'}
           </Text>
         </DashboardCard>
+        </View>
       }
       renderItem={({ item }) => {
         if (isMerchantsMode) {
           const merchant = item as MerchantDirectoryRow;
           return (
+            <View style={{ paddingHorizontal: contentGutter }}>
             <MerchantRow
               merchant={merchant}
-              isEditing={isEditing}
               onPress={() => onPressMerchant(merchant)}
             />
+            </View>
           );
         }
 
         const contact = item as ContactDirectoryRow;
         return (
+          <View style={{ paddingHorizontal: contentGutter }}>
           <ContactRow
             contact={contact}
             onPress={() => onPressContact?.(contact)}
           />
+          </View>
         );
       }}
     />
@@ -348,11 +328,7 @@ export function MerchantDirectory({
 const styles = StyleSheet.create({
   listViewport: { flex: 1 },
   listContent: {
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     paddingTop: spacing.sm,
-  },
-  scrollHeaderBleed: {
-    marginHorizontal: -PAGE_PADDING_HORIZONTAL,
   },
   listContentEmpty: {
     flexGrow: 1,
@@ -360,6 +336,9 @@ const styles = StyleSheet.create({
   headerBlock: {
     gap: spacing.md,
     marginBottom: spacing.md,
+  },
+  directoryTabsWrap: {
+    marginTop: spacing.md,
   },
   toolbar: {
     flexDirection: 'row',
@@ -436,10 +415,6 @@ const styles = StyleSheet.create({
     fontSize: typography.meta,
     fontWeight: '700',
     letterSpacing: 0.15,
-  },
-  editHint: {
-    fontSize: typography.micro,
-    lineHeight: 16,
   },
   chevronSlot: {
     width: 16,

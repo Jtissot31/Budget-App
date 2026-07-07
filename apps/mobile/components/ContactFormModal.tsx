@@ -3,7 +3,6 @@ import {
   Modal,
   Pressable,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -11,6 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
+import { PremiumSwitch } from '@/components/PremiumSwitch';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import { radius, spacing, typography } from '@/constants/theme';
@@ -120,15 +120,12 @@ export function ContactFormModal({ visible, bottomInset = 0, onClose, onSaved }:
               Suggéré en priorité lors de la saisie d'un revenu.
             </Text>
           </View>
-          <Switch
+          <PremiumSwitch
             value={isEmployer}
             onValueChange={(enabled) => {
               tapHaptic();
               setIsEmployer(enabled);
             }}
-            trackColor={{ false: colors.borderStrong, true: colors.primary }}
-            thumbColor={isEmployer ? colors.surfaceSolid : undefined}
-            ios_backgroundColor={colors.borderStrong}
           />
         </View>
 

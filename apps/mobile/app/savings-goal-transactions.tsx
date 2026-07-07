@@ -13,6 +13,7 @@ import { jakartaBoldText, jakartaExtraBoldText, radius, spacing, typography, typ
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { getSavingsGoals, getTransactionsForSavingsGoal, sortTransactionsNewestFirst } from '@/lib/db';
 import { tapHaptic } from '@/lib/haptics';
+import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import { useAppTheme } from '@/lib/themeContext';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import type { SavingsGoal, Transaction } from '@/types';
@@ -271,7 +272,7 @@ export default function SavingsGoalTransactionsScreen() {
                         ...tx,
                         label: getTransactionTitle(tx, tx.categoryName?.trim() || tx.label || displayName),
                       }}
-                      onPress={() => { tapHaptic(); router.push({ pathname: '/transaction-detail', params: { transactionId: tx.id } }); }}
+                      onPress={() => { tapHaptic(); openTransactionDetail(tx.id); }}
                     />
                   ))}
                 </View>

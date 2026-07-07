@@ -1,5 +1,45 @@
+import { DASHBOARD_ACCOUNTS } from '@/constants/dashboardMockAccounts';
 import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
 import type { ReceiptStatus, SavingsGoal, SimulatedAccount, Transaction, TransactionType } from '@/types';
+
+function normalizeAccountLabel(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase();
+}
+
+function last4RedundantWithName(name: string, last4: string): boolean {
+  const trimmedLast4 = last4.trim();
+  if (!trimmedLast4) return true;
+
+  const normalizedName = normalizeAccountLabel(name);
+  const normalizedLast4 = normalizeAccountLabel(trimmedLast4);
+  if (normalizedName.endsWith(normalizedLast4)) return true;
+
+  const suffixPatterns = [
+    `· ${trimmedLast4}`,
+    `·${trimmedLast4}`,
+    `• ${trimmedLast4}`,
+    `•${trimmedLast4}`,
+    `****${trimmedLast4}`,
+    `····${trimmedLast4}`,
+  ];
+  return suffixPatterns.some((pattern) => name.includes(pattern));
+}
+
+/** Picker / detail label — appends last4 only when the name does not already include it. */
+export function formatPaymentAccountLabel(name: string, last4?: string | null): string {
+  const trimmedName = name.trim();
+  if (!trimmedName) return '';
+  const trimmedLast4 = last4?.trim();
+  if (!trimmedLast4 || last4RedundantWithName(trimmedName, trimmedLast4)) return trimmedName;
+  return `${trimmedName} • ${trimmedLast4}`;
+}
+
+function isBareNumericAccountId(accountId: string): boolean {
+  return /^\d+$/.test(accountId.trim());
+}
 
 export function getTransactionTypeLabel(type: TransactionType): string {
   if (type === 'income') return 'Revenu';
@@ -30,18 +70,40 @@ export function resolveAccountIdLabel(
   accountId: string,
   accounts: readonly SimulatedAccount[] = [],
 ): string {
+  const trimmedId = accountId.trim();
   const simulated =
-    accounts.find((account) => account.id === accountId) ??
-    accounts.find((account) => account.name.trim().toLowerCase() === accountId.toLowerCase());
+    accounts.find((account) => account.id === trimmedId) ??
+    accounts.find((account) => account.name.trim().toLowerCase() === trimmedId.toLowerCase());
   if (simulated) {
-    const name = simulated.name.trim();
-    return simulated.last4 ? `${name} • ${simulated.last4}` : name;
+    return formatPaymentAccountLabel(simulated.name, simulated.last4);
   }
 
-  const manual = MANUAL_ENTRY_ACCOUNTS.find((account) => account.id === accountId);
+  const dashboard = DASHBOARD_ACCOUNTS.find((account) => account.id === trimmedId);
+  if (dashboard) {
+    const last4 = dashboard.number.replace(/\D/g, '').slice(-4);
+    return formatPaymentAccountLabel(dashboard.name, last4);
+  }
+
+  const manual = MANUAL_ENTRY_ACCOUNTS.find((account) => account.id === trimmedId);
   if (manual) return manual.label;
 
-  return accountId;
+  if (isBareNumericAccountId(trimmedId)) return 'Compte supprimé';
+  return trimmedId;
+}
+
+export function resolvePaymentAccountLabel(
+  accountId: string,
+  accounts: readonly SimulatedAccount[] = [],
+  accountOptions: readonly { id: string; label: string }[] = [],
+): string {
+  const resolved = resolveAccountIdLabel(accountId, accounts);
+  if (resolved !== accountId.trim()) return resolved;
+
+  const fromOptions = accountOptions.find((option) => option.id === accountId.trim())?.label?.trim();
+  if (fromOptions) return fromOptions;
+
+  if (isBareNumericAccountId(accountId)) return 'Compte supprimé';
+  return resolved;
 }
 
 export function isLikelySavingsGoalId(endpointId: string): boolean {
@@ -278,10 +340,9 @@ export function findInsufficientFundsViolation(
     const account = accountById.get(accountId);
     if (!account || (account.kind !== 'checking' && account.kind !== 'savings' && account.kind !== 'cash')) continue;
     if (account.balance + delta < 0) {
-      const name = account.name.trim();
       return {
         accountId,
-        accountLabel: account.last4 ? `${name} • ${account.last4}` : name,
+        accountLabel: formatPaymentAccountLabel(account.name, account.last4),
       };
     }
   }

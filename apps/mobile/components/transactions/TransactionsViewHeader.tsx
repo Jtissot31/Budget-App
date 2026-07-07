@@ -1,17 +1,19 @@
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { AnimatedUnderlineTabs } from '@/components/AnimatedUnderlineTabs';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
-import { TransactionsShortcutCards } from '@/components/transactions/TransactionsShortcutCards';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
-import { fontFamilies, PAGE_PADDING_HORIZONTAL, PAGE_TITLE_STYLE, spacing } from '@/constants/theme';
+import {
+  fontFamilies,
+  PAGE_TITLE_CONTENT_GAP,
+  PAGE_TITLE_STYLE,
+  radius,
+  screenHorizontalGutter,
+  spacing,
+  typography,
+} from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
-import { resolveLucideIcon } from '@/lib/lucideIconCatalog';
-import SearchMod from 'lucide-react-native/dist/cjs/icons/search.js';
-import SlidersHorizontalMod from 'lucide-react-native/dist/cjs/icons/sliders-horizontal.js';
-
-const SearchIcon = resolveLucideIcon(SearchMod)!;
-const SlidersHorizontalIcon = resolveLucideIcon(SlidersHorizontalMod)!;
+import { useAppTheme } from '@/lib/themeContext';
 
 export type TransactionsViewTab = 'history' | 'agenda' | 'merchants';
 export type HistoryTypeFilter = 'all' | 'expense' | 'income';
@@ -42,9 +44,6 @@ type Props = {
   onToggleHistoryFilters: () => void;
   historyTypeFilter: HistoryTypeFilter;
   onHistoryTypeFilterChange: (filter: HistoryTypeFilter) => void;
-  pendingValidationCount: number;
-  onPressInsights: () => void;
-  onPressReview: () => void;
 };
 
 export function TransactionsViewHeader({
@@ -61,39 +60,47 @@ export function TransactionsViewHeader({
   onToggleHistoryFilters,
   historyTypeFilter,
   onHistoryTypeFilterChange,
-  pendingValidationCount,
-  onPressInsights,
-  onPressReview,
 }: Props) {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const contentGutter = Platform.OS === 'web' ? 0 : screenHorizontalGutter(insets);
+  const filterActive = historyTypeFilter !== 'all';
+
   return (
     <>
-      <View style={{ paddingTop: topInset + SCREEN_TOP_GUTTER }}>
+      <View style={{ paddingTop: topInset + SCREEN_TOP_GUTTER, paddingHorizontal: contentGutter }}>
         <View style={styles.topBar}>
           <Text style={[styles.title, { color: titleColor }]}>Transactions</Text>
           <Pressable onPress={onPressScan} hitSlop={12} style={styles.scanIcon}>
             <AppIcon family="ionicons" name="scan-outline" size={22} color={mutedColor} />
           </Pressable>
         </View>
-        <AnimatedUnderlineTabs
-          tabs={VIEW_TABS}
-          active={activeView}
-          layout="edgeCenterEdge"
-          onChange={(id) => {
-            tapHaptic();
-            onChangeView(id);
-          }}
-          style={[styles.viewTabs, showHistoryToolbar && styles.viewTabsHistory]}
-        />
+        <View style={showHistoryToolbar ? styles.viewTabsHistory : undefined}>
+          <SegmentedTabs
+            tabs={VIEW_TABS}
+            active={activeView}
+            onChange={(id) => {
+              tapHaptic();
+              onChangeView(id);
+            }}
+            showDivider={false}
+          />
+        </View>
       </View>
       {showHistoryToolbar ? (
-        <View style={styles.historyToolbar}>
+        <View style={[styles.historyToolbar, { paddingHorizontal: contentGutter }]}>
           <View style={styles.searchFilterRow}>
-            <View style={styles.searchPill}>
-              <SearchIcon size={14} color="#444" strokeWidth={2} />
+            <View
+              style={[
+                styles.searchPill,
+                { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
+              ]}
+            >
+              <AppIcon family="ionicons" name="search-outline" size={18} color={colors.textMuted} />
               <TextInput
-                style={styles.searchInput}
+                style={[styles.searchInput, { color: colors.text }]}
                 placeholder="Rechercher"
-                placeholderTextColor="#3A3A3C"
+                placeholderTextColor={colors.textMuted}
                 value={search}
                 onChangeText={onSearchChange}
               />
@@ -107,12 +114,17 @@ export function TransactionsViewHeader({
                 tapHaptic();
                 onToggleHistoryFilters();
               }}
-              style={[styles.filterBtn, historyTypeFilter !== 'all' && styles.filterBtnActive]}
+              style={({ pressed }) => [
+                styles.filterBtn,
+                { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
+                pressed && styles.pressed,
+              ]}
             >
-              <SlidersHorizontalIcon
-                size={14}
-                color={historyTypeFilter !== 'all' ? '#4ADE80' : '#777'}
-                strokeWidth={2}
+              <AppIcon
+                family="ionicons"
+                name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
+                size={20}
+                color={filterActive ? colors.primary : colors.textMuted}
               />
             </Pressable>
           </View>
@@ -133,12 +145,6 @@ export function TransactionsViewHeader({
               />
             </View>
           ) : null}
-          <TransactionsShortcutCards
-            embedded
-            pendingCount={pendingValidationCount}
-            onPressInsights={onPressInsights}
-            onPressReview={onPressReview}
-          />
         </View>
       ) : null}
     </>
@@ -151,65 +157,55 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: spacing.md,
-    marginBottom: 18,
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+    marginBottom: PAGE_TITLE_CONTENT_GAP,
   },
   title: {
     ...PAGE_TITLE_STYLE,
     flex: 1,
   },
   scanIcon: { padding: 4 },
-  viewTabs: {
-    marginTop: 0,
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-  },
   viewTabsHistory: {
     marginBottom: 12,
   },
   historyToolbar: {
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     marginBottom: 44,
   },
   searchFilterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    gap: spacing.sm,
+    marginBottom: spacing.md,
   },
   searchPill: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#18181A',
+    gap: spacing.sm,
+    minHeight: 44,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#2A2A2C',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   searchInput: {
     flex: 1,
-    color: '#fff',
     fontFamily: fontFamilies.regular,
-    fontSize: 13,
+    fontSize: typography.body,
     padding: 0,
     includeFontPadding: false,
   },
   filterBtn: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#18181A',
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#2A2A2C',
-    borderRadius: 10,
-  },
-  filterBtnActive: {
-    borderColor: '#4ADE8040',
   },
   historyFilterWrap: {
     marginBottom: 0,
+  },
+  pressed: {
+    opacity: 0.78,
   },
 });

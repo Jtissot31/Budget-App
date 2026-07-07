@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { MdiIconGlyph } from '@/components/MdiIconGlyph';
+import { RemoteLogoImage } from '@/components/IconFrame';
 import { getMerchantLogoUrls } from '@/lib/merchantLogo';
 import { EXPENSE_MDI_ICON, resolveMdiOrLegacyIcon } from '@/lib/mdiIconCatalog';
 import { MERCHANT_LOGO_SIZE } from '@/constants/theme';
 import {
   logoIconWellStyle,
   userPickedIconGlyphSize,
-  userPickedIconLogoSize,
   userPickedIconWellStyle,
 } from '@/lib/userPickedIcon';
 import { useAppTheme } from '@/lib/themeContext';
@@ -50,22 +49,18 @@ export function MerchantLogo({
 
   const uri = remoteUrls[sourceIndex];
   const showRemote = Boolean(uri) && !giveUp;
-  const logoSize = userPickedIconLogoSize(size);
   const glyphSize = userPickedIconGlyphSize(size, Math.max(18, size * 0.56));
   const wellStyle = showRemote && uri
-    ? logoIconWellStyle(size, isLight)
+    ? { ...logoIconWellStyle(size, isLight), position: 'relative' as const }
     : userPickedIconWellStyle(size, isLight);
 
   return (
     <View style={[wellStyle, styles.wrap]}>
       {showRemote && uri ? (
-        <Image
-          source={{ uri }}
-          style={{ width: logoSize, height: logoSize }}
-          contentFit="contain"
-          transition={150}
-          cachePolicy="memory-disk"
+        <RemoteLogoImage
+          uri={uri}
           recyclingKey={uri}
+          size={size}
           onError={() => {
             if (sourceIndex < remoteUrls.length - 1) {
               setSourceIndex((i) => i + 1);
