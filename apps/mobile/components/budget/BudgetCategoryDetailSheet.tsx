@@ -18,7 +18,7 @@ import { SurfaceCard } from '@/components/SurfaceCard';
 
 import { TransactionRow } from '@/components/TransactionRow';
 
-import { getCategoryIconName } from '@/constants/categoryOptions';
+import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 
 import {
   accountDetailHeroBlockStyle,
@@ -180,11 +180,6 @@ export function BudgetCategoryDetailSheet({
     : undefined;
   const showStatusTag = usage ? shouldShowCategoryStatusTag(usage) : false;
   const statusText = budgetStatus?.label ?? '';
-  const iconName = category
-    ? getCategoryIconName({ icon: category.icon, name: localName })
-    : 'pricetag-outline';
-  const iconWellBg = isLight ? colors.surfaceElevated : colors.input;
-
   const handleSaveName = useCallback(
     async (newName: string) => {
       if (!category) return;
@@ -289,17 +284,7 @@ export function BudgetCategoryDetailSheet({
       scrollContentContainerStyle={styles.scrollContent}
     >
       <View style={styles.header}>
-        <View
-          style={[
-            styles.iconWell,
-            {
-              backgroundColor: iconWellBg,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <Ionicons name={iconName} size={24} color={colors.textSecondary} />
-        </View>
+        <BudgetCategoryIcon icon={category.icon} name={localName} id={category.id} />
 
         <View style={styles.headerText}>
           <EditableField
@@ -490,15 +475,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     marginBottom: spacing.xs,
-  },
-  iconWell: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
   },
   headerText: {
     flex: 1,

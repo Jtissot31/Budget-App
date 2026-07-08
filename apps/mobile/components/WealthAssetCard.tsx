@@ -2,7 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
 
-import { containerSurfaceStyle, jakartaMediumText, radius } from '@/constants/theme';
+import { containerSurfaceStyle, jakartaMediumText, moneyAmountTypography, radius } from '@/constants/theme';
 
 import { typographyKit } from '@/constants/typographyKit';
 
@@ -447,11 +447,7 @@ const styles = StyleSheet.create({
   },
 
   valueAmount: {
-
-    ...typographyKit.statHero,
-
-    textAlign: 'right',
-
+    ...moneyAmountTypography({ tier: 'hero', textAlign: 'right' }),
   },
 
   footer: {
@@ -469,11 +465,7 @@ const styles = StyleSheet.create({
   },
 
   gainText: {
-
-    ...typographyKit.microMedium,
-
-    fontVariant: ['tabular-nums'],
-
+    ...moneyAmountTypography({ tier: 'row', fontSize: typographyKit.microMedium.fontSize }),
   },
 
   footerMeta: {

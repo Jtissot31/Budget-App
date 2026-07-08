@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { StyleSheet, Text, View } from 'react-native';
-import { jakartaExtraBoldText, jakartaMediumText, jakartaSemiboldText } from '@/constants/theme';
+import { jakartaMediumText, jakartaSemiboldText, moneyAmountTypography } from '@/constants/theme';
 import { creditUsedFromBalance } from '@/lib/creditLimitUtilization';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
 import type { AccountKind, SimulatedAccount } from '@/types';
@@ -169,7 +169,9 @@ export function BankAccountCard({ account, logoUrl }: BankAccountCardProps) {
         {typeof creditAvailable === 'number' ? (
           <Text style={styles.creditMeta} numberOfLines={1}>
             Disponible{' '}
-            <Text style={{ color: CARD.text }}>{formatCompactCurrency(creditAvailable)}</Text>
+            <Text style={moneyAmountTypography({ tier: 'row', fontSize: 9, letterSpacing: 0.2, textAlign: 'right' })}>
+              {formatCompactCurrency(creditAvailable)}
+            </Text>
           </Text>
         ) : null}
       </View>
@@ -243,12 +245,13 @@ const styles = StyleSheet.create({
     color: CARD.label,
   },
   balanceAmount: {
-    ...jakartaExtraBoldText,
-    fontSize: 27,
-    lineHeight: 31,
-    letterSpacing: -0.6,
-    fontVariant: ['tabular-nums'],
-    textAlign: 'right',
+    ...moneyAmountTypography({
+      tier: 'stat',
+      fontSize: 27,
+      lineHeight: 31,
+      letterSpacing: -0.6,
+      textAlign: 'right',
+    }),
   },
   creditMeta: {
     ...jakartaMediumText,

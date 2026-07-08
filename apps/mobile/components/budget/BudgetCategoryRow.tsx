@@ -112,7 +112,7 @@ export function BudgetCategoryRow({
       </View>
 
       {embedded && !isLast ? (
-        <View style={[styles.divider, { backgroundColor: colors.containerBorder }]} />
+        <View style={styles.divider} />
       ) : null}
     </Pressable>
   );
@@ -188,5 +188,6 @@ const styles = StyleSheet.create({
   divider: {
     height: StyleSheet.hairlineWidth,
     marginTop: spacing.xs,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
   },
 });

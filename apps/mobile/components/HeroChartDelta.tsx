@@ -13,7 +13,14 @@ const LIGHT_DELTA_MINT = portfolioLight.chartCurve;
 const CHART_RED = chartTokens.negative;
 const LIGHT_CHART_RED = '#CF222E';
 
-export function HeroChartDelta({ periodData }: { periodData: PortfolioChartCardPeriodData | null }) {
+export function HeroChartDelta({
+  periodData,
+  centered = false,
+}: {
+  periodData: PortfolioChartCardPeriodData | null;
+  /** When true, centers under the hero amount (no extra top margin). */
+  centered?: boolean;
+}) {
   const { isLight } = useAppTheme();
   if (!periodData) return null;
 
@@ -29,7 +36,11 @@ export function HeroChartDelta({ periodData }: { periodData: PortfolioChartCardP
   const color = positive ? (isLight ? LIGHT_DELTA_MINT : DELTA_MINT) : isLight ? LIGHT_CHART_RED : CHART_RED;
 
   return (
-    <Text style={[styles.heroDeltaText, { color }]} numberOfLines={1} adjustsFontSizeToFit>
+    <Text
+      style={[styles.heroDeltaText, centered && styles.heroDeltaTextCentered, { color }]}
+      numberOfLines={1}
+      adjustsFontSizeToFit
+    >
       {text}
     </Text>
   );
@@ -40,5 +51,9 @@ const styles = StyleSheet.create({
     ...jakartaMediumText,
     fontSize: 13,
     marginTop: 8,
+  },
+  heroDeltaTextCentered: {
+    marginTop: 0,
+    textAlign: 'center',
   },
 });

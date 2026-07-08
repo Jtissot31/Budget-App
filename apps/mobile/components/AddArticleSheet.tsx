@@ -12,7 +12,6 @@ import {
   View,
   type TextStyle,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DetailSingleLineRow, DetailSubSection } from '@/components/DetailSectionRows';
 import { EditableField } from '@/components/EditableField';
@@ -149,7 +148,12 @@ export function AddArticleSheet({
   const effectiveCategoryId = categoryManuallySelected ? categoryId : (categoryId ?? inferredCategoryId);
 
   const categoryOptions = useMemo<SettingsPickerOption<string>[]>(
-    () => categories.map((category) => ({ id: category.id, label: category.name })),
+    () =>
+      categories.map((category) => ({
+        id: category.id,
+        label: category.name,
+        budgetCategoryIcon: { icon: category.icon, name: category.name },
+      })),
     [categories],
   );
 
@@ -299,6 +303,14 @@ export function AddArticleSheet({
     const resolvedCategory = resolvedCategoryId ? categoryById.get(resolvedCategoryId) : undefined;
     onAdd(trimmed, price, resolvedCategoryId ?? null, resolvedCategory?.name ?? null);
     reset();
+    if (isInline) {
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          nameInputRef.current?.focus();
+        }, 120);
+      });
+      return;
+    }
     onClose();
   };
 
@@ -460,16 +472,19 @@ export function AddArticleSheet({
         onPress={handleSave}
         hitSlop={8}
         style={({ pressed }) => [
-          styles.inlineConfirmBtn,
+          styles.inlineAddLink,
           pressed && canSave && styles.pressed,
         ]}
       >
-        <Ionicons
-          name="checkmark-circle"
-          size={22}
-          color={canSave ? colors.primary : colors.textMuted}
-          style={!canSave ? styles.inlineConfirmBtnDisabled : undefined}
-        />
+        <Text
+          style={[
+            typographyKit.metaMedium,
+            { color: canSave ? colors.primary : colors.textMuted },
+            !canSave && styles.inlineAddLinkDisabled,
+          ]}
+        >
+          Ajouter
+        </Text>
       </Pressable>
     </View>
   );
@@ -763,24 +778,22 @@ const styles = StyleSheet.create({
   inlineAmountCurrency: {
     flexShrink: 0,
   },
-  inlineConfirmBtn: {
-    width: 26,
-    height: 26,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+  inlineAddLink: {
     flexShrink: 0,
+    paddingVertical: spacing.xs,
+    paddingLeft: spacing.xs,
   },
-  inlineConfirmBtnDisabled: {
+  inlineAddLinkDisabled: {
     opacity: 0.35,
   },
   inlineBudgetHint: {
     textAlign: 'right' as const,
     marginTop: -spacing.xs,
-    paddingRight: 32,
+    paddingRight: spacing.sm,
   },
   inlineBudgetError: {
     marginTop: -spacing.xs,
-    paddingRight: 32,
+    paddingRight: spacing.sm,
   },
   inlineCategoryRow: {
     borderTopWidth: StyleSheet.hairlineWidth,

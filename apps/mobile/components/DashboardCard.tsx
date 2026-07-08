@@ -9,6 +9,7 @@ type Props = {
   innerStyle?: StyleProp<ViewStyle>;
   padding?: number;
   innerBackgroundColor?: string;
+  variant?: 'card' | 'flat';
 };
 
 /** Dashboard card surface — SurfaceCard with standard radius.card (18px). */
@@ -18,6 +19,7 @@ export function DashboardCard({
   innerStyle,
   padding,
   innerBackgroundColor,
+  variant = 'card',
 }: Props) {
   return (
     <SurfaceCard
@@ -26,6 +28,7 @@ export function DashboardCard({
       padding={padding}
       borderRadius={radius.card}
       innerBackgroundColor={innerBackgroundColor}
+      variant={variant}
     >
       {children}
     </SurfaceCard>

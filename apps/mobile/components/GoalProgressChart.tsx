@@ -17,7 +17,6 @@ import {
 import type { SavingsGoal, SimulatedAccount, Transaction } from '@/types';
 
 const GOAL_CHART_LINE = '#4ADE80';
-const GOAL_CHART_GRADIENT_ID = 'singleGoalAreaGradient';
 const GOAL_CHART_PERIODS: NetWorthChartPeriod[] = ['1M', '3M', '6M', 'CA', '1A'];
 
 export type GoalProgressChartHandle = PortfolioChartCardHandle;
@@ -86,7 +85,6 @@ export const GoalProgressChart = forwardRef<
           points={points}
           onPeriodData={handlePeriodData}
           lineColor={GOAL_CHART_LINE}
-          gradientId={GOAL_CHART_GRADIENT_ID}
           allowedPeriods={GOAL_CHART_PERIODS}
         />
       </Pressable>

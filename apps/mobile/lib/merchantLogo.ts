@@ -19,6 +19,7 @@ const MAXI_LOGO = require('@/assets/merchants/maxi.png');
 const COUCHE_TARD_LOGO = require('@/assets/merchants/couche-tard.png');
 const MCDONALDS_LOGO = require('@/assets/merchants/mcdonalds.png');
 const SUPER_C_LOGO = require('@/assets/merchants/super-c.png');
+const VISA_LOGO = require('@/assets/merchants/visa.png');
 
 /** Normalized merchant key → bundled asset module id */
 const MERCHANT_LOCAL_ASSET_BY_KEY: Record<string, number> = {
@@ -254,6 +255,11 @@ const GENERIC_TRANSACTION_LABELS = new Set([
   'autre',
   'divers',
 ]);
+
+/** Partial account/institution label → bundled logo (checked before remote favicons). */
+const ACCOUNT_LOCAL_ASSET_KEYWORDS: Array<[string, number]> = [
+  ['visa', VISA_LOGO],
+];
 
 const ACCOUNT_KEYWORD_DOMAIN_MAP: Array<[string, string]> = [
   ['desjardins', 'desjardins.com'],
@@ -557,6 +563,15 @@ function resolveLocalMerchantAsset(name: string): number | null {
   return null;
 }
 
+function resolveLocalAccountAsset(name: string): number | null {
+  const key = normalizeMerchantKey(name);
+  if (!key) return null;
+  for (const [needle, asset] of ACCOUNT_LOCAL_ASSET_KEYWORDS) {
+    if (key.includes(needle)) return asset;
+  }
+  return null;
+}
+
 /** Resolve a bundled `require()` asset to a URI on native and web. */
 function resolveBundledAssetUri(asset: number): string {
   return Asset.fromModule(asset).uri;
@@ -585,6 +600,8 @@ export function getMerchantLogoUrl(name: string): string | null {
 }
 
 export function getAccountLogoUrls(name: string): string[] {
+  const localAsset = resolveLocalAccountAsset(name);
+  if (localAsset) return [resolveBundledAssetUri(localAsset)];
   const domain = resolveAccountLogoDomain(name);
   if (!domain) return [];
   return faviconUrlsForDomain(domain);

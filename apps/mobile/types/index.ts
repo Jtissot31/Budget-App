@@ -131,6 +131,8 @@ export interface SavingsGoal {
   /** Montant déjà épargné à la création (base fixe pour le % « parcours »). */
   initialSavedAmount: number;
   weeklyContribution?: number;
+  /** Versement saisi à cette fréquence ; montant normalisé en hebdo dans weeklyContribution. */
+  contributionFrequency?: LoanPaymentFrequency;
   dueDate?: string;
   color: string;
   icon: string;

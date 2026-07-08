@@ -2,8 +2,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { GlassContainer } from '@/components/GlassContainer';
 import {
   jakartaBoldText,
-  jakartaExtraBoldText,
   jakartaMediumText,
+  moneyAmountTypography,
   radius,
   spacing,
   typography,
@@ -108,9 +108,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   totalAmount: {
-    ...jakartaExtraBoldText,
-    fontSize: typography.body,
-    letterSpacing: -0.3,
+    ...moneyAmountTypography({ tier: 'card', letterSpacing: -0.3 }),
     flexShrink: 0,
   },
   track: {

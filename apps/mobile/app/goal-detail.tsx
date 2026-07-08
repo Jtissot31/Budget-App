@@ -107,7 +107,12 @@ import {
   EMPTY_DETAIL_VALUE,
   formatDetailWeeklyAmount,
 } from '@/lib/detailDisplay';
-import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import {
+  fromWeeklyContributionAmount,
+  savingsGoalContributionFrequencyLabel,
+  type SavingsGoalContributionFrequency,
+} from '@/lib/savingsGoalContribution';
+import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
 
 import type { FormFeedback } from '@/lib/formFeedback';
 
@@ -293,6 +298,7 @@ function buildGoalDetailSections(
   remaining: number,
 
   weeklyContributionLabel: string,
+  contributionRowLabel: string,
 
   targetDateLabel: string,
 
@@ -338,7 +344,7 @@ function buildGoalDetailSections(
 
     {
 
-      label: 'Contribution hebdomadaire',
+      label: contributionRowLabel,
 
       value: weeklyContributionLabel,
 
@@ -702,16 +708,18 @@ export default function GoalDetailScreen() {
 
 
 
+  const contributionRowLabel = useMemo(() => {
+    if (!goal) return 'Versement';
+    return `Versement · ${savingsGoalContributionFrequencyLabel(goal.contributionFrequency as SavingsGoalContributionFrequency | undefined)}`;
+  }, [goal]);
+
   const weeklyContributionLabel = useMemo(() => {
-
     if (!goal) return EMPTY_DETAIL_VALUE;
-
     const weekly = goal.weeklyContribution ?? 0;
-
-    if (weekly > 0) return formatDetailWeeklyAmount(weekly, { leadingPlus: true });
-
-    return EMPTY_DETAIL_VALUE;
-
+    if (weekly <= 0) return EMPTY_DETAIL_VALUE;
+    const frequency = (goal.contributionFrequency ?? 'weekly') as SavingsGoalContributionFrequency;
+    const amount = fromWeeklyContributionAmount(weekly, frequency);
+    return formatSignedDisplayMoney(amount, { leadingPlusWhenPositive: true });
   }, [goal]);
 
 
@@ -739,7 +747,7 @@ export default function GoalDetailScreen() {
             remaining,
 
             weeklyContributionLabel,
-
+            contributionRowLabel,
             targetDateLabel,
 
             plannedDates,
@@ -752,7 +760,7 @@ export default function GoalDetailScreen() {
 
         : [],
 
-    [colors, goal, plannedDates, projection, remaining, targetDateLabel, weeklyContributionLabel],
+    [colors, contributionRowLabel, goal, plannedDates, projection, remaining, targetDateLabel, weeklyContributionLabel],
 
   );
 

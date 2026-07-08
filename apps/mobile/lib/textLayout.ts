@@ -1,6 +1,9 @@
 ﻿import type { TextStyle } from 'react-native';
 
-import { moneyAmountTypography } from '@/constants/theme';
+import {
+  moneyAmountTypography,
+  transactionDetailHeroAmountTypography,
+} from '@/constants/theme';
 import { typographyKit } from '@/constants/typographyKit';
 
 /**
@@ -52,21 +55,17 @@ export const singleLineLabelStyle: Pick<TextStyle, 'flexShrink' | 'minWidth'> = 
 };
 
 /**
- * Numeric & list layout helpers â€” built on `typographyKit` (Portefeuille reference).
+ * Numeric & list layout helpers — money amounts use {@link moneyAmountTypography} (Onest 800).
  */
-export const portfolioNumericText = {
-  ...typographyKit.cardMetric,
-  fontSize: typographyKit.rowAmount.fontSize,
-  letterSpacing: typographyKit.rowAmount.letterSpacing,
-} as const;
+export const portfolioNumericText = moneyAmountTypography({ tier: 'row' });
 
-export const chartMetricAmount = typographyKit.cardMetric;
+export const chartMetricAmount = moneyAmountTypography({ tier: 'card' });
 
-export const dashboardPaymentAmount = typographyKit.paymentAmount;
+export const dashboardPaymentAmount = moneyAmountTypography({ tier: 'stat' });
 
-export const heroStatAmount = typographyKit.heroStat;
+export const heroStatAmount = moneyAmountTypography({ tier: 'stat' });
 
-export const detailHeroAmount = typographyKit.detailHero;
+export const detailHeroAmount = transactionDetailHeroAmountTypography();
 
 /** Secondary hero amount (e.g. budget limit beside spent) â€” one tier below hero. */
 export const detailHeroSecondaryAmount = moneyAmountTypography({ tier: 'row' });
@@ -85,7 +84,7 @@ export const detailRowSelectValueText = typographyKit.metaMedium;
 
 export const percentStat = typographyKit.percent;
 
-export const netWorthHeroAmount = typographyKit.netWorthHero;
+export const netWorthHeroAmount = moneyAmountTypography({ tier: 'netWorth' });
 
 /** Max width for right-column amounts in row layouts */
 export const ROW_VALUE_MAX_WIDTH = '40%' as const;
@@ -160,18 +159,13 @@ export const listRowTitle = {
 } as const;
 
 /**
- * Standard list amount (14px ExtraBold tabular).
+ * Standard list amount (14px Onest tabular).
  * Use with rowValueContainer + singleLineAmountProps on the Text.
  */
-export const rowValue = {
-  ...typographyKit.rowAmount,
-} as const;
+export const rowValue = moneyAmountTypography({ tier: 'row' });
 
 /** Day-group subtotal in transaction lists */
-export const listDayTotal = {
-  ...rowValue,
-  flexShrink: 0,
-} as const;
+export const listDayTotal = moneyAmountTypography({ tier: 'row' });
 
 /** Props for amounts that must stay on one line */
 export const singleLineAmountProps = {

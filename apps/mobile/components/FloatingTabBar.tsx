@@ -30,7 +30,6 @@ import {
   spacing,
   typographyKit,
 } from '@/constants/theme';
-import { getSelectedLucideIcon } from '@/lib/iconMigration/selectedLucideIcons';
 import { tapHaptic } from '@/lib/haptics';
 import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsForm';
 import { uiEvents } from '@/lib/events';
@@ -44,8 +43,6 @@ const TAB_ICON_SIZE = 21;
 /** Expands icon-only tab target to 44×44 without a sized pressable background. */
 const TAB_HIT_SLOP = { top: 11, bottom: 11, left: 11, right: 11 } as const;
 
-const FynBrainIcon = getSelectedLucideIcon('Brain');
-
 /** Material Community Icons — outline only (icon-only tabs, no filled circles). */
 const ROUTE_ICONS: Record<
   string,
@@ -53,6 +50,7 @@ const ROUTE_ICONS: Record<
 > = {
   index: { outline: 'home-outline', filled: 'home' },
   transactions: { outline: 'receipt-text-outline', filled: 'receipt-text' },
+  goals: { outline: 'compass-outline', filled: 'compass' },
   accounts: { outline: 'wallet-outline', filled: 'wallet' },
   budgets: { outline: 'chart-pie-outline', filled: 'chart-pie' },
 };
@@ -60,7 +58,7 @@ const ROUTE_ICONS: Record<
 const ROUTE_LABELS: Record<string, string> = {
   index: 'Accueil',
   accounts: 'Portefeuille',
-  goals: 'Conseiller Fyn',
+  goals: 'Plan financier',
   transactions: 'Transactions',
   budgets: 'Budget',
   settings: 'Réglages',
@@ -519,7 +517,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
         <View style={styles.navContent} pointerEvents="box-none">
           {state.routes.map((route, index) => {
             if (HIDDEN_ROUTES.has(route.name)) return null;
-            const isFynTab = route.name === 'goals';
             const focused = state.index === index;
             const icons = ROUTE_ICONS[route.name] ?? {
               outline: 'circle-outline',
@@ -562,16 +559,12 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                 accessibilityState={{ selected: focused }}
               >
                 <View style={styles.tab}>
-                  {isFynTab && FynBrainIcon ? (
-                    <FynBrainIcon size={TAB_ICON_SIZE} color={iconColor} strokeWidth={2} />
-                  ) : (
-                    <AppIcon
-                      family="material-community"
-                      name={iconName}
-                      size={TAB_ICON_SIZE}
-                      color={iconColor}
-                    />
-                  )}
+                  <AppIcon
+                    family="material-community"
+                    name={iconName}
+                    size={TAB_ICON_SIZE}
+                    color={iconColor}
+                  />
                 </View>
               </TouchableWithoutFeedback>
             );

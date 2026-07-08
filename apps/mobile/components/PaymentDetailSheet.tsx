@@ -277,7 +277,12 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
   );
 
   const categoryPickerOptions = useMemo(
-    () => inlineCategories.map((category) => ({ id: category.id, label: category.name })),
+    () =>
+      inlineCategories.map((category) => ({
+        id: category.id,
+        label: category.name,
+        budgetCategoryIcon: { icon: category.icon, name: category.name },
+      })),
     [inlineCategories],
   );
 

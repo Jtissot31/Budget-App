@@ -10,10 +10,12 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import type { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MotiView } from 'moti';
@@ -21,11 +23,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { PaymentMethodField, type PaymentMethodAccount } from '@/components/PaymentMethodField';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
+import { DashboardCard } from '@/components/DashboardCard';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
+import { HubSectionHeader } from '@/components/plans/HubSectionHeader';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { PageTransition } from '@/components/PageTransition';
-import { DashboardAccountBalanceCard } from '@/components/DashboardAccountBalanceCard';
-import { WealthAssetCard } from '@/components/WealthAssetCard';
+import { ReorderableAccountBalanceList } from '@/components/ReorderableAccountBalanceList';
+import { StockPortfolioSection } from '@/components/StockPortfolioSection';
+import { MOCK_STOCK_HOLDINGS } from '@/constants/mockStockPortfolio';
 import { WealthMaterialIcon } from '@/components/WealthMaterialIcon';
 import { GlassContainer } from '@/components/GlassContainer';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
@@ -37,12 +42,11 @@ import {
   PortfolioChartCard,
   type PortfolioChartCardHandle,
   type PortfolioChartCardPeriodData,
+  CHART_FULL_BLEED_RIGHT_INSET,
 } from '@/components/PortfolioChartCard';
 import {
-  FLOATING_SCROLL_ICON_SIZE,
   FLOATING_SCROLL_SIZE,
   floatingGlassButtonPressed,
-  floatingGlassScrollSurface,
 } from '@/constants/floatingGlassButton';
 import {
   SCREEN_TOP_GUTTER,
@@ -60,12 +64,10 @@ import {
   jakartaExtraBoldText,
   jakartaMediumText,
   jakartaSemiboldText,
-  portfolioDark,
-  portfolioLight,
   PAGE_PADDING_HORIZONTAL,
+  PAGE_TITLE_CONTENT_GAP,
+  PAGE_TITLE_STYLE,
   PORTFOLIO_SECTION_GAP,
-  accountDetailSectionDividerStyle,
-  SECTION_TITLE_STYLE,
   PROGRESS_BAR_TRACK_HEIGHT,
   radius,
   spacing,
@@ -79,11 +81,13 @@ import {
   buildCashflowTrendFromTransactions,
   getCurrentCashflowTotal,
 } from '@/lib/buildCashflowTrendSeries';
-import { buildNetWorthTrendFromTransactions } from '@/lib/buildNetWorthTrendSeries';
+import {
+  buildPatrimoineTrendFromWealthAssets,
+  getCurrentPatrimoineTotal,
+} from '@/lib/buildPatrimoineTrendSeries';
 import {
   getCurrentMonthAccountMoneyFlows,
   deleteLoan,
-  ensureCashAccount,
   getContacts,
   getLoans,
   getSavingsGoals,
@@ -101,10 +105,8 @@ import { creditLimitUtilizationBarColor } from '@/lib/creditLimitUtilization';
 import { estimateWealthAssetValue } from '@/lib/assetValuation';
 import {
   filterPatrimoineWealthAssets,
-  getPatrimoineLinkedMortgage,
   getWealthAssetDisplayValue,
   realEstateAssetName,
-  sumWealthAssetsDisplayValue,
 } from '@/lib/wealthAssetPresentation';
 import {
   capturePropertyPhoto,
@@ -122,7 +124,6 @@ import {
   rowLabel,
   rowTitleTextProps,
   rowValue,
-  rowValueContainer,
   singleLineAmountProps,
 } from '@/lib/textLayout';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
@@ -136,14 +137,7 @@ import {
   CHILD_SUPPORT_BENEFICIARY_HINT,
   CHILD_SUPPORT_BENEFICIARY_LABEL,
   CHILD_SUPPORT_BENEFICIARY_PLACEHOLDER,
-  computeLoanRepaymentProgress,
-  formatChildSupportBeneficiaryDisplayName,
   formatLoanDisplayTitle,
-  formatLoanDebtAmount,
-  formatLoanPaymentObligation,
-  loanBalanceLabel,
-  loanProgressLabel,
-  loanTypeBadgeLabel,
   resolveLoanReason,
 } from '@/lib/loanPresentation';
 import { shouldLoanSyncRecurringPayment, syncLoanRecurringPayment } from '@/lib/syncLoanRecurringPayment';
@@ -157,11 +151,7 @@ import {
   formatChildSupportBeneficiaryRelation,
   formatChildSupportPaymentDay,
   formatChildSupportPaymentDayLabel,
-  formatChildSupportPaymentAmount,
-  formatChildSupportRecipientLabel,
-  isChildSupportLoan,
   parseChildSupportFromLoan,
-  resolveChildSupportBeneficiaryLabel,
 } from '@/lib/childSupportLoan';
 import { userPickedIconGlyphSize, userPickedIconWellStyle } from '@/lib/userPickedIcon';
 import {
@@ -341,8 +331,6 @@ const ACCOUNT_CREDIT_PROGRESS_SECTION_HEIGHT = 44;
 
 const FLOATING_ACTION_THUMB_RAISE = FLOATING_SCROLL_SIZE;
 const FLOATING_ACTION_CLEARANCE = 136 + FLOATING_ACTION_THUMB_RAISE;
-/** Nudge the portfolio scroll FAB below the chart period row (incl. 1A). */
-const PORTFOLIO_SCROLL_FAB_PERIOD_CLEARANCE = 24;
 
 /** Portfolio scroll tail below Patrimoine: tab reserve + FAB breathing room (~legacy `FLOATING_ACTION_CLEARANCE`).
  * Compressed ~½ for short lists; grows with extra assets, capped toward legacy clearance for long lists. */
@@ -365,23 +353,28 @@ const LIGHT_SECTION_SURFACE = '#F6F8FA';
 const LIGHT_SECTION_CARD_SURFACE = '#FFFFFF';
 const LIGHT_SECTION_SOFT_SURFACE = '#F6F8FA';
 const LIGHT_SECTION_BORDER = '#D0D7DE';
-const PORTFOLIO_PAGE_PADDING = PAGE_PADDING_HORIZONTAL;
 /** Espacement vertical entre blocs majeurs (chart → comptes → patrimoine / prêts). */
 const PORTFOLIO_BLOCK_GAP = spacing.xl;
 const PORTFOLIO_BLOCK_BREAK = spacing.xxl + spacing.lg;
-const CHART_RED = chartTokens.negative;
-const LIGHT_PORTFOLIO_TEXT = portfolioLight.text;
+const CHART_HUB_SCOPE_LABELS: Record<NetWorthChartScope, string> = {
+  accounts_only: 'FLUX DE TRÉSORERIE',
+  inclusive: 'PATRIMOINE',
+};
 
-type PortfolioScrollTarget = 'balances' | 'wealth' | 'debts';
+const CHART_HUB_LAYOUT = {
+  cardVariant: 'flat' as const,
+  cardPadding: 0,
+  plotHorizontalInset: 0,
+  plotHorizontalInsetRight: CHART_FULL_BLEED_RIGHT_INSET,
+} as const;
+
+const PAGE_SECTION_BREAK = spacing.lg;
+const CHART_RED = chartTokens.negative;
+
+type PortfolioScrollTarget = 'balances' | 'wealth';
 type PortfolioScrollStage = 'top' | 'bottom' | PortfolioScrollTarget;
 type PortfolioSectionMetrics = Record<PortfolioScrollTarget, { y: number; height: number }>;
-type PortfolioScrollCycleAction = {
-  target: PortfolioScrollTarget | 'top' | 'bottom';
-  icon: 'chevron-down' | 'chevron-up';
-};
-/** Top alignment keeps section titles below the status bar; toggle anchors the secondary section tabs (see `getPortfolioScrollOffset`). */
-type PortfolioScrollOffsetMode = 'center' | 'top' | 'toggle';
-type PortfolioSectionToggleMetrics = { y: number; height: number };
+type PortfolioScrollOffsetMode = 'center' | 'top';
 
 function formatMoney(value: number) {
   return formatDisplayMoneyAbsolute(value);
@@ -391,13 +384,6 @@ function formatMoney(value: number) {
 function formatPortfolioAsset(value: number) {
   if (value < 0) return `−${formatDisplayMoneyAbsolute(Math.abs(value))}`;
   return formatDisplayMoneyAbsolute(value);
-}
-
-/** Dette ou sortie d'argent : toujours préfixé « − » (sauf zéro). */
-function formatPortfolioOutflow(value: number) {
-  const abs = Math.abs(value);
-  if (abs === 0) return formatDisplayMoneyAbsolute(0);
-  return `−${formatDisplayMoneyAbsolute(abs)}`;
 }
 
 /** Entrée d'argent : préfixe « + » si > 0. */
@@ -461,12 +447,17 @@ function formatSignedMoney(value: number) {
   return formatCompactCurrency(value);
 }
 
-function PortfolioHeaderRow() {
-  const { isLight } = useAppTheme();
-  const titleColor = isLight ? LIGHT_PORTFOLIO_TEXT : portfolioDark.text;
+function PortfolioPageHeader() {
+  const { colors } = useAppTheme();
 
   return (
-    <Text style={[styles.pageTitle, styles.portfolioHeaderTitle, { color: titleColor }]}>Portefeuille</Text>
+    <View style={styles.pageHeroBlock}>
+      <View style={styles.pageHeaderRow}>
+        <Text style={[styles.pageTitle, { color: colors.text }]} numberOfLines={1}>
+          Portefeuille
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -477,6 +468,7 @@ export default function AccountsScreen() {
     typeof params.editWealthAssetId === 'string' ? params.editWealthAssetId.trim() : '';
   const editLoanId = typeof params.editLoanId === 'string' ? params.editLoanId.trim() : '';
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const { colors, ghost, ghostCardShadow, isLight } = useAppTheme();
   const scrollRef = useRef<ScrollView>(null);
   const portfolioChartRef = useRef<PortfolioChartCardHandle>(null);
@@ -489,9 +481,7 @@ export default function AccountsScreen() {
   const portfolioSectionMetricsRef = useRef<PortfolioSectionMetrics>({
     balances: { y: 0, height: 0 },
     wealth: { y: 0, height: 0 },
-    debts: { y: 0, height: 0 },
   });
-  const portfolioSectionToggleMetricsRef = useRef<PortfolioSectionToggleMetrics>({ y: 0, height: 0 });
   const pendingPortfolioSectionScrollRef = useRef<PortfolioScrollTarget | null>(null);
   const scrollToPortfolioSectionRef = useRef<(target: PortfolioScrollTarget) => void>(() => {});
   const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
@@ -502,6 +492,7 @@ export default function AccountsScreen() {
   const [showAccountTypePicker, setShowAccountTypePicker] = useState(false);
   const [formFeedback, setFormFeedback] = useState<FormFeedback | null>(null);
   const [showAccountManager, setShowAccountManager] = useState(false);
+  const [isAccountListDragging, setIsAccountListDragging] = useState(false);
   const [editingAccount, setEditingAccount] = useState<SimulatedAccount | null>(null);
   const [name, setName] = useState('');
   const [kind, setKind] = useState<AccountKind>('checking');
@@ -589,10 +580,7 @@ export default function AccountsScreen() {
   const clearPortfolioChartSelection = useCallback(() => {
     portfolioChartRef.current?.clearSelection();
   }, []);
-  const [activeSection, setActiveSection] = useState<'accounts' | 'loans'>('accounts');
-
   const load = useCallback(async () => {
-    await ensureCashAccount();
     const [nextAccounts, nextSavingsGoals, nextWealthAssets, flows, nextLoans, nextTransactions, nextContacts] =
       await Promise.all([
       getSimulatedAccounts(),
@@ -625,12 +613,14 @@ export default function AccountsScreen() {
   const handleNetWorthChartScopeChange = useCallback((scope: NetWorthChartScope) => {
     setNetWorthChartScopeState(scope);
     void setNetWorthChartScope(scope);
+    setChartPeriodData(null);
+    clearPortfolioChartSelection();
     pendingPortfolioSectionScrollRef.current = null;
     clearPortfolioProgrammaticScroll();
     portfolioProgrammaticScrollStageRef.current = null;
     setPortfolioScrollState('top');
     scrollRef.current?.scrollTo({ y: 0, animated: true });
-  }, []);
+  }, [clearPortfolioChartSelection]);
 
   const handleWealthPropertyTypeChange = useCallback((value: string) => {
     setWealthPropertyType(value);
@@ -701,7 +691,6 @@ export default function AccountsScreen() {
     };
   }, []);
 
-  const totalBalance = useMemo(() => accounts.reduce((sum, a) => sum + a.balance, 0), [accounts]);
   const orderedAccounts = useMemo(() => sortAccountsForDisplay(accounts), [accounts]);
   const visibleAccounts = useMemo(() => orderedAccounts.filter((account) => !account.hidden), [orderedAccounts]);
   const patrimoineWealthAssets = useMemo(
@@ -709,30 +698,30 @@ export default function AccountsScreen() {
     [wealthAssets],
   );
   const loansById = useMemo(() => new Map(loans.map((loan) => [loan.id, loan])), [loans]);
-  const offAccountAssetsBalance = useMemo(
-    () => sumWealthAssetsDisplayValue(wealthAssets, loansById),
-    [wealthAssets, loansById],
+  const chartPatrimoineTotal = useMemo(
+    () => getCurrentPatrimoineTotal(patrimoineWealthAssets, loansById),
+    [patrimoineWealthAssets, loansById],
   );
-  const totalNetWorth = totalBalance + offAccountAssetsBalance;
-  const chartNetWorthTotal = totalNetWorth;
   const chartCashflowTotal = useMemo(
     () => getCurrentCashflowTotal(accounts, transactions),
     [accounts, transactions],
   );
   const chartHeroFallbackTotal =
-    netWorthChartScope === 'inclusive' ? chartNetWorthTotal : chartCashflowTotal;
+    netWorthChartScope === 'inclusive' ? chartPatrimoineTotal : chartCashflowTotal;
+  const chartHubLayoutProps = useMemo(
+    () => ({
+      ...CHART_HUB_LAYOUT,
+      eyebrowStyle: [styles.heroEyebrow, styles.heroEyebrowCashFlow],
+      chartBleedStyle: styles.chartScreenBleed(screenWidth),
+    }),
+    [screenWidth],
+  );
   const portfolioChartPoints = useMemo(
     () =>
       netWorthChartScope === 'inclusive'
-        ? buildNetWorthTrendFromTransactions(
-            'inclusive',
-            chartNetWorthTotal,
-            accounts,
-            offAccountAssetsBalance,
-            transactions,
-          )
+        ? buildPatrimoineTrendFromWealthAssets(patrimoineWealthAssets, loansById)
         : buildCashflowTrendFromTransactions(accounts, transactions),
-    [netWorthChartScope, chartNetWorthTotal, accounts, offAccountAssetsBalance, transactions],
+    [netWorthChartScope, patrimoineWealthAssets, loansById, accounts, transactions],
   );
   const logoSourceName = institution.trim() || name.trim();
   const selectedInstitutionLogo = useMemo(
@@ -846,11 +835,6 @@ export default function AccountsScreen() {
     router.push({ pathname: '/account-detail', params: { accountId: account.id } });
   };
 
-  const openLoanDetail = (loan: Loan) => {
-    tapHaptic();
-    router.push({ pathname: '/loan-detail', params: { loanId: loan.id } });
-  };
-
   const openAccountManager = () => {
     tapHaptic();
     setShowAccountManager(true);
@@ -896,6 +880,20 @@ export default function AccountsScreen() {
     );
   };
 
+  const handleVisibleAccountsReorder = async (nextVisibleAccounts: SimulatedAccount[]) => {
+    const hiddenAccounts = orderedAccounts.filter((account) => account.hidden);
+    await persistAccountDisplayPreferences([
+      ...nextVisibleAccounts.map((account, index) => ({
+        ...account,
+        displayOrder: index,
+      })),
+      ...hiddenAccounts.map((account, index) => ({
+        ...account,
+        displayOrder: nextVisibleAccounts.length + index,
+      })),
+    ]);
+  };
+
   const handlePortfolioViewportLayout = (event: LayoutChangeEvent) => {
     portfolioViewportHeightRef.current = event.nativeEvent.layout.height;
   };
@@ -908,37 +906,11 @@ export default function AccountsScreen() {
     const { height, y } = event.nativeEvent.layout;
     portfolioSectionMetricsRef.current[target] = { y, height };
 
-    if (pendingPortfolioSectionScrollRef.current && height > 0) {
-      const pendingTarget = pendingPortfolioSectionScrollRef.current;
-      const balancesReady = portfolioSectionMetricsRef.current.balances.height > 0;
-      const toggleReady = portfolioSectionToggleMetricsRef.current.height > 0;
-      const canScrollToToggle =
-        (pendingTarget === 'balances' || pendingTarget === 'debts') && balancesReady && toggleReady;
-      const canScrollToSection = pendingTarget === target;
-
-      if (canScrollToToggle || canScrollToSection) {
-        pendingPortfolioSectionScrollRef.current = null;
-        requestAnimationFrame(() => {
-          scrollToPortfolioSectionRef.current(pendingTarget);
-        });
-      }
-    }
-  };
-
-  const handlePortfolioSectionToggleLayout = (event: LayoutChangeEvent) => {
-    const { height, y } = event.nativeEvent.layout;
-    portfolioSectionToggleMetricsRef.current = { y, height };
-
-    if (pendingPortfolioSectionScrollRef.current && height > 0) {
-      const pendingTarget = pendingPortfolioSectionScrollRef.current;
-      const balancesReady = portfolioSectionMetricsRef.current.balances.height > 0;
-
-      if ((pendingTarget === 'balances' || pendingTarget === 'debts') && balancesReady) {
-        pendingPortfolioSectionScrollRef.current = null;
-        requestAnimationFrame(() => {
-          scrollToPortfolioSectionRef.current(pendingTarget);
-        });
-      }
+    if (pendingPortfolioSectionScrollRef.current === target && height > 0) {
+      pendingPortfolioSectionScrollRef.current = null;
+      requestAnimationFrame(() => {
+        scrollToPortfolioSectionRef.current(target);
+      });
     }
   };
 
@@ -951,45 +923,20 @@ export default function AccountsScreen() {
     return typeof maxOffset === 'number' ? Math.min(clampedOffset, maxOffset) : clampedOffset;
   };
 
-  const getPortfolioToggleScrollOffset = () => {
-    const balances = portfolioSectionMetricsRef.current.balances;
-    const toggle = portfolioSectionToggleMetricsRef.current;
-    const toggleAbsoluteY = toggle.height > 0 ? balances.y + toggle.y : balances.y;
-
-    return clampPortfolioScrollOffset(toggleAbsoluteY - insets.top - spacing.md);
-  };
-
   const getPortfolioScrollOffset = (target: PortfolioScrollTarget, mode: PortfolioScrollOffsetMode = 'center') => {
     const viewportHeight = portfolioViewportHeightRef.current;
-    let sectionY: number;
-    let sectionHeight: number;
-
-    if (target === 'debts') {
-      const balances = portfolioSectionMetricsRef.current.balances;
-      const debts = portfolioSectionMetricsRef.current.debts;
-      // Dettes is nested inside the balances container; combine offsets for scroll anchoring.
-      sectionY = balances.y + debts.y;
-      sectionHeight = debts.height > 0 ? debts.height : 200;
-    } else {
-      const section = portfolioSectionMetricsRef.current[target];
-      // Sections are direct children of the scroll-content container, so onLayout `y` is already
-      // the absolute scroll offset.
-      sectionY = section.y;
-      // Fall back to a reasonable section height when onLayout hasn't fired yet (e.g. first tap
-      // before AccountBalanceChart has measured), so the center formula stays sensible.
-      sectionHeight = section.height > 0 ? section.height : 300;
-    }
+    const section = portfolioSectionMetricsRef.current[target];
+    // Sections are direct children of the scroll-content container, so onLayout `y` is already
+    // the absolute scroll offset.
+    const sectionY = section.y;
+    // Fall back to a reasonable section height when onLayout hasn't fired yet (e.g. first tap
+    // before AccountBalanceChart has measured), so the center formula stays sensible.
+    const sectionHeight = section.height > 0 ? section.height : 300;
     // ScrollView aligns `y` with the raw viewport top (under the Android status bar). Offset by safe area +
     // a small gutter so Patrimoine isn’t clipped; same value drives FAB stage threshold via `handleScroll`.
-    if (mode === 'toggle' && (target === 'balances' || target === 'debts')) {
-      return getPortfolioToggleScrollOffset();
-    }
-
     const rawOffset =
       mode === 'top'
-        ? target === 'balances'
-          ? getPortfolioToggleScrollOffset()
-          : sectionY - insets.top - spacing.sm
+        ? sectionY - insets.top - spacing.sm
         : sectionY - (viewportHeight - sectionHeight) / 2;
 
     return clampPortfolioScrollOffset(rawOffset);
@@ -1055,14 +1002,10 @@ export default function AccountsScreen() {
       return;
     }
 
-    const debtsOffset = getPortfolioScrollOffset('debts', 'top');
-    const debtsThreshold = Math.max(debtsOffset * 0.35, spacing.lg);
     const balancesOffset = getPortfolioScrollOffset('balances', 'top');
     const balancesThreshold = Math.max(balancesOffset * 0.35, spacing.lg);
 
-    if (offsetY >= debtsThreshold) {
-      setPortfolioScrollState('debts');
-    } else if (offsetY >= balancesThreshold) {
+    if (offsetY >= balancesThreshold) {
       setPortfolioScrollState('balances');
     } else {
       setPortfolioScrollState('top');
@@ -1087,78 +1030,12 @@ export default function AccountsScreen() {
   const scrollToPortfolioSection = (target: PortfolioScrollTarget) => {
     tapHaptic();
     beginPortfolioProgrammaticScroll(target);
-    const offsetMode: PortfolioScrollOffsetMode =
-      target === 'wealth' ? 'top' : target === 'balances' || target === 'debts' ? 'toggle' : 'top';
     scrollRef.current?.scrollTo({
-      y: getPortfolioScrollOffset(target, offsetMode),
+      y: getPortfolioScrollOffset(target, 'top'),
       animated: true,
     });
   };
   scrollToPortfolioSectionRef.current = scrollToPortfolioSection;
-
-  const handleActiveSectionChange = useCallback(
-    (section: 'accounts' | 'loans') => {
-      if (section === activeSection) return;
-
-      setActiveSection(section);
-
-      if (netWorthChartScope !== 'accounts_only') return;
-
-      const target: PortfolioScrollTarget = section === 'accounts' ? 'balances' : 'debts';
-      const balancesReady = portfolioSectionMetricsRef.current.balances.height > 0;
-      const toggleReady = portfolioSectionToggleMetricsRef.current.height > 0;
-
-      if (!balancesReady || !toggleReady) {
-        pendingPortfolioSectionScrollRef.current = target;
-        return;
-      }
-
-      scrollToPortfolioSection(target);
-    },
-    [activeSection, netWorthChartScope],
-  );
-
-  const nextPortfolioScrollAction: PortfolioScrollCycleAction | null =
-    netWorthChartScope === 'inclusive'
-      ? portfolioScrollStage === 'top'
-        ? { target: 'wealth', icon: 'chevron-down' }
-        : portfolioScrollStage === 'wealth'
-          ? { target: 'top', icon: 'chevron-up' }
-          : null
-      : portfolioScrollStage === 'top'
-        ? { target: 'balances', icon: 'chevron-down' }
-        : portfolioScrollStage === 'balances' || portfolioScrollStage === 'debts'
-          ? { target: 'bottom', icon: 'chevron-down' }
-          : portfolioScrollStage === 'bottom'
-            ? { target: 'top', icon: 'chevron-up' }
-            : null;
-
-  const handlePortfolioScrollCycle = () => {
-    if (!nextPortfolioScrollAction) return;
-
-    if (nextPortfolioScrollAction.target === 'top') {
-      scrollToPortfolioTop();
-      return;
-    }
-
-    if (nextPortfolioScrollAction.target === 'bottom') {
-      scrollToPortfolioBottom();
-      return;
-    }
-
-    scrollToPortfolioSection(nextPortfolioScrollAction.target);
-  };
-
-  const portfolioScrollAccessibilityLabel =
-    nextPortfolioScrollAction?.target === 'balances'
-      ? 'Centrer les soldes des comptes'
-      : nextPortfolioScrollAction?.target === 'wealth'
-        ? 'Centrer le patrimoine hors compte'
-        : nextPortfolioScrollAction?.target === 'debts'
-          ? 'Centrer la section Prêts et obligations'
-          : nextPortfolioScrollAction?.target === 'bottom'
-            ? 'Descendre tout en bas du portefeuille'
-            : 'Remonter tout en haut du portefeuille';
 
   const saveAccount = async () => {
     const parsedBalance = parseMoney(balance);
@@ -1380,11 +1257,6 @@ export default function AccountsScreen() {
     setLoanBeneficiaryRelation(null);
     setLoanIcon(defaultLoanIcon(type));
     setShowLoanIconPicker(false);
-  };
-
-  const openNewLoanForm = () => {
-    tapHaptic();
-    setShowLoanTypePicker(true);
   };
 
   const handleLoanTypeSelect = (type: LoanType) => {
@@ -1708,16 +1580,27 @@ export default function AccountsScreen() {
   };
 
   const portfolioBottomPadding = useMemo(
-    () => portfolioScrollBottomPadding(insets.bottom, patrimoineWealthAssets.length),
-    [insets.bottom, patrimoineWealthAssets.length],
+    () => portfolioScrollBottomPadding(insets.bottom, MOCK_STOCK_HOLDINGS.length),
+    [insets.bottom],
   );
 
   return (
     <PageTransition>
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <LinearGradient
+        colors={
+          isLight
+            ? ['rgba(0,168,84,0.06)', 'transparent']
+            : ['rgba(0,230,100,0.055)', 'transparent']
+        }
+        style={styles.ambientGlow}
+        pointerEvents="none"
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+      />
       <ScrollView
         ref={scrollRef}
-        style={[styles.screen, { backgroundColor: colors.background }]}
+        style={styles.screen}
         contentContainerStyle={[
           styles.content,
           {
@@ -1726,6 +1609,7 @@ export default function AccountsScreen() {
           },
         ]}
         showsVerticalScrollIndicator={false}
+        scrollEnabled={!isAccountListDragging}
         scrollEventThrottle={16}
         nestedScrollEnabled
         onContentSizeChange={handlePortfolioContentSizeChange}
@@ -1745,14 +1629,9 @@ export default function AccountsScreen() {
           />
         }
       >
-        <Pressable
-          onPress={clearPortfolioChartSelection}
-          style={styles.portfolioHeroBlock}
-          accessibilityRole="none"
-          accessibilityLabel="Effacer la sélection du graphique"
-        >
-          <PortfolioHeaderRow />
-          <View style={styles.portfolioScopeWrap}>
+        <View style={styles.pageHeaderBlock}>
+          <PortfolioPageHeader />
+          <View style={styles.pageScopeTabs}>
             <SegmentedTabs
               tabs={[
                 { id: 'accounts_only', label: 'Comptes' },
@@ -1763,136 +1642,80 @@ export default function AccountsScreen() {
               showDivider={false}
             />
           </View>
-          <DashboardSectionLabel style={styles.heroEyebrow}>
-            {netWorthChartScope === 'inclusive' ? 'VALEUR NETTE' : 'FLUX DE TRÉSORERIE'}
-          </DashboardSectionLabel>
-          <NetWorthAmountRow totalBalance={chartPeriodData?.currentValue ?? chartHeroFallbackTotal} />
-          <HeroChartDelta periodData={chartPeriodData} />
-        </Pressable>
-        <Pressable
-          onPress={clearPortfolioChartSelection}
-          style={styles.chartSectionWrap}
-          accessibilityRole="none"
-          accessibilityLabel="Effacer la sélection du graphique"
-        >
-          <PortfolioChartCard
-            ref={portfolioChartRef}
-            points={portfolioChartPoints}
-            onPeriodData={handleChartPeriodData}
-          />
-        </Pressable>
-        <View style={[styles.chartToBalancesDivider, accountDetailSectionDividerStyle(isLight)]} />
+        </View>
+
+        <View style={styles.chartHubSection}>
+          <DashboardCard
+            variant={chartHubLayoutProps.cardVariant}
+            padding={chartHubLayoutProps.cardPadding}
+            innerStyle={styles.chartHubCard}
+          >
+            <Pressable
+              onPress={clearPortfolioChartSelection}
+              style={styles.heroMetricsBlock}
+              accessibilityRole="none"
+              accessibilityLabel="Effacer la sélection du graphique"
+            >
+              <DashboardSectionLabel style={chartHubLayoutProps.eyebrowStyle}>
+                {CHART_HUB_SCOPE_LABELS[netWorthChartScope]}
+              </DashboardSectionLabel>
+              <View style={styles.heroAmountDeltaColumn}>
+                <NetWorthAmountRow
+                  totalBalance={chartPeriodData?.currentValue ?? chartHeroFallbackTotal}
+                  centered
+                />
+                <HeroChartDelta periodData={chartPeriodData} centered />
+              </View>
+            </Pressable>
+            <Pressable
+              onPress={clearPortfolioChartSelection}
+              accessibilityRole="none"
+              accessibilityLabel="Effacer la sélection du graphique"
+              style={chartHubLayoutProps.chartBleedStyle}
+            >
+              <PortfolioChartCard
+                ref={portfolioChartRef}
+                points={portfolioChartPoints}
+                onPeriodData={handleChartPeriodData}
+                plotHorizontalInset={chartHubLayoutProps.plotHorizontalInset}
+                plotHorizontalInsetRight={chartHubLayoutProps.plotHorizontalInsetRight}
+              />
+            </Pressable>
+          </DashboardCard>
+        </View>
+
         {netWorthChartScope === 'accounts_only' ? (
           <View
             onLayout={(event) => handlePortfolioSectionLayout('balances', event)}
-            style={[styles.accountPortfolioSection, { paddingBottom: portfolioBottomPadding }]}
+            style={[styles.accountsSectionBlock, { paddingBottom: portfolioBottomPadding }]}
           >
-            <View style={styles.sectionToggleWrap} onLayout={handlePortfolioSectionToggleLayout}>
-              <SegmentedTabs
-                tabs={[
-                  { id: 'accounts', label: 'Solde des comptes' },
-                  { id: 'loans', label: 'Prêts et obligations' },
-                ]}
-                active={activeSection}
-                onChange={handleActiveSectionChange}
-                showDivider={false}
-                variant="section"
-                size="section"
-              />
-            </View>
-            {activeSection === 'accounts' ? (
-              <AccountBalanceChart
-                accounts={visibleAccounts}
-                onAccountPress={openAccountDetail}
-                onAddAccount={openNewAccountForm}
-                onManageAccounts={openAccountManager}
-              />
-            ) : (
-              <LoansSection
-                loans={loans}
-                onAdd={openNewLoanForm}
-                onOpen={openLoanDetail}
-                onSectionLayout={(event) => handlePortfolioSectionLayout('debts', event)}
-              />
-            )}
+            <AccountBalanceChart
+              accounts={visibleAccounts}
+              onAccountPress={openAccountDetail}
+              onAddAccount={openNewAccountForm}
+              onManageAccounts={openAccountManager}
+              onReorder={handleVisibleAccountsReorder}
+              onDragStateChange={setIsAccountListDragging}
+            />
           </View>
         ) : (
           <View
             onLayout={(event) => handlePortfolioSectionLayout('wealth', event)}
-            style={[
-              styles.wealthPortfolioSection,
-              { paddingHorizontal: PAGE_PADDING_HORIZONTAL, paddingBottom: portfolioBottomPadding },
-            ]}
+            style={[styles.patrimoineSectionBlock, { paddingBottom: portfolioBottomPadding }]}
           >
-            <View style={styles.balanceChartHeader}>
-              <View style={styles.balanceChartTitleGroup}>
-                <DashboardSectionLabel>Actifs hors compte</DashboardSectionLabel>
-                <Text style={[styles.balanceChartTitle, { color: colors.text }]}>Patrimoine</Text>
+            <View style={styles.listHeader}>
+              <DashboardSectionLabel>Portefeuille d&apos;actions</DashboardSectionLabel>
+              <View style={[styles.sectionCountBadge, { backgroundColor: colors.surfaceElevated }]}>
+                <Text style={[styles.sectionCountBadgeLabel, { color: colors.textSecondary }]}>
+                  {MOCK_STOCK_HOLDINGS.length}
+                </Text>
               </View>
-              {patrimoineWealthAssets.length > 0 && (
-                <View
-                  style={[
-                    styles.wealthToggleBadge,
-                    { backgroundColor: colors.surfaceElevated },
-                  ]}
-                >
-                  <Text style={[styles.wealthToggleBadgeLabel, { color: colors.textSecondary }]}>
-                    {patrimoineWealthAssets.length}
-                  </Text>
-                </View>
-              )}
             </View>
 
-            <WealthAssetsSection
-              assets={patrimoineWealthAssets}
-              loansById={loansById}
-              onAdd={openNewWealthForm}
-              onOpenAsset={(asset) => {
-                tapHaptic();
-                skipPortfolioScrollToTopOnceRef.current = true;
-                router.push({ pathname: '/wealth-asset-detail', params: { id: asset.id } });
-              }}
-            />
+            <StockPortfolioSection />
           </View>
         )}
       </ScrollView>
-
-      <View
-        pointerEvents="box-none"
-        style={[
-          styles.floatingActions,
-          {
-            right: spacing.lg,
-            bottom: Math.max(
-              insets.bottom +
-                FLOATING_NAV_CONTENT_PADDING +
-                88 +
-                FLOATING_ACTION_THUMB_RAISE -
-                PORTFOLIO_SCROLL_FAB_PERIOD_CLEARANCE,
-              132 + FLOATING_ACTION_THUMB_RAISE - PORTFOLIO_SCROLL_FAB_PERIOD_CLEARANCE,
-            ),
-          },
-        ]}
-      >
-        {nextPortfolioScrollAction ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={portfolioScrollAccessibilityLabel}
-            style={({ pressed }) => [
-              floatingGlassScrollSurface(colors, isLight),
-              ghostCardShadow,
-              pressed && floatingGlassButtonPressed,
-            ]}
-            onPress={handlePortfolioScrollCycle}
-          >
-            <Ionicons
-              name={nextPortfolioScrollAction.icon}
-              size={FLOATING_SCROLL_ICON_SIZE}
-              color={colors.text}
-            />
-          </Pressable>
-        ) : null}
-      </View>
 
       <Modal
         visible={showAccountManager}
@@ -3604,323 +3427,57 @@ function AccountInput(props: React.ComponentProps<typeof TextInput> & { label: s
   );
 }
 
-function WealthPatrimoineAssetCard({
-  asset,
-  linkedLoan,
-  ghostCardShadow,
-  onOpenAsset,
-}: {
-  asset: WealthAsset;
-  linkedLoan?: Loan | null;
-  ghostCardShadow: GhostCardShadowStyle;
-  onOpenAsset: (asset: WealthAsset) => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Voir le détail du patrimoine ${asset.name}`}
-      android_ripple={null}
-      onPress={() => onOpenAsset(asset)}
-      style={ghostCardShadow}
-    >
-      <WealthAssetCard asset={asset} linkedLoan={linkedLoan} />
-    </Pressable>
-  );
-}
-
-function WealthAssetsSection({
-  assets,
-  loansById,
-  onAdd,
-  onOpenAsset,
-}: {
-  assets: WealthAsset[];
-  loansById: ReadonlyMap<string, Loan>;
-  onAdd: () => void;
-  onOpenAsset: (asset: WealthAsset) => void;
-}) {
-  const { colors, ghostCardShadow, isLight } = useAppTheme();
-
-  return (
-    <View style={styles.wealthSection}>
-      {assets.length === 0 ? (
-        <View style={styles.loansExpandedContent}>
-          <Text style={[styles.wealthCompactEmptyText, { color: colors.textMuted }]}>
-            Aucun actif hors compte enregistré. Ajoutes-en un pour qu'il soit ajouté à ta valeur nette.
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Ajouter un actif hors compte"
-            onPress={onAdd}
-            style={({ pressed }) => [
-              styles.premiumAddCta,
-              {
-                backgroundColor: isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(18, 18, 18, 0.92)',
-                borderColor: colors.borderStrong,
-              },
-              pressed && floatingGlassButtonPressed,
-            ]}
-          >
-            <Ionicons name="add" size={18} color={colors.textSecondary} />
-            <Text style={[styles.premiumAddCtaLabel, { color: colors.text }]}>Ajouter</Text>
-          </Pressable>
-        </View>
-      ) : (
-        <>
-          <View style={styles.wealthCards}>
-            {assets.length > 1 ? (
-              <Text style={[styles.wealthCarouselCounter, { color: colors.textMuted }]}>
-                {assets.length} actifs
-              </Text>
-            ) : null}
-            {assets.map((asset) => (
-              <WealthPatrimoineAssetCard
-                key={asset.id}
-                asset={asset}
-                linkedLoan={getPatrimoineLinkedMortgage(asset, loansById)}
-                ghostCardShadow={ghostCardShadow}
-                onOpenAsset={onOpenAsset}
-              />
-            ))}
-          </View>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Ajouter un patrimoine"
-            onPress={onAdd}
-            style={({ pressed }) => [
-              styles.premiumAddCta,
-              {
-                backgroundColor: isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(18, 18, 18, 0.92)',
-                borderColor: colors.borderStrong,
-              },
-              pressed && floatingGlassButtonPressed,
-            ]}
-          >
-            <Ionicons name="add" size={18} color={colors.textSecondary} />
-            <Text style={[styles.premiumAddCtaLabel, { color: colors.text }]}>Ajouter</Text>
-          </Pressable>
-        </>
-      )}
-    </View>
-  );
-}
-
-const LOAN_CARD_SURFACE = {
-  fill: '#101010',
-  border: 'rgba(255, 255, 255, 0.08)',
-  label: 'rgba(255, 255, 255, 0.45)',
-  text: '#ffffff',
-  meta: 'rgba(255, 255, 255, 0.62)',
-} as const;
-
-function LoanCard({
-  loan,
-  onOpen,
-}: {
-  loan: Loan;
-  onOpen: (loan: Loan) => void;
-}) {
-  const { ghostCardShadow } = useAppTheme();
-  const loanType = loan.type ?? 'personal_loan';
-  const isChildSupport = isChildSupportLoan(loan);
-  const beneficiaryLabel = isChildSupport
-    ? formatChildSupportBeneficiaryDisplayName(resolveChildSupportBeneficiaryLabel(loan))
-    : '';
-  const displayTitle = isChildSupport
-    ? beneficiaryLabel || 'Pension alimentaire'
-    : formatLoanDisplayTitle(loan);
-  const childSupportRecipient = isChildSupport ? formatChildSupportRecipientLabel(loan) : null;
-  const { progressPct } = computeLoanRepaymentProgress(loan);
-  const paymentObligation = isChildSupport
-    ? null
-    : formatLoanPaymentObligation(loan.monthlyPayment, loan.paymentFrequency);
-  const showProgress = !isChildSupport && loan.principal > 0;
-  const balanceLabel = loanBalanceLabel(loanType);
-  const heroAmount = isChildSupport
-    ? formatChildSupportPaymentAmount(loan) ?? formatLoanDebtAmount(0)
-    : formatLoanDebtAmount(loan.balanceRemaining);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Voir le détail de ${displayTitle}`}
-      android_ripple={null}
-      onPress={() => onOpen(loan)}
-      style={ghostCardShadow}
-    >
-      <GlassContainer
-        style={[styles.loanCard, { borderColor: LOAN_CARD_SURFACE.border }]}
-        innerBackgroundColor={LOAN_CARD_SURFACE.fill}
-        padding={spacing.lg}
-        borderRadius={radius.card}
-      >
-        <View style={styles.loanCardTopRow}>
-          <UserPickedIconWell icon={resolveLoanIcon(loan)} size={48} wellGlyphWhite />
-          <View style={styles.loanCardCopy}>
-            <Text style={styles.loanCardType} numberOfLines={1}>
-              {loanTypeBadgeLabel(loanType)}
-            </Text>
-            <Text style={styles.loanCardName} numberOfLines={3} ellipsizeMode="tail">
-              {displayTitle}
-            </Text>
-            {isChildSupport && childSupportRecipient ? (
-              <Text style={styles.loanCardRecipient} numberOfLines={1}>
-                {childSupportRecipient}
-              </Text>
-            ) : null}
-          </View>
-          <View style={styles.loanCardAmountBlock}>
-            {!isChildSupport ? (
-              <Text style={styles.loanCardHeroLabel}>{balanceLabel}</Text>
-            ) : null}
-            <Text
-              style={[
-                styles.loanCardHeroAmount,
-                isChildSupport
-                  ? moneyAmountTypography({ tier: 'stat', fontSize: 20, lineHeight: 24 })
-                  : moneyAmountTypography({ tier: 'stat', fontSize: 24, lineHeight: 28 }),
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.72}
-            >
-              {heroAmount}
-            </Text>
-          </View>
-        </View>
-
-        {!isChildSupport && (showProgress || paymentObligation) ? (
-          <View style={styles.loanCardSecondaryRow}>
-            {showProgress ? (
-              loanType === 'personal_loan' && loan.nextPaymentDate.trim() ? (
-                <Text style={styles.loanCardSecondaryMetric} numberOfLines={1}>
-                  {formatFriendlyDateLabel(loan.nextPaymentDate)}
-                </Text>
-              ) : (
-                <Text style={styles.loanCardSecondaryMetric}>
-                  {progressPct.toFixed(0)} % {loanProgressLabel(loanType).toLowerCase()}
-                </Text>
-              )
-            ) : (
-              <View />
-            )}
-            {paymentObligation ? (
-              <Text style={styles.loanCardSecondaryPayment} numberOfLines={1}>
-                {paymentObligation}
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
-      </GlassContainer>
-    </Pressable>
-  );
-}
-
-function LoansSection({
-  loans,
-  onAdd,
-  onOpen,
-  onSectionLayout,
-}: {
-  loans: Loan[];
-  onAdd: () => void;
-  onOpen: (loan: Loan) => void;
-  onSectionLayout?: (event: LayoutChangeEvent) => void;
-}) {
-  const { colors, isLight } = useAppTheme();
-  const totalDebt = loans.reduce((sum, l) => sum + Math.max(l.balanceRemaining, 0), 0);
-
-  return (
-    <View style={styles.loansSectionContainer} onLayout={onSectionLayout}>
-      <View style={styles.balanceChartHeader}>
-        <View style={styles.balanceChartTitleGroup}>
-          <DashboardSectionLabel>Obligations</DashboardSectionLabel>
-          <Text style={[styles.balanceChartTitle, { color: colors.text }]}>Prêts et obligations</Text>
-        </View>
-        <View style={styles.loansSectionHeaderActions}>
-          {loans.length > 0 && (
-            <View style={[styles.wealthToggleBadge, { backgroundColor: colors.surfaceElevated }]}>
-              <Text style={[styles.wealthToggleBadgeLabel, { color: colors.danger }]}>
-                {formatPortfolioOutflow(totalDebt)}
-              </Text>
-            </View>
-          )}
-        </View>
-      </View>
-
-      <View style={styles.loansExpandedContent}>
-        {loans.length === 0 ? (
-          <Text style={[styles.wealthCompactEmptyText, { color: colors.textMuted }]}>
-            Aucun prêt enregistré. Ajoutes-en un pour qu'il soit déduit de ta valeur nette.
-          </Text>
-        ) : (
-          <View style={styles.loanCardList}>
-            {loans.map((loan) => (
-              <LoanCard key={loan.id} loan={loan} onOpen={onOpen} />
-            ))}
-          </View>
-        )}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Ajouter un prêt ou une obligation"
-          onPress={onAdd}
-          style={({ pressed }) => [
-            styles.premiumAddCta,
-            {
-              backgroundColor: isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(18, 18, 18, 0.92)',
-              borderColor: colors.borderStrong,
-            },
-            pressed && floatingGlassButtonPressed,
-          ]}
-        >
-          <Ionicons name="add" size={18} color={colors.textSecondary} />
-          <Text style={[styles.premiumAddCtaLabel, { color: colors.text }]}>Ajouter</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
 function AccountBalanceChart({
   accounts,
   onAccountPress,
   onAddAccount,
   onManageAccounts,
+  onReorder,
+  onDragStateChange,
 }: {
   accounts: SimulatedAccount[];
   onAccountPress: (account: SimulatedAccount) => void;
   onAddAccount: () => void;
   onManageAccounts: () => void;
+  onReorder: (nextAccounts: SimulatedAccount[]) => void | Promise<void>;
+  onDragStateChange?: (dragging: boolean) => void;
 }) {
-  const { colors, isLight } = useAppTheme();
+  const { colors } = useAppTheme();
   const sectionCardSurface = colors.containerBackground;
   const sectionSoftSurface = colors.surfaceElevated;
   const sectionBorder = colors.containerBorder;
 
   return (
     <View style={styles.accountVisualSection}>
-      <View style={styles.balanceChartHeader}>
-        <View style={styles.balanceChartTitleGroup}>
-          <DashboardSectionLabel>Répartition</DashboardSectionLabel>
-          <Text style={[styles.balanceChartTitle, { color: colors.text }]}>Soldes des comptes</Text>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Gérer les comptes"
-          style={({ pressed }) => [
-            styles.balanceChartManageButton,
-            { borderColor: sectionBorder, backgroundColor: sectionSoftSurface },
-            pressed && styles.pressed,
-          ]}
-          onPress={onManageAccounts}
-        >
-          <Ionicons name="create-outline" size={17} color={colors.textSecondary} />
-        </Pressable>
-      </View>
+      <HubSectionHeader
+        eyebrow="Comptes"
+        title="Soldes des comptes"
+        trailing={
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Gérer les comptes"
+            style={({ pressed }) => [
+              styles.balanceChartManageButton,
+              { borderColor: sectionBorder, backgroundColor: sectionSoftSurface },
+              pressed && styles.pressed,
+            ]}
+            onPress={onManageAccounts}
+          >
+            <Ionicons name="create-outline" size={17} color={colors.textSecondary} />
+          </Pressable>
+        }
+      />
 
       {accounts.length === 0 ? (
-        <View style={[styles.balanceChartEmpty, { backgroundColor: sectionCardSurface }]}>
+        <View
+          style={[
+            styles.balanceChartEmpty,
+            {
+              backgroundColor: sectionCardSurface,
+              borderColor: sectionBorder,
+            },
+          ]}
+        >
           <View style={[styles.emptyVisualIcon, { backgroundColor: sectionSoftSurface }]}>
             <Ionicons name="bar-chart-outline" size={18} color={colors.textMuted} />
           </View>
@@ -3930,17 +3487,12 @@ function AccountBalanceChart({
           </Text>
         </View>
       ) : (
-        <View style={styles.accountVisualCards}>
-          {accounts.map((account) => (
-            <DashboardAccountBalanceCard
-              key={account.id}
-              account={account}
-              logoUrl={getSimulatedAccountLogoUrl(account)}
-              onPress={() => onAccountPress(account)}
-              accessibilityLabel={`Voir le détail du compte ${account.name}`}
-            />
-          ))}
-        </View>
+        <ReorderableAccountBalanceList
+          accounts={accounts}
+          onAccountPress={onAccountPress}
+          onReorder={onReorder}
+          onDragStateChange={onDragStateChange}
+        />
       )}
 
       <Pressable
@@ -3950,14 +3502,16 @@ function AccountBalanceChart({
         style={({ pressed }) => [
           styles.premiumAddCta,
           {
-            backgroundColor: isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(18, 18, 18, 0.92)',
-            borderColor: colors.borderStrong,
+            backgroundColor: sectionCardSurface,
+            borderColor: sectionBorder,
           },
           pressed && floatingGlassButtonPressed,
         ]}
       >
         <Ionicons name="add" size={18} color={colors.textSecondary} />
-        <Text style={[styles.premiumAddCtaLabel, { color: colors.text }]}>Ajouter</Text>
+        <Text style={[styles.premiumAddCtaLabel, typographyKit.bodyBold, { color: colors.text }]}>
+          Ajouter
+        </Text>
       </Pressable>
     </View>
   );
@@ -4112,42 +3666,94 @@ const styles = StyleSheet.create({
     paddingBottom: FLOATING_NAV_CONTENT_PADDING,
     gap: 0,
   },
-  chartSectionWrap: {
-    marginTop: spacing.lg,
-    marginBottom: spacing.xl,
+  ambientGlow: {
+    position: 'absolute',
+    top: -100,
+    alignSelf: 'center',
+    width: 420,
+    height: 260,
+    zIndex: 0,
+  },
+  pageHeaderBlock: {
+    gap: PAGE_TITLE_CONTENT_GAP,
+  },
+  pageHeroBlock: {
+    alignItems: 'flex-start',
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
-  chartToBalancesDivider: {
-    marginHorizontal: PAGE_PADDING_HORIZONTAL,
-    marginBottom: spacing.xl,
-  },
-  portfolioHeroBlock: {
-    alignItems: 'flex-start',
-    gap: 0,
-    paddingHorizontal: PORTFOLIO_PAGE_PADDING,
-  },
-  portfolioHeaderTitle: {
+  pageHeaderRow: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
     marginTop: spacing.lg,
-    marginBottom: spacing.lg,
   },
-  portfolioScopeWrap: {
+  pageScopeTabs: {
     alignSelf: 'stretch',
     width: '100%',
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+  },
+  chartHubSection: {
+    marginTop: PORTFOLIO_SECTION_GAP,
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+  },
+  chartHubCard: {
+    gap: spacing.md,
+  },
+  chartScreenBleed: (screenWidth: number) => ({
+    width: screenWidth - 4,
+    marginLeft: -(PAGE_PADDING_HORIZONTAL - 2),
+  }),
+  heroMetricsBlock: {
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+  },
+  heroAmountDeltaColumn: {
+    alignSelf: 'stretch',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: spacing.xs,
     marginBottom: spacing.md,
   },
-  sectionToggleWrap: {
-    alignSelf: 'stretch',
-    width: '100%',
-    marginTop: spacing.sm,
-    marginBottom: spacing.lg,
+  accountsSectionBlock: {
+    gap: 0,
+    marginTop: PAGE_SECTION_BREAK,
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+  },
+  patrimoineSectionBlock: {
+    gap: PORTFOLIO_SECTION_GAP,
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+  },
+  listHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: PAGE_SECTION_BREAK,
+    marginBottom: spacing.sm,
+  },
+  sectionCountBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
+  },
+  sectionCountBadgeLabel: {
+    fontSize: typography.micro,
+    fontWeight: '700',
   },
   heroEyebrow: {
-    marginBottom: 6,
+    marginBottom: spacing.md,
+  },
+  heroEyebrowCashFlow: {
+    marginBottom: spacing.xl,
   },
   pageTitle: {
-    ...jakartaExtraBoldText,
-    fontSize: 32,
-    letterSpacing: -0.8,
+    ...PAGE_TITLE_STYLE,
+    flex: 1,
+    minWidth: 0,
   },
   pageTitleInHeader: {
     flex: 1,
@@ -4171,9 +3777,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   premiumAddCtaLabel: {
-    fontSize: typography.meta,
-    fontWeight: '700',
-    letterSpacing: 0.15,
+    letterSpacing: 0.1,
   },
   wealthCompactEmptyText: {
     fontSize: typography.meta,
@@ -4420,20 +4024,8 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.55,
   },
-  accountPortfolioSection: {
-    gap: 0,
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    marginTop: 0,
-    paddingTop: 0,
-  },
   accountVisualSection: {
     gap: spacing.lg,
-  },
-  wealthPortfolioSection: {
-    gap: PORTFOLIO_SECTION_GAP,
-    paddingHorizontal: 0,
-    marginTop: 0,
-    paddingTop: 0,
   },
   accountVisualCards: {
     gap: spacing.md,
@@ -4633,22 +4225,6 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
-  balanceChartHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    marginBottom: spacing.md,
-  },
-  balanceChartTitleGroup: {
-    flex: 1,
-    minWidth: 0,
-    gap: spacing.xs,
-  },
-  balanceChartTitle: {
-    ...SECTION_TITLE_STYLE,
-    color: colors.text,
-  },
   balanceChartManageButton: {
     width: 44,
     height: 44,
@@ -4660,9 +4236,7 @@ const styles = StyleSheet.create({
   },
   balanceChartEmpty: {
     borderRadius: radius.card,
-    backgroundColor: colors.containerBackground,
-    borderWidth: 1,
-    borderColor: colors.containerBorder,
+    borderWidth: StyleSheet.hairlineWidth,
     padding: spacing.lg,
     gap: spacing.sm,
   },
@@ -4766,13 +4340,6 @@ const styles = StyleSheet.create({
   accountBarFill: {
     height: '100%',
     borderRadius: radius.pill,
-  },
-  floatingActions: {
-    position: 'absolute',
-    alignItems: 'flex-end',
-    gap: spacing.sm,
-    zIndex: 10,
-    elevation: 10,
   },
   floatingActionButton: {
     flexDirection: 'row',
@@ -5371,107 +4938,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     textAlign: 'center',
   },
-  loansSectionContainer: {
-    gap: PORTFOLIO_SECTION_GAP,
-  },
-  loansSectionHeaderActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginLeft: spacing.md,
-  },
   loansExpandedContent: {
     gap: spacing.sm,
-  },
-  loanCardList: {
-    gap: spacing.md,
-  },
-  loanCard: {
-    gap: spacing.md,
-  },
-  loanCardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  loanCardCopy: {
-    flex: 1,
-    minWidth: 0,
-    flexShrink: 1,
-    gap: spacing.xs,
-  },
-  loanCardAmountBlock: {
-    ...rowValueContainer,
-    minWidth: 88,
-    gap: spacing.xs,
-    paddingTop: 1,
-  },
-  loanCardType: {
-    ...jakartaMediumText,
-    fontSize: typography.micro,
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-    color: LOAN_CARD_SURFACE.label,
-  },
-  loanCardHeroLabel: {
-    ...jakartaMediumText,
-    fontSize: 9,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-    textAlign: 'right',
-    color: LOAN_CARD_SURFACE.label,
-  },
-  loanCardHeroAmount: {
-    ...jakartaExtraBoldText,
-    fontSize: 24,
-    lineHeight: 28,
-    letterSpacing: -0.4,
-    textAlign: 'right',
-    color: LOAN_CARD_SURFACE.text,
-    fontVariant: ['tabular-nums'],
-  },
-  loanCardSecondaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  loanCardSecondaryMetric: {
-    ...jakartaMediumText,
-    fontSize: typography.micro,
-    lineHeight: 16,
-    color: LOAN_CARD_SURFACE.meta,
-    fontVariant: ['tabular-nums'],
-    flexShrink: 0,
-  },
-  loanCardSecondaryPayment: {
-    ...jakartaMediumText,
-    fontSize: typography.micro,
-    lineHeight: 16,
-    color: LOAN_CARD_SURFACE.meta,
-    fontVariant: ['tabular-nums'],
-    flex: 1,
-    minWidth: 0,
-    textAlign: 'right',
-  },
-  loanCardIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  loanCardName: {
-    ...rowLabel,
-    ...jakartaBoldText,
-    letterSpacing: -0.1,
-    color: LOAN_CARD_SURFACE.text,
-  },
-  loanCardRecipient: {
-    ...jakartaMediumText,
-    fontSize: typography.caption,
-    color: LOAN_CARD_SURFACE.meta,
-    marginTop: 2,
   },
 });

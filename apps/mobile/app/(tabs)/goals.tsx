@@ -1,10 +1,5 @@
-import { AIChatAdvisorScreen } from '@/components/ai-chat/AIChatAdvisorScreen';
-import { PageTransition } from '@/components/PageTransition';
+import { PlanFinancierHub } from '@/components/plans/PlanFinancierHub';
 
 export default function GoalsTab() {
-  return (
-    <PageTransition>
-      <AIChatAdvisorScreen tabBarVisible showBackButton={false} />
-    </PageTransition>
-  );
+  return <PlanFinancierHub />;
 }

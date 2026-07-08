@@ -50,6 +50,22 @@ export const PLAN_HUB = {
 export const PLAN_CARD_PADDING = planFinanceKit.layout.cardPadding;
 export const PLAN_CARD_LIST_GAP = planFinanceKit.layout.cardGap;
 
+/** Subtle charcoal halo inside plan finance cards — discrete top-left lift + soft wash. */
+export const planFinanceCardHalo = {
+  dark: {
+    corner: ['rgba(200, 200, 208, 0.035)', 'rgba(140, 140, 148, 0.012)', 'transparent'] as const,
+    cornerLocations: [0, 0.42, 0.78] as const,
+    wash: ['rgba(180, 180, 188, 0.018)', 'transparent'] as const,
+    washLocations: [0, 0.62] as const,
+  },
+  light: {
+    corner: ['rgba(24, 24, 28, 0.05)', 'rgba(24, 24, 28, 0.015)', 'transparent'] as const,
+    cornerLocations: [0, 0.42, 0.78] as const,
+    wash: ['rgba(24, 24, 28, 0.025)', 'transparent'] as const,
+    washLocations: [0, 0.62] as const,
+  },
+} as const;
+
 export function planFinanceCardStyle(): ViewStyle {
   return {
     backgroundColor: planFinanceKit.colors.surface,
@@ -64,12 +80,9 @@ export function planFinanceCatalogCardStyle(): ViewStyle {
   return planFinanceCardStyle();
 }
 
+/** @deprecated Même apparence que {@link planFinanceCardStyle} — plus de bordure pointillée verte. */
 export function planFinanceSuggestedCardStyle(): ViewStyle {
-  return {
-    ...planFinanceCardStyle(),
-    borderStyle: 'dashed',
-    borderColor: 'rgba(74, 222, 128, 0.38)',
-  };
+  return planFinanceCardStyle();
 }
 
 export function planFinanceCardIconColor(): string {

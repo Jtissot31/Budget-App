@@ -6,6 +6,7 @@ import { DiamondLevelBadge } from '@/components/goals/DiamondLevelBadge';
 import { SavingsStreakModule } from '@/components/goals/SavingsStreakModule';
 import {
   GOAL_PROGRESS_FILL,
+  moneyAmountTypography,
   PAGE_PADDING_HORIZONTAL,
   jakartaBoldText,
   jakartaExtraBoldText,
@@ -107,8 +108,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   heroSaved: {
-    ...jakartaBoldText,
-    fontSize: typography.caption,
+    ...moneyAmountTypography({ tier: 'row' }),
   },
   hubCardInner: {
     gap: spacing.md,

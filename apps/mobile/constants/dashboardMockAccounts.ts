@@ -21,7 +21,7 @@ export const DASHBOARD_ACCOUNTS: {
   },
   {
     id: '2',
-    name: 'Épargne',
+    name: 'Desjardins · 7832',
     number: '****7832',
     balance: 12840,
     domain: 'desjardins.com',
@@ -35,5 +35,13 @@ export const DASHBOARD_ACCOUNTS: {
     domain: 'visa.com',
     kind: 'credit',
     creditLimit: 2500,
+  },
+  {
+    id: '4',
+    name: 'Argent Cash',
+    number: '',
+    balance: 350,
+    domain: '',
+    kind: 'cash',
   },
 ];

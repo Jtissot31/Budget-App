@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -30,7 +31,12 @@ import {
 } from '@/constants/planFinanceKit';
 import { interMediumText, interSemiboldText, spacing } from '@/constants/theme';
 import { appendUserPlan, activateSuggestedPlan } from '@/lib/plans/plansStore';
-import type { PlanCategory, PlanSuggere, PlanSubtype } from '@/lib/plans/Plan';
+import {
+  planSubtypeSansMontantCible,
+  type PlanCategory,
+  type PlanSuggere,
+  type PlanSubtype,
+} from '@/lib/plans/Plan';
 import { getSimulatedAccounts } from '@/lib/db';
 import { tapHaptic } from '@/lib/haptics';
 import { setPendingPlanChatConfirmation } from '@/lib/plans/pendingPlanChatConfirmation';
@@ -41,6 +47,13 @@ type QueueItem = Pick<
 >;
 
 type CadenceFrequency = 'week' | 'month';
+
+function parsePlanAmountInput(value: string): number | null {
+  const normalized = value.trim().replace(/\s/g, '').replace(',', '.');
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 type Params = {
   messageId?: string;
@@ -115,15 +128,39 @@ export default function PlanCreateScreen() {
 
   const handleSave = useCallback(async () => {
     if (saving) return;
+
+    const parsedTarget = parsePlanAmountInput(montantCible);
+    const requiresTarget = !planSubtypeSansMontantCible(suggestion.subtype);
+    if (requiresTarget && (parsedTarget == null || parsedTarget <= 0)) {
+      Alert.alert(
+        'Montant requis',
+        'Indiquez un montant cible supérieur à 0 pour créer ce plan.',
+      );
+      return;
+    }
+
+    const parsedCadence = parsePlanAmountInput(cadenceAmount);
+    if (parsedCadence == null || parsedCadence <= 0) {
+      Alert.alert(
+        'Cadence invalide',
+        'Indiquez un montant de cadence supérieur à 0.',
+      );
+      return;
+    }
+
+    if (!selectedAccount?.label) {
+      Alert.alert('Compte requis', 'Choisissez un compte lié pour ce plan.');
+      return;
+    }
+
     setSaving(true);
     tapHaptic();
     try {
-      const parsedTarget = montantCible.trim() ? Number(montantCible.replace(/\s/g, '')) : null;
       const plan = activateSuggestedPlan(suggestion, {
-        compte_lie: selectedAccount?.label,
+        compte_lie: selectedAccount.label,
         cadence: cadenceLabel,
         date_cible: dateCible.trim() || undefined,
-        montant_cible: Number.isFinite(parsedTarget) ? parsedTarget : suggestion.montant_cible,
+        montant_cible: parsedTarget ?? suggestion.montant_cible,
       });
       await appendUserPlan(plan);
 
@@ -149,10 +186,13 @@ export default function PlanCreateScreen() {
 
       await setPendingPlanChatConfirmation(total);
       router.back();
+    } catch {
+      Alert.alert('Erreur', "Impossible d'enregistrer le plan. Réessayez.");
     } finally {
       setSaving(false);
     }
   }, [
+    cadenceAmount,
     cadenceLabel,
     dateCible,
     index,

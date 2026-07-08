@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AddBudgetCategoryModal } from '@/components/budget/AddBudgetCategoryModal';
 import { BudgetCategoryDetailSheet } from '@/components/budget/BudgetCategoryDetailSheet';
@@ -18,7 +18,6 @@ import { BudgetCategoryAddRow } from '@/components/budget/BudgetCategoryAddRow';
 import { BudgetCategoryRow } from '@/components/budget/BudgetCategoryRow';
 import { MonthSelector } from '@/components/MonthSelector';
 import { BudgetDonut, type BudgetDonutCategory } from '@/components/BudgetDonut';
-import { BudgetShortcutCards } from '@/components/budget/BudgetShortcutCards';
 import { DashboardCard } from '@/components/DashboardCard';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { PageTransition } from '@/components/PageTransition';
@@ -76,7 +75,6 @@ function BudgetPageHeader() {
 }
 
 export default function BudgetScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isLight } = useAppTheme();
   const listRef = useRef<FlatList<BudgetCategoryUiModel>>(null);
@@ -213,14 +211,10 @@ export default function BudgetScreen() {
           ]}
         >
           <BudgetPageHeader />
-          <BudgetShortcutCards
-            onPressPlans={() => router.push('/(tabs)/goals')}
-            onPressSavingsGoals={() => router.push('/savings-goals')}
-          />
         </View>
 
         <View style={pageStyles.donutSection}>
-          <DashboardCard padding={spacing.lg} innerStyle={pageStyles.distributionCard}>
+          <DashboardCard variant="flat" padding={spacing.lg} innerStyle={pageStyles.distributionCard}>
             <MonthSelector
               month={budgetMonth}
               onPrevious={goBudgetPrevious}
@@ -301,7 +295,6 @@ export default function BudgetScreen() {
       hubEyebrow,
       insets.top,
       openCategoryDetail,
-      router,
       showAddButton,
       totals.totalAllocated,
       totals.totalSpent,

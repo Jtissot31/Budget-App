@@ -38,6 +38,7 @@ import {
   ICON_WELL_SIZE,
   jakartaBoldText,
   jakartaExtraBoldText,
+  moneyAmountTypography,
   jakartaMediumText,
   radius,
   spacing,
@@ -1238,7 +1239,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     overflow: 'hidden',
   },
-  amount: { flexShrink: 1, maxWidth: '42%', color: colors.text, fontSize: typography.body, fontWeight: '800', textAlign: 'right' },
+  amount: { flexShrink: 1, maxWidth: '42%', color: colors.text, ...moneyAmountTypography({ tier: 'card' }), textAlign: 'right' },
   incomeAmount: { color: ghost.mint },
   meta: { minWidth: 0, color: colors.textMuted, fontSize: typography.micro, fontWeight: '700', lineHeight: 16 },
   emptyCard: {
@@ -1310,9 +1311,7 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
   },
   amountText: {
-    ...jakartaExtraBoldText,
-    letterSpacing: -2,
-    fontVariant: ['tabular-nums'],
+    ...moneyAmountTypography({ tier: 'stat', letterSpacing: -2 }),
   },
   section: { gap: spacing.sm },
   input: {

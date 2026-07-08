@@ -11,6 +11,8 @@ type Props = {
   /** Optional fill override — defaults to theme container surface */
   innerBackgroundColor?: string;
   innerStyle?: StyleProp<ViewStyle>;
+  /** `flat` — no fill, border, or radius; blends into page background */
+  variant?: 'card' | 'flat';
   /** Kept for API compatibility — ignored */
   outlineColors?: readonly string[];
 };
@@ -23,19 +25,28 @@ export function GlassContainer({
   borderRadius = themeRadius.card,
   innerBackgroundColor,
   innerStyle,
+  variant = 'card',
 }: Props) {
   const { isLight } = useAppTheme();
   const surface = containerSurfaceStyle(isLight);
   const fillColor = innerBackgroundColor ?? surface.backgroundColor;
+  const isFlat = variant === 'flat';
 
   const shellStyle = [
-    {
-      borderRadius,
-      backgroundColor: fillColor,
-      borderWidth: surface.borderWidth,
-      borderColor: surface.borderColor,
-      padding,
-    },
+    isFlat
+      ? {
+          borderRadius: 0,
+          backgroundColor: 'transparent',
+          borderWidth: 0,
+          padding: padding ?? 0,
+        }
+      : {
+          borderRadius,
+          backgroundColor: fillColor,
+          borderWidth: surface.borderWidth,
+          borderColor: surface.borderColor,
+          padding,
+        },
     style,
   ];
 

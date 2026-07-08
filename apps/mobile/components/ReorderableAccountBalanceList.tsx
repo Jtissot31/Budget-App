@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 import DraggableFlatList, {
   ScaleDecorator,
   type RenderItemParams,
 } from 'react-native-draggable-flatlist';
 import { DashboardAccountBalanceCard } from '@/components/DashboardAccountBalanceCard';
-import { spacing } from '@/constants/theme';
+import { DashboardCard } from '@/components/DashboardCard';
 import { getAccountLogoUrl } from '@/lib/merchantLogo';
 import { tapHaptic } from '@/lib/haptics';
-import { useAppTheme } from '@/lib/themeContext';
 import type { SimulatedAccount } from '@/types';
 
 type Props = {
@@ -32,18 +31,16 @@ export function ReorderableAccountBalanceList({
   onReorder,
   onDragStateChange,
 }: Props) {
-  const { colors } = useAppTheme();
   const [items, setItems] = useState(accounts);
 
   useEffect(() => {
     setItems(accounts);
   }, [accounts]);
 
+  const showReorderAffordance = items.length >= 2;
+
   return (
-    <View style={styles.wrap}>
-      <Text style={[styles.hint, { color: colors.textMuted }]}>
-        Appui long pour réorganiser
-      </Text>
+    <DashboardCard padding={0} innerStyle={styles.groupCard}>
       <DraggableFlatList
         data={items}
         keyExtractor={(item) => item.id}
@@ -58,50 +55,53 @@ export function ReorderableAccountBalanceList({
           setItems(data);
           onReorder(data);
         }}
-        containerStyle={styles.list}
-        renderItem={({ item, drag, isActive }: RenderItemParams<SimulatedAccount>) => (
-          <ScaleDecorator activeScale={1.02}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Compte ${item.name}. Appui long pour réorganiser.`}
-              accessibilityHint="Maintiens appuyé puis fais glisser pour changer l'ordre."
-              onPress={() => {
-                if (isActive) return;
-                onAccountPress(item);
-              }}
-              onLongPress={drag}
-              delayLongPress={280}
-              style={({ pressed }) => [
-                styles.itemShell,
-                isActive && styles.itemDragging,
-                pressed && !isActive && styles.pressed,
-              ]}
-            >
-              <DashboardAccountBalanceCard
-                account={item}
-                logoUrl={resolveAccountLogoUrl(item)}
-              />
-            </Pressable>
-          </ScaleDecorator>
-        )}
+        renderItem={({ item, drag, isActive, getIndex }: RenderItemParams<SimulatedAccount>) => {
+          const index = getIndex();
+          const isLast = index != null && index === items.length - 1;
+
+          return (
+            <ScaleDecorator activeScale={1.02}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Compte ${item.name}`}
+                accessibilityHint={
+                  showReorderAffordance
+                    ? 'Maintiens appuyé puis fais glisser pour changer l\'ordre.'
+                    : undefined
+                }
+                onPress={() => {
+                  if (isActive) return;
+                  onAccountPress(item);
+                }}
+                onLongPress={drag}
+                delayLongPress={280}
+                style={({ pressed }) => [
+                  styles.itemShell,
+                  isActive && styles.itemDragging,
+                  pressed && !isActive && styles.pressed,
+                ]}
+              >
+                <DashboardAccountBalanceCard
+                  account={item}
+                  logoUrl={resolveAccountLogoUrl(item)}
+                  embedded
+                  isLast={isLast}
+                />
+              </Pressable>
+            </ScaleDecorator>
+          );
+        }}
       />
-    </View>
+    </DashboardCard>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    gap: spacing.sm,
-  },
-  hint: {
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  list: {
-    gap: spacing.md,
+  groupCard: {
+    overflow: 'hidden',
   },
   itemShell: {
-    width: '100%',
+    minWidth: 0,
   },
   itemDragging: {
     opacity: 0.96,

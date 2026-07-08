@@ -68,11 +68,10 @@ export const MOCK_DASHBOARD_PLANS: DashboardPlanDetail[] = [
     icon: 'shield-check-outline',
     currentAmount: 6_200,
     targetAmount: 10_000,
-    summary: 'Constituer 3 mois de dépenses essentielles pour couvrir les imprévus sans toucher au crédit.',
+    summary: '3 mois de dépenses en réserve.',
     strategy: {
-      name: 'Épargne automatique progressive',
-      description:
-        'Un virement fixe chaque semaine vers un compte séparé. L’objectif est d’atteindre 10 000 $ sans impacter ton budget courant.',
+      name: 'Épargne automatique',
+      description: '150 $ par semaine, compte séparé.',
     },
     startedAtLabel: 'Janvier 2026',
     targetDateLabel: 'Octobre 2026',
@@ -80,9 +79,8 @@ export const MOCK_DASHBOARD_PLANS: DashboardPlanDetail[] = [
     contributionLabel: '150 $ / semaine',
     linkedAccountLabel: 'Épargne · Desjardins · 4521',
     nextAction: {
-      title: 'Automatiser le prochain virement',
-      description:
-        'Programme 150 $ chaque vendredi. Tu atteindras 75 % de la cible (~7 500 $) d’ici la mi-août si tu maintiens ce rythme.',
+      title: 'Automatiser le virement',
+      description: 'Encore 1 300 $ pour atteindre 75 %.',
     },
     metrics: [
       { id: 'remaining', label: 'Reste à épargner', value: '3 800 $', tone: 'default' },
@@ -90,41 +88,32 @@ export const MOCK_DASHBOARD_PLANS: DashboardPlanDetail[] = [
       { id: 'runway', label: 'Couverture actuelle', value: '~1,9 mois', hint: 'Dépenses essentielles', tone: 'default' },
       { id: 'eta', label: 'Objectif estimé', value: 'Oct. 2026', tone: 'positive' },
     ],
-    rationale:
-      "Tu as déjà plus de la moitié de l'objectif. En maintenant ta cadence actuelle, tu couvriras environ 3 mois de dépenses essentielles d'ici l'automne — le seuil recommandé pour une sécurité financière de base.",
-    impactBullets: [
-      'Réduit le risque d’utiliser une carte de crédit en cas d’imprévu',
-      'Couvre environ 1,9 mois de dépenses essentielles aujourd’hui',
-      'Atteindre 10 000 $ = coussin pour perte d’emploi ou réparation majeure',
-    ],
+    rationale: 'Plus de la moitié atteinte. À ce rythme, 3 mois de couverture d’ici l’automne.',
+    impactBullets: ['Évite le crédit en cas d’imprévu', 'Couvre ~1,9 mois aujourd’hui'],
     steps: [
       {
         id: '1',
-        label: 'Définir la cible (3 mois de dépenses)',
-        description: 'Cible fixée à 10 000 $ selon tes dépenses fixes mensuelles (~3 300 $).',
+        label: 'Fixer la cible',
         completed: true,
-        dueLabel: 'Terminé en janv. 2026',
+        dueLabel: 'Janv. 2026',
       },
       {
         id: '2',
-        label: 'Automatiser un virement hebdomadaire',
-        description: '150 $ vers le compte épargne chaque vendredi, sans action manuelle.',
+        label: 'Automatiser le virement',
         completed: true,
-        dueLabel: 'Actif depuis fév. 2026',
+        dueLabel: 'Fév. 2026',
       },
       {
         id: '3',
-        label: 'Atteindre 75 % de la cible (7 500 $)',
-        description: 'Prochain jalon : encore ~1 300 $ à épargner pour ce palier.',
+        label: 'Atteindre 75 %',
         completed: false,
-        dueLabel: 'Objectif : mi-août 2026',
+        dueLabel: 'Mi-août 2026',
       },
       {
         id: '4',
-        label: 'Objectif 10 000 $ complété',
-        description: 'Fonds d’urgence complet — 3 mois de marge de sécurité.',
+        label: 'Atteindre 10 000 $',
         completed: false,
-        dueLabel: 'Objectif : oct. 2026',
+        dueLabel: 'Oct. 2026',
       },
     ],
   },

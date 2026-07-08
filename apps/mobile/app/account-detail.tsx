@@ -56,6 +56,7 @@ import {
   jakartaBoldText,
   jakartaExtraBoldText,
   jakartaMediumText,
+  moneyAmountTypography,
   radius,
   spacing,
   subtleDeleteButtonStyle,
@@ -1550,9 +1551,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   detailValue: {
-    ...jakartaExtraBoldText,
-    fontSize: typography.meta,
-    fontVariant: ['tabular-nums'],
+    ...moneyAmountTypography({ tier: 'row', fontSize: typography.meta }),
     flex: 1,
     textAlign: 'right',
   },

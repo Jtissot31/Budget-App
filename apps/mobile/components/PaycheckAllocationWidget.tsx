@@ -3,9 +3,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { useRouter } from 'expo-router';
 import {
-  jakartaBoldText,
   jakartaMediumText,
   jakartaSemiboldText,
+  moneyAmountTypography,
+  radius,
   spacing,
 } from '@/constants/theme';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
@@ -52,7 +53,7 @@ export function PaycheckAllocationWidget() {
           <Text style={[styles.headerLabel, { color: colors.textMuted }, jakartaMediumText]}>
             Répartition de la paie
           </Text>
-          <Text style={[styles.paycheckAmount, { color: colors.text }, jakartaBoldText]}>
+          <Text style={[styles.paycheckAmount, { color: colors.text }, moneyAmountTypography({ tier: 'stat' })]}>
             {formatDisplayMoneyAbsolute(PAYCHECK_MOCK_AMOUNT)}
           </Text>
         </View>
@@ -68,7 +69,7 @@ export function PaycheckAllocationWidget() {
             >
               {line.label}
             </Text>
-            <Text style={[styles.allocationAmount, { color: colors.text }, jakartaSemiboldText]}>
+            <Text style={[styles.allocationAmount, { color: colors.text }, moneyAmountTypography({ tier: 'row' })]}>
               {formatDisplayMoneyAbsolute(line.amount)}
             </Text>
           </View>
@@ -79,7 +80,7 @@ export function PaycheckAllocationWidget() {
         <Text style={[styles.availableLabel, { color: colors.text }, jakartaSemiboldText]}>
           Disponible
         </Text>
-        <Text style={[styles.availableAmount, { color: AVAILABLE_GREEN }, jakartaBoldText]}>
+        <Text style={[styles.availableAmount, { color: AVAILABLE_GREEN }, moneyAmountTypography({ tier: 'card' })]}>
           {formatDisplayMoneyAbsolute(availableAmount)}
         </Text>
       </View>

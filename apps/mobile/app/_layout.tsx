@@ -146,10 +146,12 @@ function RootLayoutContent() {
             <Stack.Screen name="savings-goals" options={{ headerShown: false }} />
             <Stack.Screen name="transactions-insights" options={{ headerShown: false }} />
             <Stack.Screen name="paycheck-allocation" options={{ headerShown: false }} />
+            <Stack.Screen name="plans" options={{ headerShown: false }} />
             <Stack.Screen name="lucide-icons" options={{ headerShown: false }} />
             <Stack.Screen name="scan" options={{ title: 'Scanner', presentation: 'modal' }} />
             <Stack.Screen name="ai-chat" options={{ headerShown: false }} />
             <Stack.Screen name="ai-advisor" options={{ headerShown: false }} />
+            <Stack.Screen name="fyn-chat" options={{ headerShown: false }} />
             <Stack.Screen name="alert-center" options={{ headerShown: false }} />
           </Stack>
         </View>

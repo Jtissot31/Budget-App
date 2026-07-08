@@ -1,5 +1,5 @@
 import { Platform, StyleSheet, type TextStyle, type ViewStyle } from 'react-native';
-import { typographyKit } from './typographyKit';
+import { MONEY_AMOUNT_FONT, typographyKit } from './typographyKit';
 import {
   fontFamilies,
   jakartaBoldText,
@@ -463,10 +463,10 @@ export const typography = {
  * **Exclusively** for the ARTICLES / receipt section in the transaction detail view
  * (`app/transaction-detail.tsx` — `TransactionReceiptCard`, itemized line amounts).
  *
- * Do **not** use DM Mono elsewhere. Labels → Inter. Money amounts → {@link moneyAmountTypography}
- * (Inter ExtraBold) or `typographyKit`.
+ * Do **not** use DM Mono elsewhere. Labels → Plus Jakarta. Money amounts → {@link moneyAmountTypography}
+ * ({@link MONEY_AMOUNT_FONT} / Onest 800 ExtraBold) or {@link transactionRowAmountTypography}.
  *
- * Forbidden surfaces (use Inter + {@link moneyAmountTypography} instead):
+ * Forbidden surfaces (use {@link moneyAmountTypography} instead):
  * - Dashboard / Accueil (`app/(tabs)/index.tsx`)
  * - Portefeuille cards (`BankAccountCard`, `CashAccountCard`, `LoanCard`)
  * - Transaction list rows (`TransactionRow` — {@link transactionRowAmountTypography})
@@ -506,86 +506,88 @@ export function goalProgressTrackColor(isLight: boolean): string {
   return isLight ? GOAL_PROGRESS_TRACK_LIGHT : GOAL_PROGRESS_TRACK_DARK;
 }
 
-/** Loaded key for Onest 800 — transaction amounts (list rows + detail hero). */
-export const TRANSACTION_ROW_AMOUNT_FONT = 'Onest_800ExtraBold';
+/**
+ * **Theme kit — money amounts (canonical)**
+ *
+ * ALL monetary / tabular dollar amounts MUST use {@link moneyAmountTypography} or
+ * {@link transactionRowAmountTypography} — both render {@link MONEY_AMOUNT_FONT}
+ * (Onest 800 ExtraBold), matching `TransactionAmountLabel` (−105,68$).
+ *
+ * Tiers: `row` (14px list) · `card` (16px metrics) · `stat` (24px) · `hero` (28px)
+ * · `detailHero` (36px transaction detail) · `netWorth` (42px portfolio headline).
+ *
+ * Do **not** use `jakartaExtraBoldText`, raw `fontWeight: '800'`, or typographyKit
+ * *Amount presets directly on money — use these helpers.
+ *
+ * Exceptions: receipt ARTICLES ({@link articlesReceiptTypography}), dates, pure % labels.
+ */
+export { MONEY_AMOUNT_FONT, TRANSACTION_ROW_AMOUNT_FONT } from './typographyKit';
 
-const onestExtraBoldText = {
-  fontFamily: TRANSACTION_ROW_AMOUNT_FONT,
+const moneyAmountFontBase = {
+  fontFamily: MONEY_AMOUNT_FONT,
   fontWeight: 'normal' as const,
 };
 
+type MoneyAmountTier = 'card' | 'hero' | 'stat' | 'row' | 'detailHero' | 'netWorth';
+
+function moneyAmountPresetForTier(tier: MoneyAmountTier) {
+  switch (tier) {
+    case 'netWorth':
+      return typographyKit.netWorthHero;
+    case 'detailHero':
+      return typographyKit.detailHero;
+    case 'hero':
+      return typographyKit.statHero;
+    case 'stat':
+      return typographyKit.heroStat;
+    case 'row':
+      return typographyKit.rowAmount;
+    default:
+      return typographyKit.cardMetric;
+  }
+}
+
 /**
- * Transaction list row amounts (`TransactionRow` → `TransactionAmountLabel` in Historique).
- * Onest 800 ExtraBold — intentional scoped exception to the Plus Jakarta Sans system;
- * merchant name and subtitle stay Jakarta.
- *
- * Do not use for dashboard cards, portfolio, or other money surfaces ({@link moneyAmountTypography}).
+ * Canonical money typography — Onest 800 ExtraBold, tabular nums.
+ * Use everywhere a dollar amount appears (lists, cards, charts, detail stats).
  */
+export function moneyAmountTypography(options?: {
+  /** Preset size tier; default `card` (16px). */
+  tier?: MoneyAmountTier;
+  fontSize?: number;
+  lineHeight?: number;
+  letterSpacing?: number;
+  textAlign?: TextStyle['textAlign'];
+}): TextStyle {
+  const tier = options?.tier ?? 'card';
+  const preset = moneyAmountPresetForTier(tier);
+  return {
+    ...moneyAmountFontBase,
+    fontVariant: preset.fontVariant,
+    fontSize: options?.fontSize ?? preset.fontSize,
+    lineHeight: options?.lineHeight ?? ('lineHeight' in preset ? preset.lineHeight : undefined),
+    letterSpacing: options?.letterSpacing ?? preset.letterSpacing,
+    ...('textAlign' in preset && preset.textAlign ? { textAlign: preset.textAlign } : null),
+    ...(options?.textAlign != null ? { textAlign: options.textAlign } : null),
+  };
+}
+
+/** Transaction list row amounts — alias of {@link moneyAmountTypography} tier `row`. */
 export function transactionRowAmountTypography(options?: {
   fontSize?: number;
   lineHeight?: number;
   letterSpacing?: number;
 }): TextStyle {
-  const preset = typographyKit.rowAmount;
-  return {
-    ...onestExtraBoldText,
-    fontVariant: preset.fontVariant,
-    fontSize: options?.fontSize ?? preset.fontSize,
-    lineHeight: options?.lineHeight ?? preset.lineHeight,
-    letterSpacing: options?.letterSpacing ?? preset.letterSpacing,
-  };
+  return moneyAmountTypography({ tier: 'row', ...options });
 }
 
-/**
- * Transaction detail hero amount (`transaction-detail.tsx` — large centered −105,68$).
- * Onest 800 ExtraBold at `typographyKit.detailHero` size (36px).
- */
+/** Transaction detail hero amount — tier `detailHero` (36px centered −105,68$). */
 export function transactionDetailHeroAmountTypography(options?: {
   fontSize?: number;
   lineHeight?: number;
   letterSpacing?: number;
 }): TextStyle {
-  const preset = typographyKit.detailHero;
-  return {
-    ...onestExtraBoldText,
-    fontVariant: preset.fontVariant,
-    fontSize: options?.fontSize ?? preset.fontSize,
-    lineHeight: options?.lineHeight ?? preset.lineHeight,
-    letterSpacing: options?.letterSpacing ?? preset.letterSpacing,
-    textAlign: preset.textAlign,
-  };
-}
-
-/**
- * Standard Plus Jakarta ExtraBold money typography for all monetary amounts **except**
- * transaction-detail ARTICLES/receipt lines (those use {@link articlesReceiptTypography}),
- * transaction list row amounts (those use {@link transactionRowAmountTypography}), and
- * transaction detail hero amounts (those use {@link transactionDetailHeroAmountTypography}).
- *
- * Use for: dashboard cards, portfolio cards, debt amounts, chart metrics, etc.
- */
-export function moneyAmountTypography(options?: {
-  /** Preset size tier; default `card` (16px). Use `hero` for large card balances. */
-  tier?: 'card' | 'hero' | 'stat' | 'row';
-  fontSize?: number;
-  lineHeight?: number;
-  letterSpacing?: number;
-}): TextStyle {
-  const tier = options?.tier ?? 'card';
-  const preset =
-    tier === 'hero'
-      ? typographyKit.statHero
-      : tier === 'stat'
-        ? typographyKit.heroStat
-        : tier === 'row'
-          ? typographyKit.rowAmount
-          : typographyKit.cardMetric;
-  return {
-    ...preset,
-    ...(options?.fontSize != null ? { fontSize: options.fontSize } : null),
-    ...(options?.lineHeight != null ? { lineHeight: options.lineHeight } : null),
-    ...(options?.letterSpacing != null ? { letterSpacing: options.letterSpacing } : null),
-  };
+  return moneyAmountTypography({ tier: 'detailHero', ...options });
 }
 
 /** Space between stacked blocks inside a Portefeuille tab section */
@@ -975,17 +977,16 @@ export function accountDetailStatementStatColStyle(options?: {
 
 /** Tabular hero stat value — 28px default, 32px when `prominent` (ex. « Solde »). */
 export function accountDetailStatementStatValueStyle(prominent?: boolean): TextStyle {
-  return {
-    ...jakartaExtraBoldText,
+  return moneyAmountTypography({
+    tier: 'stat',
     fontSize: prominent
       ? ACCOUNT_DETAIL_STATEMENT_COLUMNS.statValueProminentSize
       : ACCOUNT_DETAIL_STATEMENT_COLUMNS.statValueSize,
-    fontVariant: ['tabular-nums'],
     letterSpacing: prominent
       ? ACCOUNT_DETAIL_STATEMENT_COLUMNS.statValueProminentLetterSpacing
       : ACCOUNT_DETAIL_STATEMENT_COLUMNS.statValueLetterSpacing,
     textAlign: 'center',
-  };
+  });
 }
 
 /** Muted label under a statement stat (ex. « Revenus », « Solde »). */

@@ -12,10 +12,9 @@ import Svg, { Circle, Rect, Text as SvgText } from 'react-native-svg';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import {
   detailCarouselPageMinHeight,
-  jakartaBoldText,
-  jakartaMediumText,
+  moneyAmountTypography,
   spacing,
-  typography,
+  typographyKit,
 } from '@/constants/theme';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import {
@@ -403,22 +402,16 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   eyebrow: {
-    ...jakartaBoldText,
-    fontSize: typography.micro,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
+    ...typographyKit.eyebrow,
   },
   sectionTitle: {
-    fontSize: typography.caption,
-    fontWeight: '800',
+    ...typographyKit.sectionTitle,
   },
   sectionMeta: {
-    ...jakartaMediumText,
-    fontSize: typography.micro,
+    ...typographyKit.metaMedium,
   },
   sectionHint: {
-    ...jakartaMediumText,
-    fontSize: typography.micro,
+    ...typographyKit.microMedium,
     marginTop: spacing.xs,
   },
   legendItem: {
@@ -432,10 +425,9 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   legendLabel: {
-    ...jakartaBoldText,
+    ...typographyKit.eyebrow,
     fontSize: 10,
     letterSpacing: 0.4,
-    textTransform: 'uppercase',
   },
   donutRow: {
     flexDirection: 'row',
@@ -456,15 +448,13 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   donutTotal: {
-    fontSize: typography.caption,
-    fontWeight: '800',
+    ...moneyAmountTypography({ tier: 'row' }),
     letterSpacing: -0.2,
   },
   donutCaption: {
-    ...jakartaBoldText,
+    ...typographyKit.microUpper,
     fontSize: 10,
     letterSpacing: 0.4,
-    textTransform: 'uppercase',
   },
   donutStats: {
     flex: 1,
@@ -474,8 +464,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   donutStatValue: {
-    fontSize: typography.body,
-    fontWeight: '700',
+    ...moneyAmountTypography({ tier: 'card' }),
   },
   annualLegendRow: {
     flexDirection: 'row',

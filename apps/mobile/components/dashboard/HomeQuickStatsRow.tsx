@@ -1,10 +1,9 @@
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  interBoldText,
   interSemiboldText,
+  moneyAmountTypography,
   radius,
   spacing,
-  typography,
 } from '@/constants/theme';
 import { formatDisplayMoney } from '@/lib/formatDisplayMoney';
 import { useAppTheme } from '@/lib/themeContext';
@@ -26,14 +25,14 @@ export function HomeQuickStatsRow({ monthlyIncome, monthlyExpenses }: Props) {
     <View style={styles.row}>
       <View style={[styles.tile, { backgroundColor: colors.containerBackground }]}>
         <Text style={[styles.label, { color: colors.textMuted }, interSemiboldText]}>REVENUS</Text>
-        <Text style={[styles.value, { color: colors.text }, interBoldText]} numberOfLines={1}>
+        <Text style={[styles.value, { color: colors.text }, moneyAmountTypography({ tier: 'row', fontSize: 15 })]} numberOfLines={1}>
           {formatCompactStat(monthlyIncome)}
         </Text>
       </View>
 
       <View style={[styles.tile, { backgroundColor: colors.containerBackground }]}>
         <Text style={[styles.label, { color: colors.textMuted }, interSemiboldText]}>DÉPENSES</Text>
-        <Text style={[styles.value, { color: colors.text }, interBoldText]} numberOfLines={1}>
+        <Text style={[styles.value, { color: colors.text }, moneyAmountTypography({ tier: 'row', fontSize: 15 })]} numberOfLines={1}>
           {formatCompactStat(monthlyExpenses)}
         </Text>
       </View>
@@ -59,7 +58,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   value: {
-    fontSize: 15,
     fontVariant: ['tabular-nums'],
   },
 });

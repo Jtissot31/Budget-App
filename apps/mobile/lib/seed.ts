@@ -13,7 +13,7 @@ import { dataEvents } from '@/lib/events';
 import type { Category } from '@/types';
 import {
   adjustSimulatedAccountBalance,
-  ensureCashAccount,
+  deleteSimulatedAccount,
   getSimulatedAccounts,
   getDb,
   getSetting,
@@ -28,6 +28,7 @@ import {
   upsertCategoryBudget,
   upsertWealthAsset,
 } from './db';
+import { seedLoansIfMissing } from './seedLoans';
 
 type SeedTransaction = {
   id: string;
@@ -44,7 +45,7 @@ const DEMO_WEEKS = 12;
 export const DEMO_EXPECTED_VISIBLE_TX = 170;
 
 /** Bump to force wipe + reseed of demo transactions (QC merchants). */
-const DEMO_TRANSACTIONS_SEED_VERSION = '1';
+const DEMO_TRANSACTIONS_SEED_VERSION = '2';
 const DEMO_TRANSACTIONS_SEED_KEY = 'demo_transactions_seed_version';
 
 /** In __DEV__, wipe and reseed when Historique has fewer visible rows than this. */
@@ -63,8 +64,11 @@ const PAYMENT_ACCOUNT_IDS = {
   checking: '1',
   savings: '2',
   credit: '3',
-  cash: 'argent-cash-seed',
+  cash: '4',
 } as const;
+
+/** Legacy standalone cash seed — superseded by DASHBOARD_ACCOUNTS id `4`. */
+const LEGACY_DEMO_CASH_ACCOUNT_ID = 'argent-cash-seed';
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
@@ -108,7 +112,7 @@ function pickPaymentAccount(index: number, type: 'expense' | 'income', label: st
     lower.includes('tim hortons') ||
     lower.includes('stationnement')
   ) {
-    return index % 2 === 0 ? PAYMENT_ACCOUNT_IDS.cash : PAYMENT_ACCOUNT_IDS.checking;
+    return index % 2 === 0 ? PAYMENT_ACCOUNT_IDS.checking : PAYMENT_ACCOUNT_IDS.credit;
   }
   if (
     lower.includes('netflix') ||
@@ -129,7 +133,7 @@ function pickPaymentAccount(index: number, type: 'expense' | 'income', label: st
   }
   if (lower.includes('salaire')) return PAYMENT_ACCOUNT_IDS.checking;
 
-  const pool = [PAYMENT_ACCOUNT_IDS.checking, PAYMENT_ACCOUNT_IDS.credit, PAYMENT_ACCOUNT_IDS.cash];
+  const pool = [PAYMENT_ACCOUNT_IDS.checking, PAYMENT_ACCOUNT_IDS.credit, PAYMENT_ACCOUNT_IDS.savings];
   return pool[index % pool.length];
 }
 
@@ -155,7 +159,7 @@ function resolveDemoCategoryId(
 }
 
 async function seedDemoAccounts(options?: { forceResetBalances?: boolean }): Promise<void> {
-  await ensureCashAccount();
+  await deleteSimulatedAccount(LEGACY_DEMO_CASH_ACCOUNT_ID);
   const existingIds = new Set((await getSimulatedAccounts()).map((account) => account.id));
   const createdAt = new Date().toISOString();
 
@@ -172,13 +176,25 @@ async function seedDemoAccounts(options?: { forceResetBalances?: boolean }): Pro
       createdAt,
     });
   }
+}
 
-  if (options?.forceResetBalances) {
-    const db = await getDb();
-    await db.runAsync('UPDATE simulated_accounts SET balance = 0 WHERE id = ?', [
-      PAYMENT_ACCOUNT_IDS.cash,
-    ]);
+/** Keeps demo account labels in sync with DASHBOARD_ACCOUNTS without touching balances. */
+async function syncDemoAccountMetadata(): Promise<void> {
+  const db = await getDb();
+  for (const mock of DASHBOARD_ACCOUNTS) {
+    const last4 = mock.number.replace(/\D/g, '').slice(-4) || null;
+    await db.runAsync(
+      'UPDATE simulated_accounts SET name = ?, institution = ?, last4 = ?, kind = ? WHERE id = ?',
+      [mock.name, mock.domain || null, last4, mock.kind, mock.id],
+    );
   }
+  dataEvents.emit();
+}
+
+/** Inserts any DASHBOARD_ACCOUNTS rows missing from SQLite (idempotent; preserves balances). */
+export async function ensureDemoAccounts(): Promise<void> {
+  await seedDemoAccounts();
+  await syncDemoAccountMetadata();
 }
 
 async function wipeAllTransactions(): Promise<void> {
@@ -563,4 +579,5 @@ export async function seedDatabase(): Promise<void> {
   await repairOrphanTransactionCategories(UNCATEGORIZED_TRANSACTION_CATEGORY.id);
   await ensureSeedCatalog();
   await seedDemoTransactionsIfMissing();
+  await seedLoansIfMissing();
 }

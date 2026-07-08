@@ -6,14 +6,21 @@ import { useAppTheme } from '@/lib/themeContext';
 
 const LIGHT_PORTFOLIO_TEXT = portfolioLight.text;
 
-export function NetWorthAmountRow({ totalBalance }: { totalBalance: number }) {
+export function NetWorthAmountRow({
+  totalBalance,
+  centered = false,
+}: {
+  totalBalance: number;
+  /** When true, centers the amount row (hero cash-flow column). */
+  centered?: boolean;
+}) {
   const { isLight } = useAppTheme();
   const textColor = isLight ? LIGHT_PORTFOLIO_TEXT : portfolioDark.text;
   const sign = totalBalance < 0 ? '−' : '';
   const { main } = formatDisplayMoney(totalBalance);
 
   return (
-    <View style={styles.netWorthAmountRow}>
+    <View style={[styles.netWorthAmountRow, centered && styles.netWorthAmountRowCentered]}>
       <Text style={[styles.netWorthAmountMain, { color: textColor }]} {...singleLineAmountProps}>
         {sign}
         {main}
@@ -29,6 +36,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     marginTop: 4,
+  },
+  netWorthAmountRowCentered: {
+    alignSelf: 'center',
+    marginTop: 0,
   },
   netWorthAmountDollar: {
     ...netWorthHeroAmount,

@@ -35,5 +35,5 @@ export function planHeroAmountLine(plan: DashboardPlanDetail): string {
 
 export function planHeroSecondaryLine(plan: DashboardPlanDetail): string {
   const remaining = planRemainingAmount(plan);
-  return `${plan.progress} % complété · ${formatDisplayMoneyAbsolute(remaining)} restants`;
+  return `${plan.progress} % · ${formatDisplayMoneyAbsolute(remaining)} restants`;
 }

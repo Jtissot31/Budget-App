@@ -12,6 +12,7 @@ import ChartPieMod from 'lucide-react-native/dist/cjs/icons/chart-pie.js';
 import ChevronUpMod from 'lucide-react-native/dist/cjs/icons/chevron-up.js';
 import CircleAlertMod from 'lucide-react-native/dist/cjs/icons/circle-alert.js';
 import CloudSyncMod from 'lucide-react-native/dist/cjs/icons/cloud-sync.js';
+import CompassMod from 'lucide-react-native/dist/cjs/icons/compass.js';
 import ContactRoundMod from 'lucide-react-native/dist/cjs/icons/contact-round.js';
 import CreditCardMod from 'lucide-react-native/dist/cjs/icons/credit-card.js';
 import EyeMod from 'lucide-react-native/dist/cjs/icons/eye.js';
@@ -61,6 +62,7 @@ const SELECTED_LUCIDE_ICONS = new Map<string, LucideIcon>(
     bind('ChevronUp', ChevronUpMod),
     bind('CircleAlert', CircleAlertMod),
     bind('CloudSync', CloudSyncMod),
+    bind('Compass', CompassMod),
     bind('ContactRound', ContactRoundMod),
     bind('CreditCard', CreditCardMod),
     bind('Eye', EyeMod),

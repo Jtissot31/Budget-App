@@ -7,7 +7,10 @@ import { ensureDisplayLanguageFromDevice, hydrateRuntimePreferences } from './se
 
 import { hydrateRFAOnBoot } from './ai/rfaService';
 import { evaluateAlerts } from './ai/alertService';
-import { ensureAverageUserBudgetBaseline, seedDemoTransactionsIfMissing } from './seed';
+import { resetFinancialPlansHubIfNeeded } from './resetFinancialPlansHub';
+import { resetSavingsGoalsForHubDemoIfNeeded } from './resetSavingsGoalsHubDemo';
+import { ensureAverageUserBudgetBaseline, ensureDemoAccounts, seedDemoTransactionsIfMissing } from './seed';
+import { seedLoansIfMissing } from './seedLoans';
 import { seedRecurringPaymentsIfMissing } from './seedRecurringPayments';
 
 const INIT_SINGLETON_KEY = '__budgetTrackerDbInit__';
@@ -143,9 +146,21 @@ async function runBootSequence(initState: InitSingletonState): Promise<void> {
   if (!initState.schemaReady) return;
 
   try {
+    await withTimeout(
+      resetSavingsGoalsForHubDemoIfNeeded(),
+      'Savings goals hub demo reset',
+      DB_INIT_TIMEOUT_MS,
+    );
+    await withTimeout(
+      resetFinancialPlansHubIfNeeded(),
+      'Financial plans hub reset',
+      DB_INIT_TIMEOUT_MS,
+    );
     await withTimeout(ensureAverageUserBudgetBaseline(), 'Budget baseline seeding', DB_INIT_TIMEOUT_MS);
+    await withTimeout(ensureDemoAccounts(), 'Demo accounts seeding', DB_INIT_TIMEOUT_MS);
     await withTimeout(seedDemoTransactionsIfMissing(), 'Demo data seeding', DB_INIT_TIMEOUT_MS);
     await withTimeout(seedRecurringPaymentsIfMissing(), 'Recurring payments seeding', DB_INIT_TIMEOUT_MS);
+    await withTimeout(seedLoansIfMissing(), 'Demo loans seeding', DB_INIT_TIMEOUT_MS);
 
     await ensureDisplayLanguageFromDevice();
     await hydrateRuntimePreferences();

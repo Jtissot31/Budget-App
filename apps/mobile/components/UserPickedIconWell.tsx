@@ -2,11 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { MdiIcon } from '@/components/MdiIcon';
 import { RemoteLogoImage } from '@/components/IconFrame';
 import type { IconName } from '@/constants/categoryOptions';
 import { jakartaSemiboldText } from '@/constants/theme';
 import { EXPENSE_DEFAULT_ICON, type ExpenseFallbackIcon } from '@/lib/expenseIcon';
+import { isDesignSystemLucideIcon } from '@/lib/iconMigration/designSystemIconSelection';
+import { resolveLucideNameForLegacy } from '@/lib/iconMigration/iconMap';
 import { getMerchantLogoUrls, merchantInitials } from '@/lib/merchantLogo';
 import {
   EXPENSE_MDI_ICON,
@@ -92,6 +95,9 @@ export function UserPickedIconWell({
     ? WELL_GLYPH_WHITE
     : resolveUserPickedIconGlyphColor(categoryTint, isLight, colors);
   const mdiName = resolveStoredIconToMdi(icon) ?? resolveMdiOrLegacyIcon(icon);
+  const materialCommunityLucide = resolveLucideNameForLegacy('material-community', icon);
+  const useMaterialCommunityAppIcon =
+    materialCommunityLucide != null && isDesignSystemLucideIcon(materialCommunityLucide);
   const isExpenseBag = icon === EXPENSE_DEFAULT_ICON || icon === EXPENSE_MDI_ICON;
   const bagSize = Math.round(size * 0.4);
   const showCover = Boolean(trimmedCover) && !coverFailed;
@@ -172,6 +178,13 @@ export function UserPickedIconWell({
         <MdiIcon
           name={mdiName}
           size={mdiName === EXPENSE_MDI_ICON || mdiName === 'SwapHoriz' ? bagSize : computedIconSize}
+          color={glyphColor}
+        />
+      ) : useMaterialCommunityAppIcon ? (
+        <AppIcon
+          family="material-community"
+          name={icon}
+          size={computedIconSize}
           color={glyphColor}
         />
       ) : (

@@ -1,4 +1,3 @@
-import { MOCK_DASHBOARD_PLANS } from '@/lib/dashboardPlansMock';
 import {
   PLAN_CATEGORIES,
   type Plan,
@@ -6,7 +5,7 @@ import {
   type PlanStatut,
   type PlanSuggere,
 } from './Plan';
-import { mockDashboardPlanToPlan, registerPlanDetailForNavigation } from './planDashboardAdapter';
+import { registerPlanDetailForNavigation } from './planDashboardAdapter';
 import { evaluatePlanRecommendations } from './planRecommendationEngine';
 import { loadUserPlans } from './plansStore';
 
@@ -65,23 +64,14 @@ export async function loadPlanHubSnapshot(): Promise<PlanHubSnapshot> {
     registerPlanDetailForNavigation(plan);
   }
 
-  const mockPlans = MOCK_DASHBOARD_PLANS.map(mockDashboardPlanToPlan);
-  for (const plan of mockPlans) {
-    registerPlanDetailForNavigation(plan);
-  }
-
-  const activeSubtypes = new Set([
-    ...storedPlans.map((plan) => plan.subtype),
-    ...mockPlans.map((plan) => plan.subtype),
-  ]);
+  const activeSubtypes = new Set(storedPlans.map((plan) => plan.subtype));
 
   const filteredSuggestions = suggestedPlans.filter((plan) => !activeSubtypes.has(plan.subtype));
   const suggestionIds = new Set(filteredSuggestions.map((plan) => plan.id));
 
-  const listPlans = sortPlansForHub([
-    ...storedPlans,
-    ...mockPlans,
-  ]).filter((plan) => plan.statut !== 'suggere' && !suggestionIds.has(plan.id));
+  const listPlans = sortPlansForHub(storedPlans).filter(
+    (plan) => plan.statut !== 'suggere' && !suggestionIds.has(plan.id),
+  );
 
   return {
     listPlans,

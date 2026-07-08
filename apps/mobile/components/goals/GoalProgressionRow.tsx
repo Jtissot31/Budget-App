@@ -11,6 +11,7 @@ import {
   goalProgressTrackColor,
   jakartaBoldText,
   jakartaExtraBoldText,
+  moneyAmountTypography,
   radius,
   spacing,
   typography,
@@ -114,8 +115,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   amounts: {
-    ...jakartaBoldText,
-    fontSize: typography.micro,
+    ...moneyAmountTypography({ tier: 'row', fontSize: typography.micro }),
   },
   pressed: {
     opacity: 0.78,

@@ -14,6 +14,7 @@ import {
   detailCarouselPageMinHeight,
   jakartaBoldText,
   jakartaMediumText,
+  moneyAmountTypography,
   spacing,
   typography,
 } from '@/constants/theme';
@@ -511,10 +512,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   donutTotal: {
-    fontSize: typography.caption,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-    letterSpacing: -0.2,
+    ...moneyAmountTypography({ tier: 'row', letterSpacing: -0.2 }),
   },
   donutCaption: {
     ...jakartaBoldText,
@@ -530,9 +528,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   donutStatValue: {
-    fontSize: typography.body,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
+    ...moneyAmountTypography({ tier: 'card' }),
   },
   infoLine: {
     ...jakartaMediumText,

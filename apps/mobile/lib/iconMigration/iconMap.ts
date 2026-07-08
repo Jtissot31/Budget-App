@@ -22,6 +22,8 @@ export const LEGACY_TO_LUCIDE_MAP: Partial<Record<LegacyIconKey, string>> = {
   [key('material-community', 'chart-pie-outline')]: 'ChartPie',
   [key('material-community', 'flag')]: 'Goal',
   [key('material-community', 'flag-outline')]: 'Goal',
+  [key('material-community', 'compass')]: 'Compass',
+  [key('material-community', 'compass-outline')]: 'Compass',
 
   // Ionicons — navigation & chrome
   [key('ionicons', 'chevron-up')]: 'ChevronUp',

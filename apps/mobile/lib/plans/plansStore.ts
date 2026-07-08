@@ -1,5 +1,7 @@
 import { loadEncryptedJson, saveEncryptedJson } from '@/lib/ai/encryptedStorage';
+import { dataEvents } from '@/lib/events';
 import type { PlanActifOuTermine, PlanSuggere } from './Plan';
+import { registerPlanDetailForNavigation } from './planDashboardAdapter';
 
 const PLANS_STORAGE_KEY = 'bt_financial_plans_v1';
 
@@ -8,10 +10,23 @@ export async function loadUserPlans(): Promise<PlanActifOuTermine[]> {
   return stored ?? [];
 }
 
+export async function saveUserPlans(
+  plans: PlanActifOuTermine[],
+  options?: { emit?: boolean },
+): Promise<void> {
+  await saveEncryptedJson(PLANS_STORAGE_KEY, plans);
+  for (const plan of plans) {
+    registerPlanDetailForNavigation(plan);
+  }
+  if (options?.emit !== false) {
+    dataEvents.emit();
+  }
+}
+
 export async function appendUserPlan(plan: PlanActifOuTermine): Promise<PlanActifOuTermine[]> {
   const existing = await loadUserPlans();
   const next = [...existing, plan];
-  await saveEncryptedJson(PLANS_STORAGE_KEY, next);
+  await saveUserPlans(next);
   return next;
 }
 

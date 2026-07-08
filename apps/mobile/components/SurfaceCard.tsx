@@ -10,6 +10,7 @@ type Props = {
   padding?: number;
   borderRadius?: number;
   innerBackgroundColor?: string;
+  variant?: 'card' | 'flat';
 };
 
 export function SurfaceCard({
@@ -19,6 +20,7 @@ export function SurfaceCard({
   padding = spacing.lg,
   borderRadius = radius.card,
   innerBackgroundColor,
+  variant = 'card',
 }: Props) {
   return (
     <GlassContainer
@@ -27,6 +29,7 @@ export function SurfaceCard({
       padding={padding}
       borderRadius={borderRadius}
       innerBackgroundColor={innerBackgroundColor}
+      variant={variant}
     >
       {children}
     </GlassContainer>

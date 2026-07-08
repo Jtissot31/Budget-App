@@ -17,7 +17,7 @@ export const TAB_BAR_ICONS_BACKUP = {
   index: { outline: 'home-outline', filled: 'home' },
   transactions: { outline: 'receipt-text-outline', filled: 'receipt-text' },
   accounts: { outline: 'wallet-outline', filled: 'wallet' },
-  goals: { outline: 'flag-outline', filled: 'flag' },
+  goals: { outline: 'compass-outline', filled: 'compass' },
   budgets: { outline: 'chart-pie-outline', filled: 'chart-pie' },
 } as const satisfies Record<string, { outline: string; filled: string }>;
 
@@ -39,11 +39,11 @@ export const HOME_HERO_ICONS_BACKUP = {
   eyeOff: { family: 'material-community', name: 'eye-off-outline' } satisfies LegacyIconRef,
 } as const;
 
-/** Tab bar goals — legacy flag → Lucide Goal */
+/** Tab bar goals — legacy compass → Lucide Compass */
 export const TAB_BAR_GOALS_BACKUP = {
-  outline: 'flag-outline',
-  filled: 'flag',
-  lucide: 'Goal',
+  outline: 'compass-outline',
+  filled: 'compass',
+  lucide: 'Compass',
 } as const;
 
 /** PaycheckAllocationWidget.tsx */

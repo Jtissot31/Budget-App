@@ -210,6 +210,7 @@ async function initializeDatabaseSchema(db: SQLite.SQLiteDatabase): Promise<void
           current_amount REAL NOT NULL,
           initial_saved_amount REAL NOT NULL DEFAULT 0,
           weekly_contribution REAL,
+          contribution_frequency TEXT NOT NULL DEFAULT 'weekly',
           due_date TEXT,
           color TEXT NOT NULL,
           icon TEXT NOT NULL,
@@ -306,6 +307,11 @@ async function ensureSavingsGoalColumns(db: SQLite.SQLiteDatabase): Promise<void
   if (!columns.some((column) => column.name === 'initial_saved_amount')) {
     await db.execAsync(
       'ALTER TABLE savings_goals ADD COLUMN initial_saved_amount REAL NOT NULL DEFAULT 0',
+    );
+  }
+  if (!columns.some((column) => column.name === 'contribution_frequency')) {
+    await db.execAsync(
+      "ALTER TABLE savings_goals ADD COLUMN contribution_frequency TEXT NOT NULL DEFAULT 'weekly'",
     );
   }
 }
@@ -1038,6 +1044,7 @@ export async function getSavingsGoals(): Promise<SavingsGoal[]> {
        current_amount AS currentAmount,
        COALESCE(initial_saved_amount, 0) AS initialSavedAmount,
        weekly_contribution AS weeklyContribution,
+       COALESCE(contribution_frequency, 'weekly') AS contributionFrequency,
        due_date AS dueDate,
        color,
        icon,
@@ -1051,8 +1058,8 @@ export async function upsertSavingsGoal(goal: SavingsGoal): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `INSERT OR REPLACE INTO savings_goals (
-       id, name, target_amount, current_amount, initial_saved_amount, weekly_contribution, due_date, color, icon, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       id, name, target_amount, current_amount, initial_saved_amount, weekly_contribution, contribution_frequency, due_date, color, icon, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       goal.id,
       goal.name,
@@ -1060,6 +1067,7 @@ export async function upsertSavingsGoal(goal: SavingsGoal): Promise<void> {
       goal.currentAmount,
       goal.initialSavedAmount,
       goal.weeklyContribution ?? null,
+      goal.contributionFrequency ?? 'weekly',
       goal.dueDate ?? null,
       goal.color,
       goal.icon,
@@ -1081,6 +1089,24 @@ export async function deleteSavingsGoal(id: string): Promise<void> {
   );
   await db.runAsync('DELETE FROM savings_goals WHERE id = ?', [trimmed]);
   dataEvents.emit();
+}
+
+/** Clears all savings goals and unlinks related transactions/accounts. Returns rows removed. */
+export async function deleteAllSavingsGoals(): Promise<number> {
+  const db = await getDb();
+  const countRow = await db.getFirstAsync<{ count: number }>(
+    'SELECT COUNT(*) AS count FROM savings_goals',
+  );
+  const count = countRow?.count ?? 0;
+  if (count === 0) return 0;
+
+  await db.runAsync('UPDATE transactions SET savings_goal_id = NULL WHERE savings_goal_id IS NOT NULL');
+  await db.runAsync(
+    'UPDATE simulated_accounts SET linked_savings_goal_id = NULL WHERE linked_savings_goal_id IS NOT NULL',
+  );
+  await db.runAsync('DELETE FROM savings_goals');
+  dataEvents.emit();
+  return count;
 }
 
 export async function getRecurringPayments(): Promise<RecurringPayment[]> {

@@ -14,13 +14,15 @@ import Animated, {
   cancelAnimation,
   Easing,
   useAnimatedProps,
+  useDerivedValue,
   useSharedValue,
   withRepeat,
   withSequence,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
-import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
-import { jakartaExtraBoldText } from '@/constants/theme';
+import Svg, { Circle, Line, Path } from 'react-native-svg';
+import { moneyAmountTypography } from '@/constants/theme';
 import { ThemeSegmentedControl } from '@/components/ThemeSegmentedControl';
 import { formatDisplayMoney } from '@/lib/formatDisplayMoney';
 import { useAppTheme } from '@/lib/themeContext';
@@ -33,7 +35,13 @@ const ENDPOINT_DOT_HALO_R = ENDPOINT_DOT_R + 2;
 const ENDPOINT_HALO_BREATHE_MS = 1800;
 const ENDPOINT_RIPPLE_MS = 2600;
 const ENDPOINT_RIPPLE_EXPAND = 5;
+/** Period-change line morph — fast ease-out. */
+const MORPH_DURATION_MS = 320;
+const MORPH_EASING = Easing.out(Easing.cubic);
+/** Fixed sample count so periods with different point counts can interpolate. */
+const MORPH_SAMPLE_COUNT = 48;
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const AnimatedPath = Animated.createAnimatedComponent(Path);
 /** Larger dot when scrubbing a historical point. */
 const SELECTION_DOT_R = 4;
 const SVG_DOT_OVERFLOW = SELECTION_DOT_R + 2;
@@ -52,11 +60,13 @@ export type NetWorthTrendPoint = {
 
 export type NetWorthChartPeriod = '1S' | '1M' | '3M' | '6M' | 'CA' | '1A';
 
-const CHART_HEIGHT = 150;
-const CHART_VERTICAL_PADDING = 10;
-/** Gap before the right edge so the latest point reads as still in progress. */
-const CHART_RIGHT_INSET = 14;
-const CHART_Y_PADDING_RATIO = 0.08;
+const CHART_HEIGHT = 190;
+const CHART_VERTICAL_PADDING = 6;
+/** Horizontal inset on both edges — room for endpoint dot and balanced plot margins. */
+const CHART_HORIZONTAL_INSET = 1;
+/** Right inset when plotHorizontalInset is 0 — keeps endpoint halo inside the frame (RN clips overflow). */
+export const CHART_FULL_BLEED_RIGHT_INSET = ENDPOINT_DOT_HALO_R + 1;
+const CHART_Y_PADDING_RATIO = 0.05;
 
 export const PERIOD_DELTA_LABELS: Record<NetWorthChartPeriod, string> = {
   '1S': 'dernière semaine',
@@ -222,8 +232,6 @@ function getVisiblePoints(
   return demo;
 }
 
-const DEFAULT_CHART_FILL_GRADIENT_ID = 'netWorthAreaGradient';
-const CHART_FILL_TOP_OPACITY = 0.35;
 
 /** Straight segments with rounded joins — same stock-chart rhythm as SparklineChart / LOC charts. */
 function buildStockLinePath(pts: { x: number; y: number }[]): string {
@@ -231,6 +239,63 @@ function buildStockLinePath(pts: { x: number; y: number }[]): string {
   return pts
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
     .join(' ');
+}
+
+/** Linear resample onto a uniform grid — used to morph between different-length series. */
+function resampleValues(values: number[], count: number): number[] {
+  if (count <= 0) return [];
+  if (values.length === 0) return Array.from({ length: count }, () => 0);
+  if (values.length === 1) return Array.from({ length: count }, () => values[0]);
+  return Array.from({ length: count }, (_, index) => {
+    const ratio = index / Math.max(count - 1, 1);
+    const position = ratio * (values.length - 1);
+    const lower = Math.floor(position);
+    const upper = Math.min(lower + 1, values.length - 1);
+    const fraction = position - lower;
+    return values[lower] * (1 - fraction) + values[upper] * fraction;
+  });
+}
+
+type MorphFrame = { d: string; lastX: number; lastY: number };
+
+/** Worklet-safe morph frame — interpolates resampled values and y-domain. */
+function computeMorphFrame(
+  progress: number,
+  fromYs: number[],
+  toYs: number[],
+  yMinFrom: number,
+  yMaxFrom: number,
+  yMinTo: number,
+  yMaxTo: number,
+  plotWidth: number,
+  leftInset: number,
+): MorphFrame {
+  'worklet';
+  const count = fromYs.length;
+  if (count === 0) {
+    return { d: '', lastX: leftInset, lastY: CHART_VERTICAL_PADDING };
+  }
+
+  const yMin = yMinFrom + progress * (yMinTo - yMinFrom);
+  const yMax = yMaxFrom + progress * (yMaxTo - yMaxFrom);
+  const range = yMax - yMin;
+  const innerHeight = CHART_HEIGHT - CHART_VERTICAL_PADDING * 2;
+  const safeRange = range === 0 ? 1 : range;
+
+  let d = '';
+  let lastX = leftInset;
+  let lastY = CHART_VERTICAL_PADDING;
+
+  for (let index = 0; index < count; index += 1) {
+    const value = fromYs[index] + progress * (toYs[index] - fromYs[index]);
+    const x = leftInset + (index / Math.max(count - 1, 1)) * plotWidth;
+    const y = CHART_VERTICAL_PADDING + (1 - (value - yMin) / safeRange) * innerHeight;
+    d += `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)} `;
+    lastX = x;
+    lastY = y;
+  }
+
+  return { d: d.trim(), lastX, lastY };
 }
 
 function computeYDomain(values: number[]): { yMin: number; yMax: number } {
@@ -245,37 +310,46 @@ function computeYDomain(values: number[]): { yMin: number; yMax: number } {
 
 type ChartPoint = { x: number; y: number };
 
-function getChartPlotMetrics(chartWidth: number) {
-  const plotWidth = Math.max(chartWidth - CHART_RIGHT_INSET, 1);
-  return { plotWidth };
+function getChartPlotMetrics(
+  chartWidth: number,
+  leftInset = CHART_HORIZONTAL_INSET,
+  rightInset = leftInset,
+) {
+  const plotWidth = Math.max(chartWidth - leftInset - rightInset, 1);
+  return { plotWidth, leftInset };
 }
 
-function buildChartPaths(values: number[], chartWidth: number) {
+function buildChartPaths(
+  values: number[],
+  chartWidth: number,
+  leftInset = CHART_HORIZONTAL_INSET,
+  rightInset = leftInset,
+) {
   const { yMin, yMax } = computeYDomain(values);
   const range = yMax - yMin;
   const innerHeight = CHART_HEIGHT - CHART_VERTICAL_PADDING * 2;
-  const { plotWidth } = getChartPlotMetrics(chartWidth);
+  const { plotWidth, leftInset: plotLeftInset } = getChartPlotMetrics(chartWidth, leftInset, rightInset);
   const pts: ChartPoint[] = values.map((value, index) => {
-    const x = (index / Math.max(values.length - 1, 1)) * plotWidth;
+    const x = plotLeftInset + (index / Math.max(values.length - 1, 1)) * plotWidth;
     const y = CHART_VERTICAL_PADDING + (1 - (value - yMin) / range) * innerHeight;
     return { x, y };
   });
-  const firstPt = pts[0];
-  const lastPt = pts[pts.length - 1] ?? firstPt;
   const linePath = buildStockLinePath(pts);
-  const fillPath =
-    pts.length > 0
-      ? `${linePath} L ${lastPt!.x.toFixed(2)} ${CHART_HEIGHT} L ${firstPt!.x.toFixed(2)} ${CHART_HEIGHT} Z`
-      : '';
-  return { points: pts, linePath, fillPath };
+  return { points: pts, linePath };
 }
 
-/** Map touch x (0..chartWidth) to point index; aligned with [0, plotWidth] x range. */
-function findPointIndexFromX(touchX: number, chartWidth: number, pointCount: number): number {
+/** Map touch x (0..chartWidth) to point index; aligned with [leftInset, leftInset + plotWidth] x range. */
+function findPointIndexFromX(
+  touchX: number,
+  chartWidth: number,
+  pointCount: number,
+  leftInset = CHART_HORIZONTAL_INSET,
+  rightInset = leftInset,
+): number {
   if (pointCount <= 1) return 0;
-  const { plotWidth } = getChartPlotMetrics(chartWidth);
-  const clampedX = Math.max(0, Math.min(plotWidth, touchX));
-  const ratio = clampedX / plotWidth;
+  const { plotWidth, leftInset: plotLeftInset } = getChartPlotMetrics(chartWidth, leftInset, rightInset);
+  const clampedX = Math.max(plotLeftInset, Math.min(plotLeftInset + plotWidth, touchX));
+  const ratio = (clampedX - plotLeftInset) / plotWidth;
   return Math.round(ratio * (pointCount - 1));
 }
 
@@ -285,8 +359,10 @@ function resolveHistoricalSelectionIndex(
   chartWidth: number,
   pointCount: number,
   lastIndex: number,
+  leftInset = CHART_HORIZONTAL_INSET,
+  rightInset = leftInset,
 ): number | null {
-  const nearestIndex = findPointIndexFromX(touchX, chartWidth, pointCount);
+  const nearestIndex = findPointIndexFromX(touchX, chartWidth, pointCount, leftInset, rightInset);
   return nearestIndex === lastIndex ? null : nearestIndex;
 }
 
@@ -349,12 +425,26 @@ export const ALL_NET_WORTH_CHART_PERIODS: NetWorthChartPeriod[] = ['1S', '1M', '
 
 /** Subtle halo breathe + expanding ripple on the in-progress endpoint. */
 function AnimatedEndpointDot({
-  cx,
-  cy,
+  morphProgress,
+  morphFromYs,
+  morphToYs,
+  morphFromYMin,
+  morphFromYMax,
+  morphToYMin,
+  morphToYMax,
+  morphPlotWidth,
+  morphLeftInset,
   lineColor,
 }: {
-  cx: number;
-  cy: number;
+  morphProgress: SharedValue<number>;
+  morphFromYs: SharedValue<number[]>;
+  morphToYs: SharedValue<number[]>;
+  morphFromYMin: SharedValue<number>;
+  morphFromYMax: SharedValue<number>;
+  morphToYMin: SharedValue<number>;
+  morphToYMax: SharedValue<number>;
+  morphPlotWidth: SharedValue<number>;
+  morphLeftInset: SharedValue<number>;
   lineColor: string;
 }) {
   const breathe = useSharedValue(0);
@@ -387,21 +477,141 @@ function AnimatedEndpointDot({
     };
   }, [breathe, ripple]);
 
+  const endpointPosition = useDerivedValue(() => {
+    const frame = computeMorphFrame(
+      morphProgress.value,
+      morphFromYs.value,
+      morphToYs.value,
+      morphFromYMin.value,
+      morphFromYMax.value,
+      morphToYMin.value,
+      morphToYMax.value,
+      morphPlotWidth.value,
+      morphLeftInset.value,
+    );
+    return { x: frame.lastX, y: frame.lastY };
+  });
+
   const haloAnimatedProps = useAnimatedProps(() => ({
+    cx: endpointPosition.value.x,
+    cy: endpointPosition.value.y,
     opacity: 0.14 + breathe.value * 0.1,
     r: ENDPOINT_DOT_HALO_R + breathe.value * 0.5,
   }));
 
   const rippleAnimatedProps = useAnimatedProps(() => ({
+    cx: endpointPosition.value.x,
+    cy: endpointPosition.value.y,
     opacity: (1 - ripple.value) * 0.18,
     r: ENDPOINT_DOT_HALO_R + ripple.value * ENDPOINT_RIPPLE_EXPAND,
   }));
 
+  const coreAnimatedProps = useAnimatedProps(() => ({
+    cx: endpointPosition.value.x,
+    cy: endpointPosition.value.y,
+  }));
+
   return (
     <>
-      <AnimatedCircle cx={cx} cy={cy} fill={lineColor} animatedProps={rippleAnimatedProps} />
-      <AnimatedCircle cx={cx} cy={cy} fill={lineColor} animatedProps={haloAnimatedProps} />
-      <Circle cx={cx} cy={cy} r={ENDPOINT_DOT_R} fill={lineColor} />
+      <AnimatedCircle fill={lineColor} animatedProps={rippleAnimatedProps} />
+      <AnimatedCircle fill={lineColor} animatedProps={haloAnimatedProps} />
+      <AnimatedCircle r={ENDPOINT_DOT_R} fill={lineColor} animatedProps={coreAnimatedProps} />
+    </>
+  );
+}
+
+function syncMorphTargets(
+  values: number[],
+  chartWidth: number,
+  leftInset: number,
+  rightInset: number,
+  morphFromYs: SharedValue<number[]>,
+  morphToYs: SharedValue<number[]>,
+  morphFromYMin: SharedValue<number>,
+  morphFromYMax: SharedValue<number>,
+  morphToYMin: SharedValue<number>,
+  morphToYMax: SharedValue<number>,
+  morphPlotWidth: SharedValue<number>,
+  morphLeftInset: SharedValue<number>,
+) {
+  const resampled = resampleValues(values, MORPH_SAMPLE_COUNT);
+  morphFromYs.value = resampled;
+  morphToYs.value = resampled;
+  const domain = computeYDomain(values);
+  morphFromYMin.value = domain.yMin;
+  morphFromYMax.value = domain.yMax;
+  morphToYMin.value = domain.yMin;
+  morphToYMax.value = domain.yMax;
+  const plotWidth = Math.max(chartWidth - leftInset - rightInset, 1);
+  morphPlotWidth.value = plotWidth;
+  morphLeftInset.value = leftInset;
+}
+
+/** Animated stock line + endpoint driven by shared morph state. */
+function MorphingChartLine({
+  morphProgress,
+  morphFromYs,
+  morphToYs,
+  morphFromYMin,
+  morphFromYMax,
+  morphToYMin,
+  morphToYMax,
+  morphPlotWidth,
+  morphLeftInset,
+  lineColor,
+  showEndpointDot,
+}: {
+  morphProgress: SharedValue<number>;
+  morphFromYs: SharedValue<number[]>;
+  morphToYs: SharedValue<number[]>;
+  morphFromYMin: SharedValue<number>;
+  morphFromYMax: SharedValue<number>;
+  morphToYMin: SharedValue<number>;
+  morphToYMax: SharedValue<number>;
+  morphPlotWidth: SharedValue<number>;
+  morphLeftInset: SharedValue<number>;
+  lineColor: string;
+  showEndpointDot: boolean;
+}) {
+  const lineAnimatedProps = useAnimatedProps(() => {
+    const frame = computeMorphFrame(
+      morphProgress.value,
+      morphFromYs.value,
+      morphToYs.value,
+      morphFromYMin.value,
+      morphFromYMax.value,
+      morphToYMin.value,
+      morphToYMax.value,
+      morphPlotWidth.value,
+      morphLeftInset.value,
+    );
+    return { d: frame.d };
+  });
+
+  return (
+    <>
+      <AnimatedPath
+        animatedProps={lineAnimatedProps}
+        fill="none"
+        stroke={lineColor}
+        strokeWidth={CHART_STROKE_WIDTH}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {showEndpointDot ? (
+        <AnimatedEndpointDot
+          morphProgress={morphProgress}
+          morphFromYs={morphFromYs}
+          morphToYs={morphToYs}
+          morphFromYMin={morphFromYMin}
+          morphFromYMax={morphFromYMax}
+          morphToYMin={morphToYMin}
+          morphToYMax={morphToYMax}
+          morphPlotWidth={morphPlotWidth}
+          morphLeftInset={morphLeftInset}
+          lineColor={lineColor}
+        />
+      ) : null}
     </>
   );
 }
@@ -425,6 +635,7 @@ function ChartPeriodSelector({
       showDivider={false}
       size="sm"
       variant="section"
+      trackBgColor="transparent"
     />
   );
 }
@@ -448,20 +659,23 @@ export const PortfolioChartCard = forwardRef<
   {
     points: NetWorthTrendPoint[];
     onPeriodData?: (data: PortfolioChartCardPeriodData) => void;
-    /** Stroke and gradient color; defaults to portfolio green. */
+    /** Stroke color; defaults to portfolio green. */
     lineColor?: string;
-    /** Unique SVG gradient id when multiple charts mount on one screen. */
-    gradientId?: string;
     /** Period tabs to show; defaults to all periods including 1S. */
     allowedPeriods?: NetWorthChartPeriod[];
+    /** Plot inset from chart frame edges; use 0 with full-bleed wrapper for screen-edge margin. */
+    plotHorizontalInset?: number;
+    /** Right plot inset; defaults to plotHorizontalInset. Use with plotHorizontalInset=0 for edge bleed. */
+    plotHorizontalInsetRight?: number;
   }
 >(function PortfolioChartCard(
   {
     points,
     onPeriodData,
     lineColor = CHART_LINE,
-    gradientId = DEFAULT_CHART_FILL_GRADIENT_ID,
     allowedPeriods = ALL_NET_WORTH_CHART_PERIODS,
+    plotHorizontalInset = CHART_HORIZONTAL_INSET,
+    plotHorizontalInsetRight = plotHorizontalInset,
   },
   ref,
 ) {
@@ -476,6 +690,22 @@ export const PortfolioChartCard = forwardRef<
   const onPeriodDataRef = useRef(onPeriodData);
   onPeriodDataRef.current = onPeriodData;
   const lastPeriodDataRef = useRef<PortfolioChartCardPeriodData | null>(null);
+  const morphProgress = useSharedValue(1);
+  const morphFromYs = useSharedValue<number[]>([]);
+  const morphToYs = useSharedValue<number[]>([]);
+  const morphFromYMin = useSharedValue(0);
+  const morphFromYMax = useSharedValue(1);
+  const morphToYMin = useSharedValue(0);
+  const morphToYMax = useSharedValue(1);
+  const morphPlotWidth = useSharedValue(0);
+  const morphLeftInset = useSharedValue(plotHorizontalInset);
+  const prevChartPeriodRef = useRef<NetWorthChartPeriod | null>(null);
+  const prevValuesRef = useRef<number[]>([]);
+  const prevLayoutRef = useRef({
+    chartWidth: 0,
+    plotHorizontalInset,
+    plotHorizontalInsetRight,
+  });
 
   const clearSelection = useCallback(() => {
     setSelectedIndex(null);
@@ -504,7 +734,10 @@ export const PortfolioChartCard = forwardRef<
     [chartPeriod, points],
   );
   const values = useMemo(() => visiblePoints.map((point) => point.value), [visiblePoints]);
-  const chart = useMemo(() => buildChartPaths(values, chartWidth), [values, chartWidth]);
+  const chart = useMemo(
+    () => buildChartPaths(values, chartWidth, plotHorizontalInset, plotHorizontalInsetRight),
+    [values, chartWidth, plotHorizontalInset, plotHorizontalInsetRight],
+  );
   const lastIndex = Math.max(values.length - 1, 0);
   const displayIndex = selectedIndex ?? lastIndex;
   const clampedDisplayIndex = Math.min(Math.max(displayIndex, 0), lastIndex);
@@ -516,8 +749,7 @@ export const PortfolioChartCard = forwardRef<
   const showSelectionVisuals =
     selectedIndex !== null && selectedIndex !== lastIndex && selectedIndex >= 0 && selectedIndex <= lastIndex;
   const selectionPoint = showSelectionVisuals ? chart.points[selectedIndex] : null;
-  const lastPoint = chart.points[lastIndex] ?? null;
-  const showEndpointDot = Boolean(lastPoint && !showSelectionVisuals);
+  const showEndpointDot = Boolean(!showSelectionVisuals && values.length > 0);
   const selectionAmountLabel = showSelectionVisuals
     ? formatChartPointAmount(values[selectedIndex] ?? 0)
     : '';
@@ -525,6 +757,117 @@ export const PortfolioChartCard = forwardRef<
     if (!selectionPoint || !selectionAmountLabel || chartWidth <= 0) return null;
     return computeSelectionLabelPosition(selectionPoint.x, chartWidth, selectionAmountLabel);
   }, [chartWidth, selectionAmountLabel, selectionPoint]);
+
+  useEffect(() => {
+    if (chartWidth <= 0 || values.length === 0) return;
+
+    const prevPeriod = prevChartPeriodRef.current;
+    const prevValues = prevValuesRef.current;
+    const prevLayout = prevLayoutRef.current;
+    const periodChanged = prevPeriod !== null && prevPeriod !== chartPeriod;
+    const valuesChangedWithoutPeriod =
+      prevPeriod === chartPeriod && prevValues.length > 0 && prevValues !== values;
+    const layoutChanged =
+      prevPeriod !== null &&
+      (prevLayout.chartWidth !== chartWidth ||
+        prevLayout.plotHorizontalInset !== plotHorizontalInset ||
+        prevLayout.plotHorizontalInsetRight !== plotHorizontalInsetRight);
+
+    if (prevPeriod === null) {
+      syncMorphTargets(
+        values,
+        chartWidth,
+        plotHorizontalInset,
+        plotHorizontalInsetRight,
+        morphFromYs,
+        morphToYs,
+        morphFromYMin,
+        morphFromYMax,
+        morphToYMin,
+        morphToYMax,
+        morphPlotWidth,
+        morphLeftInset,
+      );
+      morphProgress.value = 1;
+    } else if (periodChanged) {
+      const fromResampled = resampleValues(prevValues, MORPH_SAMPLE_COUNT);
+      const toResampled = resampleValues(values, MORPH_SAMPLE_COUNT);
+      const fromDomain = computeYDomain(prevValues);
+      const toDomain = computeYDomain(values);
+      morphFromYs.value = fromResampled;
+      morphToYs.value = toResampled;
+      morphFromYMin.value = fromDomain.yMin;
+      morphFromYMax.value = fromDomain.yMax;
+      morphToYMin.value = toDomain.yMin;
+      morphToYMax.value = toDomain.yMax;
+      morphPlotWidth.value = Math.max(
+        chartWidth - plotHorizontalInset - plotHorizontalInsetRight,
+        1,
+      );
+      morphLeftInset.value = plotHorizontalInset;
+
+      cancelAnimation(morphProgress);
+      morphProgress.value = 0;
+      morphProgress.value = withTiming(1, {
+        duration: MORPH_DURATION_MS,
+        easing: MORPH_EASING,
+      });
+    } else if (valuesChangedWithoutPeriod) {
+      syncMorphTargets(
+        values,
+        chartWidth,
+        plotHorizontalInset,
+        plotHorizontalInsetRight,
+        morphFromYs,
+        morphToYs,
+        morphFromYMin,
+        morphFromYMax,
+        morphToYMin,
+        morphToYMax,
+        morphPlotWidth,
+        morphLeftInset,
+      );
+      morphProgress.value = 1;
+    } else if (layoutChanged) {
+      syncMorphTargets(
+        values,
+        chartWidth,
+        plotHorizontalInset,
+        plotHorizontalInsetRight,
+        morphFromYs,
+        morphToYs,
+        morphFromYMin,
+        morphFromYMax,
+        morphToYMin,
+        morphToYMax,
+        morphPlotWidth,
+        morphLeftInset,
+      );
+    }
+
+    prevChartPeriodRef.current = chartPeriod;
+    prevValuesRef.current = values;
+    prevLayoutRef.current = {
+      chartWidth,
+      plotHorizontalInset,
+      plotHorizontalInsetRight,
+    };
+  }, [
+    chartPeriod,
+    chartWidth,
+    morphFromYMax,
+    morphFromYMin,
+    morphFromYs,
+    morphLeftInset,
+    morphPlotWidth,
+    morphProgress,
+    morphToYMax,
+    morphToYMin,
+    morphToYs,
+    plotHorizontalInset,
+    plotHorizontalInsetRight,
+    values,
+  ]);
 
   useEffect(() => {
     lastPeriodDataRef.current = null;
@@ -545,10 +888,17 @@ export const PortfolioChartCard = forwardRef<
   const updateSelectionFromX = useCallback(
     (touchX: number) => {
       if (chartWidth <= 0 || values.length === 0) return;
-      const nextIndex = resolveHistoricalSelectionIndex(touchX, chartWidth, values.length, lastIndex);
+      const nextIndex = resolveHistoricalSelectionIndex(
+        touchX,
+        chartWidth,
+        values.length,
+        lastIndex,
+        plotHorizontalInset,
+        plotHorizontalInsetRight,
+      );
       setSelectedIndex((current) => (current === nextIndex ? current : nextIndex));
     },
-    [chartWidth, lastIndex, values.length],
+    [chartWidth, lastIndex, plotHorizontalInset, plotHorizontalInsetRight, values.length],
   );
 
   const panResponder = useMemo(
@@ -655,7 +1005,7 @@ export const PortfolioChartCard = forwardRef<
   return (
     <View style={styles.wrapper} onLayout={handleLayout}>
       {containerWidth > 0 ? (
-        <View style={[styles.card, { backgroundColor: colors.background }]}>
+        <View style={styles.card}>
           <View style={styles.chartArea}>
             <Pressable
               style={StyleSheet.absoluteFill}
@@ -677,7 +1027,7 @@ export const PortfolioChartCard = forwardRef<
                 : null)}
               style={[
                 styles.chartFrame,
-                { width: chartWidth, height: CHART_HEIGHT, backgroundColor: colors.background },
+                { width: chartWidth, height: CHART_HEIGHT, backgroundColor: 'transparent' },
               ]}
             >
               <Svg
@@ -686,26 +1036,19 @@ export const PortfolioChartCard = forwardRef<
                 viewBox={`${-SVG_DOT_OVERFLOW} ${-SVG_DOT_OVERFLOW} ${chartWidth + SVG_DOT_OVERFLOW * 2} ${CHART_HEIGHT + SVG_DOT_OVERFLOW * 2}`}
                 style={{ marginLeft: -SVG_DOT_OVERFLOW, marginTop: -SVG_DOT_OVERFLOW }}
               >
-                <Defs>
-                  <LinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                    <Stop offset="0" stopColor={lineColor} stopOpacity={CHART_FILL_TOP_OPACITY} />
-                    <Stop offset="1" stopColor={lineColor} stopOpacity={0} />
-                  </LinearGradient>
-                </Defs>
-                {chart.fillPath ? (
-                  <Path d={chart.fillPath} fill={`url(#${gradientId})`} />
-                ) : null}
-                <Path
-                  d={chart.linePath}
-                  fill="none"
-                  stroke={lineColor}
-                  strokeWidth={CHART_STROKE_WIDTH}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+                <MorphingChartLine
+                  morphProgress={morphProgress}
+                  morphFromYs={morphFromYs}
+                  morphToYs={morphToYs}
+                  morphFromYMin={morphFromYMin}
+                  morphFromYMax={morphFromYMax}
+                  morphToYMin={morphToYMin}
+                  morphToYMax={morphToYMax}
+                  morphPlotWidth={morphPlotWidth}
+                  morphLeftInset={morphLeftInset}
+                  lineColor={lineColor}
+                  showEndpointDot={showEndpointDot}
                 />
-                {showEndpointDot && lastPoint ? (
-                  <AnimatedEndpointDot cx={lastPoint.x} cy={lastPoint.y} lineColor={lineColor} />
-                ) : null}
                 {selectionPoint ? (
                   <Line
                     x1={selectionPoint.x}
@@ -798,8 +1141,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   selectionAmountText: {
-    ...jakartaExtraBoldText,
-    fontSize: POINT_LABEL_FONT_SIZE,
-    lineHeight: POINT_LABEL_FONT_SIZE + 2,
+    ...moneyAmountTypography({
+      tier: 'row',
+      fontSize: POINT_LABEL_FONT_SIZE,
+      lineHeight: POINT_LABEL_FONT_SIZE + 2,
+    }),
   },
 });

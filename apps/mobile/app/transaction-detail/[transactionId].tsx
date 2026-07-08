@@ -194,6 +194,7 @@ function buildCategoryPickerOptions(categories: Category[]): SettingsPickerOptio
   return categories.map((category) => ({
     id: category.id,
     label: category.name,
+    budgetCategoryIcon: { icon: category.icon, name: category.name },
   }));
 }
 

@@ -4,11 +4,15 @@
  * Use only these presets (Plus Jakarta Sans named faces + `fontWeight: 'normal'`).
  * Do not mix `fontWeight: '700'/'800'` with Plus Jakarta Sans font files.
  *
+ * **Money amounts:** size tokens live here (`rowAmount`, `cardMetric`, …) but the
+ * font face is always {@link MONEY_AMOUNT_FONT} via {@link moneyAmountTypography}
+ * in `constants/theme.ts` — do not apply these presets directly to dollar amounts.
+ *
  * Hierarchy:
  * - pageTitle — screen titles (32px ExtraBold)
  * - sectionTitle — block headers: Patrimoine, Mes soldes (20px ExtraBold)
  * - eyebrow — uppercase labels above sections (12px Medium)
- * - *Amount / *Hero — tabular ExtraBold for money & stats
+ * - *Amount / *Hero — tabular size tokens for money (font via theme kit)
  * - rowTitle / listPrimary / rowMeta — list & card copy
  */
 import {
@@ -36,6 +40,12 @@ const labelText = {
 };
 
 const tabular = { fontVariant: ['tabular-nums'] as const };
+
+/** Canonical money font — matches `TransactionAmountLabel` (−105,68$). */
+export const MONEY_AMOUNT_FONT = 'Onest_800ExtraBold';
+
+/** @deprecated Import {@link MONEY_AMOUNT_FONT} */
+export const TRANSACTION_ROW_AMOUNT_FONT = MONEY_AMOUNT_FONT;
 
 export const typographyKit = {
   /** Portefeuille tab title, Transactions, Budgets… */

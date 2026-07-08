@@ -31,7 +31,7 @@ export const MOCK_SAVINGS_GOALS: SavingsGoalListItem[] = [
     icon: 'shield-check-outline',
     currentAmount: 6_200,
     targetAmount: 10_000,
-    summary: 'Coussin de 3 mois de dépenses essentielles pour les imprévus.',
+    summary: '3 mois de dépenses en réserve.',
     contributionLabel: '150 $ / semaine',
     targetDateLabel: 'Oct. 2026',
   },

@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   jakartaBoldText,
@@ -27,6 +28,11 @@ export type SettingsPickerOption<T extends string> = {
   id: T;
   label: string;
   description?: string;
+  /** Renders a budget category glyph matching `BudgetCategoryRow`. */
+  budgetCategoryIcon?: {
+    icon?: string | null;
+    name?: string;
+  };
 };
 
 type Props<T extends string> = {
@@ -117,6 +123,13 @@ export function SettingsPickerSheet<T extends string>({
                       pressed && styles.pressed,
                     ]}
                   >
+                    {option.budgetCategoryIcon ? (
+                      <BudgetCategoryIcon
+                        icon={option.budgetCategoryIcon.icon}
+                        name={option.budgetCategoryIcon.name ?? option.label}
+                        id={option.id}
+                      />
+                    ) : null}
                     <View style={styles.optionCopy}>
                       <Text style={[styles.optionLabel, { color: colors.text }]}>{option.label}</Text>
                       {option.description ? (

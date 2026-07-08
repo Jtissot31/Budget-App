@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, Line, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
-import { jakartaExtraBoldText, jakartaMediumText, jakartaSemiboldText } from '@/constants/theme';
+import { jakartaMediumText, jakartaSemiboldText, moneyAmountTypography } from '@/constants/theme';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
 import type { SimulatedAccount } from '@/types';
 
@@ -281,12 +281,13 @@ const styles = StyleSheet.create({
     color: C.label,
   },
   balanceAmount: {
-    ...jakartaExtraBoldText,
-    fontSize: 26,
-    lineHeight: 30,
-    letterSpacing: -0.5,
-    fontVariant: ['tabular-nums'],
-    textAlign: 'left',
+    ...moneyAmountTypography({
+      tier: 'stat',
+      fontSize: 26,
+      lineHeight: 30,
+      letterSpacing: -0.5,
+      textAlign: 'left',
+    }),
   },
   footer: {
     flexDirection: 'row',
