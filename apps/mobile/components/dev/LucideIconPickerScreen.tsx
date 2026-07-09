@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   FlatList,
   Pressable,
@@ -9,7 +10,6 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PageTransition } from '@/components/PageTransition';
@@ -160,7 +160,7 @@ export function LucideIconPickerScreen() {
               pressed && styles.pressed,
             ]}
           >
-            <Ionicons name="chevron-back" size={22} color={colors.text} />
+            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: colors.text }, jakartaExtraBoldText]} numberOfLines={1}>
             Icônes Lucide
@@ -295,7 +295,7 @@ export function LucideIconPickerScreen() {
               >
                 {isSelected ? (
                   <View style={[styles.checkBadge, { backgroundColor: 'rgba(74,222,128,0.15)' }]}>
-                    <Ionicons name="checkmark" size={12} color={AVAILABLE_GREEN} />
+                    <AppIcon family="ionicons" name="checkmark" size={12} color={AVAILABLE_GREEN} />
                   </View>
                 ) : null}
                 <CatalogLucideIcon icon={item.Icon} size={22} color={colors.text} />

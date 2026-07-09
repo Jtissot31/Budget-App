@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { MdiIconGlyph } from '@/components/MdiIconGlyph';
 import { RemoteLogoImage } from '@/components/IconFrame';
 import { getMerchantLogoUrls } from '@/lib/merchantLogo';
@@ -72,7 +72,7 @@ export function MerchantLogo({
       ) : icon || !useAutoLogo ? (
         <MdiIconGlyph name={resolvedIcon} size={glyphSize} color={colors.textMuted} />
       ) : (
-        <Ionicons name="storefront-outline" size={glyphSize} color={colors.textMuted} />
+        <AppIcon family="ionicons" name="storefront-outline" size={glyphSize} color={colors.textMuted} />
       )}
     </View>
   );

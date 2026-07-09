@@ -1,6 +1,6 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppIcon } from '@/components/icons/AppIcon';
 
-import { Ionicons } from '@expo/vector-icons';
 
 import {
 
@@ -100,7 +100,7 @@ function ConfirmDeleteDialog({
 
         <View style={[styles.iconWrap, { backgroundColor: colors.surfaceElevated }]}>
 
-          <Ionicons name="trash-outline" size={20} color={colors.textSecondary} />
+          <AppIcon family="ionicons" name="trash-outline" size={20} color={colors.textSecondary} />
 
         </View>
 

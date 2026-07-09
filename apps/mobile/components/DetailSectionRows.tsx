@@ -1,4 +1,5 @@
 import { useMemo, type ReactNode } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SurfaceCard } from '@/components/SurfaceCard';
@@ -185,7 +186,7 @@ export function DetailSingleLineRow({
       ]}
     >
       {row.icon ? (
-        <Ionicons
+        <AppIcon family="ionicons" 
           name={row.icon}
           size={17}
           color={colors.textMuted}

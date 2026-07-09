@@ -766,6 +766,13 @@ export const chartTokens = {
   fillBottom: 'rgba(0, 230, 118, 0)',
   negative: '#F85149',
   negativeLight: '#CF222E',
+  /** Apple Stocks–style intraday line — up day (iOS system green, not fintech accent) */
+  stockPositive: '#34C759',
+  /** Apple Stocks–style intraday line — down day (salmon/coral) */
+  stockNegative: '#E9967A',
+  stockChartBg: '#000000',
+  stockPeriodActiveBg: '#2C2C2E',
+  stockPeriodInactive: '#8E8E93',
   periodActiveBg: 'rgba(0, 230, 118, 0.2)',
   periodActiveBgLight: 'rgba(0, 168, 84, 0.14)',
 } as const;

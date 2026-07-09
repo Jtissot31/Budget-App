@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Animated,
   Easing,
@@ -95,11 +96,11 @@ export function PlanExplorerSection({
         style={({ pressed }) => [styles.headerRow, pressed && styles.pressed]}
       >
         <View style={styles.headerLeft}>
-          <MaterialIcons name="auto-awesome" size={16} color={PLAN_HUB.accent} />
+          <AppIcon family="material" name="auto-awesome" size={16} color={PLAN_HUB.accent} />
           <Text style={[styles.headerTitle, interSemiboldText]}>Explorer les plans</Text>
         </View>
         <Animated.View style={{ transform: [{ rotate: chevronSpin }] }}>
-          <MaterialIcons name="keyboard-arrow-down" size={22} color="rgba(255, 255, 255, 0.55)" />
+          <AppIcon family="material" name="keyboard-arrow-down" size={22} color="rgba(255, 255, 255, 0.55)" />
         </Animated.View>
       </Pressable>
 

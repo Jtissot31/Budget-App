@@ -1,6 +1,6 @@
 import { View, type StyleProp, type ViewStyle } from 'react-native';
+import { AppIcon } from '@/components/icons/AppIcon';
 
-import { Ionicons } from '@expo/vector-icons';
 
 import { LogoIconFrame } from '@/components/IconFrame';
 
@@ -126,7 +126,7 @@ export function UserPickedIconBadge({
 
       ) : (
 
-        <Ionicons name={icon as IconName} size={computedIconSize} color={glyphColor} />
+        <AppIcon family="ionicons" name={icon as IconName} size={computedIconSize} color={glyphColor} />
 
       )}
 

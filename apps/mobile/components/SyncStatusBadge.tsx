@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import { radius, spacing } from '@/constants/theme';
@@ -46,7 +47,7 @@ export function SyncStatusBadge({ status, style }: Props) {
 
   return (
     <View style={[styles.row, style]}>
-      <Ionicons name={meta.icon} size={13} color={tint} />
+      <AppIcon family="ionicons" name={meta.icon} size={13} color={tint} />
       <Text style={[styles.label, { color: tint }]}>{meta.label}</Text>
     </View>
   );

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
   jakartaMediumText,
@@ -117,7 +117,7 @@ export function InputBar({
             pressed && styles.pressed,
           ]}
         >
-          <Ionicons name="scan-outline" size={20} color={colors.textMuted} />
+          <AppIcon family="ionicons" name="scan-outline" size={20} color={colors.textMuted} />
         </Pressable>
 
         <TextInput
@@ -152,7 +152,7 @@ export function InputBar({
             pressed && styles.pressed,
           ]}
         >
-          <Ionicons name="mic-outline" size={20} color={colors.primary} />
+          <AppIcon family="ionicons" name="mic-outline" size={20} color={colors.primary} />
         </Pressable>
 
         <Pressable
@@ -169,7 +169,7 @@ export function InputBar({
             !canSend && styles.sendDisabled,
           ]}
         >
-          <Ionicons
+          <AppIcon family="ionicons"
             name="arrow-up"
             size={20}
             color={canSend ? (isLight ? '#FFFFFF' : '#111111') : colors.textDisabled}

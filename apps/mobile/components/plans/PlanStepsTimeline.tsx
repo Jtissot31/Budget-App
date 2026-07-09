@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { AppIcon } from '@/components/icons/AppIcon';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { spacing } from '@/constants/theme';
 import type { PlanFinancier } from '@/lib/dashboardPlansMock';
@@ -31,7 +32,7 @@ export function PlanStepsTimeline({ plan }: Props) {
                     isActive && { borderColor: PLAN_DETAIL.accent, backgroundColor: PLAN_DETAIL.accentMuted },
                   ]}
                 >
-                  <MaterialIcons
+                  <AppIcon family="material" 
                     name={step.completed ? 'check-circle' : 'radio-button-unchecked'}
                     size={20}
                     color={step.completed ? PLAN_DETAIL.accent : isActive ? PLAN_DETAIL.accent : PLAN_DETAIL.textMuted}

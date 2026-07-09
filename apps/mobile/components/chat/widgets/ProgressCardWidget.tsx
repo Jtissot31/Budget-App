@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
+import type { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { spacing } from '@/constants/theme';
 import type { ProgressCardData } from '@/types/aiWidgets';
@@ -33,7 +34,7 @@ export function ProgressCardWidget({ data }: Props) {
           {data.label.toUpperCase()}
         </Text>
         {iconName ? (
-          <MaterialCommunityIcons name={iconName} size={16} color={palette.green} />
+          <AppIcon family="material-community" name={iconName} size={16} color={palette.green} />
         ) : null}
       </View>
 
@@ -61,7 +62,7 @@ export function ProgressCardWidget({ data }: Props) {
 
       {data.status_line ? (
         <View style={styles.statusRow}>
-          <MaterialCommunityIcons name="check-circle-outline" size={14} color={palette.green} />
+          <AppIcon family="material-community" name="check-circle-outline" size={14} color={palette.green} />
           <Text
             style={[styles.statusText, { color: palette.textMuted, fontFamily: aiWidgetFonts.labelRegular }]}
           >

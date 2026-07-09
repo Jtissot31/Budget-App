@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { AlertCenterButton } from '@/components/AlertCenterButton';
 import { useRouter } from 'expo-router';
@@ -757,7 +756,7 @@ function AlertCard({
               accessibilityLabel={reminderEnabled ? 'Désactiver le rappel de paie' : 'Rappel le jour de la paie'}
               style={aStyles.bellButton}
             >
-              <Ionicons
+              <AppIcon family="ionicons"
                 name={reminderEnabled ? 'notifications' : 'notifications-outline'}
                 size={20}
                 color={reminderEnabled ? palette.warning : palette.subtext}
@@ -773,7 +772,7 @@ function AlertCard({
             accessibilityRole="button"
             accessibilityLabel="Réduire l'alerte"
           >
-            <Ionicons name="chevron-up" size={18} color={palette.subtext} />
+            <AppIcon family="ionicons" name="chevron-up" size={18} color={palette.subtext} />
           </Pressable>
         </View>
       </View>
@@ -820,7 +819,7 @@ function AlertCard({
             <>
               {/* Today caret — aligned to today on the bar */}
               <View style={[aStyles.todayArrow, { left: Math.max(0, Math.min(barPx - 12, todayX - 6)), top: 0 }]}>
-                <Ionicons name="caret-down" size={12} color={palette.subtext} />
+                <AppIcon family="ionicons" name="caret-down" size={12} color={palette.subtext} />
               </View>
 
               {/* Track — fill = elapsed time until today */}
@@ -848,7 +847,7 @@ function AlertCard({
                 ]}
               >
                 <View style={[aStyles.marker, { backgroundColor: palette.green }]}>
-                  <Ionicons name="wallet" size={14} color="#000" />
+                  <AppIcon family="ionicons" name="wallet" size={14} color="#000" />
                 </View>
               </View>
             </>
@@ -858,7 +857,7 @@ function AlertCard({
         {/* Legend */}
         <View style={aStyles.legend}>
           <View style={aStyles.legendRow}>
-            <Ionicons name="caret-down" size={12} color={palette.subtext} style={aStyles.legendIcon} />
+            <AppIcon family="ionicons" name="caret-down" size={12} color={palette.subtext} style={aStyles.legendIcon} />
             <Text style={[aStyles.legendText, { color: muted }]}>{`Aujourd'hui · ${todayLabel}`}</Text>
           </View>
           <View style={aStyles.legendRow}>
@@ -870,7 +869,7 @@ function AlertCard({
             </Text>
           </View>
           <View style={aStyles.legendRow}>
-            <Ionicons name="wallet" size={12} color={palette.green} style={aStyles.legendIcon} />
+            <AppIcon family="ionicons" name="wallet" size={12} color={palette.green} style={aStyles.legendIcon} />
             <Text style={[aStyles.legendText, { color: palette.green }]}>Dépôt de paie estimé · {paycheckLabel}</Text>
           </View>
         </View>
@@ -1672,7 +1671,7 @@ export default function HomeScreen() {
                   pressed && styles.pressed,
                 ]}
               >
-                <Ionicons name="close" size={18} color={colors.textSecondary} />
+                <AppIcon family="ionicons" name="close" size={18} color={colors.textSecondary} />
               </Pressable>
             </View>
 

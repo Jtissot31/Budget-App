@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { AppIcon } from '@/components/icons/AppIcon';
 
-import { Ionicons } from '@expo/vector-icons';
 
 import { containerSurfaceStyle, jakartaMediumText, moneyAmountTypography, radius } from '@/constants/theme';
 
@@ -70,7 +70,7 @@ function WealthAssetTopIcon({
 
   if (asset.type === 'real_estate') {
 
-    return <Ionicons name="home-outline" size={26} color={iconColor} />;
+    return <AppIcon family="ionicons" name="home-outline" size={26} color={iconColor} />;
 
   }
 
@@ -84,7 +84,7 @@ function WealthAssetTopIcon({
 
 
 
-  return <Ionicons name="diamond-outline" size={26} color={iconColor} />;
+  return <AppIcon family="ionicons" name="diamond-outline" size={26} color={iconColor} />;
 
 }
 

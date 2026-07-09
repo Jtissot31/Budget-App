@@ -1,5 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,7 +42,7 @@ export default function SavingsGoalsScreen() {
             }}
             style={({ pressed }) => [styles.backHit, pressed && styles.pressed]}
           >
-            <MaterialIcons name="arrow-back" size={22} color={colors.text} />
+            <AppIcon family="material" name="arrow-back" size={22} color={colors.text} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: colors.text }, interExtraBoldText]}>
             Objectifs d'épargne
@@ -82,7 +82,7 @@ export default function SavingsGoalsScreen() {
                 ]}
               >
                 <View style={styles.goalHeader}>
-                  <MaterialCommunityIcons name={goal.icon} size={22} color={colors.textSecondary} />
+                  <AppIcon family="material-community" name={goal.icon} size={22} color={colors.textSecondary} />
                   <View style={styles.goalHeaderCopy}>
                     <Text style={[styles.goalName, { color: colors.text }, interSemiboldText]} numberOfLines={2}>
                       {goal.name}
@@ -95,7 +95,7 @@ export default function SavingsGoalsScreen() {
                       </Text>
                     </View>
                   </View>
-                  <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
+                  <AppIcon family="material" name="chevron-right" size={20} color={colors.textMuted} />
                 </View>
 
                 <Text style={[styles.goalSummary, { color: colors.textMuted }, interMediumText]} numberOfLines={2}>

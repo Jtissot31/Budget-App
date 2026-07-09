@@ -1,5 +1,5 @@
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { containerSurfaceStyle, radius, spacing } from '@/constants/theme';
 import { typographyKit } from '@/constants/typographyKit';
 import { tapHaptic } from '@/lib/haptics';
@@ -49,13 +49,13 @@ export function ReceiptCaptureActions({
         style={({ pressed }) => [styles.premiumBtn, surface, pressed && styles.pressed]}
       >
         <View style={[styles.premiumIconWell, { backgroundColor: colors.surfaceElevated }]}>
-          <Ionicons name="receipt-outline" size={20} color={colors.text} />
+          <AppIcon family="ionicons" name="receipt-outline" size={20} color={colors.text} />
         </View>
         <View style={styles.premiumCopy}>
           <Text style={[styles.premiumLabel, { color: colors.text }]}>{label}</Text>
           <Text style={[styles.premiumHint, { color: colors.textMuted }]}>Scan, photo ou galerie</Text>
         </View>
-        <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
+        <AppIcon family="ionicons" name="chevron-forward" size={17} color={colors.textMuted} />
       </Pressable>
     );
   }
@@ -104,7 +104,7 @@ export function ReceiptCaptureActions({
           ]}
         >
           <View style={[styles.iconWell, { backgroundColor: action.accent ? colors.successMuted : colors.input }]}>
-            <Ionicons name={action.icon} size={18} color={action.accent ? colors.primary : colors.textSecondary} />
+            <AppIcon family="ionicons" name={action.icon} size={18} color={action.accent ? colors.primary : colors.textSecondary} />
           </View>
           <Text style={[styles.label, { color: colors.text }]}>{action.label}</Text>
           {!compact ? <Text style={[styles.hint, { color: colors.textMuted }]}>{action.hint}</Text> : null}

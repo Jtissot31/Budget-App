@@ -1,5 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -50,7 +50,7 @@ export function PlanDetailScreen({ planId }: Props) {
               pressed && styles.pressed,
             ]}
           >
-            <MaterialIcons name="arrow-back" size={22} color={PLAN_DETAIL.text} />
+            <AppIcon family="material" name="arrow-back" size={22} color={PLAN_DETAIL.text} />
           </Pressable>
           <View style={styles.topBarSpacer} />
           <Pressable
@@ -64,7 +64,7 @@ export function PlanDetailScreen({ planId }: Props) {
               pressed && styles.pressed,
             ]}
           >
-            <MaterialIcons name="more-horiz" size={22} color={PLAN_DETAIL.text} />
+            <AppIcon family="material" name="more-horiz" size={22} color={PLAN_DETAIL.text} />
           </Pressable>
         </View>
 
@@ -81,7 +81,7 @@ export function PlanDetailScreen({ planId }: Props) {
           >
             {/* 1 — Header (inchangé) */}
             <View style={styles.titleBlock}>
-              <MaterialCommunityIcons name={plan.icon} size={28} color={PLAN_DETAIL.textMuted} />
+              <AppIcon family="material-community" name={plan.icon} size={28} color={PLAN_DETAIL.textMuted} />
               <Text style={[styles.planTitle, { color: PLAN_DETAIL.text }, interExtraBoldText]}>{plan.name}</Text>
               <Text style={[styles.planSummary, { color: PLAN_DETAIL.textMuted }, interMediumText]}>
                 {plan.summary}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Pressable,
   RefreshControl,
@@ -7,7 +8,6 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChildSupportBreakdownChart } from '@/components/ChildSupportBreakdownChart';
@@ -253,7 +253,7 @@ export default function LoanDetailScreen() {
             ]}
             onPress={() => router.back()}
           >
-            <Ionicons name="chevron-back" size={22} color={colors.text} />
+            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
           </Pressable>
           <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
             {displayTitle || 'Dette'}

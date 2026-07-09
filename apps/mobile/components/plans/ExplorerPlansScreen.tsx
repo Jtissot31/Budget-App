@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   ActivityIndicator,
   Pressable,
@@ -106,7 +107,7 @@ export function ExplorerPlansScreen() {
             onPress={handleBack}
             style={({ pressed }) => [planFinanceIconButtonStyle(), pressed && styles.pressed]}
           >
-            <MaterialIcons name="arrow-back" size={22} color={pf.text} />
+            <AppIcon family="material" name="arrow-back" size={22} color={pf.text} />
           </Pressable>
           <Text style={[styles.headerTitle, planFinanceFonts.sectionTitle]}>Explorer les plans</Text>
           <View style={styles.headerSpacer} />
@@ -134,7 +135,7 @@ export function ExplorerPlansScreen() {
             {suggestedPlans.length > 0 ? (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <MaterialIcons name="auto-awesome" size={16} color={pf.accent} />
+                  <AppIcon family="material" name="auto-awesome" size={16} color={pf.accent} />
                   <Text style={[styles.sectionLabel, interSemiboldText]}>SUGGÉRÉ POUR TOI</Text>
                 </View>
                 <View style={styles.cardList}>

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -11,7 +13,6 @@ import {
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
 import { MotiView } from 'moti';
 import { CategoryBudgetProgress } from '@/components/CategoryBudgetProgress';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
@@ -389,7 +390,7 @@ function PaymentFormModal({
                   hitSlop={12}
                   style={[styles.sheetClose, themed.closeButton]}
                 >
-                  <Ionicons name="close" size={19} color={themeColors.textMuted} />
+                  <AppIcon family="ionicons" name="close" size={19} color={themeColors.textMuted} />
                 </Pressable>
               </View>
 
@@ -687,7 +688,7 @@ function PaymentFormModal({
                         }}
                         style={[styles.categoryChip, themed.control, styles.chipShell, on && themed.selected]}
                       >
-                        <Ionicons
+                        <AppIcon family="ionicons"
                           name={getCategoryIconName(category)}
                           size={14}
                           color={on ? themeColors.primary : themeColors.textSecondary}
@@ -715,7 +716,7 @@ function PaymentFormModal({
                       }}
                       style={({ pressed }) => [styles.categoryMoreChip, themed.control, pressed && styles.pressed]}
                     >
-                      <Ionicons name="ellipsis-horizontal" size={18} color={themeColors.textMuted} />
+                      <AppIcon family="ionicons" name="ellipsis-horizontal" size={18} color={themeColors.textMuted} />
                     </Pressable>
                   ) : null}
                 </View>
@@ -745,7 +746,7 @@ function PaymentFormModal({
                   pressed && { opacity: 0.72 },
                 ]}
               >
-                <Ionicons name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
+                <AppIcon family="ionicons" name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
                 <Text style={destructiveTextActionStyle(isLight)}>Supprimer</Text>
               </Pressable>
             ) : null}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   ActivityIndicator,
   Alert,
@@ -20,7 +21,6 @@ import Svg, { Path } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
 import { Image } from 'expo-image';
 import * as Sharing from 'expo-sharing';
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AddArticleSheet, isInlineArticleScrollTargetReady, type InlineArticleScrollTarget } from '@/components/AddArticleSheet';
@@ -617,7 +617,7 @@ function ReceiptPreviewModal({
               pressed && styles.pressed,
             ]}
           >
-            <Ionicons name="close" size={19} color={colors.textMuted} />
+            <AppIcon family="ionicons" name="close" size={19} color={colors.textMuted} />
           </Pressable>
         </View>
 
@@ -649,7 +649,7 @@ function ReceiptPreviewModal({
             {sharing ? (
               <ActivityIndicator color={colors.text} size="small" />
             ) : (
-              <Ionicons name="share-outline" size={FLOATING_FAB_ICON_SIZE} color={colors.text} />
+              <AppIcon family="ionicons" name="share-outline" size={FLOATING_FAB_ICON_SIZE} color={colors.text} />
             )}
           </Pressable>
 
@@ -674,7 +674,7 @@ function ReceiptPreviewModal({
             {downloading ? (
               <ActivityIndicator color="#000000" size="small" />
             ) : (
-              <Ionicons name="download-outline" size={FLOATING_FAB_ICON_SIZE} color="#000000" />
+              <AppIcon family="ionicons" name="download-outline" size={FLOATING_FAB_ICON_SIZE} color="#000000" />
             )}
           </Pressable>
         </View>
@@ -824,7 +824,7 @@ function TransactionShareCard({
                 { backgroundColor: SHARE_THEME.successMuted, borderColor: `${SHARE_THEME.success}33` },
               ]}
             >
-              <Ionicons name="sparkles-outline" size={14} color={SHARE_THEME.success} />
+              <AppIcon family="ionicons" name="sparkles-outline" size={14} color={SHARE_THEME.success} />
             </View>
             <Text style={[detailSectionLabelStyle(), shareCardStyles.insightEyebrow, { color: SHARE_THEME.textMuted }]}>
               {insight.title}
@@ -856,7 +856,7 @@ function TransactionShareCard({
       {transaction.type === 'expense' ? (
         <View style={[shareCardStyles.surfaceCard, { backgroundColor: SHARE_THEME.surface, borderColor: SHARE_THEME.border }]}>
           <View style={shareCardStyles.articlesHeader}>
-            <Ionicons name="receipt-outline" size={12} color={SHARE_THEME.textMuted} />
+            <AppIcon family="ionicons" name="receipt-outline" size={12} color={SHARE_THEME.textMuted} />
             <Text style={[detailSectionLabelStyle(), { color: SHARE_THEME.textMuted }]}>ARTICLES</Text>
           </View>
 
@@ -913,7 +913,7 @@ function TransactionShareCard({
                   />
                 ) : (
                   <View style={[shareCardStyles.shareReceiptThumbnailFallback, { backgroundColor: SHARE_THEME.surfaceElevated }]}>
-                    <Ionicons name="receipt-outline" size={16} color={SHARE_THEME.textMuted} />
+                    <AppIcon family="ionicons" name="receipt-outline" size={16} color={SHARE_THEME.textMuted} />
                   </View>
                 )}
                 <View style={shareCardStyles.shareReceiptCopy}>
@@ -926,7 +926,7 @@ function TransactionShareCard({
       ) : null}
 
       <View style={shareCardStyles.footer}>
-        <Ionicons name="wallet-outline" size={13} color={SHARE_THEME.textMuted} />
+        <AppIcon family="ionicons" name="wallet-outline" size={13} color={SHARE_THEME.textMuted} />
         <Text style={[shareCardStyles.footerText, { color: SHARE_THEME.textMuted }]}>Budget OS</Text>
       </View>
     </View>
@@ -1072,7 +1072,7 @@ function TransactionReceiptCard({
       >
       {/* Header: receipt icon + "ARTICLES" eyebrow only */}
       <View style={styles.receiptHeaderLeft}>
-        <Ionicons name="receipt-outline" size={12} color={colors.textMuted} />
+        <AppIcon family="ionicons" name="receipt-outline" size={12} color={colors.textMuted} />
         <Text style={[detailSectionLabelStyle(), { color: colors.textMuted }]}>ARTICLES</Text>
       </View>
 
@@ -1125,7 +1125,7 @@ function TransactionReceiptCard({
                 onPress={() => onRemoveArticle(index)}
                 style={({ pressed }) => [styles.receiptArticleRemoveBtn, pressed && styles.pressed]}
               >
-                <Ionicons name="close" size={13} color={colors.textMuted} />
+                <AppIcon family="ionicons" name="close" size={13} color={colors.textMuted} />
               </Pressable>
             </View>
           ))}
@@ -1180,7 +1180,7 @@ function TransactionReceiptCard({
             pressed && styles.pressed,
           ]}
         >
-          <Ionicons name="add-outline" size={14} color={colors.textMuted} />
+          <AppIcon family="ionicons" name="add-outline" size={14} color={colors.textMuted} />
           <Text style={[styles.receiptJoinButtonText, typographyKit.metaMedium, { color: colors.textMuted }]}>
             Ajouter
           </Text>
@@ -1211,7 +1211,7 @@ function TransactionReceiptCard({
               />
             ) : (
               <View style={[styles.receiptThumbnailFallback, { backgroundColor: receiptWell }]}>
-                <Ionicons name="receipt-outline" size={16} color={colors.textMuted} />
+                <AppIcon family="ionicons" name="receipt-outline" size={16} color={colors.textMuted} />
               </View>
             )}
             <View style={styles.receiptStatusCopy}>
@@ -1221,7 +1221,7 @@ function TransactionReceiptCard({
               </Text>
             </View>
             {canPreviewReceipt ? (
-              <Ionicons name="chevron-forward" size={15} color={colors.textMuted} />
+              <AppIcon family="ionicons" name="chevron-forward" size={15} color={colors.textMuted} />
             ) : null}
           </Pressable>
         </>
@@ -1240,7 +1240,7 @@ function TransactionReceiptCard({
               pressed && styles.pressed,
             ]}
           >
-            <Ionicons name="scan-outline" size={16} color={colors.textMuted} />
+            <AppIcon family="ionicons" name="scan-outline" size={16} color={colors.textMuted} />
             <View style={styles.receiptScanCopy}>
               <Text style={[styles.receiptScanLabel, typographyKit.bodyMedium, { color: colors.text }]}>
                 Scan automatique des articles
@@ -1249,7 +1249,7 @@ function TransactionReceiptCard({
                 Galerie ou caméra
               </Text>
             </View>
-            <Ionicons
+            <AppIcon family="ionicons"
               name={scanSourcePickerOpen ? 'chevron-up' : 'chevron-down'}
               size={15}
               color={colors.textMuted}
@@ -1271,7 +1271,7 @@ function TransactionReceiptCard({
                   pressed && styles.pressed,
                 ]}
               >
-                <Ionicons name="images-outline" size={16} color={colors.text} />
+                <AppIcon family="ionicons" name="images-outline" size={16} color={colors.text} />
                 <Text style={[styles.receiptScanSourceLabel, typographyKit.metaMedium, { color: colors.text }]}>
                   Galerie
                 </Text>
@@ -1290,7 +1290,7 @@ function TransactionReceiptCard({
                   pressed && styles.pressed,
                 ]}
               >
-                <Ionicons name="camera-outline" size={16} color={colors.text} />
+                <AppIcon family="ionicons" name="camera-outline" size={16} color={colors.text} />
                 <Text style={[styles.receiptScanSourceLabel, typographyKit.metaMedium, { color: colors.text }]}>
                   Caméra
                 </Text>
@@ -2064,7 +2064,7 @@ export default function TransactionDetailScreen() {
             ]}
             onPress={() => router.back()}
           >
-            <Ionicons name="chevron-back" size={22} color={colors.text} />
+            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
           </Pressable>
           <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
             Détail de transaction

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Modal,
   Pressable,
@@ -7,7 +8,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { PremiumSwitch } from '@/components/PremiumSwitch';
@@ -90,7 +90,7 @@ export function ContactFormModal({ visible, bottomInset = 0, onClose, onSaved }:
             onPress={onClose}
             style={[styles.closeButton, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
           >
-            <Ionicons name="close" size={19} color={colors.textMuted} />
+            <AppIcon family="ionicons" name="close" size={19} color={colors.textMuted} />
           </Pressable>
         </View>
 

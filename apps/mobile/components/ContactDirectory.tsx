@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppIcon } from '@/components/icons/AppIcon';
 
-import { Ionicons } from '@expo/vector-icons';
 
 import { Image } from 'expo-image';
 
@@ -94,7 +94,7 @@ export function ContactRow({
 
             ) : (
 
-              <Ionicons name="person-outline" size={22} color={colors.textSecondary} />
+              <AppIcon family="ionicons" name="person-outline" size={22} color={colors.textSecondary} />
 
             )}
 
@@ -112,7 +112,7 @@ export function ContactRow({
 
           <View style={styles.chevronSlot}>
 
-            <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+            <AppIcon family="ionicons" name="chevron-forward" size={14} color={colors.textMuted} />
 
           </View>
 

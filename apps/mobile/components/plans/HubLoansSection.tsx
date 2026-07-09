@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { HubSectionHeader } from '@/components/plans/HubSectionHeader';
@@ -145,7 +145,7 @@ export function HubLoansSection() {
             style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}
           >
             <Text style={[styles.linkLabel, { color: colors.textSecondary }]}>Voir tout dans Portefeuille</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
           </Pressable>
         ) : null}
         <Pressable
@@ -161,7 +161,7 @@ export function HubLoansSection() {
             pressed && floatingGlassButtonPressed,
           ]}
         >
-          <Ionicons name="add" size={18} color={colors.textSecondary} />
+          <AppIcon family="ionicons" name="add" size={18} color={colors.textSecondary} />
           <Text style={[styles.addCtaLabel, { color: colors.text }]}>Ajouter</Text>
         </Pressable>
       </View>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassContainer } from '@/components/GlassContainer';
@@ -127,7 +127,7 @@ export default function MerchantReceiptsScreen() {
             ]}
             onPress={() => router.back()}
           >
-            <Ionicons name="chevron-back" size={22} color={colors.text} />
+            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
           </Pressable>
           <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
             Bibliothèque de reçus
@@ -140,7 +140,7 @@ export default function MerchantReceiptsScreen() {
         </Text>
 
         <View style={[styles.searchRow, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder, borderWidth: 1 }]}>
-          <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+          <AppIcon family="ionicons" name="search-outline" size={18} color={colors.textMuted} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
             placeholder="Rechercher un article"
@@ -181,7 +181,7 @@ export default function MerchantReceiptsScreen() {
                   <Image source={{ uri: item.receiptUri ?? '' }} style={styles.thumbnail} contentFit="cover" />
                 ) : (
                   <View style={[styles.thumbnailFallback, { backgroundColor: colors.surfaceElevated }]}>
-                    <Ionicons name="receipt-outline" size={18} color={colors.textMuted} />
+                    <AppIcon family="ionicons" name="receipt-outline" size={18} color={colors.textMuted} />
                   </View>
                 )}
                 <View style={styles.rowBody}>

@@ -1,5 +1,6 @@
 // Budget categories: clean slate — rebuild structure/logic here (no legacy donut/hit-test).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   FlatList,
   Pressable,
@@ -8,7 +9,6 @@ import {
   View,
   type ListRenderItem,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -255,7 +255,7 @@ export default function BudgetScreen() {
                 pressed && pageStyles.pressed,
               ]}
             >
-              <Ionicons name="add" size={20} color={colors.textSecondary} />
+              <AppIcon family="ionicons" name="add" size={20} color={colors.textSecondary} />
             </Pressable>
           ) : null}
         </View>
@@ -305,7 +305,7 @@ export default function BudgetScreen() {
     () => (
       <DashboardCard padding={spacing.lg} innerStyle={pageStyles.emptyCard}>
         <View style={[pageStyles.emptyIcon, { backgroundColor: colors.surfaceElevated }]}>
-          <Ionicons name="pie-chart-outline" size={22} color={colors.textMuted} />
+          <AppIcon family="ionicons" name="pie-chart-outline" size={22} color={colors.textMuted} />
         </View>
         <Text style={[pageStyles.emptyTitle, typographyKit.bodyBold, { color: colors.text }]}>
           Aucune catégorie budget
@@ -327,7 +327,7 @@ export default function BudgetScreen() {
               pressed && pageStyles.pressed,
             ]}
           >
-            <Ionicons name="add" size={16} color={colors.background} />
+            <AppIcon family="ionicons" name="add" size={16} color={colors.background} />
             <Text style={[pageStyles.emptyCtaText, typographyKit.bodyBold, { color: colors.background }]}>
               Ajouter une catégorie
             </Text>

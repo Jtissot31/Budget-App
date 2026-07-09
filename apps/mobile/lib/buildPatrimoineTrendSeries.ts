@@ -35,7 +35,7 @@ function assetVolatility(asset: WealthAsset): number {
 }
 
 /** Increase visible jaggedness while keeping monthly direction stable. */
-const PATRIMOINE_VOLATILITY_MULTIPLIER = 2.35;
+const PATRIMOINE_VOLATILITY_MULTIPLIER = 3.4;
 
 function hashNoise(seed: string, index: number): number {
   let hash = 2166136261;
@@ -80,15 +80,15 @@ function assetValueAtMonthAnchor(
   const carrier = Math.sin(Math.PI * u);
   const phaseSeed = hashNoise(asset.id || asset.name || 'asset', currentMonthIndex);
   const highFreq =
-    Math.sin(Math.PI * 6 * u + phaseSeed * Math.PI) * 0.62 +
-    Math.sin(Math.PI * 12 * u + phaseSeed * Math.PI * 0.35) * 0.34 +
-    hashNoise(asset.name || asset.id || 'asset', anchorIndex) * 0.42;
+    Math.sin(Math.PI * 6 * u + phaseSeed * Math.PI) * 0.78 +
+    Math.sin(Math.PI * 12 * u + phaseSeed * Math.PI * 0.35) * 0.46 +
+    hashNoise(asset.name || asset.id || 'asset', anchorIndex) * 0.56;
   const amplitude =
     Math.max(end, start) * assetVolatility(asset) * PATRIMOINE_VOLATILITY_MULTIPLIER * carrier;
   const rawWav = amplitude * highFreq;
   const maxDeviation = Math.max(
-    Math.max(end, start) * 0.22,
-    Math.abs(end - start) * 0.8,
+    Math.max(end, start) * 0.3,
+    Math.abs(end - start) * 0.95,
   );
   const wav = Math.max(-maxDeviation, Math.min(maxDeviation, rawWav));
   let value = blend + wav;

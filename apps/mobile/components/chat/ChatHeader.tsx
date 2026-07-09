@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { useRouter } from 'expo-router';
 import {
   jakartaMediumText,
@@ -57,7 +57,7 @@ export function ChatHeader({ status, topInset }: Props) {
           pressed && styles.pressed,
         ]}
       >
-        <Ionicons name="close" size={20} color={colors.text} />
+        <AppIcon family="ionicons" name="close" size={20} color={colors.text} />
       </Pressable>
 
       <View style={styles.center}>

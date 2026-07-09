@@ -1,5 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { typography } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -44,7 +44,7 @@ export function ModifierButton({
         <ActivityIndicator size="small" color={colors.text} />
       ) : (
         <>
-          <Ionicons name={MODIFIER_ICON_NAME} size={MODIFIER_ICON_SIZE} color={colors.text} />
+          <AppIcon family="ionicons" name={MODIFIER_ICON_NAME} size={MODIFIER_ICON_SIZE} color={colors.text} />
           <Text style={[styles.label, { color: colors.text }]}>Modifier</Text>
         </>
       )}

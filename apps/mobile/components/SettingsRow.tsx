@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { PremiumSwitch } from '@/components/PremiumSwitch';
 import {
@@ -153,7 +153,7 @@ export function SettingsNavigationRow({
             {value}
           </Text>
         ) : null}
-        {accessory ?? <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />}
+        {accessory ?? <AppIcon family="ionicons" name="chevron-forward" size={18} color={colors.textMuted} />}
       </View>
     </RowShell>
   );

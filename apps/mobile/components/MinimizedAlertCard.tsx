@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppIcon } from '@/components/icons/AppIcon';
 
-import { Ionicons } from '@expo/vector-icons';
 
 import {
 
@@ -202,7 +202,7 @@ export function MinimizedAlertCard({
 
           >
 
-            <Ionicons
+            <AppIcon family="ionicons" 
 
               name={reminderEnabled ? 'notifications' : 'notifications-outline'}
 

@@ -4,9 +4,10 @@ import {
   type MockStockHolding,
   mockStockPortfolioTotalValue,
 } from '@/constants/mockStockPortfolio';
+import { generateIntradaySparkline } from '@/lib/intradayStockSparkline';
 
-/** Enough daily samples for 3M window (75) with headroom. */
-export const PATRIMOINE_MOCK_DAILY_POINT_COUNT = 90;
+/** Enough daily samples for 1A window (365) with headroom. */
+export const PATRIMOINE_MOCK_DAILY_POINT_COUNT = 400;
 
 const DAY_LABELS_FR = ['DIM', 'LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM'];
 
@@ -45,11 +46,11 @@ function dayLabelFr(date: Date, isToday: boolean): string {
 
 /**
  * Reconstructs daily share prices backward from today.
- * Recent window follows sparkline ratios; older days compound volatile daily returns.
+ * Recent window follows intraday sparkline ratios; older days compound volatile daily returns.
  */
-function buildHoldingDailyPrices(holding: MockStockHolding, dayCount: number): number[] {
+function buildHoldingDailyPrices(holding: MockStockHolding, dayCount: number, now: Date): number[] {
   const prices = new Array<number>(dayCount);
-  const spark = holding.sparkline;
+  const spark = generateIntradaySparkline(holding, { now });
   const sparkLen = spark.length;
   const endPrice = holding.pricePerShare;
 
@@ -96,7 +97,7 @@ export function buildPatrimoineTrendFromMockStocks(
     return [];
   }
 
-  const holdingPrices = holdings.map((holding) => buildHoldingDailyPrices(holding, dayCount));
+  const holdingPrices = holdings.map((holding) => buildHoldingDailyPrices(holding, dayCount, now));
   const todayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
   return Array.from({ length: dayCount }, (_, dayIndex) => {

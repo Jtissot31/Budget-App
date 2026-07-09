@@ -1,6 +1,6 @@
 import { memo } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { GoalProgressFill } from '@/components/GoalProgressFill';
 import { MdiIcon } from '@/components/MdiIcon';
 import type { IconName } from '@/constants/categoryOptions';
@@ -34,7 +34,7 @@ function GoalProgressionIcon({ icon, color }: { icon: string; color: string }) {
   return isMdi ? (
     <MdiIcon name={mdiName} size={16} color={color} />
   ) : (
-    <Ionicons name={icon as IconName} size={16} color={color} />
+    <AppIcon family="ionicons" name={icon as IconName} size={16} color={color} />
   );
 }
 

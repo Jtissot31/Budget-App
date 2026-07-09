@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
@@ -252,7 +253,7 @@ export function SegmentedTabs<T extends string>({
             >
               <View style={styles.labelRow}>
                 {tab.icon ? (
-                  <Ionicons name={tab.icon} size={sc.iconSize} color={selected ? activeColor : inactiveColor} />
+                  <AppIcon family="ionicons" name={tab.icon} size={sc.iconSize} color={selected ? activeColor : inactiveColor} />
                 ) : null}
                 <Text
                   style={[

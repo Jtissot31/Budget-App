@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -258,7 +258,7 @@ export default function TransactionsInsightsScreen() {
               }}
               style={({ pressed }) => [styles.reviewBackHit, pressed && styles.pressed]}
             >
-              <Ionicons name="chevron-back" size={24} color={colors.text} />
+              <AppIcon family="ionicons" name="chevron-back" size={24} color={colors.text} />
             </Pressable>
             <Text style={[styles.reviewPageTitle, { color: colors.text }]} numberOfLines={1}>
               À compléter
@@ -295,7 +295,7 @@ export default function TransactionsInsightsScreen() {
                 pressed && styles.pressed,
               ]}
             >
-              <Ionicons name="chevron-back" size={22} color={colors.text} />
+              <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
             </Pressable>
             <Text style={[styles.stackTitle, { color: colors.text }]} numberOfLines={1}>
               Analyse dépenses
@@ -344,7 +344,7 @@ export default function TransactionsInsightsScreen() {
                 pressed && styles.pressed,
               ]}
             >
-              <Ionicons name="checkmark-circle-outline" size={18} color={colors.background} />
+              <AppIcon family="ionicons" name="checkmark-circle-outline" size={18} color={colors.background} />
               <Text style={[typographyKit.bodyBold, { color: colors.background }]}>
                 Valider
               </Text>
@@ -379,7 +379,7 @@ export default function TransactionsInsightsScreen() {
       innerStyle={[styles.emptyCard, isReviewMode && styles.emptyCardReview]}
     >
       <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceElevated }]}>
-        <Ionicons
+        <AppIcon family="ionicons"
           name="checkmark-done-outline"
           size={22}
           color={isReviewMode ? colors.accentGreen : colors.textMuted}

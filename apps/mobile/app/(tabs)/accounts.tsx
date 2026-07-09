@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -16,7 +18,6 @@ import {
 import type { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,8 +29,8 @@ import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { HubSectionHeader } from '@/components/plans/HubSectionHeader';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { PageTransition } from '@/components/PageTransition';
+import { PatrimoineHoldingsSections } from '@/components/PatrimoineHoldingsSections';
 import { ReorderableAccountBalanceList } from '@/components/ReorderableAccountBalanceList';
-import { StockPortfolioSection } from '@/components/StockPortfolioSection';
 import { MOCK_STOCK_HOLDINGS } from '@/constants/mockStockPortfolio';
 import { WealthMaterialIcon } from '@/components/WealthMaterialIcon';
 import { GlassContainer } from '@/components/GlassContainer';
@@ -39,7 +40,11 @@ import { formValidationError, type FormFeedback } from '@/lib/formFeedback';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import { NetWorthAmountRow } from '@/components/NetWorthAmountRow';
 import {
+  ALL_NET_WORTH_CHART_PERIODS,
+  PATRIMOINE_NET_WORTH_CHART_PERIODS,
+  PATRIMOINE_NET_WORTH_PERIOD_LABELS,
   PortfolioChartCard,
+  type NetWorthChartPeriod,
   type PortfolioChartCardHandle,
   type PortfolioChartCardPeriodData,
   CHART_FULL_BLEED_RIGHT_INSET,
@@ -79,12 +84,13 @@ import {
 } from '@/constants/theme';
 import {
   buildCashflowTrendFromTransactions,
+  buildCashflowTrendForChartPeriod,
   getCurrentCashflowTotal,
 } from '@/lib/buildCashflowTrendSeries';
 import {
-  buildPatrimoineTrendFromWealthAssets,
-  getCurrentPatrimoineTotal,
-} from '@/lib/buildPatrimoineTrendSeries';
+  buildPatrimoineTrendFromMockStocks,
+  getCurrentPatrimoineTotalFromMockStocks,
+} from '@/lib/buildPatrimoineTrendFromMockStocks';
 import {
   getCurrentMonthAccountMoneyFlows,
   deleteLoan,
@@ -153,7 +159,6 @@ import {
   formatChildSupportPaymentDayLabel,
   parseChildSupportFromLoan,
 } from '@/lib/childSupportLoan';
-import { userPickedIconGlyphSize, userPickedIconWellStyle } from '@/lib/userPickedIcon';
 import {
   getNetWorthChartScope,
   setNetWorthChartScope,
@@ -366,6 +371,20 @@ const CHART_HUB_LAYOUT = {
   cardPadding: 0,
   plotHorizontalInset: 0,
   plotHorizontalInsetRight: CHART_FULL_BLEED_RIGHT_INSET,
+} as const;
+const PATRIMOINE_PERIOD_REAL_WINDOW_OVERRIDE = {
+  '1J': 2,
+  '1S': 8,
+  '1M': 30,
+  '6M': 180,
+  '1A': 365,
+} as const;
+const PATRIMOINE_PERIOD_MAX_POINTS_OVERRIDE = {
+  '1J': 2,
+  '1S': 8,
+  '1M': 30,
+  '6M': 42,
+  '1A': 56,
 } as const;
 
 const PAGE_SECTION_BREAK = spacing.lg;
@@ -699,8 +718,8 @@ export default function AccountsScreen() {
   );
   const loansById = useMemo(() => new Map(loans.map((loan) => [loan.id, loan])), [loans]);
   const chartPatrimoineTotal = useMemo(
-    () => getCurrentPatrimoineTotal(patrimoineWealthAssets, loansById),
-    [patrimoineWealthAssets, loansById],
+    () => getCurrentPatrimoineTotalFromMockStocks(MOCK_STOCK_HOLDINGS),
+    [],
   );
   const chartCashflowTotal = useMemo(
     () => getCurrentCashflowTotal(accounts, transactions),
@@ -719,9 +738,25 @@ export default function AccountsScreen() {
   const portfolioChartPoints = useMemo(
     () =>
       netWorthChartScope === 'inclusive'
-        ? buildPatrimoineTrendFromWealthAssets(patrimoineWealthAssets, loansById)
+        ? buildPatrimoineTrendFromMockStocks(MOCK_STOCK_HOLDINGS)
         : buildCashflowTrendFromTransactions(accounts, transactions),
-    [netWorthChartScope, patrimoineWealthAssets, loansById, accounts, transactions],
+    [netWorthChartScope, accounts, transactions],
+  );
+  const getCashflowChartPoints = useCallback(
+    (period: NetWorthChartPeriod) =>
+      buildCashflowTrendForChartPeriod(accounts, transactions, period),
+    [accounts, transactions],
+  );
+  const portfolioChartAllowedPeriods = useMemo(
+    () =>
+      netWorthChartScope === 'inclusive'
+        ? PATRIMOINE_NET_WORTH_CHART_PERIODS
+        : ALL_NET_WORTH_CHART_PERIODS,
+    [netWorthChartScope],
+  );
+  const portfolioChartPeriodLabels = useMemo(
+    () => (netWorthChartScope === 'inclusive' ? PATRIMOINE_NET_WORTH_PERIOD_LABELS : undefined),
+    [netWorthChartScope],
   );
   const logoSourceName = institution.trim() || name.trim();
   const selectedInstitutionLogo = useMemo(
@@ -1580,8 +1615,12 @@ export default function AccountsScreen() {
   };
 
   const portfolioBottomPadding = useMemo(
-    () => portfolioScrollBottomPadding(insets.bottom, MOCK_STOCK_HOLDINGS.length),
-    [insets.bottom],
+    () =>
+      portfolioScrollBottomPadding(
+        insets.bottom,
+        MOCK_STOCK_HOLDINGS.length + patrimoineWealthAssets.length,
+      ),
+    [insets.bottom, patrimoineWealthAssets.length],
   );
 
   return (
@@ -1675,10 +1714,22 @@ export default function AccountsScreen() {
             >
               <PortfolioChartCard
                 ref={portfolioChartRef}
-                points={portfolioChartPoints}
+                points={netWorthChartScope === 'inclusive' ? portfolioChartPoints : []}
+                getChartPoints={
+                  netWorthChartScope === 'accounts_only' ? getCashflowChartPoints : undefined
+                }
                 onPeriodData={handleChartPeriodData}
+                allowedPeriods={portfolioChartAllowedPeriods}
+                periodLabels={portfolioChartPeriodLabels}
+                periodRealWindowOverride={
+                  netWorthChartScope === 'inclusive' ? PATRIMOINE_PERIOD_REAL_WINDOW_OVERRIDE : undefined
+                }
+                periodMaxChartPointsOverride={
+                  netWorthChartScope === 'inclusive' ? PATRIMOINE_PERIOD_MAX_POINTS_OVERRIDE : undefined
+                }
                 plotHorizontalInset={chartHubLayoutProps.plotHorizontalInset}
                 plotHorizontalInsetRight={chartHubLayoutProps.plotHorizontalInsetRight}
+                selectionPersistence="release"
               />
             </Pressable>
           </DashboardCard>
@@ -1693,7 +1744,6 @@ export default function AccountsScreen() {
               accounts={visibleAccounts}
               onAccountPress={openAccountDetail}
               onAddAccount={openNewAccountForm}
-              onManageAccounts={openAccountManager}
               onReorder={handleVisibleAccountsReorder}
               onDragStateChange={setIsAccountListDragging}
             />
@@ -1703,16 +1753,17 @@ export default function AccountsScreen() {
             onLayout={(event) => handlePortfolioSectionLayout('wealth', event)}
             style={[styles.patrimoineSectionBlock, { paddingBottom: portfolioBottomPadding }]}
           >
-            <View style={styles.listHeader}>
-              <DashboardSectionLabel>Portefeuille d&apos;actions</DashboardSectionLabel>
-              <View style={[styles.sectionCountBadge, { backgroundColor: colors.surfaceElevated }]}>
-                <Text style={[styles.sectionCountBadgeLabel, { color: colors.textSecondary }]}>
-                  {MOCK_STOCK_HOLDINGS.length}
-                </Text>
-              </View>
-            </View>
-
-            <StockPortfolioSection />
+            <PatrimoineHoldingsSections
+              stockHoldingsCount={MOCK_STOCK_HOLDINGS.length}
+              wealthAssets={patrimoineWealthAssets}
+              loansById={loansById}
+              onAddWealthAsset={openNewWealthForm}
+              onOpenWealthAsset={(asset) => {
+                tapHaptic();
+                skipPortfolioScrollToTopOnceRef.current = true;
+                router.push({ pathname: '/wealth-asset-detail', params: { id: asset.id } });
+              }}
+            />
           </View>
         )}
       </ScrollView>
@@ -1756,7 +1807,7 @@ export default function AccountsScreen() {
                 ]}
                 onPress={closeAccountManager}
               >
-                <Ionicons name="close" size={20} color={colors.textSecondary} />
+                <AppIcon family="ionicons" name="close" size={20} color={colors.textSecondary} />
               </Pressable>
             </View>
 
@@ -1788,7 +1839,7 @@ export default function AccountsScreen() {
                         ]}
                         onPress={() => void moveAccount(account.id, -1)}
                       >
-                        <Ionicons name="chevron-up" size={16} color={colors.textSecondary} />
+                        <AppIcon family="ionicons" name="chevron-up" size={16} color={colors.textSecondary} />
                       </Pressable>
                       <Pressable
                         accessibilityRole="button"
@@ -1802,7 +1853,7 @@ export default function AccountsScreen() {
                         ]}
                         onPress={() => void moveAccount(account.id, 1)}
                       >
-                        <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
+                        <AppIcon family="ionicons" name="chevron-down" size={16} color={colors.textSecondary} />
                       </Pressable>
                       <Pressable
                         accessibilityRole="switch"
@@ -1818,7 +1869,7 @@ export default function AccountsScreen() {
                         ]}
                         onPress={() => void toggleAccountVisibility(account.id)}
                       >
-                        <Ionicons
+                        <AppIcon family="ionicons"
                           name={account.hidden ? 'eye-off-outline' : 'eye-outline'}
                           size={16}
                           color={account.hidden ? colors.textMuted : colors.textSecondary}
@@ -1870,7 +1921,7 @@ export default function AccountsScreen() {
             <View style={styles.formHead}>
               <View style={styles.logoPreviewWrap}>
                 <IconFrame size={52}>
-                  <Ionicons name="wallet-outline" size={22} color={colors.primary} />
+                  <AppIcon family="ionicons" name="wallet-outline" size={22} color={colors.primary} />
                 </IconFrame>
               </View>
               <View style={styles.formHeadCopy}>
@@ -1886,7 +1937,7 @@ export default function AccountsScreen() {
                   <LogoIconFrame uri={previewLogo} size={52} />
                 ) : (
                   <IconFrame size={52}>
-                    <Ionicons name="business-outline" size={22} color={colors.textMuted} />
+                    <AppIcon family="ionicons" name="business-outline" size={22} color={colors.textMuted} />
                   </IconFrame>
                 )}
                 <Pressable
@@ -1902,7 +1953,7 @@ export default function AccountsScreen() {
                     setShowLogoPicker((visible) => !visible);
                   }}
                 >
-                  <Ionicons name="pencil-outline" size={15} color={isLight ? colors.text : ghost.void} />
+                  <AppIcon family="ionicons" name="pencil-outline" size={15} color={isLight ? colors.text : ghost.void} />
                 </Pressable>
               </View>
               <View style={styles.formHeadCopy}>
@@ -1940,7 +1991,7 @@ export default function AccountsScreen() {
                     <LogoIconFrame uri={autoPreviewLogo} size={ICON_WELL_SIZE} />
                   ) : (
                     <IconFrame size={ICON_WELL_SIZE}>
-                      <Ionicons name="sparkles-outline" size={17} color={colors.textMuted} />
+                      <AppIcon family="ionicons" name="sparkles-outline" size={17} color={colors.textMuted} />
                     </IconFrame>
                   )}
                 </Pressable>
@@ -1967,7 +2018,7 @@ export default function AccountsScreen() {
                         <LogoIconFrame uri={option.logoUrl} size={ICON_WELL_SIZE} />
                       ) : (
                         <IconFrame size={ICON_WELL_SIZE}>
-                          <Ionicons name="business-outline" size={17} color={colors.textMuted} />
+                          <AppIcon family="ionicons" name="business-outline" size={17} color={colors.textMuted} />
                         </IconFrame>
                       )}
                     </Pressable>
@@ -1998,7 +2049,7 @@ export default function AccountsScreen() {
                         selected ? formThemed.selected : formThemed.control,
                       ]}
                     >
-                      <Ionicons
+                      <AppIcon family="ionicons"
                         name={t.icon}
                         size={16}
                         color={selected ? colors.primary : colors.textSecondary}
@@ -2115,7 +2166,7 @@ export default function AccountsScreen() {
                     {wealthType === 'precious_material' ? (
                       <WealthMaterialIcon material={wealthMaterial} size={34} />
                     ) : (
-                      <Ionicons name="home-outline" size={26} color={colors.primary} />
+                      <AppIcon family="ionicons" name="home-outline" size={26} color={colors.primary} />
                     )}
                   </View>
                 )}
@@ -2144,7 +2195,7 @@ export default function AccountsScreen() {
                             selected ? formThemed.selected : formThemed.control,
                           ]}
                         >
-                          <Ionicons name={typeOption.icon} size={16} color={selected ? colors.primary : colors.textSecondary} />
+                          <AppIcon family="ionicons" name={typeOption.icon} size={16} color={selected ? colors.primary : colors.textSecondary} />
                           <Text style={[styles.typeChipText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
                             {typeOption.label}
                           </Text>
@@ -2667,7 +2718,7 @@ export default function AccountsScreen() {
                                 selected ? formThemed.selected : formThemed.control,
                               ]}
                             >
-                              <Ionicons name={option.icon} size={15} color={selected ? colors.primary : colors.textSecondary} />
+                              <AppIcon family="ionicons" name={option.icon} size={15} color={selected ? colors.primary : colors.textSecondary} />
                               <Text style={[styles.typeChipText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
                                 {option.label}
                               </Text>
@@ -3218,13 +3269,13 @@ function PortfolioTypePickerSheet<T extends string>({
             ]}
           >
             <View style={[styles.typePickerIconWell, { backgroundColor: colors.surfaceElevated }]}>
-              <Ionicons name={option.icon} size={22} color={colors.primary} />
+              <AppIcon family="ionicons" name={option.icon} size={22} color={colors.primary} />
             </View>
             <View style={styles.typePickerCopy}>
               <Text style={[styles.typePickerLabel, formThemed.text]}>{option.label}</Text>
               <Text style={[styles.typePickerDescription, formThemed.textMuted]}>{option.description}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            <AppIcon family="ionicons" name="chevron-forward" size={18} color={colors.textMuted} />
           </Pressable>
         ))}
       </View>
@@ -3269,7 +3320,7 @@ function PortfolioFormSheetModal({
                 {title}
               </Text>
               <Pressable onPress={onClose} hitSlop={12} style={[styles.closeBtn, formThemed.closeButton]}>
-                <Ionicons name="close" size={19} color={colors.textMuted} />
+                <AppIcon family="ionicons" name="close" size={19} color={colors.textMuted} />
               </Pressable>
             </View>
             <ScrollView
@@ -3360,7 +3411,7 @@ function ChildSupportBeneficiaryField({
               onPress={() => onSelectSuggestion(name)}
               style={({ pressed }) => [styles.suggestionChip, formThemed.control, pressed && styles.pressed]}
             >
-              <Ionicons name="person-outline" size={13} color={colors.textMuted} />
+              <AppIcon family="ionicons" name="person-outline" size={13} color={colors.textMuted} />
               <Text style={[styles.suggestionText, formThemed.text]} numberOfLines={1}>
                 {name}
               </Text>
@@ -3381,7 +3432,7 @@ function ChildSupportBeneficiaryField({
             creatingContact && styles.createContactButtonDisabled,
           ]}
         >
-          <Ionicons name="person-add-outline" size={16} color={colors.primary} />
+          <AppIcon family="ionicons" name="person-add-outline" size={16} color={colors.primary} />
           <Text style={[styles.createContactButtonText, formThemed.selectedText]}>
             {creatingContact ? 'Création...' : 'Créer le contact'}
           </Text>
@@ -3431,14 +3482,12 @@ function AccountBalanceChart({
   accounts,
   onAccountPress,
   onAddAccount,
-  onManageAccounts,
   onReorder,
   onDragStateChange,
 }: {
   accounts: SimulatedAccount[];
   onAccountPress: (account: SimulatedAccount) => void;
   onAddAccount: () => void;
-  onManageAccounts: () => void;
   onReorder: (nextAccounts: SimulatedAccount[]) => void | Promise<void>;
   onDragStateChange?: (dragging: boolean) => void;
 }) {
@@ -3449,24 +3498,7 @@ function AccountBalanceChart({
 
   return (
     <View style={styles.accountVisualSection}>
-      <HubSectionHeader
-        eyebrow="Comptes"
-        title="Soldes des comptes"
-        trailing={
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Gérer les comptes"
-            style={({ pressed }) => [
-              styles.balanceChartManageButton,
-              { borderColor: sectionBorder, backgroundColor: sectionSoftSurface },
-              pressed && styles.pressed,
-            ]}
-            onPress={onManageAccounts}
-          >
-            <Ionicons name="create-outline" size={17} color={colors.textSecondary} />
-          </Pressable>
-        }
-      />
+      <HubSectionHeader eyebrow="Comptes" title="Soldes des comptes" />
 
       {accounts.length === 0 ? (
         <View
@@ -3479,7 +3511,7 @@ function AccountBalanceChart({
           ]}
         >
           <View style={[styles.emptyVisualIcon, { backgroundColor: sectionSoftSurface }]}>
-            <Ionicons name="bar-chart-outline" size={18} color={colors.textMuted} />
+            <AppIcon family="ionicons" name="bar-chart-outline" size={18} color={colors.textMuted} />
           </View>
           <Text style={[styles.balanceChartEmptyTitle, { color: colors.text }]}>Aucun compte à afficher</Text>
           <Text style={[styles.balanceChartEmptyText, { color: colors.textMuted }]}>
@@ -3508,7 +3540,7 @@ function AccountBalanceChart({
           pressed && floatingGlassButtonPressed,
         ]}
       >
-        <Ionicons name="add" size={18} color={colors.textSecondary} />
+        <AppIcon family="ionicons" name="add" size={18} color={colors.textSecondary} />
         <Text style={[styles.premiumAddCtaLabel, typographyKit.bodyBold, { color: colors.text }]}>
           Ajouter
         </Text>
@@ -3585,7 +3617,7 @@ function PropertyPhotoField({
           <Image source={{ uri: trimmed }} style={styles.propertyPhotoPreview} contentFit="cover" />
         ) : (
           <View style={styles.propertyPhotoPlaceholder}>
-            <Ionicons name="image-outline" size={22} color={colors.textMuted} />
+            <AppIcon family="ionicons" name="image-outline" size={22} color={colors.textMuted} />
             <Text style={[styles.propertyPhotoHint, formThemed.textMuted]}>Galerie ou caméra</Text>
           </View>
         )}
@@ -4224,15 +4256,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
     padding: spacing.lg,
     gap: spacing.md,
-  },
-  balanceChartManageButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: 22,
   },
   balanceChartEmpty: {
     borderRadius: radius.card,

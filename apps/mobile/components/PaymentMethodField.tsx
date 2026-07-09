@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Ionicons } from '@expo/vector-icons';
 import { jakartaMediumText, radius, spacing, typography, typographyKit } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
@@ -58,7 +59,7 @@ export function PaymentMethodField({
                 onPress={() => onSelectAccount(account.id)}
                 style={[styles.typeChip, selected ? chipSelectedStyle : chipControlStyle]}
               >
-                <Ionicons
+                <AppIcon family="ionicons" 
                   name={iconForKind(account.kind)}
                   size={15}
                   color={selected ? colors.primary : colors.textSecondary}

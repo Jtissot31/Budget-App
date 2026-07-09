@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { MdiIcon } from '@/components/MdiIcon';
 import { RemoteLogoImage } from '@/components/IconFrame';
@@ -188,7 +187,7 @@ export function UserPickedIconWell({
           color={glyphColor}
         />
       ) : (
-        <Ionicons name={icon as IconName} size={computedIconSize} color={glyphColor} />
+        <AppIcon family="ionicons" name={icon as IconName} size={computedIconSize} color={glyphColor} />
       )}
     </View>
   );

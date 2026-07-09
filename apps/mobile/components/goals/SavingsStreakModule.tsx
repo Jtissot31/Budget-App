@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { GoalProgressFill } from '@/components/GoalProgressFill';
 import {
   GOAL_PROGRESS_FILL,
@@ -41,7 +41,7 @@ export const SavingsStreakModule = memo(function SavingsStreakModule({
     >
       <View style={styles.headerRow}>
         <View style={[styles.iconBadge, { backgroundColor: isLight ? 'rgba(251, 146, 60, 0.12)' : 'rgba(251, 146, 60, 0.16)' }]}>
-          <Ionicons name={streak.current > 0 ? 'flame' : 'flame-outline'} size={compact ? 18 : 20} color={flameColor} />
+          <AppIcon family="ionicons" name={streak.current > 0 ? 'flame' : 'flame-outline'} size={compact ? 18 : 20} color={flameColor} />
         </View>
         <View style={styles.statsBlock}>
           <View style={styles.statRow}>

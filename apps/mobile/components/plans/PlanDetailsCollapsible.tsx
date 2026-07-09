@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { spacing } from '@/constants/theme';
@@ -40,7 +41,7 @@ export function PlanDetailsCollapsible({ plan }: Props) {
         style={styles.headerRow}
       >
         <Text style={[planDetailFonts.sectionCaps, { color: PLAN_DETAIL.textMuted }]}>DÉTAILS DU PLAN</Text>
-        <MaterialIcons
+        <AppIcon family="material" 
           name={expanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
           size={22}
           color={PLAN_DETAIL.textMuted}

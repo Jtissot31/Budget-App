@@ -1,6 +1,6 @@
 import { useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { jakartaMediumText, jakartaRegularText } from '@/constants/theme';
 import { type ActivityPhase, getActivityPhaseLabel } from '@/lib/ai/activityPhases';
 import { tapHaptic } from '@/lib/haptics';
@@ -44,7 +44,7 @@ export function AIChatActivitiesSummary({ phases, showSeparator = true }: Props)
         <Text style={[styles.toggleLabel, { color: palette.textMuted }, jakartaMediumText]}>
           Étapes effectuées
         </Text>
-        <Ionicons
+        <AppIcon family="ionicons" 
           name={expanded ? 'chevron-up' : 'chevron-down'}
           size={14}
           color={palette.textMuted}

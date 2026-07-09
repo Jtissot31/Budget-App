@@ -18,6 +18,7 @@ import CreditCardMod from 'lucide-react-native/dist/cjs/icons/credit-card.js';
 import EyeMod from 'lucide-react-native/dist/cjs/icons/eye.js';
 import EyeClosedMod from 'lucide-react-native/dist/cjs/icons/eye-closed.js';
 import EyeOffMod from 'lucide-react-native/dist/cjs/icons/eye-off.js';
+import GemMod from 'lucide-react-native/dist/cjs/icons/gem.js';
 import GoalMod from 'lucide-react-native/dist/cjs/icons/goal.js';
 import HandCoinsMod from 'lucide-react-native/dist/cjs/icons/hand-coins.js';
 import HandHeartMod from 'lucide-react-native/dist/cjs/icons/hand-heart.js';
@@ -49,7 +50,12 @@ function bind(name: string, mod: unknown): [string, LucideIcon] | null {
   return Icon ? [name, Icon] : null;
 }
 
-const SELECTED_LUCIDE_ICONS = new Map<string, LucideIcon>(
+let selectedLucideIconsCache: Map<string, LucideIcon> | null = null;
+
+function buildSelectedLucideIcons(): Map<string, LucideIcon> {
+  if (selectedLucideIconsCache) return selectedLucideIconsCache;
+
+  selectedLucideIconsCache = new Map<string, LucideIcon>(
   [
     bind('ArrowDownFromLine', ArrowDownFromLineMod),
     bind('ArrowLeftRight', ArrowLeftRightMod),
@@ -68,6 +74,7 @@ const SELECTED_LUCIDE_ICONS = new Map<string, LucideIcon>(
     bind('Eye', EyeMod),
     bind('EyeClosed', EyeClosedMod),
     bind('EyeOff', EyeOffMod),
+    bind('Gem', GemMod),
     bind('Goal', GoalMod),
     bind('HandCoins', HandCoinsMod),
     bind('HandHeart', HandHeartMod),
@@ -94,8 +101,11 @@ const SELECTED_LUCIDE_ICONS = new Map<string, LucideIcon>(
     bind('WalletCards', WalletCardsMod),
     bind('WalletMinimal', WalletMinimalMod),
   ].filter((entry): entry is [string, LucideIcon] => entry != null),
-);
+  );
+
+  return selectedLucideIconsCache;
+}
 
 export function getSelectedLucideIcon(name: string): LucideIcon | null {
-  return SELECTED_LUCIDE_ICONS.get(name) ?? null;
+  return buildSelectedLucideIcons().get(name) ?? null;
 }

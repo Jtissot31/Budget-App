@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -203,7 +204,7 @@ export default function BudgetCategoryTransactionsScreen() {
               ]}
               onPress={() => router.back()}
             >
-              <Ionicons name="chevron-back" size={22} color={colors.text} />
+              <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
             </Pressable>
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={[stylesMemo.sheetTitle, { color: colors.text }]} numberOfLines={1}>
@@ -233,7 +234,7 @@ export default function BudgetCategoryTransactionsScreen() {
                 ]}
               >
                 <View style={[stylesMemo.heroIcon, { backgroundColor: categoryColor, borderColor: categoryColor }]}>
-                  <Ionicons
+                  <AppIcon family="ionicons" 
                     name={(categoryIcon in Ionicons.glyphMap ? categoryIcon : 'pricetag-outline') as keyof typeof Ionicons.glyphMap}
                     size={30}
                     color={getReadableIconColor(categoryColor)}

@@ -1,5 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -40,7 +40,7 @@ export default function PlansListScreen() {
             }}
             style={({ pressed }) => [styles.backHit, pressed && styles.pressed]}
           >
-            <MaterialIcons name="arrow-back" size={22} color={colors.text} />
+            <AppIcon family="material" name="arrow-back" size={22} color={colors.text} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: colors.text }, interExtraBoldText]}>Tes plans</Text>
           <View style={styles.headerSpacer} />
@@ -75,7 +75,7 @@ export default function PlansListScreen() {
                 ]}
               >
                 <View style={styles.planHeader}>
-                  <MaterialCommunityIcons name={plan.icon} size={24} color={colors.textSecondary} />
+                  <AppIcon family="material-community" name={plan.icon} size={24} color={colors.textSecondary} />
                   <View style={styles.planHeaderCopy}>
                     <Text style={[styles.planName, { color: colors.text }, interSemiboldText]}>{plan.name}</Text>
                     <View style={styles.planMetaRow}>
@@ -86,7 +86,7 @@ export default function PlansListScreen() {
                       </Text>
                     </View>
                   </View>
-                  <MaterialIcons name="chevron-right" size={20} color={colors.textMuted} />
+                  <AppIcon family="material" name="chevron-right" size={20} color={colors.textMuted} />
                 </View>
 
                 <Text style={[styles.planSummary, { color: colors.textMuted }, interMediumText]} numberOfLines={2}>
@@ -116,7 +116,7 @@ export default function PlansListScreen() {
                 </Text>
 
                 <View style={[styles.nextActionPreview, { borderTopColor: colors.border }]}>
-                  <MaterialIcons name="flag" size={14} color={statusColor} />
+                  <AppIcon family="material" name="flag" size={14} color={statusColor} />
                   <Text style={[styles.nextActionText, { color: colors.text }, interMediumText]} numberOfLines={2}>
                     {plan.nextAction.title}
                   </Text>

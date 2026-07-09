@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -127,12 +128,12 @@ export function AIChatPlanSuggestionsBubble({ state, onConfirm }: Props) {
               >
                 {selected ? (
                   <View style={styles.checkmark}>
-                    <MaterialCommunityIcons name="check-circle" size={18} color={PLAN_SELECTED_BORDER} />
+                    <AppIcon family="material-community" name="check-circle" size={18} color={PLAN_SELECTED_BORDER} />
                   </View>
                 ) : null}
 
                 <View style={styles.cardHeader}>
-                  <MaterialCommunityIcons
+                  <AppIcon family="material-community" 
                     name={planIcon(plan.subtype)}
                     size={18}
                     color={dimmed ? palette.textMuted : palette.text}
@@ -175,7 +176,7 @@ export function AIChatPlanSuggestionsBubble({ state, onConfirm }: Props) {
               },
             ]}
           >
-            <MaterialIcons
+            <AppIcon family="material" 
               name="auto-awesome"
               size={16}
               color={selectedCount > 0 ? '#0E0E10' : 'rgba(255, 255, 255, 0.35)'}

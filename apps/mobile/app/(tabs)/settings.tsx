@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
@@ -537,7 +537,7 @@ export default function SettingsScreen() {
                   deletingCloud && styles.disabled,
                 ]}
               >
-                <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                <AppIcon family="ionicons" name="trash-outline" size={16} color={colors.danger} />
                 <Text style={destructiveTextActionStyle(isLight)}>
                   {deletingCloud ? 'Suppression…' : 'Supprimer les données cloud'}
                 </Text>

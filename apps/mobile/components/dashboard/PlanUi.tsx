@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { interMediumText, interSemiboldText, radius, spacing, typography } from '@/constants/theme';
 import type { DashboardPlanDetail, DashboardPlanMetricTone } from '@/lib/dashboardPlansMock';
 import { useAppTheme } from '@/lib/themeContext';
@@ -53,7 +53,7 @@ export function PlanNextActionCard({ plan }: { plan: DashboardPlanDetail }) {
       ]}
     >
       <View style={styles.nextActionHeader}>
-        <MaterialIcons name="flag" size={16} color={accent} />
+        <AppIcon family="material" name="flag" size={16} color={accent} />
         <Text style={[styles.nextActionBadge, { color: accent }, interSemiboldText]}>PROCHAINE ACTION</Text>
       </View>
       <Text style={[styles.nextActionTitle, { color: colors.text }, interSemiboldText]}>{plan.nextAction.title}</Text>
@@ -72,7 +72,7 @@ export function PlanStepList({ steps }: { steps: DashboardPlanDetail['steps'] })
       {steps.map((step, index) => (
         <View key={step.id} style={styles.stepItem}>
           <View style={styles.stepTimeline}>
-            <MaterialIcons
+            <AppIcon family="material"
               name={step.completed ? 'check-circle' : 'radio-button-unchecked'}
               size={20}
               color={step.completed ? colors.accentGreen : colors.textMuted}

@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Ionicons } from '@expo/vector-icons';
 import type { LucideIcon } from 'lucide-react-native';
 import {
@@ -110,7 +111,7 @@ export function AlertCenterContent({ items, onMarkRead }: Props) {
   if (items.length === 0) {
     return (
       <View style={styles.empty}>
-        <Ionicons name="notifications-off-outline" size={28} color={MESSAGES_COLORS.timestamp} />
+        <AppIcon family="ionicons" name="notifications-off-outline" size={28} color={MESSAGES_COLORS.timestamp} />
         <Text style={styles.emptyTitle}>Aucun message</Text>
         <Text style={styles.emptyMessage}>
           Les alertes de fonds, de limite de crédit et les opportunités Fyn apparaîtront ici.

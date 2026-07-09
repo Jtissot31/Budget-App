@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -9,7 +10,6 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -95,7 +95,7 @@ export function SettingsPickerSheet<T extends string>({
                   pressed && styles.pressed,
                 ]}
               >
-                <Ionicons name="close" size={18} color={colors.textMuted} />
+                <AppIcon family="ionicons" name="close" size={18} color={colors.textMuted} />
               </Pressable>
             </View>
 
@@ -139,7 +139,7 @@ export function SettingsPickerSheet<T extends string>({
                       ) : null}
                     </View>
                     {selected ? (
-                      <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+                      <AppIcon family="ionicons" name="checkmark-circle" size={22} color={colors.primary} />
                     ) : (
                       <View style={[styles.radio, { borderColor: colors.borderStrong }]} />
                     )}

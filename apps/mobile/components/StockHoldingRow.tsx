@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SparklineChart } from '@/components/chat/SparklineChart';
 import {
@@ -13,6 +13,7 @@ import {
   type MockStockHolding,
 } from '@/constants/mockStockPortfolio';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
+import { getSparklinePreview } from '@/lib/intradayStockSparkline';
 import { useAppTheme } from '@/lib/themeContext';
 
 const SPARKLINE_WIDTH = 56;
@@ -34,6 +35,7 @@ export const StockHoldingRow = memo(function StockHoldingRow({
   const { colors } = useAppTheme();
   const [sparklineWidth, setSparklineWidth] = useState(SPARKLINE_WIDTH);
   const totalValue = mockStockHoldingTotalValue(holding);
+  const sparklinePreview = useMemo(() => getSparklinePreview(holding), [holding]);
   const dayUp = holding.dayChangePercent >= 0;
   const changeColor = dayUp ? colors.success : colors.danger;
 
@@ -62,10 +64,13 @@ export const StockHoldingRow = memo(function StockHoldingRow({
           }}
         >
           <SparklineChart
-            data={holding.sparkline}
+            data={sparklinePreview}
             width={sparklineWidth}
             height={SPARKLINE_HEIGHT}
             positive={dayUp}
+            variant="stock"
+            strokeWidth={1}
+            showFill={false}
           />
         </View>
 

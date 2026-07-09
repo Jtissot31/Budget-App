@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { HubSectionHeader } from '@/components/plans/HubSectionHeader';
 import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
@@ -162,7 +162,7 @@ export function HubSavingsGoalsSection() {
                         {formatDisplayMoneyAbsolute(suggestion.targetAmount)}
                       </Text>
                     ) : null}
-                    <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                    <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
                   </PlanFinanceContainer>
                 </Pressable>
               ))}
@@ -194,7 +194,7 @@ export function HubSavingsGoalsSection() {
                 >
                   {formatDisplayMoneyAbsolute(goal.currentAmount)}
                 </Text>
-                <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
               </PlanFinanceContainer>
             </Pressable>
           ))}
@@ -210,7 +210,7 @@ export function HubSavingsGoalsSection() {
             style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}
           >
             <Text style={[styles.linkLabel, { color: colors.textSecondary }]}>Voir tous les objectifs</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
           </Pressable>
         ) : null}
         <Pressable
@@ -226,7 +226,7 @@ export function HubSavingsGoalsSection() {
             pressed && floatingGlassButtonPressed,
           ]}
         >
-          <Ionicons name="add" size={18} color={colors.textSecondary} />
+          <AppIcon family="ionicons" name="add" size={18} color={colors.textSecondary} />
           <Text style={[styles.addCtaLabel, { color: colors.text }]}>Ajouter</Text>
         </Pressable>
       </View>

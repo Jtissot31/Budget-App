@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Dimensions,
   InteractionManager,
@@ -12,7 +14,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1504,7 +1505,7 @@ export default function AddTransactionScreen() {
                   {sheetTitle}
                 </Text>
                 <Pressable onPress={() => router.back()} hitSlop={12} style={[styles.sheetClose, themed.closeButton]}>
-                  <Ionicons name="close" size={19} color={colors.textMuted} />
+                  <AppIcon family="ionicons" name="close" size={19} color={colors.textMuted} />
                 </Pressable>
               </View>
 
@@ -1617,7 +1618,7 @@ export default function AddTransactionScreen() {
                           onPress={() => selectNameSuggestion(name)}
                           style={({ pressed }) => [styles.suggestionChip, themed.control, pressed && styles.pressed]}
                         >
-                          <Ionicons
+                          <AppIcon family="ionicons"
                             name={
                               type === 'income'
                                 ? 'business-outline'
@@ -1651,7 +1652,7 @@ export default function AddTransactionScreen() {
                             creatingContact && styles.createContactButtonDisabled,
                           ]}
                         >
-                          <Ionicons name="business-outline" size={16} color={colors.primary} />
+                          <AppIcon family="ionicons" name="business-outline" size={16} color={colors.primary} />
                           <Text style={[styles.createContactButtonText, themed.selectedText]}>
                             {creatingContact ? 'Ajout...' : 'Ajouter un employeur'}
                           </Text>
@@ -1670,7 +1671,7 @@ export default function AddTransactionScreen() {
                             creatingContact && styles.createContactButtonDisabled,
                           ]}
                         >
-                          <Ionicons name="person-add-outline" size={16} color={colors.primary} />
+                          <AppIcon family="ionicons" name="person-add-outline" size={16} color={colors.primary} />
                           <Text style={[styles.createContactButtonText, themed.selectedText]}>
                             {creatingContact ? 'Création...' : 'Ajouter un contact'}
                           </Text>
@@ -1691,7 +1692,7 @@ export default function AddTransactionScreen() {
                         creatingContact && styles.createContactButtonDisabled,
                       ]}
                     >
-                      <Ionicons name="person-add-outline" size={16} color={colors.primary} />
+                      <AppIcon family="ionicons" name="person-add-outline" size={16} color={colors.primary} />
                       <Text style={[styles.createContactButtonText, themed.selectedText]}>
                         {creatingContact ? 'Création...' : 'Ajouter un contact'}
                       </Text>
@@ -2023,7 +2024,7 @@ export default function AddTransactionScreen() {
                           }}
                           style={[styles.categoryChip, themed.control, styles.chipShell, on && themed.selected]}
                         >
-                          <Ionicons
+                          <AppIcon family="ionicons"
                             name={getCategoryIconName(c)}
                             size={14}
                             color={on ? colors.primary : colors.textSecondary}
@@ -2238,7 +2239,7 @@ export default function AddTransactionScreen() {
                           }}
                           style={[styles.categoryChip, themed.control, styles.chipShell, on && themed.selected]}
                         >
-                          <Ionicons
+                          <AppIcon family="ionicons"
                             name={getCategoryIconName(c)}
                             size={14}
                             color={on ? colors.primary : colors.textSecondary}
@@ -2276,7 +2277,7 @@ export default function AddTransactionScreen() {
                     <View style={styles.articlesHeaderRow}>
                       <View style={styles.articlesHeaderLeft}>
                         <View style={[styles.articlesIconWell, { backgroundColor: colors.successMuted }]}>
-                          <Ionicons name="receipt-outline" size={14} color={colors.primary} />
+                          <AppIcon family="ionicons" name="receipt-outline" size={14} color={colors.primary} />
                         </View>
                         <Text style={[detailSectionLabelStyle(), { color: colors.text }]}>Articles</Text>
                         {articles.length > 0 ? (
@@ -2305,7 +2306,7 @@ export default function AddTransactionScreen() {
                             pressed && styles.pressed,
                           ]}
                         >
-                          <Ionicons name="add" size={14} color={colors.primary} />
+                          <AppIcon family="ionicons" name="add" size={14} color={colors.primary} />
                           <Text style={[styles.articlesAddButtonText, { color: colors.primary }]}>Ajouter</Text>
                         </Pressable>
                       ) : null}
@@ -2331,7 +2332,7 @@ export default function AddTransactionScreen() {
                           pressed && styles.pressed,
                         ]}
                       >
-                        <Ionicons name="add-circle-outline" size={18} color={colors.textSecondary} />
+                        <AppIcon family="ionicons" name="add-circle-outline" size={18} color={colors.textSecondary} />
                         <Text style={styles.articlesPrimaryAddButtonText}>
                           Ajouter un article
                         </Text>
@@ -2430,7 +2431,7 @@ export default function AddTransactionScreen() {
                               onPress={() => handleRemoveArticle(index)}
                               style={({ pressed }) => [styles.articleRemoveBtn, pressed && styles.pressed]}
                             >
-                              <Ionicons name="close" size={13} color={colors.textMuted} />
+                              <AppIcon family="ionicons" name="close" size={13} color={colors.textMuted} />
                             </Pressable>
                           </View>
                         ))}

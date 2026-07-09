@@ -1,5 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -61,7 +61,7 @@ export function PlanTemplateDetailScreen({ subtype, raison }: Props) {
             onPress={handleBack}
             style={({ pressed }) => [planFinanceIconButtonStyle(), pressed && styles.pressed]}
           >
-            <MaterialIcons name="arrow-back" size={22} color={pf.text} />
+            <AppIcon family="material" name="arrow-back" size={22} color={pf.text} />
           </Pressable>
           <View style={styles.topBarSpacer} />
         </View>
@@ -74,7 +74,7 @@ export function PlanTemplateDetailScreen({ subtype, raison }: Props) {
           ]}
         >
           <View style={styles.titleBlock}>
-            <MaterialCommunityIcons name={getCategoryIcon(category)} size={28} color={pf.textMuted} />
+            <AppIcon family="material-community" name={getCategoryIcon(category)} size={28} color={pf.textMuted} />
             <Text style={[styles.planTitle, planFinanceFonts.heroTitle]}>{PLAN_SUBTYPE_LABELS[subtype]}</Text>
             <Text style={[styles.modelBadge, interMediumText]}>Modèle</Text>
             <Text style={[styles.planSummary, planFinanceFonts.body]}>{config.fullDescription}</Text>

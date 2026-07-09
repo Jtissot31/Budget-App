@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   ActivityIndicator,
   FlatList,
@@ -13,7 +14,6 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Gesture,
@@ -157,9 +157,9 @@ const RegionPickerRow = memo(function RegionPickerRow({
         ) : null}
       </View>
       {selected ? (
-        <Ionicons name="checkmark-circle" size={22} color={primaryColor} />
+        <AppIcon family="ionicons" name="checkmark-circle" size={22} color={primaryColor} />
       ) : hasSubRegions ? (
-        <Ionicons name="chevron-forward" size={18} color={mutedColor} />
+        <AppIcon family="ionicons" name="chevron-forward" size={18} color={mutedColor} />
       ) : (
         <View style={[styles.radio, { borderColor: borderStrongColor }]} />
       )}
@@ -671,7 +671,7 @@ export function RegionPickerSheet({ visible, selectedId, onClose, onSelect }: Pr
                     pressed && styles.pressed,
                   ]}
                 >
-                  <Ionicons name="chevron-back" size={18} color={colors.textMuted} />
+                  <AppIcon family="ionicons" name="chevron-back" size={18} color={colors.textMuted} />
                 </RNPressable>
               ) : (
                 <View style={styles.backPlaceholder} pointerEvents="none" />
@@ -694,7 +694,7 @@ export function RegionPickerSheet({ visible, selectedId, onClose, onSelect }: Pr
                   pressed && styles.pressed,
                 ]}
               >
-                <Ionicons name="close" size={18} color={colors.textMuted} />
+                <AppIcon family="ionicons" name="close" size={18} color={colors.textMuted} />
               </RNPressable>
             </View>
 
@@ -704,7 +704,7 @@ export function RegionPickerSheet({ visible, selectedId, onClose, onSelect }: Pr
                 { backgroundColor: colors.surfaceElevated, borderColor: colors.border },
               ]}
             >
-              <Ionicons name="search" size={18} color={colors.textMuted} />
+              <AppIcon family="ionicons" name="search" size={18} color={colors.textMuted} />
               <TextInput
                 style={[styles.searchInput, { color: colors.text }]}
                 value={searchQuery}
@@ -732,7 +732,7 @@ export function RegionPickerSheet({ visible, selectedId, onClose, onSelect }: Pr
               {locating ? (
                 <ActivityIndicator size="small" color={colors.primary} />
               ) : (
-                <Ionicons name="locate-outline" size={18} color={colors.primary} />
+                <AppIcon family="ionicons" name="locate-outline" size={18} color={colors.primary} />
               )}
               <Text style={[styles.locateLabel, { color: colors.primary }]}>Me localiser</Text>
             </RNPressable>

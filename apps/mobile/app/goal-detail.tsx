@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 
 import {
 
@@ -18,7 +19,6 @@ import {
 
 } from 'react-native';
 
-import { Ionicons } from '@expo/vector-icons';
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
@@ -1046,7 +1046,7 @@ export default function GoalDetailScreen() {
 
           >
 
-            <Ionicons name="chevron-back" size={22} color={colors.text} />
+            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
 
           </Pressable>
 
@@ -1267,7 +1267,7 @@ export default function GoalDetailScreen() {
 
                   <View style={[styles.searchRow, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
 
-                    <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+                    <AppIcon family="ionicons" name="search-outline" size={18} color={colors.textMuted} />
 
                     <TextInput
 
@@ -1301,7 +1301,7 @@ export default function GoalDetailScreen() {
 
                     >
 
-                      <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                      <AppIcon family="ionicons" name="close-circle" size={18} color={colors.textMuted} />
 
                     </Pressable>
 
@@ -1327,7 +1327,7 @@ export default function GoalDetailScreen() {
 
                     >
 
-                      <Ionicons
+                      <AppIcon family="ionicons" 
 
                         name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
 
@@ -1367,7 +1367,7 @@ export default function GoalDetailScreen() {
 
                     >
 
-                      <Ionicons
+                      <AppIcon family="ionicons" 
 
                         name="search-outline"
 
@@ -1409,7 +1409,7 @@ export default function GoalDetailScreen() {
 
                     >
 
-                      <Ionicons
+                      <AppIcon family="ionicons" 
 
                         name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
 

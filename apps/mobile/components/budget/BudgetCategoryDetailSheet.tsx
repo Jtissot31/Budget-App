@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Ionicons } from '@expo/vector-icons';
 
 import { BottomSheet } from '@/components/BottomSheet';
 
@@ -312,7 +312,7 @@ export function BudgetCategoryDetailSheet({
             pressed && styles.pressed,
           ]}
         >
-          <Ionicons name="close" size={18} color={colors.text} />
+          <AppIcon family="ionicons" name="close" size={18} color={colors.text} />
         </Pressable>
       </View>
 
@@ -359,7 +359,7 @@ export function BudgetCategoryDetailSheet({
                 },
               ]}
             >
-              <Ionicons name="wallet-outline" size={17} color={colors.textMuted} style={styles.rowIcon} />
+              <AppIcon family="ionicons" name="wallet-outline" size={17} color={colors.textMuted} style={styles.rowIcon} />
               <View style={detailRowLabelSlot}>
                 <Text style={[styles.rowLabel, detailRowLabelText, { color: colors.textMuted }]}>
                   Limite mensuelle
@@ -405,10 +405,10 @@ export function BudgetCategoryDetailSheet({
           ]}
         >
           <View style={[styles.ctaIconWell, { backgroundColor: colors.surfaceSolid }]}>
-            <Ionicons name="list-outline" size={18} color={colors.text} />
+            <AppIcon family="ionicons" name="list-outline" size={18} color={colors.text} />
           </View>
           <Text style={[styles.ctaLabel, { color: colors.text }]}>Voir les transactions</Text>
-          <Ionicons
+          <AppIcon family="ionicons" 
             name="chevron-forward"
             size={16}
             color={colors.textMuted}

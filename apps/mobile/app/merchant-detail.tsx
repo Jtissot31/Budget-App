@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Pressable,
   RefreshControl,
@@ -9,7 +10,6 @@ import {
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MerchantEditModal, type MerchantEditTarget } from '@/components/MerchantEditModal';
@@ -261,7 +261,7 @@ export default function MerchantDetailScreen() {
             ]}
             onPress={() => router.back()}
           >
-            <Ionicons name="chevron-back" size={22} color={colors.text} />
+            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
           </Pressable>
           <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
             {merchantName}
@@ -342,7 +342,7 @@ export default function MerchantDetailScreen() {
               ]}
             >
               <View style={styles.receiptSectionTitleRow}>
-                <Ionicons name="receipt-outline" size={18} color={colors.textMuted} />
+                <AppIcon family="ionicons" name="receipt-outline" size={18} color={colors.textMuted} />
                 <Text style={[styles.receiptSectionTitle, { color: colors.text }]}>
                   Bibliothèque de reçus
                 </Text>
@@ -386,7 +386,7 @@ export default function MerchantDetailScreen() {
                       />
                     ) : (
                       <View style={[styles.receiptThumbnailFallback, { backgroundColor: colors.surfaceElevated }]}>
-                        <Ionicons name="receipt-outline" size={20} color={colors.textMuted} />
+                        <AppIcon family="ionicons" name="receipt-outline" size={20} color={colors.textMuted} />
                       </View>
                     )}
                     <Text style={[styles.receiptThumbnailLabel, { color: colors.textMuted }]} numberOfLines={1}>
@@ -406,7 +406,7 @@ export default function MerchantDetailScreen() {
 
           <View style={styles.transactionList}>
             <View style={[styles.searchRow, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
-              <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+              <AppIcon family="ionicons" name="search-outline" size={18} color={colors.textMuted} />
               <TextInput
                 style={[styles.searchInput, { color: colors.text }]}
                 placeholder="Rechercher"
@@ -422,7 +422,7 @@ export default function MerchantDetailScreen() {
                   onPress={() => setSearch('')}
                   style={styles.clearSearchBtn}
                 >
-                  <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                  <AppIcon family="ionicons" name="close-circle" size={18} color={colors.textMuted} />
                 </Pressable>
               ) : null}
               <Pressable
@@ -436,7 +436,7 @@ export default function MerchantDetailScreen() {
                 }}
                 style={styles.filterIconBtn}
               >
-                <Ionicons
+                <AppIcon family="ionicons" 
                   name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
                   size={20}
                   color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}

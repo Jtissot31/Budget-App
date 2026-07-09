@@ -36,7 +36,7 @@ function institutionLabel(account: AccountBalanceDisplayAccount): string | null 
 const ACCOUNT_KIND_TYPE_LABELS: Record<AccountKind, string> = {
   checking: 'Chèque',
   savings: 'Épargne',
-  credit: 'Carte de crédit',
+  credit: 'Crédit',
   cash: 'Espèces',
 };
 

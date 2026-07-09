@@ -1,6 +1,6 @@
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { AppIcon } from '@/components/icons/AppIcon';
 
-import { Ionicons } from '@expo/vector-icons';
 
 import {
   BUDGET_CATEGORY_ICON_GLYPH_COLOR,
@@ -36,7 +36,7 @@ export function BudgetCategoryIcon({
 
   const glyph =
     variant === 'add' ? (
-      <Ionicons name="add" size={glyphSize} color={glyphColor} />
+      <AppIcon family="ionicons" name="add" size={glyphSize} color={glyphColor} />
     ) : (
       <BudgetCategoryGlyph
         icon={icon}
@@ -79,17 +79,17 @@ function BudgetCategoryGlyph({
   const displayIcon = resolveBudgetCategoryDisplayIcon({ icon, name, id });
 
   if (displayIcon.kind === 'ionicons-filled') {
-    return <Ionicons name={displayIcon.name} size={size} color={color} />;
+    return <AppIcon family="ionicons" name={displayIcon.name} size={size} color={color} />;
   }
 
   if (displayIcon.kind === 'lucide' || displayIcon.kind === 'ionicons-outline') {
     const fallback = resolveBudgetCategoryDisplayIcon({ name, id });
     const ionName: IconName =
       fallback.kind === 'ionicons-filled' ? fallback.name : 'pricetag';
-    return <Ionicons name={ionName} size={size} color={color} />;
+    return <AppIcon family="ionicons" name={ionName} size={size} color={color} />;
   }
 
-  return <Ionicons name={displayIcon.name} size={size} color={color} />;
+  return <AppIcon family="ionicons" name={displayIcon.name} size={size} color={color} />;
 }
 
 const styles = StyleSheet.create({

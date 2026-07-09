@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Ionicons } from '@expo/vector-icons';
 import { jakartaBoldText, jakartaMediumText, radius, spacing, typography } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
@@ -31,7 +32,7 @@ export function ThemedFormMessage({ variant, title, message, style }: Props) {
       accessibilityRole="alert"
       style={[styles.banner, { backgroundColor, borderColor: accentColor }, style]}
     >
-      <Ionicons name={VARIANT_ICONS[variant]} size={18} color={accentColor} style={styles.icon} />
+      <AppIcon family="ionicons" name={VARIANT_ICONS[variant]} size={18} color={accentColor} style={styles.icon} />
       <View style={styles.copy}>
         <Text style={[styles.title, { color: accentColor }]}>{title}</Text>
         <Text style={[styles.message, { color: colors.text }]}>{message}</Text>

@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertCenterContent } from '@/components/AlertCenterContent';
@@ -46,7 +46,7 @@ export default function AlertCenterScreen() {
             }}
             style={({ pressed }) => [styles.backHit, pressed && styles.pressed]}
           >
-            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            <AppIcon family="ionicons" name="arrow-back" size={24} color="#FFFFFF" />
           </Pressable>
           <Text style={styles.headerTitle} numberOfLines={1}>
             Messages
@@ -61,7 +61,7 @@ export default function AlertCenterScreen() {
             }}
             style={({ pressed }) => [styles.filterButton, pressed && styles.pressed]}
           >
-            <Ionicons name="options-outline" size={20} color="#FFFFFF" />
+            <AppIcon family="ionicons" name="options-outline" size={20} color="#FFFFFF" />
           </Pressable>
         </View>
 

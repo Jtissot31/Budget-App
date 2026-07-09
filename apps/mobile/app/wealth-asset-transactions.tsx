@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -186,7 +186,7 @@ export default function WealthAssetTransactionsScreen() {
               ]}
               onPress={() => router.back()}
             >
-              <Ionicons name="chevron-back" size={22} color={colors.text} />
+              <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
             </Pressable>
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={[stylesMemo.sheetTitle, { color: colors.text }]} numberOfLines={1}>
@@ -217,13 +217,13 @@ export default function WealthAssetTransactionsScreen() {
               >
                 <View style={[stylesMemo.heroIcon, { backgroundColor: ghost.obsidianSoft }]}>
                   {asset?.type === 'precious_material' && asset.material ? (
-                    <Ionicons
+                    <AppIcon family="ionicons" 
                       name={asset.material === 'diamond' ? 'diamond-outline' : 'disc-outline'}
                       size={34}
                       color={colors.primary}
                     />
                   ) : (
-                    <Ionicons name="home-outline" size={30} color={colors.primaryAlt} />
+                    <AppIcon family="ionicons" name="home-outline" size={30} color={colors.primaryAlt} />
                   )}
                 </View>
                 <View style={stylesMemo.heroCopy}>

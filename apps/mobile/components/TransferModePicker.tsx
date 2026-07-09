@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { MdiIcon } from '@/components/MdiIcon';
@@ -60,16 +60,16 @@ function ContactDirectionIcon({ direction, color, accentColor }: ContactDirectio
   return (
     <View style={styles.contactIconWrap}>
       {isSendToContact ? (
-        <Ionicons name="arrow-forward" size={11} color={accentColor} style={styles.contactArrowSend} />
+        <AppIcon family="ionicons" name="arrow-forward" size={11} color={accentColor} style={styles.contactArrowSend} />
       ) : null}
-      <Ionicons
+      <AppIcon family="ionicons"
         name="person-outline"
         size={15}
         color={color}
         style={isSendToContact ? styles.contactPersonSend : styles.contactPersonReceive}
       />
       {!isSendToContact ? (
-        <Ionicons name="arrow-forward" size={11} color={accentColor} style={styles.contactArrowReceive} />
+        <AppIcon family="ionicons" name="arrow-forward" size={11} color={accentColor} style={styles.contactArrowReceive} />
       ) : null}
     </View>
   );

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { getCategoryIconName } from '@/constants/categoryOptions';
 import { containerSurfaceStyle, jakartaExtraBoldText, radius, spacing, typography } from '@/constants/theme';
 import { typographyKit } from '@/constants/typographyKit';
@@ -165,7 +165,7 @@ export function ItemizedArticlesEditor({
                 hitSlop={8}
                 style={({ pressed }) => [styles.removeBtn, pressed && styles.pressed]}
               >
-                <Ionicons name="trash-outline" size={15} color={colors.textMuted} />
+                <AppIcon family="ionicons" name="trash-outline" size={15} color={colors.textMuted} />
               </Pressable>
             </View>
 
@@ -183,7 +183,7 @@ export function ItemizedArticlesEditor({
                     pressed && styles.pressed,
                   ]}
                 >
-                  <Ionicons
+                  <AppIcon family="ionicons" 
                     name={getCategoryIconName(item.detectedCategory)}
                     size={12}
                     color={item.hasManualCategory ? colors.primary : colors.textSecondary}
@@ -251,7 +251,7 @@ export function ItemizedArticlesEditor({
                           pressed && styles.pressed,
                         ]}
                       >
-                        <Ionicons
+                        <AppIcon family="ionicons" 
                           name={getCategoryIconName(category)}
                           size={12}
                           color={selected ? colors.primary : colors.textSecondary}
@@ -283,7 +283,7 @@ export function ItemizedArticlesEditor({
           pressed && styles.pressed,
         ]}
       >
-        <Ionicons name="add" size={18} color={colors.primary} />
+        <AppIcon family="ionicons" name="add" size={18} color={colors.primary} />
         <Text style={[styles.addBtnText, { color: colors.text }]}>Ajouter une ligne</Text>
       </Pressable>
 

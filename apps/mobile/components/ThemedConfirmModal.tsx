@@ -1,4 +1,5 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Ionicons } from '@expo/vector-icons';
 import { jakartaBoldText, jakartaMediumText, radius, spacing, typography, type AppColors } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
@@ -105,7 +106,7 @@ export function ThemedConfirmModal({
           ]}
         >
           <View style={[styles.iconWrap, { backgroundColor: variantDefaults.iconBg(colors) }]}>
-            <Ionicons name={resolvedIcon} size={22} color={variantDefaults.iconColor(colors)} />
+            <AppIcon family="ionicons" name={resolvedIcon} size={22} color={variantDefaults.iconColor(colors)} />
           </View>
           <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
           <Text style={[styles.message, { color: colors.textMuted }]}>{message}</Text>

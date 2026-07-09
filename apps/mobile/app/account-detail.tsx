@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -12,7 +14,6 @@ import {
   View,
 } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BankAccountCard } from '@/components/BankAccountCard';
@@ -308,7 +309,7 @@ function DetailInfoRow({
   return (
     <View style={styles.infoRow}>
       {row.icon ? (
-        <Ionicons name={row.icon} size={18} color={colors.textMuted} style={styles.infoRowIcon} />
+        <AppIcon family="ionicons" name={row.icon} size={18} color={colors.textMuted} style={styles.infoRowIcon} />
       ) : (
         <View style={styles.infoRowIconSpacer} />
       )}
@@ -442,7 +443,7 @@ function RecurringChevron({ expanded, color }: { expanded: boolean; color: strin
 
   return (
     <Animated.View style={animatedStyle}>
-      <Ionicons name="chevron-down" size={16} color={color} />
+      <AppIcon family="ionicons" name="chevron-down" size={16} color={color} />
     </Animated.View>
   );
 }
@@ -730,7 +731,7 @@ export default function AccountDetailScreen() {
           ]}
           onPress={() => router.back()}
         >
-          <Ionicons name="chevron-back" size={22} color={colors.text} />
+          <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
         </Pressable>
         <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
           {account?.name ?? 'Compte'}
@@ -841,7 +842,7 @@ export default function AccountDetailScreen() {
               >
                 <View style={styles.recurringTriggerCopy}>
                   <View style={styles.recurringTriggerTitleRow}>
-                    <Ionicons
+                    <AppIcon family="ionicons"
                       name="calendar-outline"
                       size={RECURRING_TRIGGER_ICON_SIZE}
                       color={colors.textSecondary}
@@ -963,7 +964,7 @@ export default function AccountDetailScreen() {
             <View style={styles.transactionList}>
               {searchExpanded ? (
                 <View style={[styles.searchRow, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
-                  <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+                  <AppIcon family="ionicons" name="search-outline" size={18} color={colors.textMuted} />
                   <TextInput
                     ref={searchInputRef}
                     style={[styles.searchInput, { color: colors.text }]}
@@ -980,7 +981,7 @@ export default function AccountDetailScreen() {
                     onPress={collapseSearch}
                     style={styles.clearSearchBtn}
                   >
-                    <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                    <AppIcon family="ionicons" name="close-circle" size={18} color={colors.textMuted} />
                   </Pressable>
                   <Pressable
                     accessibilityRole="button"
@@ -993,7 +994,7 @@ export default function AccountDetailScreen() {
                     }}
                     style={styles.filterIconBtn}
                   >
-                    <Ionicons
+                    <AppIcon family="ionicons"
                       name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
                       size={20}
                       color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
@@ -1013,7 +1014,7 @@ export default function AccountDetailScreen() {
                       pressed && styles.pressed,
                     ]}
                   >
-                    <Ionicons
+                    <AppIcon family="ionicons"
                       name="search-outline"
                       size={20}
                       color={search.trim().length > 0 ? colors.primary : colors.textMuted}
@@ -1034,7 +1035,7 @@ export default function AccountDetailScreen() {
                       pressed && styles.pressed,
                     ]}
                   >
-                    <Ionicons
+                    <AppIcon family="ionicons"
                       name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
                       size={20}
                       color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
@@ -1116,7 +1117,7 @@ export default function AccountDetailScreen() {
                   Modifier le compte
                 </Text>
                 <Pressable onPress={closeForm} hitSlop={12} style={[styles.closeBtn, formThemed.closeButton]}>
-                  <Ionicons name="close" size={19} color={colors.textMuted} />
+                  <AppIcon family="ionicons" name="close" size={19} color={colors.textMuted} />
                 </Pressable>
               </View>
 
@@ -1125,7 +1126,7 @@ export default function AccountDetailScreen() {
                 <View style={styles.formHead}>
                   <View style={styles.logoPreviewWrap}>
                     <IconFrame size={52}>
-                      <Ionicons name="wallet-outline" size={22} color={colors.primary} />
+                      <AppIcon family="ionicons" name="wallet-outline" size={22} color={colors.primary} />
                     </IconFrame>
                   </View>
                   <Text style={[styles.formHint, formThemed.textMuted]}>
@@ -1139,7 +1140,7 @@ export default function AccountDetailScreen() {
                       <LogoIconFrame uri={previewLogo} size={52} />
                     ) : (
                       <IconFrame size={52}>
-                        <Ionicons name="business-outline" size={22} color={colors.textMuted} />
+                        <AppIcon family="ionicons" name="business-outline" size={22} color={colors.textMuted} />
                       </IconFrame>
                     )}
                     <Pressable
@@ -1155,7 +1156,7 @@ export default function AccountDetailScreen() {
                         setShowLogoPicker((visible) => !visible);
                       }}
                     >
-                      <Ionicons name="pencil-outline" size={15} color={isLight ? colors.text : ghost.void} />
+                      <AppIcon family="ionicons" name="pencil-outline" size={15} color={isLight ? colors.text : ghost.void} />
                     </Pressable>
                   </View>
                   <Text style={[styles.formHint, formThemed.textMuted]}>
@@ -1219,7 +1220,7 @@ export default function AccountDetailScreen() {
                         selected ? formThemed.selected : formThemed.control,
                       ]}
                     >
-                      <Ionicons name={type.icon} size={16} color={selected ? colors.primary : colors.textSecondary} />
+                      <AppIcon family="ionicons" name={type.icon} size={16} color={selected ? colors.primary : colors.textSecondary} />
                       <Text style={[styles.typeChipText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
                         {type.label}
                       </Text>
@@ -1311,7 +1312,7 @@ export default function AccountDetailScreen() {
                     ]}
                     onPress={() => editingAccount && confirmDeleteAccount(editingAccount)}
                   >
-                    <Ionicons name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
+                    <AppIcon family="ionicons" name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
                     <Text style={destructiveTextActionStyle(isLight)}>Supprimer le compte</Text>
                   </Pressable>
                 </View>
@@ -1453,7 +1454,7 @@ function LogoOption({
         <LogoIconFrame uri={logoUrl} size={ICON_WELL_SIZE} />
       ) : (
         <IconFrame size={ICON_WELL_SIZE}>
-          <Ionicons name="business-outline" size={17} color={colors.textMuted} />
+          <AppIcon family="ionicons" name="business-outline" size={17} color={colors.textMuted} />
         </IconFrame>
       )}
     </Pressable>

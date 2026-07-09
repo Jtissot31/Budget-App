@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Pressable,
   StyleSheet,
@@ -8,7 +9,6 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
 import {
   containerSurfaceStyle,
   jakartaSemiboldText,
@@ -27,7 +27,7 @@ import {
 } from '@/lib/accountBalancePresentation';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
 import { useAppTheme } from '@/lib/themeContext';
-import { remoteLogoImageStyle, userPickedIconGlyphSize } from '@/lib/userPickedIcon';
+import { remoteLogoImageStyle, userPickedIconLogoSize } from '@/lib/userPickedIcon';
 
 type Props = {
   account: AccountBalanceDisplayAccount;
@@ -40,8 +40,9 @@ type Props = {
   isLast?: boolean;
 };
 
-/** Square slot — matches BankAccountCard (40) and list icon visual weight via logo inset. */
+/** Square slot — bank logos render at ~68% inset; fallback glyphs use the same visual weight. */
 const ICON_SLOT_SIZE = 40;
+const FALLBACK_ACCOUNT_ICON_SIZE = userPickedIconLogoSize(ICON_SLOT_SIZE);
 
 export const DashboardAccountBalanceCard = memo(function DashboardAccountBalanceCard({
   account,
@@ -86,9 +87,9 @@ export const DashboardAccountBalanceCard = memo(function DashboardAccountBalance
               recyclingKey={logoUrl}
             />
           ) : (
-            <Ionicons
+            <AppIcon family="ionicons"
               name={accountBalanceIconForKind(account.kind)}
-              size={userPickedIconGlyphSize(ICON_SLOT_SIZE)}
+              size={FALLBACK_ACCOUNT_ICON_SIZE}
               color={logoTone}
             />
           )}
@@ -103,18 +104,14 @@ export const DashboardAccountBalanceCard = memo(function DashboardAccountBalance
             >
               {title}
             </Text>
-            {account.kind === 'credit' ? (
-              <Ionicons name="chevron-forward" size={16} color={muted} style={styles.chevron} />
-            ) : null}
+            <Text
+              style={[styles.typeLabel, typographyKit.caption, { color: muted }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {typeLabel}
+            </Text>
           </View>
-
-          <Text
-            style={[styles.typeLabel, typographyKit.caption, { color: muted }]}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-          >
-            {typeLabel}
-          </Text>
 
           <Text
             style={[
@@ -212,13 +209,12 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     minWidth: 0,
   },
-  chevron: {
-    flexShrink: 0,
-  },
   typeLabel: {
+    flexShrink: 0,
     fontSize: 10,
     lineHeight: 14,
     letterSpacing: 0.2,
+    textAlign: 'right',
   },
   balance: {
     alignSelf: 'flex-start',

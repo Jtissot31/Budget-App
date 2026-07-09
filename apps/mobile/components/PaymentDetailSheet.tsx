@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, StyleSheet, Text, View, type TextStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PremiumSwitch } from '@/components/PremiumSwitch';
@@ -783,7 +783,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
             onPress={handleSheetClose}
             style={({ pressed }) => [styles.closeButton, pressed && styles.headerButtonPressed]}
           >
-            <Ionicons name="close" size={18} color={colors.text} />
+            <AppIcon family="ionicons" name="close" size={18} color={colors.text} />
           </Pressable>
         </View>
 
@@ -838,7 +838,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
 
           {isEstimatedPayRow ? (
             <View style={styles.estimatedPayBanner}>
-              <Ionicons name="sparkles" size={14} color={colors.primary} style={styles.estimatedPayBannerIcon} />
+              <AppIcon family="ionicons" name="sparkles" size={14} color={colors.primary} style={styles.estimatedPayBannerIcon} />
               <View style={styles.estimatedPayBannerText}>
                 <Text style={styles.estimatedPayBannerLine}>
                   Estimation à partir de tes paies passées. Le dépôt réel peut différer.
@@ -918,7 +918,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
                 deleting && styles.disabled,
               ]}
             >
-              <Ionicons name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
+              <AppIcon family="ionicons" name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
               <Text style={destructiveTextActionStyle(isLight)}>
                 {deleting ? 'Suppression…' : deleteFooterLabel}
               </Text>

@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode, type RefObject } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   FlatList,
   Platform,
@@ -9,7 +10,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DashboardCard } from '@/components/DashboardCard';
 import { ContactRow, filterContacts, type ContactDirectoryRow } from '@/components/ContactDirectory';
@@ -102,7 +102,7 @@ function MerchantRow({
             </Text>
           </View>
           <View style={styles.chevronSlot}>
-            <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+            <AppIcon family="ionicons" name="chevron-forward" size={14} color={colors.textMuted} />
           </View>
         </View>
       </GlassContainer>
@@ -174,7 +174,7 @@ export function MerchantDirectory({
           { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
         ]}
       >
-        <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+        <AppIcon family="ionicons" name="search-outline" size={18} color={colors.textMuted} />
         <TextInput
           style={[styles.searchInput, { color: colors.text }]}
           placeholder={isMerchantsMode ? 'Rechercher un marchand' : 'Rechercher un contact'}
@@ -190,7 +190,7 @@ export function MerchantDirectory({
             hitSlop={8}
             onPress={() => setSearch('')}
           >
-            <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+            <AppIcon family="ionicons" name="close-circle" size={18} color={colors.textMuted} />
           </Pressable>
         ) : null}
       </View>
@@ -218,7 +218,7 @@ export function MerchantDirectory({
               onAddMerchant();
             }}
           >
-            <Ionicons name="add-outline" size={14} color={colors.textSecondary} />
+            <AppIcon family="ionicons" name="add-outline" size={14} color={colors.textSecondary} />
             <Text
               style={[styles.editButtonText, { color: colors.textSecondary }]}
               numberOfLines={1}
@@ -243,7 +243,7 @@ export function MerchantDirectory({
               pressed && floatingGlassButtonPressed,
             ]}
           >
-            <Ionicons name="add" size={18} color={colors.textSecondary} />
+            <AppIcon family="ionicons" name="add" size={18} color={colors.textSecondary} />
             <Text style={[styles.addContactButtonText, { color: colors.text }]}>Ajouter un contact</Text>
           </Pressable>
         ) : null}
@@ -275,7 +275,7 @@ export function MerchantDirectory({
         <View style={{ paddingHorizontal: contentGutter }}>
         <DashboardCard padding={spacing.lg} innerStyle={styles.emptyCard}>
           <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceElevated }]}>
-            <Ionicons
+            <AppIcon family="ionicons" 
               name={isMerchantsMode ? 'storefront-outline' : 'person-outline'}
               size={22}
               color={colors.textMuted}

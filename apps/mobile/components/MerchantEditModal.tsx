@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Alert,
   Modal,
@@ -9,7 +10,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
@@ -287,7 +287,7 @@ export function MerchantEditModal({
               ]}
               onPress={onClose}
             >
-              <Ionicons name="close" size={20} color={colors.textSecondary} />
+              <AppIcon family="ionicons" name="close" size={20} color={colors.textSecondary} />
             </Pressable>
           </View>
 
@@ -345,7 +345,7 @@ export function MerchantEditModal({
                           pressed && styles.pressed,
                         ]}
                       >
-                        <Ionicons name="storefront-outline" size={14} color={colors.textMuted} />
+                        <AppIcon family="ionicons" name="storefront-outline" size={14} color={colors.textMuted} />
                         <Text style={[styles.suggestionText, { color: colors.text }]} numberOfLines={1}>
                           {name}
                         </Text>
@@ -363,7 +363,7 @@ export function MerchantEditModal({
                   <LogoIconFrame uri={previewLogoUrl} size={52} />
                 ) : (
                   <View style={userPickedIconWellStyle(52, isLight)}>
-                    <Ionicons name="storefront-outline" size={22} color={colors.textMuted} />
+                    <AppIcon family="ionicons" name="storefront-outline" size={22} color={colors.textMuted} />
                   </View>
                 )}
                 <View style={styles.logoCopy}>
@@ -385,7 +385,7 @@ export function MerchantEditModal({
                       pressed && styles.pressed,
                     ]}
                   >
-                    <Ionicons name="pencil-outline" size={14} color={colors.textMuted} />
+                    <AppIcon family="ionicons" name="pencil-outline" size={14} color={colors.textMuted} />
                   </Pressable>
                 ) : null}
               </View>
@@ -406,7 +406,7 @@ export function MerchantEditModal({
                     pressed && styles.pressed,
                   ]}
                 >
-                  <Ionicons name="image-outline" size={16} color={colors.textSecondary} />
+                  <AppIcon family="ionicons" name="image-outline" size={16} color={colors.textSecondary} />
                   <Text style={[styles.importLogoButtonText, { color: colors.textSecondary }]}>
                     {importingLogo ? 'Ouverture…' : 'Importer un logo'}
                   </Text>
@@ -454,7 +454,7 @@ export function MerchantEditModal({
                         <LogoIconFrame uri={autoLogoUrl} size={ICON_WELL_SIZE} />
                       ) : (
                         <IconFrame size={ICON_WELL_SIZE}>
-                          <Ionicons name="sparkles-outline" size={17} color={colors.textMuted} />
+                          <AppIcon family="ionicons" name="sparkles-outline" size={17} color={colors.textMuted} />
                         </IconFrame>
                       )}
                     </Pressable>
@@ -480,7 +480,7 @@ export function MerchantEditModal({
                             <LogoIconFrame uri={option.logoUrl} size={ICON_WELL_SIZE} />
                           ) : (
                             <IconFrame size={ICON_WELL_SIZE}>
-                              <Ionicons name="storefront-outline" size={17} color={colors.textMuted} />
+                              <AppIcon family="ionicons" name="storefront-outline" size={17} color={colors.textMuted} />
                             </IconFrame>
                           )}
                         </Pressable>
@@ -527,7 +527,7 @@ export function MerchantEditModal({
                   setShowDeleteConfirm(true);
                 }}
               >
-                <Ionicons name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
+                <AppIcon family="ionicons" name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
                 <Text style={destructiveTextActionStyle(isLight)}>Supprimer de la liste</Text>
               </Pressable>
             ) : null}

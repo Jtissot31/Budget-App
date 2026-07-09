@@ -1,4 +1,4 @@
-import type { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // TODO: brancher sur vraies données plans (RfaActivePlan / table SQLite dédiée — voir lib/ai/types.ts)
 

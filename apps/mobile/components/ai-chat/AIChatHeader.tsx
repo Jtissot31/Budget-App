@@ -1,6 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { useRouter } from 'expo-router';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
@@ -59,14 +58,14 @@ export function AIChatHeader({
           }}
           style={({ pressed }) => [styles.backHit, pressed && styles.pressed]}
         >
-          <MaterialIcons name="arrow-back" size={22} color={colors.text} />
+          <AppIcon family="material" name="arrow-back" size={22} color={colors.text} />
         </Pressable>
       ) : null}
 
       <View style={[styles.headerTitleContainer, !showBackButton && styles.headerTitleContainerTab]}>
         <View style={styles.avatarContainer}>
           <View style={[styles.avatar, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-            <MaterialCommunityIcons name="sparkles" size={16} color={palette.primary} />
+            <AppIcon family="material-community" name="sparkles" size={16} color={palette.primary} />
           </View>
           <View style={[styles.statusIndicator, { backgroundColor: palette.primary, borderColor: palette.background }]} />
         </View>
@@ -88,7 +87,7 @@ export function AIChatHeader({
         }}
         style={({ pressed }) => [styles.menuHit, pressed && styles.pressed]}
       >
-        <MaterialCommunityIcons name="dots-vertical" size={24} color={palette.text} />
+        <AppIcon family="material-community" name="dots-vertical" size={24} color={palette.text} />
       </Pressable>
     </View>
   );

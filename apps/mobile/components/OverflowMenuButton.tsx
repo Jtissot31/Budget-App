@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Modal,
   Pressable,
@@ -8,7 +10,6 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { MODIFIER_ICON_NAME, MODIFIER_ICON_SIZE } from '@/components/ModifierButton';
 import { destructiveTextActionStyle, jakartaMediumText, radius, spacing, typography } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
@@ -58,7 +59,7 @@ export function OverflowMenuButton({
         onPress={open}
         style={({ pressed }) => [styles.trigger, pressed && styles.pressed, style]}
       >
-        <Ionicons name="ellipsis-horizontal" size={20} color={colors.text} />
+        <AppIcon family="ionicons" name="ellipsis-horizontal" size={20} color={colors.text} />
       </Pressable>
 
       <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
@@ -96,7 +97,7 @@ export function OverflowMenuButton({
                   ]}
                 >
                   {iconName ? (
-                    <Ionicons
+                    <AppIcon family="ionicons"
                       name={iconName}
                       size={item.key === 'edit' ? MODIFIER_ICON_SIZE : 18}
                       color={iconColor}

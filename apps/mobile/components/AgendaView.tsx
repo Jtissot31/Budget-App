@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Platform, Pressable, StyleSheet, Text, View, ScrollView, type TextStyle, type ViewStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { frequencyLabel } from '@/lib/recurringPaymentsForm';
@@ -890,7 +890,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
             </View>
             <DashboardCard padding={spacing.lg} innerStyle={styles.emptyCardInner}>
               <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceElevated }]}>
-                <Ionicons name="calendar-outline" size={22} color={colors.textMuted} />
+                <AppIcon family="ionicons" name="calendar-outline" size={22} color={colors.textMuted} />
               </View>
               <Text style={styles.emptyTitle}>Aucun paiement ce jour.</Text>
             </DashboardCard>
@@ -912,7 +912,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
             ) : (
               <DashboardCard padding={spacing.lg} innerStyle={styles.emptyCardInner}>
                 <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceElevated }]}>
-                  <Ionicons name="checkmark-circle-outline" size={22} color={colors.textMuted} />
+                  <AppIcon family="ionicons" name="checkmark-circle-outline" size={22} color={colors.textMuted} />
                 </View>
                 <Text style={styles.emptyTitle}>Rien de prévu</Text>
                 <Text style={styles.emptyHint}>Les prochains 30 jours apparaîtront ici.</Text>

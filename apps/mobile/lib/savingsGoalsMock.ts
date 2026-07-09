@@ -1,4 +1,4 @@
-import type { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 
 // TODO: brancher sur getSavingsGoals() — voir types/index.ts SavingsGoal

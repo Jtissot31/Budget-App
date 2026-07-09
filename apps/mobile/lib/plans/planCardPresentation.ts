@@ -1,4 +1,4 @@
-import type { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   PLAN_CATEGORY_LABELS,
   PLAN_STATUT_LABELS,

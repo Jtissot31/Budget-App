@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -80,7 +79,7 @@ function TransferConfirmRow({ line, checked, onToggle }: TransferRowProps) {
       </View>
 
       {checked ? (
-        <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+        <AppIcon family="ionicons" name="checkmark-circle" size={22} color={colors.primary} />
       ) : (
         <View style={[styles.selectionRing, { borderColor: colors.borderStrong }]} />
       )}
@@ -218,7 +217,7 @@ export function PaycheckAllocationScreen() {
               pressed && styles.pressed,
             ]}
           >
-            <Ionicons name="chevron-back" size={22} color={colors.text} />
+            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: colors.text }, jakartaExtraBoldText]} numberOfLines={1}>
             Répartition de la paie

@@ -1,4 +1,6 @@
 import { type Dispatch, type SetStateAction, useMemo } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -10,7 +12,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import { GoalSparkChartCarousel } from '@/components/GoalSparkChartCarousel';
@@ -225,7 +226,7 @@ export function SavingsGoalFormModal({
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, themed.text]}>{form?.name ? 'Modifier' : 'Nouvel objectif'}</Text>
               <Pressable onPress={onDismiss} hitSlop={12} style={[styles.modalClose, themed.closeButton]}>
-                <Ionicons name="close" size={19} color={themeColors.textMuted} />
+                <AppIcon family="ionicons" name="close" size={19} color={themeColors.textMuted} />
               </Pressable>
             </View>
 

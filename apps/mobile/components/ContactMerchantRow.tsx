@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Image } from 'expo-image';
 import { MerchantLogo } from '@/components/MerchantLogo';
 import { planFinanceKit } from '@/constants/planFinanceKit';
@@ -72,7 +72,7 @@ function ContactRowAvatar({
           accessibilityIgnoresInvertColors
         />
       ) : (
-        <Ionicons name="person-outline" size={22} color={iconColor} />
+        <AppIcon family="ionicons" name="person-outline" size={22} color={iconColor} />
       )}
     </View>
   );
@@ -116,7 +116,7 @@ export function ContactMerchantRow(props: ContactMerchantRowProps) {
           {name}
         </Text>
 
-        <Ionicons
+        <AppIcon family="ionicons" 
           name={isEditing ? 'pencil-outline' : 'chevron-forward'}
           size={16}
           color={isEditing ? colors.primary : colors.textMuted}

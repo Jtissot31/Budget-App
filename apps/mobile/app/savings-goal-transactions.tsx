@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -173,7 +174,7 @@ export default function SavingsGoalTransactionsScreen() {
               ]}
               onPress={() => router.back()}
             >
-              <Ionicons name="chevron-back" size={22} color={colors.text} />
+              <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
             </Pressable>
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={[stylesMemo.sheetTitle, { color: colors.text }]} numberOfLines={1}>
@@ -203,7 +204,7 @@ export default function SavingsGoalTransactionsScreen() {
                 ]}
               >
                 <View style={[stylesMemo.heroIcon, { backgroundColor: ghost.obsidianSoft }]}>
-                  <Ionicons name={iconName as keyof typeof Ionicons.glyphMap} size={30} color={colors.primary} />
+                  <AppIcon family="ionicons" name={iconName as keyof typeof Ionicons.glyphMap} size={30} color={colors.primary} />
                 </View>
                 <View style={stylesMemo.heroCopy}>
                   <Text style={[stylesMemo.goalName, { color: colors.text }]} numberOfLines={3}>

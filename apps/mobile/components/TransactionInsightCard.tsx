@@ -1,8 +1,8 @@
 import { LayoutAnimation, Platform, Pressable, StyleSheet, Text, UIManager, View } from 'react-native';
+import { AppIcon } from '@/components/icons/AppIcon';
 
 import { useState } from 'react';
 
-import { Ionicons } from '@expo/vector-icons';
 
 import { GlassContainer } from '@/components/GlassContainer';
 
@@ -176,7 +176,7 @@ export function TransactionInsightCard({ insight }: Props) {
 
           <View style={[styles.iconWell, { backgroundColor: colors.successMuted, borderColor: `${accentColor}33` }]}>
 
-            <Ionicons name="sparkles-outline" size={14} color={accentColor} />
+            <AppIcon family="ionicons" name="sparkles-outline" size={14} color={accentColor} />
 
           </View>
 
@@ -186,7 +186,7 @@ export function TransactionInsightCard({ insight }: Props) {
 
           </Text>
 
-          <Ionicons name="chevron-up" size={14} color={colors.textMuted} style={styles.chevronMuted} />
+          <AppIcon family="ionicons" name="chevron-up" size={14} color={colors.textMuted} style={styles.chevronMuted} />
 
         </Pressable>
 
@@ -230,7 +230,7 @@ export function TransactionInsightCard({ insight }: Props) {
 
       >
 
-        <Ionicons name="sparkles-outline" size={11} color={accentColor} style={styles.collapsedSparkle} />
+        <AppIcon family="ionicons" name="sparkles-outline" size={11} color={accentColor} style={styles.collapsedSparkle} />
 
         <Text style={[styles.collapsedLabel, { color: colors.textMuted }]}>Conseil</Text>
 
@@ -240,7 +240,7 @@ export function TransactionInsightCard({ insight }: Props) {
 
         </Text>
 
-        <Ionicons name="chevron-down" size={12} color={colors.textMuted} style={styles.chevronMuted} />
+        <AppIcon family="ionicons" name="chevron-down" size={12} color={colors.textMuted} style={styles.chevronMuted} />
 
       </Pressable>
 

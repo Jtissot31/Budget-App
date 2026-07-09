@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Modal,
   Platform,
@@ -7,7 +8,6 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
@@ -129,7 +129,7 @@ export function AIChatSettingsSheet({ visible, onClose, onHistoryCleared }: Prop
                 hitSlop={12}
                 style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
               >
-                <Ionicons name="close" size={22} color={palette.textMuted} />
+                <AppIcon family="ionicons" name="close" size={22} color={palette.textMuted} />
               </Pressable>
             </View>
 
@@ -223,7 +223,7 @@ export function AIChatSettingsSheet({ visible, onClose, onHistoryCleared }: Prop
                 <Text style={[styles.settingsLinkText, { color: palette.textMuted }, jakartaRegularText]}>
                   Configuration complète dans Réglages
                 </Text>
-                <Ionicons name="chevron-forward" size={16} color={palette.textMuted} />
+                <AppIcon family="ionicons" name="chevron-forward" size={16} color={palette.textMuted} />
               </Pressable>
             </View>
           </View>

@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { useRouter } from 'expo-router';
 import {
   FLOATING_FAB_ICON_SIZE,
@@ -22,7 +22,7 @@ export function Fab() {
       accessibilityRole="button"
       accessibilityLabel="Nouvelle transaction"
     >
-      <Ionicons name="add" size={FLOATING_FAB_ICON_SIZE} color={colors.text} />
+      <AppIcon family="ionicons" name="add" size={FLOATING_FAB_ICON_SIZE} color={colors.text} />
     </Pressable>
   );
 }

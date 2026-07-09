@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Alert,
   Pressable,
@@ -9,7 +10,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -318,7 +318,7 @@ function ContactHeroIdentity({
               accessibilityLabel={`Photo de ${contactName}`}
             />
           ) : (
-            <Ionicons name="person" size={40} color={colors.textSecondary} />
+            <AppIcon family="ionicons" name="person" size={40} color={colors.textSecondary} />
           )}
         </View>
         <Pressable
@@ -332,7 +332,7 @@ function ContactHeroIdentity({
             pressed && styles.pressed,
           ]}
         >
-          <Ionicons name="pencil-outline" size={14} color={colors.text} />
+          <AppIcon family="ionicons" name="pencil-outline" size={14} color={colors.text} />
         </Pressable>
       </View>
       <Text style={[styles.heroContactName, { color: colors.text }]} numberOfLines={2}>
@@ -441,7 +441,7 @@ export default function ContactDetailScreen() {
             ]}
             onPress={() => router.back()}
           >
-            <Ionicons name="chevron-back" size={22} color={colors.text} />
+            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
           </Pressable>
           <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
             {contactName}
@@ -507,7 +507,7 @@ export default function ContactDetailScreen() {
                 { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
               ]}
             >
-              <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+              <AppIcon family="ionicons" name="search-outline" size={18} color={colors.textMuted} />
               <TextInput
                 style={[styles.searchInput, { color: colors.text }]}
                 placeholder="Rechercher"
@@ -523,7 +523,7 @@ export default function ContactDetailScreen() {
                   onPress={() => setSearch('')}
                   style={styles.clearSearchBtn}
                 >
-                  <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                  <AppIcon family="ionicons" name="close-circle" size={18} color={colors.textMuted} />
                 </Pressable>
               ) : null}
               <Pressable
@@ -537,7 +537,7 @@ export default function ContactDetailScreen() {
                 }}
                 style={styles.filterIconBtn}
               >
-                <Ionicons
+                <AppIcon family="ionicons" 
                   name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
                   size={20}
                   color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}

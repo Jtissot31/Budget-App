@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,7 +9,6 @@ import {
   Text,
   View,
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PageTransition } from '@/components/PageTransition';
@@ -118,7 +118,7 @@ export function PlanFinancierHub() {
                     onPress={handleOpenCreate}
                     style={({ pressed }) => [planFinanceIconButtonStyle(), pressed && styles.pressed]}
                   >
-                    <MaterialCommunityIcons name="plus" size={22} color={pf.text} />
+                    <AppIcon family="material-community" name="plus" size={22} color={pf.text} />
                   </Pressable>
                 }
               />

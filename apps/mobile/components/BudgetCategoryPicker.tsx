@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Ionicons } from '@expo/vector-icons';
 
 import { MdiIcon } from '@/components/MdiIcon';
 
@@ -103,7 +103,7 @@ function CategoryChip({ category, selected, onPress }: CategoryChipProps) {
 
       ) : (
 
-        <Ionicons name={ionName} size={14} color={iconColor} style={styles.chipIcon} />
+        <AppIcon family="ionicons" name={ionName} size={14} color={iconColor} style={styles.chipIcon} />
 
       )}
 

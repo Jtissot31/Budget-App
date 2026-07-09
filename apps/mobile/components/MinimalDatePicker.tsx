@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import type { GhostTokens } from '@/constants/ghostUi';
 import { radius, spacing, typography, type AppColors } from '@/constants/theme';
 import { formatFriendlyDateLabel } from '@/lib/formatFriendlyDateLabel';
@@ -56,7 +56,7 @@ export function DatePickerField({
         ]}
       >
         <Text style={[styles.inputText, !value && styles.placeholder]}>{displayValue || placeholder}</Text>
-        <Ionicons name="calendar-clear-outline" size={18} color={ghost.mutedSoft} />
+        <AppIcon family="ionicons" name="calendar-clear-outline" size={18} color={ghost.mutedSoft} />
       </Pressable>
 
       <MinimalDatePicker
@@ -184,7 +184,7 @@ export function MinimalDatePicker({ visible, value, allowClear, onCancel, onConf
                 accessibilityRole="button"
                 accessibilityLabel="Mois précédent"
               >
-                <Ionicons name="chevron-back" size={20} color={ghost.mutedSoft} />
+                <AppIcon family="ionicons" name="chevron-back" size={20} color={ghost.mutedSoft} />
               </Pressable>
             ) : (
               <Pressable
@@ -194,7 +194,7 @@ export function MinimalDatePicker({ visible, value, allowClear, onCancel, onConf
                 accessibilityRole="button"
                 accessibilityLabel="Retour au calendrier"
               >
-                <Ionicons name="chevron-back" size={20} color={ghost.mutedSoft} />
+                <AppIcon family="ionicons" name="chevron-back" size={20} color={ghost.mutedSoft} />
               </Pressable>
             )}
             {viewMode === 'month' ? (
@@ -220,7 +220,7 @@ export function MinimalDatePicker({ visible, value, allowClear, onCancel, onConf
                 accessibilityRole="button"
                 accessibilityLabel="Mois suivant"
               >
-                <Ionicons name="chevron-forward" size={20} color={ghost.mutedSoft} />
+                <AppIcon family="ionicons" name="chevron-forward" size={20} color={ghost.mutedSoft} />
               </Pressable>
             ) : (
               <View style={styles.monthButtonSpacer} />

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -175,7 +175,7 @@ export default function ScanScreen() {
             onPress={() => router.back()}
             style={({ pressed }) => [styles.backBtn, surface, pressed && styles.pressed]}
           >
-            <Ionicons name="chevron-back" size={22} color={colors.text} />
+            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
           </Pressable>
           <Text style={[styles.title, { color: colors.text }]}>Scanner un reçu</Text>
           <View style={styles.topSpacer} />
@@ -197,7 +197,7 @@ export default function ScanScreen() {
           <>
             <ReceiptCaptureActions onScan={() => void handleScan()} onCapture={() => void handleCapture()} onImport={() => void handleImport()} />
             <SurfaceCard innerStyle={styles.tipInner} padding={spacing.md}>
-              <Ionicons name="flash-outline" size={16} color={colors.primary} />
+              <AppIcon family="ionicons" name="flash-outline" size={16} color={colors.primary} />
               <Text style={[styles.tipText, { color: colors.textMuted }]}>
                 Place le reçu à plat, avec le texte lisible. Les articles seront pré-remplis automatiquement.
               </Text>

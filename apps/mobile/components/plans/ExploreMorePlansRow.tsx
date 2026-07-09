@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { spacing, typographyKit } from '@/constants/theme';
 import { planFinanceKit } from '@/constants/planFinanceKit';
 import { tapHaptic } from '@/lib/haptics';
@@ -34,7 +34,7 @@ export function ExploreMorePlansRow({ onPress, prominent = false }: Props) {
       >
         Explorer plus de plans financiers
       </Text>
-      <Ionicons name="chevron-forward" size={16} color={pf.textMuted} />
+      <AppIcon family="ionicons" name="chevron-forward" size={16} color={pf.textMuted} />
     </Pressable>
   );
 }

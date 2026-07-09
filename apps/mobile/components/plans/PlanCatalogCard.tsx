@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { interMediumText, interSemiboldText, spacing, typography } from '@/constants/theme';
 import {
   planFinanceCatalogCardStyle,
@@ -34,7 +34,7 @@ export function PlanCatalogCard({ entry, onPress }: Props) {
         pressed && styles.pressed,
       ]}
     >
-      <MaterialCommunityIcons
+      <AppIcon family="material-community" 
         name={getCategoryIcon(entry.category)}
         size={20}
         color={iconColor}

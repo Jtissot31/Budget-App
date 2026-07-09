@@ -22,7 +22,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
-import { moneyAmountTypography } from '@/constants/theme';
+import { jakartaMediumText, moneyAmountTypography } from '@/constants/theme';
 import { ThemeSegmentedControl } from '@/components/ThemeSegmentedControl';
 import { formatDisplayMoney } from '@/lib/formatDisplayMoney';
 import { useAppTheme } from '@/lib/themeContext';
@@ -58,7 +58,18 @@ export type NetWorthTrendPoint = {
   value: number;
 };
 
-export type NetWorthChartPeriod = '1S' | '1M' | '3M' | '6M' | 'CA' | '1A';
+export type NetWorthChartPeriod =
+  | '1J'
+  | '1S'
+  | '1M'
+  | '3M'
+  | '6M'
+  | 'CA'
+  | 'YTD'
+  | '1A'
+  | '5A'
+  | '10A'
+  | 'TOUT';
 
 const CHART_HEIGHT = 190;
 const CHART_VERTICAL_PADDING = 6;
@@ -69,22 +80,34 @@ export const CHART_FULL_BLEED_RIGHT_INSET = ENDPOINT_DOT_HALO_R + 1;
 const CHART_Y_PADDING_RATIO = 0.05;
 
 export const PERIOD_DELTA_LABELS: Record<NetWorthChartPeriod, string> = {
+  '1J': 'aujourd’hui',
   '1S': 'dernière semaine',
   '1M': 'ce dernier mois',
   '3M': 'ces 3 derniers mois',
   '6M': 'ces 6 derniers mois',
   CA: 'cette année',
+  YTD: 'depuis le début de l’année',
   '1A': 'cette dernière année',
+  '5A': 'ces 5 dernières années',
+  '10A': 'ces 10 dernières années',
+  TOUT: 'toute la période',
 };
 
-const NET_WORTH_PERIOD_TABS: { id: NetWorthChartPeriod; label: string }[] = [
-  { id: '1S', label: '1S' },
-  { id: '1M', label: '1M' },
-  { id: '3M', label: '3M' },
-  { id: '6M', label: '6M' },
-  { id: 'CA', label: 'CA' },
-  { id: '1A', label: '1A' },
-];
+const NET_WORTH_PERIOD_TAB_LABELS: Record<NetWorthChartPeriod, string> = {
+  '1J': '1J',
+  '1S': '1S',
+  '1M': '1M',
+  '3M': '3M',
+  '6M': '6M',
+  CA: 'CA',
+  YTD: 'YTD',
+  '1A': '1A',
+  '5A': '5A',
+  '10A': '10A',
+  TOUT: 'TOUT',
+};
+
+type NetWorthPeriodLabels = Partial<Record<NetWorthChartPeriod, string>>;
 
 const MONTHS_FR = ['JAN', 'FÉV', 'MAR', 'AVR', 'MAI', 'JUN', 'JUL', 'AOÛ', 'SEP', 'OCT', 'NOV', 'DÉC'];
 
@@ -128,41 +151,47 @@ const DEMO_1A = makeDemoPoints([
 ]);
 
 const DEMO_PERIOD_SERIES: Record<NetWorthChartPeriod, NetWorthTrendPoint[]> = {
+  '1J': DEMO_1S.slice(-2),
   '1S': DEMO_1S,
   '1M': DEMO_1M,
   '3M': DEMO_3M,
   '6M': DEMO_6M,
   CA: DEMO_CA,
+  YTD: DEMO_CA,
   '1A': DEMO_1A,
-};
-
-const PERIOD_MIN_REAL_POINTS: Record<NetWorthChartPeriod, number> = {
-  '1S': 8,
-  '1M': 30,
-  '3M': 60,
-  '6M': 26,
-  CA: Infinity,
-  '1A': Infinity,
+  '5A': DEMO_1A,
+  '10A': DEMO_1A,
+  TOUT: DEMO_1A,
 };
 
 /** Maximum chart points rendered per period (drives demo size and downsampling target). */
 const PERIOD_MAX_CHART_POINTS: Record<NetWorthChartPeriod, number> = {
+  '1J': 2,
   '1S': 8,
   '1M': 24,
   '3M': 20,
   '6M': 16,
   CA: 12,
+  YTD: 12,
   '1A': 12,
+  '5A': 20,
+  '10A': 24,
+  TOUT: 24,
 };
 
 /** Raw real-data window (points to slice) before downsampling to PERIOD_MAX_CHART_POINTS. */
 const PERIOD_REAL_WINDOW: Record<NetWorthChartPeriod, number> = {
+  '1J': 2,
   '1S': 8,
-  '1M': 35,
-  '3M': 75,
+  '1M': 12,
+  '3M': 18,
   '6M': 26,
   CA: Infinity,
+  YTD: Infinity,
   '1A': Infinity,
+  '5A': Infinity,
+  '10A': Infinity,
+  TOUT: Infinity,
 };
 
 /**
@@ -218,18 +247,24 @@ function downsampleData(data: NetWorthTrendPoint[], maxPoints: number): NetWorth
 }
 
 function getVisiblePoints(
-  points: NetWorthTrendPoint[],
+  points: NetWorthTrendPoint[] | undefined,
   period: NetWorthChartPeriod,
+  periodRealWindowOverride?: Partial<Record<NetWorthChartPeriod, number>>,
+  periodMaxChartPointsOverride?: Partial<Record<NetWorthChartPeriod, number>>,
 ): NetWorthTrendPoint[] {
-  const demo = DEMO_PERIOD_SERIES[period];
-  const minCount = PERIOD_MIN_REAL_POINTS[period];
-  const realWindow = PERIOD_REAL_WINDOW[period];
-  const maxPoints = PERIOD_MAX_CHART_POINTS[period];
-  if (points.length >= minCount) {
-    const windowed = Number.isFinite(realWindow) ? points.slice(-realWindow) : points;
-    return downsampleData(windowed, maxPoints);
+  const safePoints = points ?? [];
+  if (safePoints.length === 0) {
+    return DEMO_PERIOD_SERIES[period] ?? [];
   }
-  return demo;
+  const demo = DEMO_PERIOD_SERIES[period];
+  const realWindow = periodRealWindowOverride?.[period] ?? PERIOD_REAL_WINDOW[period];
+  const maxPoints = periodMaxChartPointsOverride?.[period] ?? PERIOD_MAX_CHART_POINTS[period];
+  const windowed = Number.isFinite(realWindow) ? safePoints.slice(-Math.max(realWindow, 2)) : safePoints;
+  const chartSource = windowed.length >= 2 ? windowed : safePoints;
+  if (chartSource.length >= 2) {
+    return downsampleData(chartSource, maxPoints);
+  }
+  return demo && demo.length > 0 ? demo : safePoints;
 }
 
 
@@ -271,7 +306,9 @@ function computeMorphFrame(
   leftInset: number,
 ): MorphFrame {
   'worklet';
-  const count = fromYs.length;
+  const safeFrom = fromYs ?? [];
+  const safeTo = toYs ?? [];
+  const count = Math.max(safeFrom.length, safeTo.length, 0);
   if (count === 0) {
     return { d: '', lastX: leftInset, lastY: CHART_VERTICAL_PADDING };
   }
@@ -287,7 +324,9 @@ function computeMorphFrame(
   let lastY = CHART_VERTICAL_PADDING;
 
   for (let index = 0; index < count; index += 1) {
-    const value = fromYs[index] + progress * (toYs[index] - fromYs[index]);
+    const fromValue = safeFrom[index] ?? safeFrom[safeFrom.length - 1] ?? 0;
+    const toValue = safeTo[index] ?? safeTo[safeTo.length - 1] ?? fromValue;
+    const value = fromValue + progress * (toValue - fromValue);
     const x = leftInset + (index / Math.max(count - 1, 1)) * plotWidth;
     const y = CHART_VERTICAL_PADDING + (1 - (value - yMin) / safeRange) * innerHeight;
     d += `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)} `;
@@ -422,6 +461,20 @@ function computeSelectionLabelPosition(
 }
 
 export const ALL_NET_WORTH_CHART_PERIODS: NetWorthChartPeriod[] = ['1S', '1M', '3M', '6M', 'CA', '1A'];
+export const PATRIMOINE_NET_WORTH_CHART_PERIODS: NetWorthChartPeriod[] = [
+  '1J',
+  '1S',
+  '1M',
+  '6M',
+  '1A',
+];
+export const PATRIMOINE_NET_WORTH_PERIOD_LABELS: NetWorthPeriodLabels = {
+  '1J': '1 jour',
+  '1S': '1 semaine',
+  '1M': '1 mois',
+  '6M': '6 mois',
+  '1A': '1 ans',
+};
 
 /** Subtle halo breathe + expanding ripple on the in-progress endpoint. */
 function AnimatedEndpointDot({
@@ -620,12 +673,17 @@ function ChartPeriodSelector({
   active,
   onChange,
   allowedPeriods = ALL_NET_WORTH_CHART_PERIODS,
+  periodLabels,
 }: {
   active: NetWorthChartPeriod;
   onChange: (period: NetWorthChartPeriod) => void;
   allowedPeriods?: NetWorthChartPeriod[];
+  periodLabels?: NetWorthPeriodLabels;
 }) {
-  const tabs = NET_WORTH_PERIOD_TABS.filter((tab) => allowedPeriods.includes(tab.id));
+  const tabs = allowedPeriods.map((period) => ({
+    id: period,
+    label: periodLabels?.[period] ?? NET_WORTH_PERIOD_TAB_LABELS[period],
+  }));
 
   return (
     <ThemeSegmentedControl
@@ -652,6 +710,8 @@ export type PortfolioChartCardPeriodData = {
   deltaPercent: number;
   selectedIndex: number;
   selectedLabel: string;
+  /** True while the user is actively scrubbing (finger/mouse down on chart). */
+  isScrubbing: boolean;
 };
 
 export const PortfolioChartCard = forwardRef<
@@ -663,10 +723,26 @@ export const PortfolioChartCard = forwardRef<
     lineColor?: string;
     /** Period tabs to show; defaults to all periods including 1S. */
     allowedPeriods?: NetWorthChartPeriod[];
+    /** Optional period tab labels keyed by period id. */
+    periodLabels?: NetWorthPeriodLabels;
     /** Plot inset from chart frame edges; use 0 with full-bleed wrapper for screen-edge margin. */
     plotHorizontalInset?: number;
     /** Right plot inset; defaults to plotHorizontalInset. Use with plotHorizontalInset=0 for edge bleed. */
     plotHorizontalInsetRight?: number;
+    /** Optional per-period real-data window (tail slice) override. */
+    periodRealWindowOverride?: Partial<Record<NetWorthChartPeriod, number>>;
+    /** Optional per-period max chart point override after downsampling. */
+    periodMaxChartPointsOverride?: Partial<Record<NetWorthChartPeriod, number>>;
+    /** When set, resolves chart points per period instead of slicing `points`. */
+    getChartPoints?: (period: NetWorthChartPeriod) => NetWorthTrendPoint[];
+    /** Initial period tab; defaults to 1M when allowed, else first tab. */
+    initialPeriod?: NetWorthChartPeriod;
+    /** Formats the scrub badge value; defaults to portfolio currency. */
+    formatScrubValue?: (value: number) => string;
+    /** `persist` keeps crosshair after release (portfolio). `release` clears on lift (stock detail). */
+    selectionPersistence?: 'persist' | 'release';
+    /** Show point label (e.g. intraday time) under the scrub price badge for these periods. */
+    scrubTimePeriods?: NetWorthChartPeriod[];
   }
 >(function PortfolioChartCard(
   {
@@ -674,15 +750,27 @@ export const PortfolioChartCard = forwardRef<
     onPeriodData,
     lineColor = CHART_LINE,
     allowedPeriods = ALL_NET_WORTH_CHART_PERIODS,
+    periodLabels,
     plotHorizontalInset = CHART_HORIZONTAL_INSET,
     plotHorizontalInsetRight = plotHorizontalInset,
+    periodRealWindowOverride,
+    periodMaxChartPointsOverride,
+    getChartPoints,
+    initialPeriod,
+    formatScrubValue,
+    selectionPersistence = 'persist',
+    scrubTimePeriods = [],
   },
   ref,
 ) {
   const { colors } = useAppTheme();
-  const [chartPeriod, setChartPeriod] = useState<NetWorthChartPeriod>('1M');
+  const [chartPeriod, setChartPeriod] = useState<NetWorthChartPeriod>(() => {
+    if (initialPeriod && allowedPeriods.includes(initialPeriod)) return initialPeriod;
+    return allowedPeriods.includes('1M') ? '1M' : (allowedPeriods[0] ?? ALL_NET_WORTH_CHART_PERIODS[0]);
+  });
   const [containerWidth, setContainerWidth] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [scrubActive, setScrubActive] = useState(false);
   const chartFrameRef = useRef<View>(null);
   const chartFramePageXRef = useRef(0);
   const scrubAnchorChartXRef = useRef(0);
@@ -708,6 +796,7 @@ export const PortfolioChartCard = forwardRef<
   });
 
   const clearSelection = useCallback(() => {
+    setScrubActive(false);
     setSelectedIndex(null);
   }, []);
 
@@ -730,8 +819,16 @@ export const PortfolioChartCard = forwardRef<
 
   const chartWidth = Math.max(containerWidth, 0);
   const visiblePoints = useMemo(
-    () => getVisiblePoints(points, chartPeriod),
-    [chartPeriod, points],
+    () =>
+      getChartPoints
+        ? getChartPoints(chartPeriod)
+        : getVisiblePoints(
+            points,
+            chartPeriod,
+            periodRealWindowOverride,
+            periodMaxChartPointsOverride,
+          ),
+    [chartPeriod, getChartPoints, periodMaxChartPointsOverride, periodRealWindowOverride, points],
   );
   const values = useMemo(() => visiblePoints.map((point) => point.value), [visiblePoints]);
   const chart = useMemo(
@@ -739,24 +836,41 @@ export const PortfolioChartCard = forwardRef<
     [values, chartWidth, plotHorizontalInset, plotHorizontalInsetRight],
   );
   const lastIndex = Math.max(values.length - 1, 0);
-  const displayIndex = selectedIndex ?? lastIndex;
+  const isScrubbing =
+    scrubActive && selectedIndex !== null && selectedIndex !== lastIndex;
+  const displayIndex =
+    selectionPersistence === 'release'
+      ? isScrubbing
+        ? selectedIndex!
+        : lastIndex
+      : selectedIndex ?? lastIndex;
   const clampedDisplayIndex = Math.min(Math.max(displayIndex, 0), lastIndex);
   const displayValue = values[clampedDisplayIndex] ?? values[lastIndex] ?? 0;
   const displayLabel = visiblePoints[clampedDisplayIndex]?.label ?? '';
   const firstValue = values[0] ?? displayValue;
   const delta = displayValue - firstValue;
-  const deltaPercent = firstValue !== 0 ? (delta / Math.abs(firstValue)) * 100 : 0;
-  const showSelectionVisuals =
-    selectedIndex !== null && selectedIndex !== lastIndex && selectedIndex >= 0 && selectedIndex <= lastIndex;
-  const selectionPoint = showSelectionVisuals ? chart.points[selectedIndex] : null;
+  const deltaBase = Math.abs(firstValue) >= 1 ? Math.abs(firstValue) : Math.abs(displayValue - delta) >= 1
+    ? Math.abs(displayValue - delta)
+    : Math.abs(displayValue) >= 1
+      ? Math.abs(displayValue)
+      : 1;
+  const deltaPercent = (delta / deltaBase) * 100;
+  const showSelectionVisuals = isScrubbing;
+  const selectionPoint = showSelectionVisuals ? chart.points[selectedIndex!] : null;
   const showEndpointDot = Boolean(!showSelectionVisuals && values.length > 0);
+  const formatScrubLabel = formatScrubValue ?? formatChartPointAmount;
   const selectionAmountLabel = showSelectionVisuals
-    ? formatChartPointAmount(values[selectedIndex] ?? 0)
+    ? formatScrubLabel(values[selectedIndex] ?? 0)
     : '';
+  const selectionTimeLabel =
+    showSelectionVisuals && scrubTimePeriods.includes(chartPeriod)
+      ? visiblePoints[selectedIndex ?? 0]?.label ?? ''
+      : '';
+  const selectionBadgePrimary = selectionAmountLabel;
   const selectionLabelPosition = useMemo(() => {
-    if (!selectionPoint || !selectionAmountLabel || chartWidth <= 0) return null;
-    return computeSelectionLabelPosition(selectionPoint.x, chartWidth, selectionAmountLabel);
-  }, [chartWidth, selectionAmountLabel, selectionPoint]);
+    if (!selectionPoint || !selectionBadgePrimary || chartWidth <= 0) return null;
+    return computeSelectionLabelPosition(selectionPoint.x, chartWidth, selectionBadgePrimary);
+  }, [chartWidth, selectionBadgePrimary, selectionPoint]);
 
   useEffect(() => {
     if (chartWidth <= 0 || values.length === 0) return;
@@ -877,6 +991,13 @@ export const PortfolioChartCard = forwardRef<
     setSelectedIndex(null);
   }, [chartPeriod]);
 
+  useEffect(() => {
+    if (allowedPeriods.length === 0) return;
+    if (!allowedPeriods.includes(chartPeriod)) {
+      setChartPeriod(allowedPeriods.includes('1M') ? '1M' : allowedPeriods[0]);
+    }
+  }, [allowedPeriods, chartPeriod]);
+
   useFocusEffect(
     useCallback(() => {
       return () => {
@@ -884,6 +1005,12 @@ export const PortfolioChartCard = forwardRef<
       };
     }, []),
   );
+
+  useEffect(() => {
+    setSelectedIndex(null);
+  }, [chartPeriod]);
+
+  const clearSelectionAfterScrub = selectionPersistence === 'release';
 
   const updateSelectionFromX = useCallback(
     (touchX: number) => {
@@ -910,6 +1037,7 @@ export const PortfolioChartCard = forwardRef<
         onMoveShouldSetPanResponderCapture: () => true,
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: (event) => {
+          setScrubActive(true);
           measureChartFrame();
           const touchX = clampChartTouchX(
             getChartTouchXAtGrant(event, chartFramePageXRef.current),
@@ -923,19 +1051,26 @@ export const PortfolioChartCard = forwardRef<
           updateSelectionFromX(touchX);
         },
         onPanResponderRelease: (_event, gestureState) => {
+          setScrubActive(false);
+          if (clearSelectionAfterScrub) {
+            setSelectedIndex(null);
+            return;
+          }
           const touchX = clampChartTouchX(scrubAnchorChartXRef.current + gestureState.dx, chartWidth);
           updateSelectionFromX(touchX);
         },
         onPanResponderTerminate: () => {
+          setScrubActive(false);
           setSelectedIndex(null);
         },
       }),
-    [chartWidth, measureChartFrame, updateSelectionFromX],
+    [chartWidth, clearSelectionAfterScrub, measureChartFrame, updateSelectionFromX],
   );
 
   const handleWebMouseDown = useCallback(
     (event: GestureResponderEvent) => {
       isWebDraggingRef.current = true;
+      setScrubActive(true);
       measureChartFrame();
       const touchX = clampChartTouchX(
         getChartTouchXAtGrant(event, chartFramePageXRef.current),
@@ -962,6 +1097,11 @@ export const PortfolioChartCard = forwardRef<
     const handleWindowMouseUp = (event: MouseEvent) => {
       if (!isWebDraggingRef.current) return;
       isWebDraggingRef.current = false;
+      setScrubActive(false);
+      if (clearSelectionAfterScrub) {
+        setSelectedIndex(null);
+        return;
+      }
       const frame = chartFrameRef.current as unknown as HTMLElement | null;
       if (!frame || chartWidth <= 0) return;
       const rect = frame.getBoundingClientRect();
@@ -975,7 +1115,7 @@ export const PortfolioChartCard = forwardRef<
       window.removeEventListener('mousemove', handleWindowMouseMove);
       window.removeEventListener('mouseup', handleWindowMouseUp);
     };
-  }, [chartWidth, updateSelectionFromX]);
+  }, [chartWidth, clearSelectionAfterScrub, updateSelectionFromX]);
 
   useEffect(() => {
     const next: PortfolioChartCardPeriodData = {
@@ -985,6 +1125,7 @@ export const PortfolioChartCard = forwardRef<
       deltaPercent,
       selectedIndex: clampedDisplayIndex,
       selectedLabel: displayLabel,
+      isScrubbing,
     };
     const prev = lastPeriodDataRef.current;
     if (
@@ -994,13 +1135,14 @@ export const PortfolioChartCard = forwardRef<
       prev.delta === next.delta &&
       prev.deltaPercent === next.deltaPercent &&
       prev.selectedIndex === next.selectedIndex &&
-      prev.selectedLabel === next.selectedLabel
+      prev.selectedLabel === next.selectedLabel &&
+      prev.isScrubbing === next.isScrubbing
     ) {
       return;
     }
     lastPeriodDataRef.current = next;
     onPeriodDataRef.current?.(next);
-  }, [chartPeriod, displayValue, delta, deltaPercent, clampedDisplayIndex, displayLabel]);
+  }, [chartPeriod, displayValue, delta, deltaPercent, clampedDisplayIndex, displayLabel, isScrubbing]);
 
   return (
     <View style={styles.wrapper} onLayout={handleLayout}>
@@ -1088,8 +1230,13 @@ export const PortfolioChartCard = forwardRef<
                   ]}
                 >
                   <Text style={[styles.selectionAmountText, { color: colors.text }]}>
-                    {selectionAmountLabel}
+                    {selectionBadgePrimary}
                   </Text>
+                  {selectionTimeLabel ? (
+                    <Text style={[styles.selectionTimeText, { color: colors.textMuted }]}>
+                      {selectionTimeLabel}
+                    </Text>
+                  ) : null}
                 </View>
               ) : null}
             </View>
@@ -1104,6 +1251,7 @@ export const PortfolioChartCard = forwardRef<
               active={chartPeriod}
               onChange={setChartPeriod}
               allowedPeriods={allowedPeriods}
+              periodLabels={periodLabels}
             />
           </Pressable>
         </View>
@@ -1146,5 +1294,12 @@ const styles = StyleSheet.create({
       fontSize: POINT_LABEL_FONT_SIZE,
       lineHeight: POINT_LABEL_FONT_SIZE + 2,
     }),
+  },
+  selectionTimeText: {
+    ...jakartaMediumText,
+    fontSize: 11,
+    lineHeight: 14,
+    marginTop: 2,
+    textAlign: 'center',
   },
 });

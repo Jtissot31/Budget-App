@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import type { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export const PAYCHECK_MOCK_AMOUNT = 2800;
 export const PAYCHECK_MOCK_SOURCE_ACCOUNT = 'Compte chèque';

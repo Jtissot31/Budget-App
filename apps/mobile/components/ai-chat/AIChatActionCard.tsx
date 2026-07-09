@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { jakartaMediumText, jakartaRegularText, radius, spacing, typography } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import type { ChatAction } from '@/lib/ai/types';
@@ -47,7 +47,7 @@ export function AIChatActionCard({ action, onConfirm, onCancel, disabled = false
   return (
     <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.border }]}>
       <View style={styles.headerRow}>
-        <MaterialCommunityIcons
+        <AppIcon family="material-community" 
           name={isPending || isExecuting ? 'lightning-bolt-outline' : 'check-circle-outline'}
           size={18}
           color={palette.primary}

@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -8,7 +9,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { jakartaRegularText, PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { AIChatQuickChips } from './AIChatQuickChips';
@@ -114,7 +114,7 @@ export function AIChatMultimodalInput({
             onPress={handleAttach}
             style={({ pressed }) => [styles.inputIconButton, pressed && styles.pressed]}
           >
-            <MaterialCommunityIcons name="plus" size={24} color={palette.textMuted} />
+            <AppIcon family="material-community" name="plus" size={24} color={palette.textMuted} />
           </Pressable>
 
           <TextInput
@@ -139,7 +139,7 @@ export function AIChatMultimodalInput({
             onPress={handleCamera}
             style={({ pressed }) => [styles.inputIconButton, pressed && styles.pressed]}
           >
-            <MaterialCommunityIcons name="camera-outline" size={24} color={palette.textMuted} />
+            <AppIcon family="material-community" name="camera-outline" size={24} color={palette.textMuted} />
           </Pressable>
 
           {canSend ? (
@@ -155,7 +155,7 @@ export function AIChatMultimodalInput({
                 disabled && styles.sendDisabled,
               ]}
             >
-              <MaterialCommunityIcons name="send" size={20} color={palette.userBubbleText} />
+              <AppIcon family="material-community" name="send" size={20} color={palette.userBubbleText} />
             </Pressable>
           ) : (
             <Pressable
@@ -165,7 +165,7 @@ export function AIChatMultimodalInput({
               onPress={handleMic}
               style={({ pressed }) => [styles.micButton, pressed && styles.pressed]}
             >
-              <MaterialCommunityIcons name="microphone" size={24} color={palette.sendMuted} />
+              <AppIcon family="material-community" name="microphone" size={24} color={palette.sendMuted} />
             </Pressable>
           )}
         </View>

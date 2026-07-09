@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type RefObject } from 'react';
+import { AppIcon } from '@/components/icons/AppIcon';
 import {
   ActivityIndicator,
   Keyboard,
@@ -12,7 +13,6 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { MinimalDatePicker } from '@/components/MinimalDatePicker';
 import { SettingsPickerSheet, type SettingsPickerOption } from '@/components/SettingsPickerSheet';
@@ -387,11 +387,11 @@ export function EditableField({
             {displayValue || placeholder}
           </Text>
           {type === 'select' ? (
-            <Ionicons name="chevron-down" size={14} color={colors.textMuted} style={styles.selectIndicator} />
+            <AppIcon family="ionicons" name="chevron-down" size={14} color={colors.textMuted} style={styles.selectIndicator} />
           ) : saveState === 'saving' ? (
             <ActivityIndicator size="small" color={colors.textMuted} style={styles.indicator} />
           ) : saveState === 'saved' ? (
-            <Ionicons name="checkmark" size={14} color={colors.accentGreen} style={styles.indicator} />
+            <AppIcon family="ionicons" name="checkmark" size={14} color={colors.accentGreen} style={styles.indicator} />
           ) : null}
         </Pressable>
       )}

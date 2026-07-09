@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { HeroChartDelta } from '@/components/HeroChartDelta';
 import { NetWorthAmountRow } from '@/components/NetWorthAmountRow';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
@@ -56,7 +56,8 @@ export function HomeNetWorthHero({ totalNetWorth, sparklineValues, periodData }:
           }}
           style={({ pressed }) => [styles.eyeButton, pressed && styles.pressed]}
         >
-          <MaterialCommunityIcons
+          <AppIcon
+            family="material-community"
             name={balancesHidden ? 'eye-off-outline' : 'eye-outline'}
             size={22}
             color={colors.textSecondary}

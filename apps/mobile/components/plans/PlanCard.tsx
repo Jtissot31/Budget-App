@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { AppIcon } from '@/components/icons/AppIcon';
 import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
 import { interMediumText, interSemiboldText, spacing, typography } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
@@ -42,7 +42,7 @@ export function PlanCard({ plan, suggested = false, layout = 'full', onPress, st
       <PlanFinanceContainer
         style={[styles.card, layout === 'carousel' && styles.cardCarousel, style]}
       >
-        <MaterialCommunityIcons
+        <AppIcon family="material-community" 
           name={getCategoryIcon(plan.category)}
           size={20}
           color={colors.textSecondary}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   AppState,
   BackHandler,
@@ -12,7 +13,6 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { AppIcon } from '@/components/icons/AppIcon';
@@ -353,7 +353,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                     ],
                   ]}
                 >
-                  <Ionicons name={icon} size={16} color={HISTORY_FAB_OPTION_ICON_COLOR} />
+                  <AppIcon family="ionicons" name={icon} size={16} color={HISTORY_FAB_OPTION_ICON_COLOR} />
                   <Text
                     style={[
                       styles.historyFabOptionLabel,
@@ -437,7 +437,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                     ],
                   ]}
                 >
-                  <Ionicons name={icon} size={16} color={HISTORY_FAB_OPTION_ICON_COLOR} />
+                  <AppIcon family="ionicons" name={icon} size={16} color={HISTORY_FAB_OPTION_ICON_COLOR} />
                   <Text
                     style={[
                       styles.historyFabOptionLabel,
