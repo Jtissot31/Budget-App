@@ -1,16 +1,19 @@
-import { type ReactNode } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { GlassContainer } from '@/components/GlassContainer';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import type {
   MockStockDetail,
   StockActivityItem,
   StockRecurringPurchase,
 } from '@/constants/mockStockDetail';
+import { jakartaBoldText, jakartaExtraBoldText } from '@/constants/plusJakartaFonts';
 import {
-  jakartaBoldText,
-  jakartaExtraBoldText,
+  DASHBOARD_VALUE_GREEN,
+  DASHBOARD_VALUE_RED,
+  containerSurfaceStyle,
+  detailSectionsCardStyle,
   moneyAmountTypography,
   radius,
   spacing,
@@ -18,7 +21,10 @@ import {
 } from '@/constants/theme';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
 import { formatDisplayMoney, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
+import { getStockLogoAsset } from '@/lib/stockLogo';
 import { useAppTheme } from '@/lib/themeContext';
+
+const IDENTITY_LOGO_SIZE = 44;
 
 function StockDetailSectionCard({
   children,
@@ -29,76 +35,117 @@ function StockDetailSectionCard({
   style?: StyleProp<ViewStyle>;
   padding?: number;
 }) {
+  const { isLight } = useAppTheme();
+  const surface = containerSurfaceStyle(isLight);
   return (
-    <SurfaceCard style={[styles.detailSectionCard, style]} padding={padding}>
+    <SurfaceCard
+      style={[
+        detailSectionsCardStyle(),
+        styles.detailSectionCard,
+        {
+          borderWidth: surface.borderWidth,
+          borderColor: surface.borderColor,
+        },
+        style,
+      ]}
+      padding={padding}
+    >
       {children}
     </SurfaceCard>
   );
 }
 
-export function StockIssuerRow({ detail }: { detail: MockStockDetail }) {
-  const { colors } = useAppTheme();
-  const logoSize = 36;
-  return (
-    <View style={styles.issuerRow}>
-      <View
-        style={[
-          styles.logoBadge,
-          {
-            width: logoSize,
-            height: logoSize,
-            borderRadius: logoSize / 2,
-            backgroundColor: detail.logoColor,
-          },
-        ]}
-      >
-        <Text style={[styles.logoLetter, { fontSize: logoSize * 0.42 }]}>{detail.logoLetter}</Text>
+/** Bundled stock mark (same resolver as StockHoldingTile), or letter fallback. */
+function StockDetailIdentityLogo({ detail }: { detail: MockStockDetail }) {
+  const ticker = detail.holding.ticker;
+  const asset = useMemo(() => getStockLogoAsset(ticker), [ticker]);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [asset]);
+
+  const showLogo = Boolean(asset) && !failed;
+
+  if (showLogo && asset) {
+    return (
+      <View style={styles.identityLogo}>
+        <Image
+          source={asset}
+          style={styles.identityLogoImage}
+          contentFit="contain"
+          contentPosition="center"
+          transition={0}
+          cachePolicy="memory-disk"
+          recyclingKey={`stock-detail-logo-${ticker}`}
+          onError={() => setFailed(true)}
+        />
       </View>
-      <Text style={[styles.issuerName, { color: colors.text }]}>{detail.issuerName}</Text>
+    );
+  }
+
+  return (
+    <View style={[styles.identityLogo, { backgroundColor: detail.logoColor }]}>
+      <Text style={styles.identityLogoLetter}>{detail.logoLetter}</Text>
     </View>
   );
 }
 
-export function StockHeroPriceRow({ detail }: { detail: MockStockDetail }) {
+/** Logo + issuer name + ticker — sits above the position value hero. */
+export function StockDetailIdentity({ detail }: { detail: MockStockDetail }) {
   const { colors } = useAppTheme();
-  const { main } = formatDisplayMoney(detail.holding.pricePerShare);
+
   return (
-    <View style={styles.heroPriceRow}>
-      <View style={styles.heroAmountGroup}>
-        <Text style={[moneyAmountTypography({ tier: 'netWorth' }), { color: colors.text }]}>
-          {main}
+    <View style={styles.identityRow}>
+      <StockDetailIdentityLogo detail={detail} />
+      <View style={styles.identityCopy}>
+        <Text style={[typographyKit.rowTitle, { color: colors.text }]} numberOfLines={2}>
+          {detail.issuerName}
         </Text>
-        <Text style={[moneyAmountTypography({ tier: 'netWorth' }), styles.heroDollar, { color: colors.text }]}>
-          $
+        <Text style={[typographyKit.metaMedium, { color: colors.textMuted }]}>
+          {detail.displayTicker}
         </Text>
       </View>
-      <Text style={[styles.currencyTag, { color: colors.textMuted }]}>{detail.currency}</Text>
     </View>
   );
 }
 
-export function StockPeriodPerformance({
-  delta,
-  deltaPercent,
-  periodLabel,
-}: {
-  delta: number;
-  deltaPercent: number;
-  periodLabel: string;
-}) {
+/**
+ * Premium minimalist stock detail hero — position value (or share price),
+ * today's change ($ + %), and shares held. Open layout (no card shell).
+ */
+export function StockDetailHero({ detail }: { detail: MockStockDetail }) {
   const { colors } = useAppTheme();
-  const positive = delta >= 0;
-  const color = positive ? colors.success : colors.danger;
-  const dollarPart = formatSignedDisplayMoney(delta, { leadingPlusWhenPositive: true });
-  const percentFormatted = `${deltaPercent >= 0 ? '+' : '−'}${Math.abs(deltaPercent).toLocaleString('fr-CA', {
+  const held = detail.holding.shares > 0;
+  const currentValue = held ? detail.position.totalValue : detail.holding.pricePerShare;
+  const dayDollar = held
+    ? detail.position.dayReturnDollar
+    : detail.holding.pricePerShare * (detail.holding.dayChangePercent / 100);
+  const dayPercent = held ? detail.position.dayReturnPercent : detail.holding.dayChangePercent;
+  const positive = dayPercent >= 0;
+  const changeColor = positive ? DASHBOARD_VALUE_GREEN : DASHBOARD_VALUE_RED;
+  const { main } = formatDisplayMoney(currentValue);
+  const dollarPart = formatSignedDisplayMoney(dayDollar, { leadingPlusWhenPositive: true });
+  const percentFormatted = `${dayPercent >= 0 ? '+' : '−'}${Math.abs(dayPercent).toLocaleString('fr-CA', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })} %`;
 
   return (
-    <Text style={[styles.periodPerformance, { color }]}>
-      {`${dollarPart.replace('$', ' $')} (${percentFormatted}) ${periodLabel}`}
-    </Text>
+    <View style={styles.detailHero}>
+      <View style={styles.heroAmountGroup}>
+        <Text style={[moneyAmountTypography({ tier: 'netWorth' }), { color: colors.text }]}>{main}</Text>
+        <Text
+          style={[moneyAmountTypography({ tier: 'netWorth' }), styles.heroDollar, { color: colors.text }]}
+        >
+          $
+        </Text>
+      </View>
+      <Text style={[styles.heroDayChange, { color: changeColor }]}>
+        {`${dollarPart.replace('$', ' $')}  ·  ${percentFormatted}`}
+      </Text>
+      <Text style={[styles.heroShares, { color: colors.textMuted }]}>{detail.position.sharesLabel}</Text>
+    </View>
   );
 }
 
@@ -175,16 +222,26 @@ export function StockSectionLink({
 }
 
 function RecurringCard({ item }: { item: StockRecurringPurchase }) {
-  const { colors } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
+  const surface = containerSurfaceStyle(isLight);
   return (
-    <GlassContainer borderRadius={radius.lg} padding={spacing.md} style={styles.recurringCard}>
+    <SurfaceCard
+      padding={spacing.md}
+      style={[
+        styles.recurringCard,
+        {
+          borderWidth: surface.borderWidth,
+          borderColor: surface.borderColor,
+        },
+      ]}
+    >
       <Text style={[styles.recurringDate, { color: colors.text }]}>{item.nextDateLabel}</Text>
       <Text style={[styles.recurringMeta, { color: colors.textMuted }]}>{item.frequency}</Text>
       <Text style={[styles.recurringMeta, { color: colors.textMuted }]}>{item.account}</Text>
       <Text style={[moneyAmountTypography({ tier: 'card' }), { color: colors.text, marginTop: spacing.sm }]}>
         {formatCompactCurrency(item.amount)}
       </Text>
-    </GlassContainer>
+    </SurfaceCard>
   );
 }
 
@@ -404,31 +461,36 @@ export function StockMarketDataSection({
 }
 
 const styles = StyleSheet.create({
-  logoBadge: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoLetter: {
-    ...jakartaExtraBoldText,
-    color: '#FFFFFF',
-  },
-  issuerRow: {
+  identityRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
   },
-  issuerName: {
-    ...jakartaBoldText,
-    flex: 1,
-    fontSize: 15,
-    lineHeight: 20,
-    letterSpacing: -0.15,
+  identityLogo: {
+    width: IDENTITY_LOGO_SIZE,
+    height: IDENTITY_LOGO_SIZE,
+    borderRadius: IDENTITY_LOGO_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
   },
-  heroPriceRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
+  identityLogoImage: {
+    width: IDENTITY_LOGO_SIZE,
+    height: IDENTITY_LOGO_SIZE,
+  },
+  identityLogoLetter: {
+    ...jakartaExtraBoldText,
+    color: '#FFFFFF',
+    fontSize: 17,
+  },
+  identityCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  detailHero: {
     gap: spacing.sm,
-    marginTop: spacing.lg,
   },
   heroAmountGroup: {
     flexDirection: 'row',
@@ -437,17 +499,23 @@ const styles = StyleSheet.create({
   heroDollar: {
     marginLeft: 2,
   },
-  currencyTag: {
-    ...jakartaBoldText,
-    fontSize: 15,
-    lineHeight: 18,
-    letterSpacing: 0.2,
-  },
-  periodPerformance: {
+  heroDayChange: {
     ...jakartaBoldText,
     fontSize: 15,
     lineHeight: 20,
-    marginTop: -spacing.sm,
+    letterSpacing: -0.15,
+  },
+  heroShares: {
+    ...typographyKit.metaMedium,
+    marginTop: 2,
+  },
+  logoBadge: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoLetter: {
+    ...jakartaExtraBoldText,
+    color: '#FFFFFF',
   },
   marketGrid: {
     flexDirection: 'row',

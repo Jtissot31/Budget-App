@@ -21,6 +21,7 @@ import {
   normalizeUserIconColor,
   resolveUserPickedIconGlyphColor,
   userPickedIconGlyphSize,
+  userPickedIconLogoSize,
   userPickedIconWellStyle,
 } from '@/lib/userPickedIcon';
 import { useAppTheme } from '@/lib/themeContext';
@@ -145,7 +146,7 @@ export function UserPickedIconWell({
       ) : showRemote && uri ? (
         <RemoteLogoImage
           uri={uri}
-          size={size}
+          size={noBackground ? userPickedIconLogoSize(size) : size}
           fullSize={noBackground}
           recyclingKey={uri}
           onError={() => {

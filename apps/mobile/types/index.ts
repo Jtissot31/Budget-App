@@ -98,6 +98,10 @@ export interface WealthAsset {
   address?: string | null;
   /** Banner photo URI for detail view (real estate). */
   photoUri?: string | null;
+  /** Authenticity certificate (JPG/PDF) URI for precious metals. */
+  certificateUri?: string | null;
+  /** Display name for the attached certificate file. */
+  certificateFileName?: string | null;
   /** Linked mortgage loan id when synced from Prêts et obligations. */
   linkedLoanId?: string | null;
   notes?: string | null;

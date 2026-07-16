@@ -51,10 +51,11 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: typography.body,
+    lineHeight: 22,
     letterSpacing: -0.2,
   },
   subtitle: {
-    fontSize: typography.caption,
+    fontSize: typography.meta,
     lineHeight: 18,
   },
   pressed: {

@@ -6,8 +6,8 @@ import { buildCompactSparklinePaths } from '@/lib/chartStockLinePath';
 
 export const CHECKING_SPARKLINE_HEIGHT = 56;
 const SPARKLINE_STROKE_WIDTH = 2;
-/** ~12% — dégradé sous la courbe vers transparent, sans bande opaque. */
-const SPARKLINE_FILL_TOP_OPACITY = 0.12;
+/** Soft wash under the Accueil sparkline — aligned with PortfolioChartCard area fill. */
+const SPARKLINE_FILL_TOP_OPACITY = 0.18;
 
 type Props = {
   values: number[];

@@ -1,34 +1,29 @@
 import { FlatList, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { PlanCard } from '@/components/plans/PlanCard';
+import { planFinanceKit } from '@/constants/planFinanceKit';
 import { PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
-import type { PlanActifOuTermine } from '@/lib/plans/Plan';
+import type { Plan } from '@/lib/plans/Plan';
 
 const CARD_GAP = spacing.md;
-/** Fraction of content width per card when multiple plans — leaves a peek of the next card. */
-const MULTI_CARD_WIDTH_RATIO = 0.88;
+/** Shorter than content so the next card peeks under the edge fade. */
+const CARD_WIDTH_RATIO = 0.68;
+const EDGE_FADE_WIDTH = 56;
 
 type Props = {
-  plans: PlanActifOuTermine[];
+  plans: Plan[];
   onOpenPlan: (planId: string) => void;
 };
 
 export function PlanHubCardCarousel({ plans, onOpenPlan }: Props) {
   const { width: screenWidth } = useWindowDimensions();
   const contentWidth = screenWidth - PAGE_PADDING_HORIZONTAL * 2;
-  const isSingle = plans.length <= 1;
-  const cardWidth = isSingle ? contentWidth : contentWidth * MULTI_CARD_WIDTH_RATIO;
+  const cardWidth = contentWidth * CARD_WIDTH_RATIO;
   const snapInterval = cardWidth + CARD_GAP;
   const listViewportWidth = screenWidth - PAGE_PADDING_HORIZONTAL;
-  const trailingPadding = isSingle ? 0 : listViewportWidth - cardWidth;
-
-  if (isSingle) {
-    const plan = plans[0];
-    return (
-      <View style={styles.singleWrap}>
-        <PlanCard plan={plan} onPress={() => onOpenPlan(plan.id)} style={{ width: cardWidth }} />
-      </View>
-    );
-  }
+  const trailingPadding = Math.max(listViewportWidth - cardWidth, EDGE_FADE_WIDTH);
+  const canvas = planFinanceKit.colors.background;
+  const showFade = plans.length > 0;
 
   return (
     <View style={styles.carouselBleed}>
@@ -52,6 +47,8 @@ export function PlanHubCardCarousel({ plans, onOpenPlan }: Props) {
         renderItem={({ item, index }) => (
           <PlanCard
             plan={item}
+            suggested={item.statut === 'suggere'}
+            layout="carousel"
             onPress={() => onOpenPlan(item.id)}
             style={{
               width: cardWidth,
@@ -60,15 +57,32 @@ export function PlanHubCardCarousel({ plans, onOpenPlan }: Props) {
           />
         )}
       />
+
+      {showFade ? (
+        <LinearGradient
+          pointerEvents="none"
+          colors={[`${canvas}00`, canvas]}
+          locations={[0, 1]}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={styles.edgeFade}
+        />
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  singleWrap: {
-    alignSelf: 'stretch',
-  },
   carouselBleed: {
+    position: 'relative',
     marginRight: -PAGE_PADDING_HORIZONTAL,
+  },
+  edgeFade: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: EDGE_FADE_WIDTH,
+    zIndex: 2,
   },
 });

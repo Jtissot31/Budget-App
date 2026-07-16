@@ -8,6 +8,7 @@ import {
   isContactTransferTx,
   parseExpediteurFromNote,
 } from '@/lib/accountTransactionFlow';
+import { userPickedIconLogoSize } from '@/lib/userPickedIcon';
 import { useAppTheme } from '@/lib/themeContext';
 import type { MerchantOverride, Transaction } from '@/types';
 
@@ -27,8 +28,8 @@ type Props = {
   /** Optional merchant override (custom logo / icon from directory). */
   merchantOverride?: Pick<MerchantOverride, 'logoUrl' | 'icon' | 'useAutoLogo'> | null;
   /**
-   * Historique embedded rows: remote merchant logos render frameless (no charcoal well).
-   * Category icons and contact transfers keep the filled well.
+   * Historique embedded rows: merchant logos and category/income glyphs render
+   * frameless (no charcoal well). Contact transfers keep the filled well.
    */
   framelessRemoteLogo?: boolean;
 };
@@ -42,7 +43,7 @@ export function isContactPersonTransferTx(
   );
 }
 
-/** True when a row should show a frameless remote merchant logo (not category/contact). */
+/** True when Historique should render a frameless avatar (not contact/transfer wells). */
 export function shouldFramelessMerchantLogo(
   transaction: Pick<Transaction, 'type' | 'label' | 'note' | 'transactionIcon'>,
   options?: {
@@ -59,25 +60,7 @@ export function shouldFramelessMerchantLogo(
     return false;
   }
 
-  const resolved = resolveTransactionMerchantLogo(transaction.label, options?.merchantOverride);
-  const hasRemoteLogo =
-    Boolean(resolved.logoUrl) ||
-    hasMerchantLogoCandidate(transaction.label) ||
-    Boolean(options?.merchantOverride?.logoUrl?.trim());
-
-  if (transaction.type === 'income' && !hasRemoteLogo) {
-    return false;
-  }
-
-  if (
-    transaction.type === 'expense' &&
-    !hasRemoteLogo &&
-    !isExpenseDefaultIcon(transaction.transactionIcon)
-  ) {
-    return false;
-  }
-
-  return hasRemoteLogo;
+  return true;
 }
 
 export function TransactionAvatar({
@@ -146,12 +129,19 @@ export function TransactionAvatar({
       merchantOverride,
     });
 
+  const hasRemoteLogo = Boolean(merchantLogo?.logoUrl);
+  // Frameless glyphs share the standard logo inset footprint.
+  const resolvedIconSize =
+    useFramelessLogo && !hasRemoteLogo && iconSize == null
+      ? userPickedIconLogoSize(size)
+      : iconSize;
+
   return (
     <UserPickedIconWell
       icon={showContactTransferIcon ? CONTACT_TRANSFER_ICON : fallbackIcon}
       color={iconColor}
       size={size}
-      iconSize={iconSize}
+      iconSize={resolvedIconSize}
       wellGlyphWhite={wellGlyphWhite}
       logoUrl={merchantLogo?.logoUrl ?? null}
       merchantLabel={merchantLogo?.merchantLabel ?? null}

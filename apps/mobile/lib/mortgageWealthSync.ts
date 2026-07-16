@@ -42,6 +42,8 @@ export async function syncMortgageWealthAsset(loan: Loan): Promise<Loan> {
     propertyType: existing?.propertyType ?? null,
     address: loan.address?.trim() || existing?.address || null,
     photoUri: existing?.photoUri ?? null,
+    certificateUri: existing?.certificateUri ?? null,
+    certificateFileName: existing?.certificateFileName ?? null,
     linkedLoanId: loan.id,
     notes: existing?.notes ?? null,
     createdAt: existing?.createdAt ?? loan.createdAt,

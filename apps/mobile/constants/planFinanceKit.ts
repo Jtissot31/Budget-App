@@ -1,14 +1,23 @@
 import { StyleSheet, type TextStyle, type ViewStyle } from 'react-native';
-import { interMediumText, interSemiboldText, spacing, typography } from '@/constants/theme';
+import {
+  CONTAINER_BORDER,
+  CONTAINER_SURFACE,
+  DARK_CANVAS,
+  interMediumText,
+  interSemiboldText,
+  spacing,
+  typography,
+} from '@/constants/theme';
 import { typographyKit } from '@/constants/typographyKit';
 
 /**
  * Theme kit — Plans financiers (hub, explorer, modèles, création).
  * Source unique des couleurs et mesures — ne pas hardcoder ailleurs.
+ * Canvas matches app-wide pitch black ({@link DARK_CANVAS}).
  */
 export const planFinanceKit = {
   colors: {
-    background: '#0E0E10',
+    background: DARK_CANVAS,
     surface: '#111111',
     surfaceElevated: '#2E2E34',
     input: '#1A1A1D',
@@ -18,7 +27,7 @@ export const planFinanceKit = {
     border: 'rgba(255, 255, 255, 0.12)',
     text: '#FFFFFF',
     textMuted: 'rgba(255, 255, 255, 0.55)',
-    textOnAccent: '#0E0E10',
+    textOnAccent: DARK_CANVAS,
   },
   radius: {
     card: 13,
@@ -50,6 +59,92 @@ export const PLAN_HUB = {
 export const PLAN_CARD_PADDING = planFinanceKit.layout.cardPadding;
 export const PLAN_CARD_LIST_GAP = planFinanceKit.layout.cardGap;
 
+/**
+ * **Onyx container** — canonical card shell (plan financier / patrimoine / detail cards).
+ *
+ * Component: {@link OnyxContainer} (`components/OnyxContainer.tsx`) —
+ * alias of {@link PlanFinanceContainer}.
+ * Fill + outline from `useAppTheme().colors` (`containerBackground`, `containerBorder`).
+ * Prefer the component for halo gradients; use these helpers for style-only surfaces.
+ *
+ * When the user asks to “appliquer onyx container”, use these tokens + `OnyxContainer`.
+ */
+export const ONYX_CONTAINER = {
+  borderRadius: planFinanceKit.radius.card,
+  borderWidth: 'hairline' as const,
+  pressedOpacity: 0.82,
+  padding: {
+    /** Full-width list row (icon + copy + amount) — 12px all sides */
+    row: spacing.md,
+    /** 2-column compact stock tile — horizontal/top 12px, bottom 14px */
+    compactTile: {
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.md + 2,
+    },
+    /** Full card interior (detail sections, plan cards) — 20px */
+    card: planFinanceKit.layout.cardPadding,
+  },
+  listGap: spacing.sm,
+} as const;
+
+/** @deprecated Use {@link ONYX_CONTAINER} — same tokens. */
+export const PLAN_FINANCE_CONTAINER = ONYX_CONTAINER;
+
+export type PlanFinanceContainerColors = {
+  containerBackground: string;
+  containerBorder: string;
+};
+
+/** Shell ViewStyle — Onyx fill, hairline outline, 13px radius, clip halo children. */
+export function planFinanceContainerShellStyle(
+  colors: PlanFinanceContainerColors,
+): Pick<ViewStyle, 'backgroundColor' | 'borderColor' | 'borderRadius' | 'borderWidth' | 'overflow'> {
+  return {
+    backgroundColor: colors.containerBackground,
+    borderColor: colors.containerBorder,
+    borderRadius: ONYX_CONTAINER.borderRadius,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  };
+}
+
+/** @see planFinanceContainerShellStyle */
+export const onyxContainerShellStyle = planFinanceContainerShellStyle;
+
+/** Press feedback on the outer `Pressable` wrapping an Onyx container — opacity 0.82. */
+export function planFinanceContainerPressedStyle(): Pick<ViewStyle, 'opacity'> {
+  return { opacity: ONYX_CONTAINER.pressedOpacity };
+}
+
+/** @see planFinanceContainerPressedStyle */
+export const onyxContainerPressedStyle = planFinanceContainerPressedStyle;
+
+/** Interior padding for full-width row tiles (icon + copy + amount). */
+export function planFinanceContainerRowLayoutStyle(): ViewStyle {
+  return {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: spacing.md,
+    padding: ONYX_CONTAINER.padding.row,
+  };
+}
+
+/** @see planFinanceContainerRowLayoutStyle */
+export const onyxContainerRowLayoutStyle = planFinanceContainerRowLayoutStyle;
+
+/** Interior padding for 2-column compact stock / wealth grid tiles. */
+export function planFinanceContainerCompactTilePaddingStyle(): Pick<
+  ViewStyle,
+  'paddingHorizontal' | 'paddingTop' | 'paddingBottom'
+> {
+  return ONYX_CONTAINER.padding.compactTile;
+}
+
+/** @see planFinanceContainerCompactTilePaddingStyle */
+export const onyxContainerCompactTilePaddingStyle = planFinanceContainerCompactTilePaddingStyle;
+
 /** Subtle charcoal halo inside plan finance cards — discrete top-left lift + soft wash. */
 export const planFinanceCardHalo = {
   dark: {
@@ -66,23 +161,34 @@ export const planFinanceCardHalo = {
   },
 } as const;
 
-export function planFinanceCardStyle(): ViewStyle {
+/**
+ * Style-only card shell aligned with {@link PlanFinanceContainer}
+ * (same fill / outline / radius). Prefer the component when halo is desired.
+ */
+export function planFinanceCardStyle(
+  colors: PlanFinanceContainerColors = {
+    containerBackground: CONTAINER_SURFACE,
+    containerBorder: CONTAINER_BORDER,
+  },
+): ViewStyle {
   return {
-    backgroundColor: planFinanceKit.colors.surface,
-    borderRadius: planFinanceKit.radius.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: planFinanceKit.colors.border,
+    ...planFinanceContainerShellStyle(colors),
     padding: planFinanceKit.layout.cardPadding,
   };
 }
 
-export function planFinanceCatalogCardStyle(): ViewStyle {
-  return planFinanceCardStyle();
+/** @deprecated Prefer {@link PlanFinanceContainer} — kept for style-only call sites. */
+export function planFinanceCatalogCardStyle(
+  colors?: PlanFinanceContainerColors,
+): ViewStyle {
+  return planFinanceCardStyle(colors);
 }
 
 /** @deprecated Même apparence que {@link planFinanceCardStyle} — plus de bordure pointillée verte. */
-export function planFinanceSuggestedCardStyle(): ViewStyle {
-  return planFinanceCardStyle();
+export function planFinanceSuggestedCardStyle(
+  colors?: PlanFinanceContainerColors,
+): ViewStyle {
+  return planFinanceCardStyle(colors);
 }
 
 export function planFinanceCardIconColor(): string {
@@ -148,38 +254,42 @@ export const planFinanceFonts = {
   screenTitle: typographyKit.pageTitle,
   sectionTitle: {
     ...interSemiboldText,
-    fontSize: typography.caption,
+    fontSize: typography.body,
+    lineHeight: 22,
     color: planFinanceKit.colors.text,
   },
+  /** Card primary title — ~iOS Body / Material bodyLarge */
   cardTitle: {
     ...interSemiboldText,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 16,
+    lineHeight: 22,
+    letterSpacing: -0.2,
     color: planFinanceKit.colors.text,
   },
+  /** Secondary meta line — ~iOS Footnote */
   cardMeta: {
     ...interMediumText,
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 13,
+    lineHeight: 18,
     color: planFinanceKit.colors.textMuted,
   },
   cardHint: {
     ...interMediumText,
-    fontSize: typography.meta,
+    fontSize: typography.caption,
     lineHeight: 20,
     color: planFinanceKit.colors.textMuted,
   },
   sectionCaps: {
     ...interSemiboldText,
-    fontSize: 11,
-    letterSpacing: 0.9,
+    fontSize: typography.micro,
+    letterSpacing: 0.8,
     textTransform: 'uppercase' as const,
     color: planFinanceKit.colors.accent,
   },
   body: {
     ...interMediumText,
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: typography.body,
+    lineHeight: 22,
     color: planFinanceKit.colors.text,
   },
   heroTitle: {

@@ -269,6 +269,10 @@ export function containerSurfaceColors(isLight: boolean) {
 /**
  * Standard container View style — fill + 1px outline from the low-fund alert reference.
  * Shapes (borderRadius, padding, layout) stay with the caller.
+ *
+ * For patrimonio / plan finance / detail tiles (halo, hairline, 13px radius), prefer
+ * **Onyx container** — {@link OnyxContainer} / {@link PlanFinanceContainer} and
+ * `ONYX_CONTAINER` in `constants/planFinanceKit.ts`.
  */
 export function containerSurfaceStyle(isLight: boolean): Pick<ViewStyle, 'backgroundColor' | 'borderColor' | 'borderWidth'> {
   const { backgroundColor, borderColor } = containerSurfaceColors(isLight);
@@ -427,9 +431,9 @@ export const ICON_WELL_SIZE = 34;
 
 /**
  * Standard merchant / bank-account logo well size (px).
- * Use for MerchantLogo, merchant directory rows, transaction rows (TransactionRow = 48),
- * recurring-payment rows, account-card identity logos, and any context that shows a
- * brand favicon / institution logo inline.
+ * Use for MerchantLogo, merchant directory rows, recurring-payment rows,
+ * account-card identity logos, and any context that shows a brand favicon /
+ * institution logo inline. Historique rows use {@link ICON_WELL_SIZE} (30–34).
  */
 export const MERCHANT_LOGO_SIZE = 48;
 

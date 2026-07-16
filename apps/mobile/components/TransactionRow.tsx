@@ -8,12 +8,12 @@ import {
 import type { MerchantOverride, SimulatedAccount, Transaction } from '@/types';
 import { getMerchantOverrideForLabel } from '@/lib/merchantLogo';
 import {
-  jakartaMediumText,
-  jakartaSemiboldText,
+  ICON_WELL_SIZE,
   spacing,
   transactionRowAmountTypography,
   typographyKit,
 } from '@/constants/theme';
+import { planFinanceContainerPressedStyle } from '@/constants/planFinanceKit';
 import { resolveContactPhotoUriForTransaction } from '@/lib/contactHistory';
 import { useContactPhotoMap } from '@/hooks/useContactPhotoMap';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
@@ -26,12 +26,11 @@ import {
 } from '@/lib/accountTransactionFlow';
 import { useSavingsGoals } from '@/hooks/useSavingsGoals';
 import { tapHaptic } from '@/lib/haptics';
+import { userPickedIconLogoSize } from '@/lib/userPickedIcon';
 import { useAppTheme } from '@/lib/themeContext';
 
-const ICON_WELL_SIZE = 36;
-const EMBEDDED_ICON_WELL_SIZE = 34;
-const EMBEDDED_ROW_TITLE_SIZE = 15.5;
-const EMBEDDED_ROW_META_SIZE = 12.5;
+const EMBEDDED_ICON_WELL_SIZE = 30;
+const EMBEDDED_ROW_TITLE_SIZE = 16;
 
 type Props = {
   transaction: Transaction;
@@ -154,7 +153,7 @@ const TransactionRowBase = memo(function TransactionRowBase({
       style={({ pressed }) => [
         styles.row,
         embedded && styles.rowEmbedded,
-        pressed && styles.pressed,
+        pressed && (embedded ? planFinanceContainerPressedStyle() : styles.pressed),
       ]}
     >
       <View style={[styles.mainRow, embedded && styles.mainRowEmbedded]}>
@@ -163,14 +162,14 @@ const TransactionRowBase = memo(function TransactionRowBase({
           contactPhotoUri={contactPhotoUri}
           merchantOverride={merchantOverride}
           size={avatarSize}
-          iconSize={18}
+          iconSize={framelessLogo ? userPickedIconLogoSize(avatarSize) : 18}
           preferContactIcon
           wellGlyphWhite
           framelessRemoteLogo={embedded}
           style={[
             styles.avatar,
             embedded && !framelessLogo && styles.avatarEmbedded,
-            embedded && !framelessLogo && { borderColor: colors.borderSubtle },
+            embedded && !framelessLogo && { borderColor: colors.containerBorder },
           ]}
         />
 
@@ -180,8 +179,8 @@ const TransactionRowBase = memo(function TransactionRowBase({
               <Text
                 style={[
                   styles.name,
-                  embedded && styles.nameEmbedded,
-                  jakartaSemiboldText,
+                  embedded ? styles.nameEmbedded : null,
+                  embedded ? typographyKit.bodyBold : typographyKit.captionSemibold,
                   { color: colors.text },
                 ]}
                 numberOfLines={1}
@@ -205,7 +204,7 @@ const TransactionRowBase = memo(function TransactionRowBase({
               style={[
                 styles.meta,
                 embedded && styles.metaEmbedded,
-                embedded ? jakartaMediumText : typographyKit.caption,
+                embedded ? typographyKit.metaMedium : typographyKit.caption,
                 { color: colors.textMuted },
               ]}
               numberOfLines={1}
@@ -218,7 +217,7 @@ const TransactionRowBase = memo(function TransactionRowBase({
       </View>
 
       {embedded && !isLast ? (
-        <View style={[styles.dividerEmbedded, { backgroundColor: colors.borderSubtle }]} />
+        <View style={[styles.dividerEmbedded, { backgroundColor: colors.containerBorder }]} />
       ) : null}
     </Pressable>
   );
@@ -305,15 +304,13 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   nameEmbedded: {
-    fontSize: EMBEDDED_ROW_TITLE_SIZE,
-    lineHeight: 20,
-    letterSpacing: -0.1,
+    letterSpacing: -0.2,
   },
   embeddedAmount: {
     ...transactionRowAmountTypography({
       fontSize: EMBEDDED_ROW_TITLE_SIZE,
       lineHeight: 20,
-      letterSpacing: -0.1,
+      letterSpacing: -0.2,
     }),
   },
   amountCol: {
@@ -325,8 +322,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   metaEmbedded: {
-    fontSize: EMBEDDED_ROW_META_SIZE,
-    lineHeight: 16,
+    letterSpacing: 0.2,
   },
   dividerEmbedded: {
     height: StyleSheet.hairlineWidth,

@@ -38,7 +38,7 @@ function formatCompactKAmount(abs: number): string {
         minimumFractionDigits: 1,
         maximumFractionDigits: 1,
       });
-  return `${numPart}k`;
+  return `${numPart}K`;
 }
 
 function formatCompactMAmount(abs: number): string {
@@ -56,7 +56,7 @@ function formatCompactMAmount(abs: number): string {
 /**
  * Splits a dollar amount for UI that renders the numeric part and an optional separate `$` span.
  * Under {@link COMPACT_K_THRESHOLD}: full fr-CA (e.g. `1 500,40`, `15 500`).
- * From 100k to 999k: compact `k` (e.g. `100k`, `125,5k`).
+ * From 100K to 999K: compact `K` (e.g. `100K`, `125,5K`).
  * From 1M: compact `M` (e.g. `5,7M`).
  */
 export function formatDisplayMoney(value: number): FormatDisplayMoneyParts {
@@ -76,7 +76,7 @@ export function formatDisplayMoney(value: number): FormatDisplayMoneyParts {
   return { main: formatCompactMAmount(abs), appendSeparatedDollar: true };
 }
 
-/** Absolute magnitude with attached `$` suffix (e.g. `15 500$`, `125,5k$`, `5,7M$`). */
+/** Absolute magnitude with attached `$` suffix (e.g. `15 500$`, `125,5K$`, `5,7M$`). */
 export function formatDisplayMoneyAbsolute(absValue: number): string {
   const { main, appendSeparatedDollar } = formatDisplayMoney(absValue);
   return appendSeparatedDollar ? `${main}$` : main;

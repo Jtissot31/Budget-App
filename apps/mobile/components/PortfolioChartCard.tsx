@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   LayoutChangeEvent,
@@ -21,14 +21,18 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import Svg, { Circle, Line, Path } from 'react-native-svg';
-import { jakartaMediumText, moneyAmountTypography } from '@/constants/theme';
+import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
+import { DASHBOARD_VALUE_GREEN, jakartaMediumText, moneyAmountTypography } from '@/constants/theme';
 import { ThemeSegmentedControl } from '@/components/ThemeSegmentedControl';
 import { formatDisplayMoney } from '@/lib/formatDisplayMoney';
 import { useAppTheme } from '@/lib/themeContext';
 
-const CHART_LINE = '#4ADE80';
+const CHART_LINE = DASHBOARD_VALUE_GREEN;
 const CHART_STROKE_WIDTH = 2;
+/** Soft under-line wash — keep fade shape, stronger so it reads on dark canvas. */
+const AREA_FILL_TOP_OPACITY = 0.45;
+const AREA_FILL_MID_OPACITY = 0.16;
+const AREA_FILL_BOTTOM_OPACITY = 0;
 /** Always-visible dot at the latest (in-progress) point. */
 const ENDPOINT_DOT_R = 3;
 const ENDPOINT_DOT_HALO_R = ENDPOINT_DOT_R + 2;
@@ -67,6 +71,8 @@ export type NetWorthChartPeriod =
   | 'CA'
   | 'YTD'
   | '1A'
+  | '2A'
+  | '3A'
   | '5A'
   | '10A'
   | 'TOUT';
@@ -88,6 +94,8 @@ export const PERIOD_DELTA_LABELS: Record<NetWorthChartPeriod, string> = {
   CA: 'cette année',
   YTD: 'depuis le début de l’année',
   '1A': 'cette dernière année',
+  '2A': 'ces 2 dernières années',
+  '3A': 'ces 3 dernières années',
   '5A': 'ces 5 dernières années',
   '10A': 'ces 10 dernières années',
   TOUT: 'toute la période',
@@ -102,6 +110,8 @@ const NET_WORTH_PERIOD_TAB_LABELS: Record<NetWorthChartPeriod, string> = {
   CA: 'CA',
   YTD: 'YTD',
   '1A': '1A',
+  '2A': '2A',
+  '3A': '3A',
   '5A': '5A',
   '10A': '10A',
   TOUT: 'TOUT',
@@ -159,6 +169,8 @@ const DEMO_PERIOD_SERIES: Record<NetWorthChartPeriod, NetWorthTrendPoint[]> = {
   CA: DEMO_CA,
   YTD: DEMO_CA,
   '1A': DEMO_1A,
+  '2A': DEMO_1A,
+  '3A': DEMO_1A,
   '5A': DEMO_1A,
   '10A': DEMO_1A,
   TOUT: DEMO_1A,
@@ -174,6 +186,8 @@ const PERIOD_MAX_CHART_POINTS: Record<NetWorthChartPeriod, number> = {
   CA: 12,
   YTD: 12,
   '1A': 12,
+  '2A': 16,
+  '3A': 18,
   '5A': 20,
   '10A': 24,
   TOUT: 24,
@@ -189,6 +203,8 @@ const PERIOD_REAL_WINDOW: Record<NetWorthChartPeriod, number> = {
   CA: Infinity,
   YTD: Infinity,
   '1A': Infinity,
+  '2A': Infinity,
+  '3A': Infinity,
   '5A': Infinity,
   '10A': Infinity,
   TOUT: Infinity,
@@ -291,7 +307,7 @@ function resampleValues(values: number[], count: number): number[] {
   });
 }
 
-type MorphFrame = { d: string; lastX: number; lastY: number };
+type MorphFrame = { d: string; fillD: string; lastX: number; lastY: number };
 
 /** Worklet-safe morph frame — interpolates resampled values and y-domain. */
 function computeMorphFrame(
@@ -310,7 +326,7 @@ function computeMorphFrame(
   const safeTo = toYs ?? [];
   const count = Math.max(safeFrom.length, safeTo.length, 0);
   if (count === 0) {
-    return { d: '', lastX: leftInset, lastY: CHART_VERTICAL_PADDING };
+    return { d: '', fillD: '', lastX: leftInset, lastY: CHART_VERTICAL_PADDING };
   }
 
   const yMin = yMinFrom + progress * (yMinTo - yMinFrom);
@@ -318,8 +334,10 @@ function computeMorphFrame(
   const range = yMax - yMin;
   const innerHeight = CHART_HEIGHT - CHART_VERTICAL_PADDING * 2;
   const safeRange = range === 0 ? 1 : range;
+  const fillBottom = CHART_HEIGHT - CHART_VERTICAL_PADDING;
 
   let d = '';
+  let firstX = leftInset;
   let lastX = leftInset;
   let lastY = CHART_VERTICAL_PADDING;
 
@@ -329,12 +347,20 @@ function computeMorphFrame(
     const value = fromValue + progress * (toValue - fromValue);
     const x = leftInset + (index / Math.max(count - 1, 1)) * plotWidth;
     const y = CHART_VERTICAL_PADDING + (1 - (value - yMin) / safeRange) * innerHeight;
+    if (index === 0) {
+      firstX = x;
+    }
     d += `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)} `;
     lastX = x;
     lastY = y;
   }
 
-  return { d: d.trim(), lastX, lastY };
+  const lineD = d.trim();
+  const fillD = lineD
+    ? `${lineD} L ${lastX.toFixed(2)} ${fillBottom.toFixed(2)} L ${firstX.toFixed(2)} ${fillBottom.toFixed(2)} Z`
+    : '';
+
+  return { d: lineD, fillD, lastX, lastY };
 }
 
 function computeYDomain(values: number[]): { yMin: number; yMax: number } {
@@ -409,6 +435,15 @@ function clampChartTouchX(touchX: number, chartWidth: number): number {
   return Math.max(0, Math.min(chartWidth, touchX));
 }
 
+/** Claim scrub only when the finger clearly moves sideways — vertical stays with ScrollView. */
+const SCRUB_ACTIVATION_DX = 8;
+
+function isHorizontalScrubGesture(dx: number, dy: number): boolean {
+  const ax = Math.abs(dx);
+  const ay = Math.abs(dy);
+  return ax >= SCRUB_ACTIVATION_DX && ax > ay;
+}
+
 function getChartTouchXAtGrant(event: GestureResponderEvent, framePageX: number): number {
   const { locationX } = event.nativeEvent;
   if (typeof locationX === 'number' && Number.isFinite(locationX)) {
@@ -465,15 +500,19 @@ export const PATRIMOINE_NET_WORTH_CHART_PERIODS: NetWorthChartPeriod[] = [
   '1J',
   '1S',
   '1M',
-  '6M',
+  '3M',
   '1A',
+  '5A',
+  '10A',
 ];
 export const PATRIMOINE_NET_WORTH_PERIOD_LABELS: NetWorthPeriodLabels = {
-  '1J': '1 jour',
-  '1S': '1 semaine',
-  '1M': '1 mois',
-  '6M': '6 mois',
-  '1A': '1 ans',
+  '1J': '1J',
+  '1S': '1S',
+  '1M': '1M',
+  '3M': '3M',
+  '1A': '1A',
+  '5A': '5A',
+  '10A': '10A',
 };
 
 /** Subtle halo breathe + expanding ripple on the in-progress endpoint. */
@@ -598,6 +637,61 @@ function syncMorphTargets(
   const plotWidth = Math.max(chartWidth - leftInset - rightInset, 1);
   morphPlotWidth.value = plotWidth;
   morphLeftInset.value = leftInset;
+}
+
+/** Animated area fill under the stock line — morphs with period transitions. */
+function MorphingChartAreaFill({
+  morphProgress,
+  morphFromYs,
+  morphToYs,
+  morphFromYMin,
+  morphFromYMax,
+  morphToYMin,
+  morphToYMax,
+  morphPlotWidth,
+  morphLeftInset,
+  lineColor,
+  fillGradId,
+}: {
+  morphProgress: SharedValue<number>;
+  morphFromYs: SharedValue<number[]>;
+  morphToYs: SharedValue<number[]>;
+  morphFromYMin: SharedValue<number>;
+  morphFromYMax: SharedValue<number>;
+  morphToYMin: SharedValue<number>;
+  morphToYMax: SharedValue<number>;
+  morphPlotWidth: SharedValue<number>;
+  morphLeftInset: SharedValue<number>;
+  lineColor: string;
+  fillGradId: string;
+}) {
+  const areaAnimatedProps = useAnimatedProps(() => {
+    const frame = computeMorphFrame(
+      morphProgress.value,
+      morphFromYs.value,
+      morphToYs.value,
+      morphFromYMin.value,
+      morphFromYMax.value,
+      morphToYMin.value,
+      morphToYMax.value,
+      morphPlotWidth.value,
+      morphLeftInset.value,
+    );
+    return { d: frame.fillD };
+  });
+
+  return (
+    <>
+      <Defs>
+        <LinearGradient id={fillGradId} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={lineColor} stopOpacity={AREA_FILL_TOP_OPACITY} />
+          <Stop offset="0.4" stopColor={lineColor} stopOpacity={AREA_FILL_MID_OPACITY} />
+          <Stop offset="1" stopColor={lineColor} stopOpacity={AREA_FILL_BOTTOM_OPACITY} />
+        </LinearGradient>
+      </Defs>
+      <AnimatedPath animatedProps={areaAnimatedProps} fill={`url(#${fillGradId})`} />
+    </>
+  );
 }
 
 /** Animated stock line + endpoint driven by shared morph state. */
@@ -743,6 +837,8 @@ export const PortfolioChartCard = forwardRef<
     selectionPersistence?: 'persist' | 'release';
     /** Show point label (e.g. intraday time) under the scrub price badge for these periods. */
     scrubTimePeriods?: NetWorthChartPeriod[];
+    /** Soft gradient fill under the line (default on — matches portefeuille/cashflow). */
+    showAreaFill?: boolean;
   }
 >(function PortfolioChartCard(
   {
@@ -760,10 +856,12 @@ export const PortfolioChartCard = forwardRef<
     formatScrubValue,
     selectionPersistence = 'persist',
     scrubTimePeriods = [],
+    showAreaFill = true,
   },
   ref,
 ) {
   const { colors } = useAppTheme();
+  const areaFillGradId = useId().replace(/:/g, '');
   const [chartPeriod, setChartPeriod] = useState<NetWorthChartPeriod>(() => {
     if (initialPeriod && allowedPeriods.includes(initialPeriod)) return initialPeriod;
     return allowedPeriods.includes('1M') ? '1M' : (allowedPeriods[0] ?? ALL_NET_WORTH_CHART_PERIODS[0]);
@@ -775,6 +873,8 @@ export const PortfolioChartCard = forwardRef<
   const chartFramePageXRef = useRef(0);
   const scrubAnchorChartXRef = useRef(0);
   const isWebDraggingRef = useRef(false);
+  const webScrubActivatedRef = useRef(false);
+  const webPointerDownClientRef = useRef({ x: 0, y: 0 });
   const onPeriodDataRef = useRef(onPeriodData);
   onPeriodDataRef.current = onPeriodData;
   const lastPeriodDataRef = useRef<PortfolioChartCardPeriodData | null>(null);
@@ -1031,20 +1131,24 @@ export const PortfolioChartCard = forwardRef<
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onStartShouldSetPanResponderCapture: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponderCapture: () => true,
+        // Never claim on touch-down — otherwise vertical page scroll is stolen by the scrubber.
+        onStartShouldSetPanResponder: () => false,
+        onStartShouldSetPanResponderCapture: () => false,
+        onMoveShouldSetPanResponder: (_event, gestureState) =>
+          isHorizontalScrubGesture(gestureState.dx, gestureState.dy),
+        onMoveShouldSetPanResponderCapture: (_event, gestureState) =>
+          isHorizontalScrubGesture(gestureState.dx, gestureState.dy),
         onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: (event) => {
+        onPanResponderGrant: (event, gestureState) => {
           setScrubActive(true);
           measureChartFrame();
-          const touchX = clampChartTouchX(
+          const currentX = clampChartTouchX(
             getChartTouchXAtGrant(event, chartFramePageXRef.current),
             chartWidth,
           );
-          scrubAnchorChartXRef.current = touchX;
-          updateSelectionFromX(touchX);
+          // Recover touch-start X: grant can fire after dx already accumulated.
+          scrubAnchorChartXRef.current = currentX - gestureState.dx;
+          updateSelectionFromX(currentX);
         },
         onPanResponderMove: (_event, gestureState) => {
           const touchX = clampChartTouchX(scrubAnchorChartXRef.current + gestureState.dx, chartWidth);
@@ -1069,17 +1173,38 @@ export const PortfolioChartCard = forwardRef<
 
   const handleWebMouseDown = useCallback(
     (event: GestureResponderEvent) => {
+      const native = event.nativeEvent as GestureResponderEvent['nativeEvent'] & {
+        clientX?: number;
+        clientY?: number;
+      };
+      const frame = chartFrameRef.current as unknown as HTMLElement | null;
+      const rect = frame?.getBoundingClientRect?.();
+      const clientX =
+        typeof native.clientX === 'number'
+          ? native.clientX
+          : typeof native.pageX === 'number'
+            ? native.pageX
+            : rect
+              ? rect.left + (native.locationX ?? 0)
+              : 0;
+      const clientY =
+        typeof native.clientY === 'number'
+          ? native.clientY
+          : typeof native.pageY === 'number'
+            ? native.pageY
+            : rect
+              ? rect.top + (native.locationY ?? 0)
+              : 0;
       isWebDraggingRef.current = true;
-      setScrubActive(true);
+      webScrubActivatedRef.current = false;
+      webPointerDownClientRef.current = { x: clientX, y: clientY };
       measureChartFrame();
-      const touchX = clampChartTouchX(
+      scrubAnchorChartXRef.current = clampChartTouchX(
         getChartTouchXAtGrant(event, chartFramePageXRef.current),
         chartWidth,
       );
-      scrubAnchorChartXRef.current = touchX;
-      updateSelectionFromX(touchX);
     },
-    [chartWidth, measureChartFrame, updateSelectionFromX],
+    [chartWidth, measureChartFrame],
   );
 
   useEffect(() => {
@@ -1090,14 +1215,35 @@ export const PortfolioChartCard = forwardRef<
       const frame = chartFrameRef.current as unknown as HTMLElement | null;
       if (!frame) return;
       const rect = frame.getBoundingClientRect();
+      const dx = event.clientX - webPointerDownClientRef.current.x;
+      const dy = event.clientY - webPointerDownClientRef.current.y;
+
+      if (!webScrubActivatedRef.current) {
+        if (!isHorizontalScrubGesture(dx, dy)) {
+          // Clearly vertical — abandon scrub so the page can scroll.
+          if (Math.abs(dy) >= SCRUB_ACTIVATION_DX && Math.abs(dy) > Math.abs(dx)) {
+            isWebDraggingRef.current = false;
+            webScrubActivatedRef.current = false;
+            setScrubActive(false);
+            setSelectedIndex(null);
+          }
+          return;
+        }
+        webScrubActivatedRef.current = true;
+        setScrubActive(true);
+      }
+
       const touchX = clampChartTouchX(event.clientX - rect.left, chartWidth);
       updateSelectionFromX(touchX);
     };
 
     const handleWindowMouseUp = (event: MouseEvent) => {
       if (!isWebDraggingRef.current) return;
+      const didScrub = webScrubActivatedRef.current;
       isWebDraggingRef.current = false;
+      webScrubActivatedRef.current = false;
       setScrubActive(false);
+      if (!didScrub) return;
       if (clearSelectionAfterScrub) {
         setSelectedIndex(null);
         return;
@@ -1169,7 +1315,13 @@ export const PortfolioChartCard = forwardRef<
                 : null)}
               style={[
                 styles.chartFrame,
-                { width: chartWidth, height: CHART_HEIGHT, backgroundColor: 'transparent' },
+                {
+                  width: chartWidth,
+                  height: CHART_HEIGHT,
+                  backgroundColor: 'transparent',
+                  // Let vertical browser/OS scrolling win; scrub still activates on horizontal drag.
+                  ...(Platform.OS === 'web' ? { touchAction: 'pan-y' as const } : null),
+                },
               ]}
             >
               <Svg
@@ -1178,6 +1330,21 @@ export const PortfolioChartCard = forwardRef<
                 viewBox={`${-SVG_DOT_OVERFLOW} ${-SVG_DOT_OVERFLOW} ${chartWidth + SVG_DOT_OVERFLOW * 2} ${CHART_HEIGHT + SVG_DOT_OVERFLOW * 2}`}
                 style={{ marginLeft: -SVG_DOT_OVERFLOW, marginTop: -SVG_DOT_OVERFLOW }}
               >
+                {showAreaFill ? (
+                  <MorphingChartAreaFill
+                    morphProgress={morphProgress}
+                    morphFromYs={morphFromYs}
+                    morphToYs={morphToYs}
+                    morphFromYMin={morphFromYMin}
+                    morphFromYMax={morphFromYMax}
+                    morphToYMin={morphToYMin}
+                    morphToYMax={morphToYMax}
+                    morphPlotWidth={morphPlotWidth}
+                    morphLeftInset={morphLeftInset}
+                    lineColor={lineColor}
+                    fillGradId={areaFillGradId}
+                  />
+                ) : null}
                 <MorphingChartLine
                   morphProgress={morphProgress}
                   morphFromYs={morphFromYs}

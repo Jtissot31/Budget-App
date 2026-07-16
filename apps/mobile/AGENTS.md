@@ -1,4 +1,4 @@
-﻿# Mobile app — agent instructions
+# Mobile app — agent instructions
 
 
 
@@ -19,4 +19,18 @@
 ## UI reference screenshots
 
 Do NOT delete `ref-ui-*.png` or `verify-s25-*.png` in apps/mobile — kept for budget rebuild design reference.
+
+## Default card container (design tokens)
+
+**Canonical shell** for patrimoine tiles, plan cards, and new interactive list/grid rows:
+`PlanFinanceContainer` (`components/plans/PlanFinanceContainer.tsx`).
+
+- Tokens: `PLAN_FINANCE_CONTAINER`, `planFinanceCardHalo`, `planFinanceContainerShellStyle`,
+  `planFinanceContainerRowLayoutStyle`, `planFinanceContainerCompactTilePaddingStyle`,
+  `planFinanceContainerPressedStyle` — all in `constants/planFinanceKit.ts`
+- Fill/outline: `colors.containerBackground` + `colors.containerBorder` (theme-aware)
+- Pressed: opacity `0.82` on outer `Pressable`
+- Dashboard / alert surfaces without halo: `containerSurfaceStyle()` in `constants/theme.ts`
+
+See `.cursor/rules/plan-finance-container.mdc` for agent usage patterns.
 

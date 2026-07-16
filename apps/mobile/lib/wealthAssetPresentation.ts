@@ -1,4 +1,4 @@
-import type { Loan, WealthAsset, WealthAssetType, WealthMaterial } from '@/types';
+import type { Loan, WealthAsset, WealthAssetType, WealthMaterial, WealthWeightUnit } from '@/types';
 
 /** Asset types shown in the Patrimoine (inclusive) wealth section. */
 export const PATRIMOINE_WEALTH_ASSET_TYPES = [
@@ -44,6 +44,40 @@ export function wealthMaterialLabel(material: WealthMaterial) {
   if (material === 'silver') return 'Argent';
   if (material === 'platinum') return 'Platine';
   return 'Diamant';
+}
+
+/**
+ * Default / official weight unit per material — same mapping as the wealth form
+ * (`WEALTH_MATERIAL_OPTIONS` in accounts.tsx).
+ */
+export function wealthMaterialOfficialWeightUnit(material: WealthMaterial): WealthWeightUnit {
+  if (material === 'diamond') return 'ct';
+  return 'g';
+}
+
+/** Display label for a stored weight unit (matches WEIGHT_UNIT_OPTIONS). */
+export function wealthWeightUnitLabel(unit: WealthWeightUnit | null | undefined): string {
+  if (unit === 'oz') return 'oz troy';
+  if (unit === 'ct') return 'carat';
+  return 'g';
+}
+
+/**
+ * Weight line for precious-material tiles — uses the asset's stored weight/unit
+ * (form defaults to the material's official unit: g for metals, carat for diamond).
+ */
+export function formatWealthAssetWeight(asset: WealthAsset): string | null {
+  if (asset.type !== 'precious_material') return null;
+  if (typeof asset.weight !== 'number' || !(asset.weight > 0)) return null;
+
+  const unit =
+    asset.weightUnit ??
+    (asset.material ? wealthMaterialOfficialWeightUnit(asset.material) : 'g');
+  const amount = asset.weight.toLocaleString('fr-CA', {
+    maximumFractionDigits: 4,
+    minimumFractionDigits: 0,
+  });
+  return `${amount} ${wealthWeightUnitLabel(unit)}`;
 }
 
 function normalizeLabel(value: string) {
@@ -99,7 +133,7 @@ export function wealthAssetHeroSubtitle(asset: WealthAsset): string | null {
   if (!asset.material) return 'Matériau précieux';
 
   const material = wealthMaterialLabel(asset.material);
-  const weight = typeof asset.weight === 'number' ? `${asset.weight} ${asset.weightUnit ?? ''}`.trim() : null;
+  const weight = formatWealthAssetWeight(asset);
   if (asset.material === 'gold' && asset.karats) {
     return `${material} ${asset.karats}k${weight ? ` · ${weight}` : ''}`;
   }
@@ -173,6 +207,20 @@ export function getWealthAssetDisplayLabel(asset: WealthAsset, linkedLoan?: Loan
     if (equity.hasMortgage) return 'Équité nette';
   }
   return 'Valeur actuelle';
+}
+
+/**
+ * Appreciation vs `purchaseCost` — null when purchase cost is unknown or zero.
+ * Same basis as {@link WealthAssetCard} and wealth-asset-detail plus-value KPI.
+ */
+export function getWealthAssetValueGainPercent(asset: WealthAsset): number | null {
+  if (!(asset.purchaseCost > 0)) return null;
+  return ((asset.currentValue - asset.purchaseCost) / asset.purchaseCost) * 100;
+}
+
+export function formatWealthValueGainPercent(percent: number): string {
+  if (Math.abs(percent) < 0.05) return '0 %';
+  return `${percent >= 0 ? '+' : ''}${percent.toFixed(1)} %`;
 }
 
 /** Sum of display values for patrimoine totals and net-worth offsets. */

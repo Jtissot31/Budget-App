@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Modal,
+  AccessibilityInfo,
   Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
   type ViewStyle,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { MotiView } from 'moti';
+import { Easing } from 'react-native-reanimated';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { AlertCenterButton } from '@/components/AlertCenterButton';
 import { useRouter } from 'expo-router';
@@ -28,7 +28,6 @@ import {
   PAGE_PADDING_HORIZONTAL,
   PAGE_TITLE_CONTENT_GAP,
   PAGE_TITLE_STYLE,
-  SECTION_TITLE_STYLE,
   jakartaBoldText,
   jakartaExtraBoldText,
   jakartaMediumText,
@@ -36,15 +35,13 @@ import {
   radius,
   spacing,
   typography,
-  type AppColors,
 } from '@/constants/theme';
-import { DashboardCard } from '@/components/DashboardCard';
+import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
+import { PLAN_FINANCE_CONTAINER } from '@/constants/planFinanceKit';
 import {
   MinimizedAlertCard,
   type DashboardAlertSeverity,
 } from '@/components/MinimizedAlertCard';
-import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
-import { DashboardAccountBalanceCard } from '@/components/DashboardAccountBalanceCard';
 import { DashboardStatCard } from '@/components/DashboardStatCard';
 import { HomeInsightCard } from '@/components/dashboard/HomeInsightCard';
 import { HomeAvailableNowHero } from '@/components/dashboard/HomeAvailableNowHero';
@@ -55,10 +52,8 @@ import { ensureDbReady } from '@/lib/init';
 import {
   getRecentIncomeTransactions,
   getRecurringPayments,
-  getSetting,
   getSimulatedAccounts,
   getTransactionsSince,
-  setSetting,
 } from '@/lib/db';
 import {
   buildCheckingBalanceDailyValues,
@@ -75,19 +70,21 @@ import { getUserDisplayName } from '@/lib/userDisplay';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAlertCenter } from '@/hooks/useAlertCenter';
 import {
-  creditLimitUtilizationBarColor,
-  creditUsedFromBalance,
-} from '@/lib/creditLimitUtilization';
+  alertDetailRouteParams,
+  alertSectionForKind,
+  paymentAlertCenterId,
+  paymentAlertKindFromTitle,
+  type AlertCenterItem,
+} from '@/lib/alerts';
+import { creditUsedFromBalance } from '@/lib/creditLimitUtilization';
 import { formatPersonDirectedPaymentLabel } from '@/lib/loanPresentation';
-import { getAccountLogoUrl } from '@/lib/merchantLogo';
 import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
+import { ALERT_TITLES } from '@/lib/alertPresentation';
 import {
   heroStatAmount,
   percentStat,
   rowLabel,
-  rowTitleTextProps,
   rowValue,
-  singleLineAmountProps,
 } from '@/lib/textLayout';
 import { tapHaptic } from '@/lib/haptics';
 import { syncWithServer } from '@/lib/sync';
@@ -104,10 +101,6 @@ import {
 } from '@/lib/paycheckReminder';
 import type { EstimatedPaycheck } from '@/lib/estimatedPaycheck';
 import { useAppTheme } from '@/lib/themeContext';
-import {
-  logoIconWellStyle,
-  userPickedIconLogoSize,
-} from '@/lib/userPickedIcon';
 import { PageTransition } from '@/components/PageTransition';
 import type {
   RecurringPayment,
@@ -178,8 +171,6 @@ const UPCOMING_PAYMENTS: UpcomingPayment[] = [
   },
 ];
 
-const BALANCE_COMPARE_SETTING_KEY = 'dashboard_balance_compare_account_ids';
-
 function sparklineTransactionsSinceIso(dayCount: number = CHECKING_BALANCE_SPARKLINE_DAY_COUNT): string {
   const since = new Date();
   since.setDate(since.getDate() - (dayCount + 1));
@@ -191,42 +182,9 @@ const C = dashboardPalette;
 
 const DASHBOARD_BOTTOM_PADDING = FLOATING_NAV_CONTENT_PADDING;
 
-const PAYMENT_WARNING_TITLE_CHECKING = 'Fonds insuffisants';
+const PAYMENT_WARNING_TITLE_CHECKING = ALERT_TITLES.lowFunds;
 const PAYMENT_SUCCESS_TITLE_CHECKING = 'Fonds disponibles';
-const PAYMENT_WARNING_TITLE_CREDIT_LIMIT = 'Limite de crédit';
-
-type BalanceCompareAccount = Pick<
-  SimulatedAccount,
-  'id' | 'name' | 'balance' | 'institution' | 'last4' | 'kind' | 'creditLimit' | 'logoUrl'
->;
-
-function getBalanceCompareAccountLogoUrl(account: BalanceCompareAccount): string | null {
-  return (
-    account.logoUrl ??
-    getAccountLogoUrl(account.institution?.trim() || account.name) ??
-    getAccountLogoUrl(account.name)
-  );
-}
-
-function balanceCompareAccountInitial(account: BalanceCompareAccount) {
-  const source = account.institution?.trim() || account.name.trim();
-  const letter = source.replace(/^[^A-Za-zÀ-ÿ0-9]+/, '').charAt(0);
-  return (letter || '?').toUpperCase();
-}
-
-/** Barre de comparaison : crédit = seuils Portefeuille ; sinon ≤0 danger, sinon primary. */
-function balanceCompareProgressBarColor(
-  account: BalanceCompareAccount,
-  creditUtilPct: number | undefined,
-  colors: AppColors,
-  isLight: boolean,
-): string {
-  if (typeof creditUtilPct === 'number') {
-    return creditLimitUtilizationBarColor(creditUtilPct, colors, isLight);
-  }
-  if (account.balance <= 0) return colors.danger;
-  return colors.primary;
-}
+const PAYMENT_WARNING_TITLE_CREDIT_LIMIT = ALERT_TITLES.creditLimit;
 
 function greetingLine() {
   const h = new Date().getHours();
@@ -236,61 +194,17 @@ function greetingLine() {
   return 'Bonsoir';
 }
 
+/** Once per app session — avoid replaying on tab remount / re-focus. */
+let accueilGreetingEntrancePlayed = false;
+
+const GREETING_ENTRANCE = {
+  translateY: 10,
+  durationMs: 600,
+  delayMs: 80,
+} as const;
+
 function formatMoneyDetailed(value: number) {
   return formatDisplayMoneyAbsolute(value);
-}
-
-function toBalanceCompareAccounts(accounts: SimulatedAccount[]): BalanceCompareAccount[] {
-  if (accounts.length) {
-    return accounts.map((account) => ({
-      id: account.id,
-      name: account.name,
-      balance: account.balance,
-      institution: account.institution,
-      last4: account.last4,
-      kind: account.kind,
-      creditLimit: account.creditLimit,
-      logoUrl: account.logoUrl,
-    }));
-  }
-
-  return DASHBOARD_ACCOUNTS.map((account) => ({
-    id: account.id,
-    name: account.name,
-    balance: account.balance,
-    institution: account.domain,
-    last4: account.number.replace(/\D/g, '').slice(-4),
-    kind: account.kind,
-    creditLimit: account.creditLimit,
-    logoUrl: getAccountLogoUrl(account.domain) ?? getAccountLogoUrl(account.name) ?? undefined,
-  }));
-}
-
-function parseBalanceCompareIds(value: string) {
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((id): id is string => typeof id === 'string').slice(0, 2);
-  } catch {
-    return [];
-  }
-}
-
-function resolveBalanceCompareSelection(
-  accounts: BalanceCompareAccount[],
-  selectedIds: string[],
-) {
-  const picked = selectedIds
-    .map((id) => accounts.find((account) => account.id === id))
-    .filter((account): account is BalanceCompareAccount => Boolean(account));
-  const fillers = accounts.filter((account) => !picked.some((pickedAccount) => pickedAccount.id === account.id));
-  return [...picked, ...fillers].slice(0, 2);
-}
-
-function formatAccountMeta(account: BalanceCompareAccount) {
-  if (account.institution && account.last4) return `${account.institution} · ${account.last4}`;
-  if (account.last4) return `****${account.last4}`;
-  return account.institution ?? 'Compte disponible';
 }
 
 function formatUpcomingDate(isoDate: string) {
@@ -660,13 +574,29 @@ function formatAlertCheckingBalance(balance: number) {
   return formatMoneyDetailed(balance);
 }
 
+function dashboardAlertToCenterItem(alert: DashboardAlertItem): AlertCenterItem {
+  const kind = paymentAlertKindFromTitle(alert.title);
+  return {
+    id: paymentAlertCenterId(alert.id),
+    kind,
+    section: alertSectionForKind(kind),
+    severity: resolveDashboardAlertSeverity(alert) === 'danger' ? 'danger' : 'warning',
+    title: alert.title,
+    message: alert.body,
+    timestamp: alert.paymentDateRaw?.toISOString() ?? new Date().toISOString(),
+    read: true,
+    accountId: alert.accountId,
+    montant: alert.stats?.paymentAmount ?? null,
+  };
+}
+
 function AlertCard({
   alert,
   today,
   collapsed,
   reminderEnabled,
   onToggleReminder,
-  onExpand,
+  onOpenDetail,
   onCollapse,
 }: {
   alert: DashboardAlertItem;
@@ -674,7 +604,7 @@ function AlertCard({
   collapsed: boolean;
   reminderEnabled: boolean;
   onToggleReminder: () => void;
-  onExpand: () => void;
+  onOpenDetail: () => void;
   onCollapse: () => void;
 }) {
   const { isLight, colors } = useAppTheme();
@@ -720,9 +650,10 @@ function AlertCard({
         severity={resolveDashboardAlertSeverity(alert)}
         showBell={showBell}
         reminderEnabled={reminderEnabled}
+        accessibilityLabel={`Ouvrir l'alerte ${alert.title}`}
         onPress={() => {
           tapHaptic();
-          onExpand();
+          onOpenDetail();
         }}
         onToggleReminder={() => {
           tapHaptic();
@@ -733,7 +664,7 @@ function AlertCard({
   }
 
   return (
-    <DashboardCard style={aStyles.card}>
+    <PlanFinanceContainer style={aStyles.card}>
       <View style={aStyles.cardHeaderRow}>
         <View style={aStyles.cardTitleBlock}>
           <DashboardStatCard
@@ -874,7 +805,7 @@ function AlertCard({
           </View>
         </View>
       </View>
-    </DashboardCard>
+    </PlanFinanceContainer>
   );
 }
 
@@ -884,8 +815,9 @@ const aStyles = StyleSheet.create({
     flexShrink: 0,
   },
   card: {
+    alignSelf: 'stretch',
     gap: spacing.lg,
-    paddingVertical: spacing.lg,
+    padding: PLAN_FINANCE_CONTAINER.padding.card,
   },
   cardHeaderRow: {
     flexDirection: 'row',
@@ -1001,83 +933,26 @@ const aStyles = StyleSheet.create({
   },
 });
 
-function BalanceCompareAccountAvatar({
-  account,
-  size = 32,
-  colors,
-}: {
-  account: BalanceCompareAccount;
-  size?: number;
-  colors: AppColors;
-}) {
-  const { isLight } = useAppTheme();
-  const logoUrl = useMemo(() => getBalanceCompareAccountLogoUrl(account), [account]);
-  const urls = useMemo(() => (logoUrl ? [logoUrl] : []), [logoUrl]);
-  const [sourceIndex, setSourceIndex] = useState(0);
-  const [giveUp, setGiveUp] = useState(false);
-  const uri = urls[sourceIndex];
-  const showLogo = Boolean(uri) && !giveUp;
-  const initial = balanceCompareAccountInitial(account);
-  const logoSize = userPickedIconLogoSize(size);
-  const fallbackTint =
-    account.kind === 'credit'
-      ? colors.warning
-      : account.kind === 'savings'
-        ? colors.primaryAlt
-        : colors.primary;
-
-  useEffect(() => {
-    setSourceIndex(0);
-    setGiveUp(false);
-  }, [urls]);
-
-  return (
-    <View style={[styles.balanceCompareIcon, logoIconWellStyle(size, isLight)]}>
-      {showLogo && uri ? (
-        <Image
-          source={{ uri }}
-          style={{ width: logoSize, height: logoSize }}
-          contentFit="contain"
-          transition={150}
-          cachePolicy="memory-disk"
-          recyclingKey={uri}
-          onError={() => {
-            if (sourceIndex < urls.length - 1) {
-              setSourceIndex((i) => i + 1);
-            } else {
-              setGiveUp(true);
-            }
-          }}
-        />
-      ) : (
-        <Text style={[styles.balanceCompareIconInitial, { color: fallbackTint, fontSize: size * 0.38 }]}>
-          {initial}
-        </Text>
-      )}
-    </View>
-  );
-}
-
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
-  const balanceSelectorMaxHeight = Math.min(windowHeight * 0.82, windowHeight - insets.top - 24);
   const { colors, isLight } = useAppTheme();
   const dashPalette = useMemo(() => dashboardPaletteForTheme(isLight), [isLight]);
   const dashMuted = isLight ? dashPalette.subtext : 'rgba(245,245,245,0.84)';
   const scrollRef = useRef<ScrollView>(null);
+  const [animateGreetingEntrance] = useState(() => {
+    if (accueilGreetingEntrancePlayed) return false;
+    accueilGreetingEntrancePlayed = true;
+    return true;
+  });
+  const [reduceMotion, setReduceMotion] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
   const [incomeTransactions, setIncomeTransactions] = useState<Transaction[]>([]);
   const [displayName, setDisplayName] = useState('Jérémie');
   const [refreshing, setRefreshing] = useState(false);
-  const [balanceAccountOptions, setBalanceAccountOptions] = useState<BalanceCompareAccount[]>([]);
   const [simulatedAccounts, setSimulatedAccounts] = useState<SimulatedAccount[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [selectedBalanceAccountIds, setSelectedBalanceAccountIds] = useState<string[]>([]);
-  const [draftBalanceAccountIds, setDraftBalanceAccountIds] = useState<string[]>([]);
-  const [balanceSelectorVisible, setBalanceSelectorVisible] = useState(false);
   const [alertReminders, setAlertReminders] = useState<Record<string, boolean>>({});
   const [alertCollapsed, setAlertCollapsed] = useState<Record<string, boolean>>({});
   const [reminderConfirmVisible, setReminderConfirmVisible] = useState(false);
@@ -1088,7 +963,9 @@ export default function HomeScreen() {
   const [payEntryPrompt, setPayEntryPrompt] = useState<PaycheckEntryPrompt | null>(null);
 
   const {
+    items: alertCenterItems,
     unreadCount: alertCenterUnreadCount,
+    markRead: markAlertCenterRead,
     refresh: refreshAlertCenter,
   } = useAlertCenter({
     recurringPayments,
@@ -1096,6 +973,17 @@ export default function HomeScreen() {
     incomeTransactions,
     enabled: isReady,
   });
+
+  const openAlertDetail = useCallback(
+    (item: AlertCenterItem) => {
+      void markAlertCenterRead(item);
+      router.push({
+        pathname: '/alert-detail',
+        params: alertDetailRouteParams(item),
+      });
+    },
+    [markAlertCenterRead, router],
+  );
 
   const paycheckReminderScheduleFromAlert = useCallback(
     (alertItem: Pick<
@@ -1211,26 +1099,18 @@ export default function HomeScreen() {
       name,
       recurring,
       loadedSimulatedAccounts,
-      storedBalanceIds,
       incomeTx,
     ] = await Promise.all([
       getUserDisplayName(),
       getRecurringPayments(),
       getSimulatedAccounts(),
-      getSetting(BALANCE_COMPARE_SETTING_KEY, ''),
       getRecentIncomeTransactions(PAYCHECK_TRANSACTION_LOOKBACK_LIMIT),
     ]);
-    const compareAccounts = toBalanceCompareAccounts(loadedSimulatedAccounts);
-    const storedIds = parseBalanceCompareIds(storedBalanceIds);
 
     setDisplayName(name);
     setRecurringPayments(recurring);
     setIncomeTransactions(incomeTx);
     setSimulatedAccounts(loadedSimulatedAccounts);
-    setBalanceAccountOptions(compareAccounts);
-    setSelectedBalanceAccountIds(
-      resolveBalanceCompareSelection(compareAccounts, storedIds).map((account) => account.id),
-    );
     setIsReady(true);
   }, []);
 
@@ -1250,6 +1130,18 @@ export default function HomeScreen() {
       setAlertReminders(reminders);
       setAlertCollapsed((prev) => ({ ...collapsed, ...prev }));
     });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      if (!cancelled) setReduceMotion(enabled);
+    });
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
   }, []);
 
   useEffect(() => {
@@ -1273,11 +1165,6 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
-  const balanceCompareAccounts = useMemo(
-    () => resolveBalanceCompareSelection(balanceAccountOptions, selectedBalanceAccountIds),
-    [balanceAccountOptions, selectedBalanceAccountIds],
-  );
-
   const checkingBalance = useMemo(
     () => sumVisibleCheckingBalance(simulatedAccounts),
     [simulatedAccounts],
@@ -1287,33 +1174,6 @@ export default function HomeScreen() {
     () => buildCheckingBalanceDailyValues(simulatedAccounts, transactions),
     [simulatedAccounts, transactions],
   );
-
-  const openBalanceSelector = useCallback(() => {
-    tapHaptic();
-    setDraftBalanceAccountIds(balanceCompareAccounts.map((account) => account.id));
-    setBalanceSelectorVisible(true);
-  }, [balanceCompareAccounts]);
-
-  const toggleDraftBalanceAccount = useCallback((accountId: string) => {
-    setDraftBalanceAccountIds((current) => {
-      if (current.includes(accountId)) {
-        return current.filter((id) => id !== accountId);
-      }
-      if (current.length >= 2) {
-        return [current[1], accountId];
-      }
-      return [...current, accountId];
-    });
-  }, []);
-
-  const saveBalanceSelection = useCallback(async () => {
-    if (draftBalanceAccountIds.length !== 2) return;
-
-    tapHaptic();
-    setSelectedBalanceAccountIds(draftBalanceAccountIds);
-    setBalanceSelectorVisible(false);
-    await setSetting(BALANCE_COMPARE_SETTING_KEY, JSON.stringify(draftBalanceAccountIds));
-  }, [draftBalanceAccountIds]);
 
   const paymentResolutionPool = useMemo(
     () => toPaymentResolutionAccounts(simulatedAccounts),
@@ -1433,21 +1293,22 @@ export default function HomeScreen() {
   const forecastShortfallMessage = (() => {
     if (creditRiskActive) {
       return creditRiskActive.reason === 'over_limit'
-        ? 'Ce paiement dépasse ta limite.'
-        : 'Moins de 10 % de marge après ce paiement.';
+        ? `Ce paiement pourrait dépasser ta marge disponible. On peut l’ajuster avant l’échéance.`
+        : 'Après ce paiement, il resterait peu de marge sur ta carte. Garder un coussin te laisse plus de flexibilité.';
     }
     if (checkingFundsAlert || (!creditRiskActive && showInsufficientFundsWarning)) {
       const shortfall = checkingFundsAlert?.currentShortfall ?? nextPaymentShortfall;
       const noPayFragment =
         checkingFundsAlert && !checkingFundsAlert.paycheckArrivesBeforePayment ? " Paie après l'échéance." : '';
-      return `Il manque ${formatMoneyDetailed(shortfall)} pour le paiement de ${nextPaymentDisplayName}.${noPayFragment}`.trim();
+      return `Il te manque ${formatMoneyDetailed(shortfall)} pour ${nextPaymentDisplayName}.${noPayFragment}`.trim();
     }
     return '';
   })();
 
   const mockCreditNextPaymentDate = addDays(today, 3);
   const mockCreditPaycheckDate = addDays(today, 1);
-  const mockCreditOverLimitBody = `96 % de ta limite atteinte après ce paiement.`;
+  const mockCreditOverLimitBody =
+    'Après ce paiement, environ 96 % de ta limite serait utilisée. Tu as plusieurs façons de garder de la marge.';
   const livePaycheckMeta = paycheckMetaFromTimeline(nextPaymentDate, resolvedPaycheckForTimeline, estimatedPayDate);
   const liveAlertTitle = creditRiskActive ? PAYMENT_WARNING_TITLE_CREDIT_LIMIT : PAYMENT_WARNING_TITLE_CHECKING;
   const liveAccountLabel = resolvedAccount
@@ -1512,7 +1373,13 @@ export default function HomeScreen() {
     return aTime - bTime;
   });
 
-  const primaryInsight = dashboardAlerts[0] ?? null;
+  const primaryInsightFromHub =
+    alertCenterItems
+      .filter((item) => item.id.startsWith('payment-'))
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())[0] ?? null;
+  const primaryInsight =
+    primaryInsightFromHub ??
+    (dashboardAlerts[0] ? dashboardAlertToCenterItem(dashboardAlerts[0]) : null);
 
   return (
     <PageTransition>
@@ -1541,14 +1408,30 @@ export default function HomeScreen() {
     >
       <View style={styles.greetingBlock}>
         <View style={styles.headerRow}>
-          <Text
-            style={[styles.greeting, { color: colors.text }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.82}
+          <MotiView
+            from={
+              animateGreetingEntrance && !reduceMotion
+                ? { opacity: 0, translateY: GREETING_ENTRANCE.translateY }
+                : { opacity: 1, translateY: 0 }
+            }
+            animate={{ opacity: 1, translateY: 0 }}
+            transition={{
+              type: 'timing',
+              duration: GREETING_ENTRANCE.durationMs,
+              delay: GREETING_ENTRANCE.delayMs,
+              easing: Easing.out(Easing.cubic),
+            }}
+            style={styles.greetingMotion}
           >
-            {greetingLine()}, {displayName}
-        </Text>
+            <Text
+              style={[styles.greeting, { color: colors.text }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
+            >
+              {greetingLine()}, {displayName}
+            </Text>
+          </MotiView>
           <View style={styles.headerActions}>
             <AlertCenterButton
               unreadCount={alertCenterUnreadCount}
@@ -1568,7 +1451,7 @@ export default function HomeScreen() {
                 pressed && styles.pressed,
               ]}
             >
-              <AppIcon family="ionicons" name="settings-outline" size={21} color={colors.textSecondary} />
+              <AppIcon family="ionicons" name="settings-outline" size={21} color={colors.text} />
             </Pressable>
           </View>
         </View>
@@ -1583,7 +1466,11 @@ export default function HomeScreen() {
 
       {primaryInsight ? (
         <View style={dashStyles.sectionAfterHero}>
-          <HomeInsightCard title={primaryInsight.title} message={primaryInsight.body} />
+          <HomeInsightCard
+            title={primaryInsight.title}
+            message={primaryInsight.message}
+            onPress={() => openAlertDetail(primaryInsight)}
+          />
         </View>
       ) : null}
 
@@ -1594,187 +1481,6 @@ export default function HomeScreen() {
       <View style={dashStyles.sectionBlock}>
         <HomePlansCarousel />
       </View>
-
-      <View style={[dashStyles.section, { borderTopColor: dashPalette.border }]}>
-        <View style={dashStyles.sectionHeaderRow}>
-          <View>
-            <DashboardSectionLabel>Mes comptes</DashboardSectionLabel>
-            <Text style={[dashStyles.sectionTitle, { color: dashPalette.text }]}>Soldes favoris</Text>
-          </View>
-          <Pressable
-            onPress={openBalanceSelector}
-            accessibilityRole="button"
-            accessibilityLabel="Choisir les comptes à comparer"
-            style={dashStyles.chooseButton}
-          >
-            <Text style={[dashStyles.chooseButtonText, { color: dashMuted }]}>⇄ Choisir</Text>
-          </Pressable>
-        </View>
-
-        <View style={dashStyles.accountsList}>
-          {balanceCompareAccounts.map((account) => (
-            <DashboardAccountBalanceCard
-              key={account.id}
-              account={account}
-              logoUrl={getBalanceCompareAccountLogoUrl(account)}
-              onPress={
-                simulatedAccounts.length
-                  ? () => {
-                      tapHaptic();
-                      router.push({ pathname: '/account-detail', params: { accountId: account.id } });
-                    }
-                  : undefined
-              }
-            />
-          ))}
-        </View>
-      </View>
-
-      <Modal
-        visible={balanceSelectorVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setBalanceSelectorVisible(false)}
-      >
-        <Pressable
-          style={[styles.selectorOverlay, { paddingBottom: Math.max(18, insets.bottom + 10) }]}
-          onPress={() => setBalanceSelectorVisible(false)}
-        >
-          <Pressable
-            style={[
-              styles.selectorSheet,
-              {
-                backgroundColor: colors.containerBackground,
-                borderColor: colors.containerBorder,
-                maxHeight: balanceSelectorMaxHeight,
-              },
-            ]}
-            onPress={(event) => event.stopPropagation()}
-          >
-            <View style={styles.selectorHeader}>
-              <View style={styles.selectorTitleBlock}>
-                <Text style={[styles.selectorEyebrow, { color: colors.textMuted }]} {...rowTitleTextProps}>
-                  Comparaison des soldes
-                </Text>
-                <Text style={[styles.selectorTitle, { color: colors.text }]} {...rowTitleTextProps}>
-                  Choisir 2 comptes
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => setBalanceSelectorVisible(false)}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel="Fermer la sélection"
-                style={({ pressed }) => [
-                  styles.selectorClose,
-                  { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <AppIcon family="ionicons" name="close" size={18} color={colors.textSecondary} />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              style={styles.selectorListScroll}
-              contentContainerStyle={styles.selectorListContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              nestedScrollEnabled
-            >
-              {balanceAccountOptions.map((account) => {
-                const selectedIndex = draftBalanceAccountIds.indexOf(account.id);
-                const isSelected = selectedIndex >= 0;
-
-                return (
-                  <Pressable
-                    key={account.id}
-                    onPress={() => {
-                      tapHaptic();
-                      toggleDraftBalanceAccount(account.id);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isSelected }}
-                    style={({ pressed }) => [
-                      styles.selectorAccountRow,
-                      {
-                        backgroundColor: isSelected ? colors.surface : 'transparent',
-                        borderColor: isSelected ? colors.borderStrong : colors.border,
-                      },
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <BalanceCompareAccountAvatar account={account} colors={colors} size={32} />
-                    <View style={styles.selectorAccountCopy}>
-                      <Text
-                        style={[styles.selectorAccountName, { color: colors.text }]}
-                        {...rowTitleTextProps}
-                      >
-                        {account.name}
-                      </Text>
-                      <Text style={[styles.selectorAccountMeta, { color: colors.textMuted }]} {...rowTitleTextProps}>
-                        {formatAccountMeta(account)}
-                      </Text>
-                    </View>
-                    <Text
-                      style={[
-                        styles.selectorAccountAmount,
-                        {
-                          color:
-                            account.balance < 0 && account.kind !== 'credit'
-                              ? colors.danger
-                              : colors.textSecondary,
-                        },
-                      ]}
-                      {...singleLineAmountProps}
-                    >
-                      {account.balance < 0 ? '−' : ''}
-                      {formatMoneyDetailed(Math.abs(account.balance))}
-                    </Text>
-                    <View
-                      style={[
-                        styles.selectorCheck,
-                        {
-                          backgroundColor: isSelected ? colors.primary : 'transparent',
-                          borderColor: isSelected ? colors.primary : colors.borderStrong,
-                        },
-                      ]}
-                    >
-                      {isSelected ? (
-                        <Text style={[styles.selectorCheckText, { color: colors.background }]}>{selectedIndex + 1}</Text>
-                      ) : null}
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-
-            <Pressable
-              onPress={saveBalanceSelection}
-              disabled={draftBalanceAccountIds.length !== 2}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: draftBalanceAccountIds.length !== 2 }}
-              style={({ pressed }) => [
-                styles.selectorDone,
-                {
-                  backgroundColor: draftBalanceAccountIds.length === 2 ? colors.primary : colors.surface,
-                  opacity: draftBalanceAccountIds.length === 2 ? 1 : 0.58,
-                },
-                pressed && draftBalanceAccountIds.length === 2 && styles.pressed,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.selectorDoneText,
-                  { color: draftBalanceAccountIds.length === 2 ? colors.background : colors.textMuted },
-                ]}
-              >
-                Afficher ces soldes
-              </Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
 
     </ScrollView>
     </View>
@@ -1824,122 +1530,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 18,
   },
-  balanceCompareOuter: {
-    borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  balanceCompareInner: {
-    borderRadius: 24,
-    overflow: 'hidden',
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-    gap: 18,
-  },
-  balanceCompareHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 14,
-  },
-  balanceCompareTitleBlock: {
-    flex: 1,
-    minWidth: 0,
-    gap: 5,
-  },
-  balanceCompareTitle: {
-    fontSize: typography.body,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-  },
-  balanceCompareAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  balanceCompareActionText: {
-    fontSize: typography.micro,
-    fontWeight: '800',
-  },
-  balanceCompareChart: {
-    gap: 17,
-  },
-  balanceInsightPagerCard: {
-    width: '100%',
-  },
-  balanceCompareRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  balanceCompareRowBody: {
-    flex: 1,
-    minWidth: 0,
-    gap: 9,
-  },
-  balanceCompareIcon: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  balanceCompareIconInitial: {
-    fontWeight: '900',
-    letterSpacing: -0.2,
-  },
-  balanceCompareRowHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  balanceCompareAccountCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 3,
-  },
-  balanceCompareAccountName: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: typography.caption,
-    fontWeight: '800',
-    lineHeight: typography.caption + 5,
-  },
-  balanceCompareAccountMeta: {
-    fontSize: typography.micro,
-    fontWeight: '700',
-    lineHeight: typography.micro + 4,
-  },
-  balanceCompareAmountBlock: {
-    flexShrink: 0,
-    maxWidth: '40%',
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  balanceCompareAmount: {
-    textAlign: 'right',
-    fontSize: typography.caption,
-    fontWeight: '900',
-    letterSpacing: -0.25,
-    fontVariant: ['tabular-nums'],
-  },
-  balanceCompareCreditUtil: {
-    fontSize: typography.micro,
-    fontWeight: '800',
-    lineHeight: typography.micro + 3,
-    fontVariant: ['tabular-nums'],
-  },
-  balanceCompareTrack: {
-    height: 12,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  balanceCompareFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
   greetingBlock: {
     paddingTop: spacing.xxl + spacing.lg,
     paddingBottom: spacing.xl,
@@ -1951,9 +1541,11 @@ const styles = StyleSheet.create({
     gap: 14,
     minWidth: 0,
   },
-  greeting: {
+  greetingMotion: {
     flex: 1,
     minWidth: 0,
+  },
+  greeting: {
     ...PAGE_TITLE_STYLE,
     color: C.text,
   },
@@ -2501,130 +2093,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: typography.meta + 4,
   },
-  selectorOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingHorizontal: 16,
-  },
-  selectorSheet: {
-    borderRadius: 28,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 14,
-  },
-  selectorHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 14,
-    flexShrink: 0,
-    paddingBottom: 12,
-  },
-  selectorTitleBlock: {
-    flex: 1,
-    minWidth: 0,
-    gap: 5,
-    flexShrink: 1,
-  },
-  selectorEyebrow: {
-    flexGrow: 0,
-    flexShrink: 0,
-    fontSize: typography.micro,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 2.2,
-  },
-  selectorTitle: {
-    fontSize: typography.dashboardGreeting,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-    flexShrink: 1,
-  },
-  selectorClose: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  selectorListScroll: {
-    flexGrow: 0,
-    flexShrink: 1,
-    minHeight: 0,
-  },
-  selectorListContent: {
-    gap: 9,
-    paddingTop: 2,
-    paddingBottom: 4,
-  },
-  selectorAccountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-  },
-  selectorAccountCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 3,
-    flexShrink: 1,
-  },
-  selectorAccountName: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: typography.caption,
-    fontWeight: '800',
-    lineHeight: typography.caption + 5,
-    flexShrink: 1,
-  },
-  selectorAccountMeta: {
-    fontSize: typography.micro,
-    fontWeight: '700',
-    lineHeight: typography.micro + 4,
-  },
-  selectorAccountAmount: {
-    flexShrink: 0,
-    maxWidth: '40%',
-    fontSize: typography.caption,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-    textAlign: 'right',
-  },
-  selectorCheck: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  selectorCheckText: {
-    fontSize: typography.micro,
-    fontWeight: '900',
-  },
-  selectorDone: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 18,
-    paddingVertical: 14,
-    marginTop: 12,
-    flexShrink: 0,
-  },
-  selectorDoneText: {
-    fontSize: typography.caption,
-    fontWeight: '900',
-  },
 });
-
-const DASH_SECTION_BREAK = spacing.xxl + spacing.lg;
 
 const dashStyles = StyleSheet.create({
   skeletonScreen: {
@@ -2673,36 +2142,6 @@ const dashStyles = StyleSheet.create({
   },
   sectionBlock: {
     paddingTop: spacing.lg,
-  },
-  section: {
-    paddingTop: DASH_SECTION_BREAK,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: C.border,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  sectionTitle: {
-    ...SECTION_TITLE_STYLE,
-    color: C.text,
-    marginTop: spacing.xs,
-  },
-  chooseButton: {
-    backgroundColor: C.card,
-    borderRadius: 10,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  chooseButtonText: {
-    ...jakartaSemiboldText,
-    fontSize: typography.micro,
-    color: 'rgba(245,245,245,0.84)',
-  },
-  accountsList: {
-    gap: spacing.md,
   },
   alertStack: {
     gap: spacing.sm,

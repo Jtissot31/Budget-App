@@ -111,12 +111,12 @@ import type { AccountKind, Category, CategoryBudget, Loan, RecurringPayment, Sav
 const ACCOUNT_TYPES: Array<{
   id: AccountKind;
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: string;
 }> = [
   { id: 'credit', label: 'Crédit', icon: 'card-outline' },
   { id: 'checking', label: 'Compte chèque', icon: 'wallet-outline' },
   { id: 'savings', label: 'Épargne', icon: 'cash-outline' },
-  { id: 'cash', label: 'Argent Cash', icon: 'wallet-outline' },
+  { id: 'cash', label: 'Argent Cash', icon: 'cash-banknotes-outline' },
 ];
 
 const INSTITUTION_LOGO_OPTIONS = [
@@ -1126,7 +1126,7 @@ export default function AccountDetailScreen() {
                 <View style={styles.formHead}>
                   <View style={styles.logoPreviewWrap}>
                     <IconFrame size={52}>
-                      <AppIcon family="ionicons" name="wallet-outline" size={22} color={colors.primary} />
+                      <AppIcon family="ionicons" name="cash-banknotes-outline" size={22} color={colors.primary} />
                     </IconFrame>
                   </View>
                   <Text style={[styles.formHint, formThemed.textMuted]}>

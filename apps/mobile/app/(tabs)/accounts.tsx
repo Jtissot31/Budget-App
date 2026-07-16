@@ -108,7 +108,7 @@ import {
 } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
 import { creditLimitUtilizationBarColor } from '@/lib/creditLimitUtilization';
-import { estimateWealthAssetValue } from '@/lib/assetValuation';
+import { estimatePreciousMetalValueSync, estimateWealthAssetValue } from '@/lib/assetValuation';
 import {
   filterPatrimoineWealthAssets,
   getWealthAssetDisplayValue,
@@ -119,6 +119,13 @@ import {
   pickPropertyPhotoFromGallery,
   promptPropertyPhotoSource,
 } from '@/lib/propertyPhoto';
+import {
+  certificateDisplayName,
+  isCertificateImageUri,
+  pickCertificateDocument,
+  pickCertificateFromGallery,
+  promptAuthenticityCertificateSource,
+} from '@/lib/authenticityCertificate';
 import { MORTGAGE_DEFAULT_REASON, syncMortgageWealthAsset } from '@/lib/mortgageWealthSync';
 import { HeroChartDelta } from '@/components/HeroChartDelta';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
@@ -160,8 +167,10 @@ import {
   parseChildSupportFromLoan,
 } from '@/lib/childSupportLoan';
 import {
+  getDisplayCurrency,
   getNetWorthChartScope,
   setNetWorthChartScope,
+  type CurrencyCode,
   type NetWorthChartScope,
 } from '@/lib/settings';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
@@ -198,12 +207,12 @@ type GhostCardShadowStyle = typeof darkGhostCardShadow | typeof lightGhostCardSh
 const ACCOUNT_TYPES: Array<{
   id: AccountKind;
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: string;
 }> = [
   { id: 'credit', label: 'Crédit', icon: 'card-outline' },
   { id: 'checking', label: 'Compte chèque', icon: 'wallet-outline' },
   { id: 'savings', label: 'Épargne', icon: 'cash-outline' },
-  { id: 'cash', label: 'Argent Cash', icon: 'wallet-outline' },
+  { id: 'cash', label: 'Argent Cash', icon: 'cash-banknotes-outline' },
 ];
 
 const INSTITUTION_LOGO_OPTIONS = [
@@ -269,14 +278,14 @@ type PickerOption<T extends string> = {
   id: T;
   label: string;
   description: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: string;
 };
 
 const ACCOUNT_TYPE_PICKER_OPTIONS: PickerOption<AccountKind>[] = [
   { id: 'credit', label: 'Carte de crédit', description: 'Limite, solde dû, institution', icon: 'card-outline' },
   { id: 'checking', label: 'Compte chèque', description: 'Solde et institution', icon: 'wallet-outline' },
   { id: 'savings', label: 'Épargne', description: 'Épargne et taux d’intérêt', icon: 'cash-outline' },
-  { id: 'cash', label: 'Argent Cash', description: 'Espèces, solde manuel', icon: 'wallet-outline' },
+  { id: 'cash', label: 'Argent Cash', description: 'Espèces, solde manuel', icon: 'cash-banknotes-outline' },
 ];
 
 const LOAN_TYPE_PICKER_OPTIONS: PickerOption<LoanType>[] = [
@@ -376,15 +385,19 @@ const PATRIMOINE_PERIOD_REAL_WINDOW_OVERRIDE = {
   '1J': 2,
   '1S': 8,
   '1M': 30,
-  '6M': 180,
+  '3M': 90,
   '1A': 365,
+  '5A': 1825,
+  '10A': 3650,
 } as const;
 const PATRIMOINE_PERIOD_MAX_POINTS_OVERRIDE = {
   '1J': 2,
   '1S': 8,
   '1M': 30,
-  '6M': 42,
+  '3M': 42,
   '1A': 56,
+  '5A': 60,
+  '10A': 72,
 } as const;
 
 const PAGE_SECTION_BREAK = spacing.lg;
@@ -512,6 +525,7 @@ export default function AccountsScreen() {
   const [formFeedback, setFormFeedback] = useState<FormFeedback | null>(null);
   const [showAccountManager, setShowAccountManager] = useState(false);
   const [isAccountListDragging, setIsAccountListDragging] = useState(false);
+  const [isStockHoldingsDragging, setIsStockHoldingsDragging] = useState(false);
   const [editingAccount, setEditingAccount] = useState<SimulatedAccount | null>(null);
   const [name, setName] = useState('');
   const [kind, setKind] = useState<AccountKind>('checking');
@@ -538,10 +552,15 @@ export default function AccountsScreen() {
   const [wealthPurchaseCost, setWealthPurchaseCost] = useState('');
   const [wealthPurchaseDate, setWealthPurchaseDate] = useState('');
   const [wealthCurrentValue, setWealthCurrentValue] = useState('');
+  /** When true, skip auto-fill until weight / unit / material changes again. */
+  const wealthCurrentValueManualOverrideRef = useRef(false);
+  const [displayCurrency, setDisplayCurrency] = useState<CurrencyCode>('CAD');
   const [wealthPropertyType, setWealthPropertyType] = useState('');
   const [wealthAddress, setWealthAddress] = useState('');
   const [wealthNotes, setWealthNotes] = useState('');
   const [wealthPhotoUri, setWealthPhotoUri] = useState('');
+  const [wealthCertificateUri, setWealthCertificateUri] = useState('');
+  const [wealthCertificateFileName, setWealthCertificateFileName] = useState('');
   const [wealthEditingAsset, setWealthEditingAsset] = useState<WealthAsset | null>(null);
   const [netWorthChartScope, setNetWorthChartScopeState] = useState<NetWorthChartScope>('inclusive');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -600,23 +619,27 @@ export default function AccountsScreen() {
     portfolioChartRef.current?.clearSelection();
   }, []);
   const load = useCallback(async () => {
-    const [nextAccounts, nextSavingsGoals, nextWealthAssets, flows, nextLoans, nextTransactions, nextContacts] =
-      await Promise.all([
-      getSimulatedAccounts(),
-      getSavingsGoals(),
-      getWealthAssets(),
-      getCurrentMonthAccountMoneyFlows(),
-      getLoans(),
-      getTransactions(),
-      getContacts(),
-    ]);
-    setAccounts(nextAccounts);
-    setSavingsGoals(nextSavingsGoals);
-    setWealthAssets(nextWealthAssets);
-    setAccountMonthlyFlows(flows);
-    setLoans(nextLoans);
-    setTransactions(nextTransactions);
-    setSavedContacts(nextContacts);
+    try {
+      const [nextAccounts, nextSavingsGoals, nextWealthAssets, flows, nextLoans, nextTransactions, nextContacts] =
+        await Promise.all([
+        getSimulatedAccounts(),
+        getSavingsGoals(),
+        getWealthAssets(),
+        getCurrentMonthAccountMoneyFlows(),
+        getLoans(),
+        getTransactions(),
+        getContacts(),
+      ]);
+      setAccounts(nextAccounts);
+      setSavingsGoals(nextSavingsGoals);
+      setWealthAssets(nextWealthAssets);
+      setAccountMonthlyFlows(flows);
+      setLoans(nextLoans);
+      setTransactions(nextTransactions);
+      setSavedContacts(nextContacts);
+    } catch (error) {
+      console.warn('[accounts] load failed', error);
+    }
   }, []);
 
   useEffect(() => {
@@ -628,6 +651,54 @@ export default function AccountsScreen() {
   useEffect(() => {
     void getNetWorthChartScope().then(setNetWorthChartScopeState);
   }, []);
+
+  useEffect(() => {
+    void getDisplayCurrency().then(setDisplayCurrency);
+  }, []);
+
+  useEffect(() => {
+    if (!showWealthForm) return;
+    void getDisplayCurrency().then(setDisplayCurrency);
+  }, [showWealthForm]);
+
+  /**
+   * Auto-fill « Valeur actuelle estimée » from weight × mock/market unit price.
+   * Field stays editable: typing sets a manual override until weight, unit, or material changes.
+   */
+  useEffect(() => {
+    if (!showWealthForm || wealthType !== 'precious_material' || wealthEditingAsset) return;
+    if (wealthCurrentValueManualOverrideRef.current) return;
+
+    const weight = parseMoney(wealthWeight);
+    if (Number.isNaN(weight) || weight <= 0) {
+      setWealthCurrentValue('');
+      return;
+    }
+
+    const estimated = estimatePreciousMetalValueSync({
+      material: wealthMaterial,
+      weight,
+      weightUnit: wealthWeightUnit,
+      karats: wealthMaterial === 'gold' ? parseOptionalMoney(wealthKarats) : null,
+      purity:
+        wealthMaterial !== 'gold' && wealthMaterial !== 'diamond'
+          ? parseOptionalMoney(wealthPurity)
+          : null,
+      currency: displayCurrency,
+    });
+
+    setWealthCurrentValue(estimated > 0 ? String(estimated) : '');
+  }, [
+    displayCurrency,
+    showWealthForm,
+    wealthEditingAsset,
+    wealthKarats,
+    wealthMaterial,
+    wealthPurity,
+    wealthType,
+    wealthWeight,
+    wealthWeightUnit,
+  ]);
 
   const handleNetWorthChartScopeChange = useCallback((scope: NetWorthChartScope) => {
     setNetWorthChartScopeState(scope);
@@ -649,6 +720,7 @@ export default function AccountsScreen() {
   const populateWealthFromAsset = useCallback((asset: WealthAsset) => {
     setWealthEditingAsset(asset);
     setWealthType(asset.type);
+    wealthCurrentValueManualOverrideRef.current = false;
     if (asset.type === 'precious_material') {
       setWealthName(asset.name);
       if (asset.material) setWealthMaterial(asset.material);
@@ -676,6 +748,13 @@ export default function AccountsScreen() {
     setWealthPurchaseDate(asset.purchaseDate?.trim() ?? '');
     setWealthNotes(asset.notes ?? '');
     setWealthPhotoUri(asset.photoUri?.trim() ?? '');
+    setWealthCertificateUri(asset.certificateUri?.trim() ?? '');
+    setWealthCertificateFileName(
+      asset.certificateFileName?.trim() ||
+        (asset.certificateUri?.trim()
+          ? certificateDisplayName(asset.certificateUri.trim())
+          : ''),
+    );
     setIsSavingWealth(false);
   }, []);
 
@@ -1123,11 +1202,14 @@ export default function AccountsScreen() {
     setWealthPurity('');
     setWealthPurchaseCost('');
     setWealthPurchaseDate('');
+    wealthCurrentValueManualOverrideRef.current = false;
     setWealthCurrentValue('');
     setWealthPropertyType('');
     setWealthAddress('');
     setWealthNotes('');
     setWealthPhotoUri('');
+    setWealthCertificateUri('');
+    setWealthCertificateFileName('');
     setIsSavingWealth(false);
   };
 
@@ -1213,6 +1295,7 @@ export default function AccountsScreen() {
         purity: wealthMaterial !== 'gold' && wealthMaterial !== 'diamond' ? parseOptionalMoney(wealthPurity) : null,
         purchaseCost,
         currentValue: manualCurrentValue ?? purchaseCost,
+        currency: displayCurrency,
       });
 
       const wealthNotesValue = wealthNotes.trim() || null;
@@ -1248,6 +1331,15 @@ export default function AccountsScreen() {
         propertyType: wealthType === 'real_estate' ? wealthPropertyType.trim() || null : null,
         address: wealthType === 'real_estate' ? wealthAddress.trim() || null : null,
         photoUri: wealthType === 'real_estate' ? wealthPhotoUri.trim() || null : null,
+        certificateUri:
+          wealthType === 'precious_material' ? wealthCertificateUri.trim() || null : null,
+        certificateFileName:
+          wealthType === 'precious_material'
+            ? wealthCertificateFileName.trim() ||
+              (wealthCertificateUri.trim()
+                ? certificateDisplayName(wealthCertificateUri.trim())
+                : null)
+            : null,
         linkedLoanId: wealthEditingAsset?.linkedLoanId ?? null,
         notes: (valuation.note ?? wealthNotesValue) || null,
         createdAt: wealthEditingAsset?.createdAt ?? new Date().toISOString(),
@@ -1648,7 +1740,7 @@ export default function AccountsScreen() {
           },
         ]}
         showsVerticalScrollIndicator={false}
-        scrollEnabled={!isAccountListDragging}
+        scrollEnabled={!isAccountListDragging && !isStockHoldingsDragging}
         scrollEventThrottle={16}
         nestedScrollEnabled
         onContentSizeChange={handlePortfolioContentSizeChange}
@@ -1754,10 +1846,10 @@ export default function AccountsScreen() {
             style={[styles.patrimoineSectionBlock, { paddingBottom: portfolioBottomPadding }]}
           >
             <PatrimoineHoldingsSections
-              stockHoldingsCount={MOCK_STOCK_HOLDINGS.length}
               wealthAssets={patrimoineWealthAssets}
               loansById={loansById}
               onAddWealthAsset={openNewWealthForm}
+              onDragStateChange={setIsStockHoldingsDragging}
               onOpenWealthAsset={(asset) => {
                 tapHaptic();
                 skipPortfolioScrollToTopOnceRef.current = true;
@@ -1921,7 +2013,7 @@ export default function AccountsScreen() {
             <View style={styles.formHead}>
               <View style={styles.logoPreviewWrap}>
                 <IconFrame size={52}>
-                  <AppIcon family="ionicons" name="wallet-outline" size={22} color={colors.primary} />
+                  <AppIcon family="ionicons" name="cash-banknotes-outline" size={22} color={colors.primary} />
                 </IconFrame>
               </View>
               <View style={styles.formHeadCopy}>
@@ -2217,6 +2309,7 @@ export default function AccountsScreen() {
                           key={option.id}
                           onPress={() => {
                             tapHaptic();
+                            wealthCurrentValueManualOverrideRef.current = false;
                             setWealthMaterial(option.id);
                             setWealthWeightUnit(option.unit);
                             setWealthKarats(option.id === 'gold' ? '24' : '');
@@ -2247,7 +2340,10 @@ export default function AccountsScreen() {
                   <AccountInput
                     label="Quantité"
                     value={wealthWeight}
-                    onChangeText={setWealthWeight}
+                    onChangeText={(text) => {
+                      wealthCurrentValueManualOverrideRef.current = false;
+                      setWealthWeight(text);
+                    }}
                     placeholder={wealthMaterial === 'diamond' ? '1.2' : '25'}
                     keyboardType="decimal-pad"
                     suffix={wealthWeightUnit}
@@ -2261,6 +2357,7 @@ export default function AccountsScreen() {
                           key={unit.id}
                           onPress={() => {
                             tapHaptic();
+                            wealthCurrentValueManualOverrideRef.current = false;
                             setWealthWeightUnit(unit.id);
                           }}
                           style={[
@@ -2280,7 +2377,10 @@ export default function AccountsScreen() {
                     <AccountInput
                       label="Valeur actuelle estimée"
                       value={wealthCurrentValue}
-                      onChangeText={setWealthCurrentValue}
+                      onChangeText={(text) => {
+                        wealthCurrentValueManualOverrideRef.current = true;
+                        setWealthCurrentValue(text);
+                      }}
                       placeholder="2500"
                       keyboardType="decimal-pad"
                       suffix="$"
@@ -2469,6 +2569,58 @@ export default function AccountsScreen() {
                 onChangeText={setWealthNotes}
                 placeholder={wealthType === 'real_estate' ? 'Condo, courtier, détails utiles' : 'Certification, détails utiles'}
               />
+              {wealthType === 'precious_material' ? (
+                <AuthenticityCertificateField
+                  certificateUri={wealthCertificateUri}
+                  fileName={wealthCertificateFileName}
+                  onPick={() => {
+                    promptAuthenticityCertificateSource(
+                      () => {
+                        void pickCertificateFromGallery()
+                          .then((result) => {
+                            if (result.cancelled || !result.uri) return;
+                            setWealthCertificateUri(result.uri);
+                            setWealthCertificateFileName(result.name);
+                          })
+                          .catch((error: unknown) => {
+                            const message =
+                              error instanceof Error
+                                ? error.message
+                                : 'Impossible d’ouvrir la galerie.';
+                            showPortfolioFormError('Permission requise', message);
+                          });
+                      },
+                      () => {
+                        void pickCertificateDocument()
+                          .then((result) => {
+                            if (result.cancelled || !result.uri) return;
+                            setWealthCertificateUri(result.uri);
+                            setWealthCertificateFileName(result.name);
+                          })
+                          .catch((error: unknown) => {
+                            const message =
+                              error instanceof Error
+                                ? error.message
+                                : 'Impossible d’ouvrir le sélecteur de fichiers.';
+                            showPortfolioFormError('Import impossible', message);
+                          });
+                      },
+                      wealthCertificateUri.trim()
+                        ? () => {
+                            setWealthCertificateUri('');
+                            setWealthCertificateFileName('');
+                          }
+                        : undefined,
+                    );
+                  }}
+                  onRemove={() => {
+                    setWealthCertificateUri('');
+                    setWealthCertificateFileName('');
+                  }}
+                  colors={colors}
+                  formThemed={formThemed}
+                />
+              ) : null}
 
               {formFeedback ? (
                 <ThemedFormMessage
@@ -3626,6 +3778,90 @@ function PropertyPhotoField({
   );
 }
 
+function AuthenticityCertificateField({
+  certificateUri,
+  fileName,
+  onPick,
+  onRemove,
+  colors,
+  formThemed,
+}: {
+  certificateUri: string;
+  fileName: string;
+  onPick: () => void;
+  onRemove: () => void;
+  colors: AppColors;
+  formThemed: ReturnType<typeof usePortfolioFormTheme>;
+}) {
+  const trimmed = certificateUri.trim();
+  const displayName = certificateDisplayName(trimmed, fileName);
+  const isImage = trimmed ? isCertificateImageUri(trimmed) : false;
+
+  return (
+    <View style={styles.inputGroup}>
+      <Text style={[styles.label, formThemed.textSecondary]}>
+        Certificat d’authenticité (optionnel)
+      </Text>
+      {trimmed ? (
+        <View style={[styles.certificateAttachedRow, formThemed.control]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Modifier le certificat d’authenticité"
+            onPress={onPick}
+            style={({ pressed }) => [styles.certificateAttachedMain, pressed && { opacity: 0.78 }]}
+          >
+            {isImage ? (
+              <Image
+                source={{ uri: trimmed }}
+                style={styles.certificateThumb}
+                contentFit="cover"
+              />
+            ) : (
+              <View style={[styles.certificateDocIcon, { backgroundColor: colors.surfaceElevated }]}>
+                <AppIcon family="ionicons" name="document-text-outline" size={22} color={colors.textMuted} />
+              </View>
+            )}
+            <View style={styles.certificateMeta}>
+              <Text style={[styles.certificateFileName, formThemed.text]} numberOfLines={1}>
+                {displayName}
+              </Text>
+              <Text style={[styles.certificateHint, formThemed.textMuted]} numberOfLines={1}>
+                Toucher pour remplacer
+              </Text>
+            </View>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Retirer le certificat"
+            onPress={onRemove}
+            hitSlop={10}
+            style={({ pressed }) => [styles.certificateRemoveBtn, pressed && { opacity: 0.7 }]}
+          >
+            <AppIcon family="ionicons" name="close-circle" size={22} color={colors.textMuted} />
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Joindre un certificat d’authenticité"
+          onPress={onPick}
+          style={({ pressed }) => [
+            styles.certificatePickBtn,
+            formThemed.control,
+            pressed && { opacity: 0.78 },
+          ]}
+        >
+          <AppIcon family="ionicons" name="attach-outline" size={20} color={colors.textMuted} />
+          <View style={styles.certificateMeta}>
+            <Text style={[styles.certificatePickLabel, formThemed.text]}>Joindre un certificat</Text>
+            <Text style={[styles.certificateHint, formThemed.textMuted]}>Galerie JPG ou fichier PDF</Text>
+          </View>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
 function parseMoney(value: string) {
   return parseFormattedNumber(value);
 }
@@ -4052,6 +4288,64 @@ const styles = StyleSheet.create({
   propertyPhotoHint: {
     fontSize: typography.meta,
     fontWeight: '700',
+  },
+  certificatePickBtn: {
+    borderRadius: radius.lg,
+    minHeight: 56,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  certificateAttachedRow: {
+    borderRadius: radius.lg,
+    minHeight: 64,
+    paddingLeft: spacing.sm,
+    paddingRight: spacing.xs,
+    paddingVertical: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  certificateAttachedMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minWidth: 0,
+  },
+  certificateThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+  },
+  certificateDocIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  certificateMeta: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  certificateFileName: {
+    ...jakartaSemiboldText,
+    fontSize: typography.body,
+  },
+  certificatePickLabel: {
+    ...jakartaSemiboldText,
+    fontSize: typography.body,
+  },
+  certificateHint: {
+    ...jakartaMediumText,
+    fontSize: typography.meta,
+  },
+  certificateRemoveBtn: {
+    padding: spacing.xs,
   },
   disabledButton: {
     opacity: 0.55,

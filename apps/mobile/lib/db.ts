@@ -29,12 +29,26 @@ import type {
 
 const DB_SINGLETON_KEY = '__budgetTrackerSqlite__';
 
+/**
+ * Bump when adding SQLite columns/migrations.
+ * Web keeps the open DB on globalThis across Fast Refresh — without a version bump,
+ * new SELECTs/INSERTs can hit missing columns until a full reload.
+ * v3: wealth_assets.certificate_uri / certificate_file_name (authenticity certificate).
+ */
+const SCHEMA_MIGRATION_VERSION = 3;
+
 interface DbSingletonState {
   promise: Promise<SQLite.SQLiteDatabase> | null;
   openFailed: boolean;
+  /** In-memory marker so Fast Refresh can re-apply migrations without reopening OPFS. */
+  appliedMigrationVersion: number;
 }
 
-const nativeDbState: DbSingletonState = { promise: null, openFailed: false };
+const nativeDbState: DbSingletonState = {
+  promise: null,
+  openFailed: false,
+  appliedMigrationVersion: 0,
+};
 
 /** Web OPFS handles survive Fast Refresh module resets — keep the open promise on globalThis. */
 function getDbSingletonState(): DbSingletonState {
@@ -43,7 +57,11 @@ function getDbSingletonState(): DbSingletonState {
       [DB_SINGLETON_KEY]?: DbSingletonState;
     };
     if (!globalState[DB_SINGLETON_KEY]) {
-      globalState[DB_SINGLETON_KEY] = { promise: null, openFailed: false };
+      globalState[DB_SINGLETON_KEY] = {
+        promise: null,
+        openFailed: false,
+        appliedMigrationVersion: 0,
+      };
     }
     return globalState[DB_SINGLETON_KEY]!;
   }
@@ -53,12 +71,26 @@ function getDbSingletonState(): DbSingletonState {
 /** Web needs extra time for WASM worker + OPFS; native can be slower on cold start with WAL. */
 const DB_OPEN_TIMEOUT_MS = Platform.OS === 'web' ? 30_000 : 15_000;
 
-const webDbOpenQueue: { tail: Promise<void> } = { tail: Promise.resolve() };
+type PromiseQueue = { tail: Promise<void> };
 
-async function withWebDbOpenQueue<T>(operation: () => Promise<T>): Promise<T> {
-  const previous = webDbOpenQueue.tail;
+const WEB_OPEN_QUEUE_KEY = '__budgetTrackerSqliteOpenQueue__';
+const WEB_OP_QUEUE_KEY = '__budgetTrackerSqliteOpQueue__';
+
+function getWebPromiseQueue(key: string): PromiseQueue {
+  const globalState = globalThis as typeof globalThis & Record<string, PromiseQueue | undefined>;
+  if (!globalState[key]) {
+    globalState[key] = { tail: Promise.resolve() };
+  }
+  return globalState[key]!;
+}
+
+const nativeDbOpenQueue: PromiseQueue = { tail: Promise.resolve() };
+const nativeDbOpQueue: PromiseQueue = { tail: Promise.resolve() };
+
+async function withPromiseQueue<T>(queue: PromiseQueue, operation: () => Promise<T>): Promise<T> {
+  const previous = queue.tail;
   let release!: () => void;
-  webDbOpenQueue.tail = new Promise<void>((resolve) => {
+  queue.tail = new Promise<void>((resolve) => {
     release = resolve;
   });
   await previous;
@@ -69,15 +101,151 @@ async function withWebDbOpenQueue<T>(operation: () => Promise<T>): Promise<T> {
   }
 }
 
+async function withWebDbOpenQueue<T>(operation: () => Promise<T>): Promise<T> {
+  const queue =
+    Platform.OS === 'web' ? getWebPromiseQueue(WEB_OPEN_QUEUE_KEY) : nativeDbOpenQueue;
+  return withPromiseQueue(queue, operation);
+}
+
+/**
+ * Serialize async SQLite calls on web. The wa-sqlite worker handles messages concurrently;
+ * overlapping prepare/run/reset on one connection surfaces as opaque NativeStatement#resetAsync errors.
+ * Queue lives on globalThis so Fast Refresh does not drop in-flight serialization.
+ */
+async function withWebDbOpQueue<T>(operation: () => Promise<T>): Promise<T> {
+  const queue = Platform.OS === 'web' ? getWebPromiseQueue(WEB_OP_QUEUE_KEY) : nativeDbOpQueue;
+  return withPromiseQueue(queue, operation);
+}
+
+const WEB_SERIALIZED_DB_METHODS = new Set([
+  'runAsync',
+  'getFirstAsync',
+  'getAllAsync',
+  'getEachAsync',
+  'execAsync',
+  'prepareAsync',
+  'withTransactionAsync',
+]);
+
+const WEB_MEMORY_FALLBACK_KEY = '__budgetTrackerSqliteMemoryFallback__';
+
+function isWebMemoryFallbackOnly(): boolean {
+  if (Platform.OS !== 'web') return false;
+  const globalState = globalThis as typeof globalThis & {
+    [WEB_MEMORY_FALLBACK_KEY]?: boolean;
+  };
+  return globalState[WEB_MEMORY_FALLBACK_KEY] === true;
+}
+
+function setWebMemoryFallbackOnly(): void {
+  const globalState = globalThis as typeof globalThis & {
+    [WEB_MEMORY_FALLBACK_KEY]?: boolean;
+  };
+  globalState[WEB_MEMORY_FALLBACK_KEY] = true;
+}
+
+function isWebSqliteRecoverableError(error: unknown): boolean {
+  const message = sqliteErrorMessage(error).toLowerCase();
+  // Note: "no such column" is handled by SCHEMA_MIGRATION_VERSION / withWealthSchemaRetry —
+  // do not treat it as OPFS corruption (that would wipe to :memory: unnecessarily).
+  return (
+    message.length === 0 ||
+    message === 'unknown' ||
+    message === 'unknown sqlite error' ||
+    message.includes('reset') ||
+    message.includes('error resetting statement') ||
+    message.includes('statement not found') ||
+    message.includes('database not found') ||
+    message.includes('nomodificationallowed') ||
+    message.includes('access handle') ||
+    message.includes('opfs') ||
+    message.includes('[object object]')
+  );
+}
+
+async function reopenWebDatabaseInMemory(): Promise<{
+  raw: SQLite.SQLiteDatabase;
+  wrapped: SQLite.SQLiteDatabase;
+}> {
+  const state = getDbSingletonState();
+  setWebMemoryFallbackOnly();
+  state.openFailed = false;
+  state.appliedMigrationVersion = 0;
+
+  // Open + migrate outside the wrapped proxy so the caller (already holding the op
+  // queue) can retry on `raw` without deadlocking on withWebDbOpQueue.
+  const raw = await withDbOpenTimeout(SQLite.openDatabaseAsync(':memory:'), 'SQLite open');
+  await initializeDatabaseSchema(raw);
+  state.appliedMigrationVersion = SCHEMA_MIGRATION_VERSION;
+  const wrapped = wrapDbForWeb(raw);
+  state.promise = Promise.resolve(wrapped);
+  return { raw, wrapped };
+}
+
+function wrapDbForWeb(db: SQLite.SQLiteDatabase): SQLite.SQLiteDatabase {
+  if (Platform.OS !== 'web') return db;
+
+  return new Proxy(db, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== 'function') return value;
+      if (typeof prop === 'string' && WEB_SERIALIZED_DB_METHODS.has(prop)) {
+        return (...args: unknown[]) =>
+          withWebDbOpQueue(async () => {
+            try {
+              return await (value as (...inner: unknown[]) => Promise<unknown>).apply(target, args);
+            } catch (error) {
+              if (isWebMemoryFallbackOnly() || !isWebSqliteRecoverableError(error)) {
+                throw error;
+              }
+              console.warn(
+                `[db] web SQLite ${prop} failed; recovering with in-memory database`,
+                sqliteErrorMessage(error),
+              );
+              try {
+                await target.closeAsync();
+              } catch {
+                // Broken OPFS handle — ignore close failures.
+              }
+              const { raw } = await reopenWebDatabaseInMemory();
+              const recoveredFn = Reflect.get(raw, prop);
+              if (typeof recoveredFn !== 'function') throw error;
+              // Retry on raw while still holding the op queue (avoid re-entrant Proxy deadlock).
+              return await (recoveredFn as (...inner: unknown[]) => Promise<unknown>).apply(
+                raw,
+                args,
+              );
+            }
+          });
+      }
+      return value.bind(target);
+    },
+  });
+}
+
+function sqliteErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    const message = error.message?.trim();
+    if (message) return message;
+    // WorkerChannel wraps postMessage'd Errors poorly → empty/"Unknown" on web overlays.
+    const cause = (error as Error & { cause?: unknown }).cause;
+    if (cause instanceof Error && cause.message?.trim()) return cause.message.trim();
+    return error.name || 'Unknown SQLite error';
+  }
+  return String(error);
+}
+
 export function isDatabaseAvailable(): boolean {
   return !getDbSingletonState().openFailed;
 }
 
 async function openDatabaseWithName(databaseName: string): Promise<SQLite.SQLiteDatabase> {
   const open = async (): Promise<SQLite.SQLiteDatabase> => {
-    const db = await withDbOpenTimeout(SQLite.openDatabaseAsync(databaseName), 'SQLite open');
-    await initializeDatabaseSchema(db);
-    return db;
+    const raw = await withDbOpenTimeout(SQLite.openDatabaseAsync(databaseName), 'SQLite open');
+    await initializeDatabaseSchema(raw);
+    const state = getDbSingletonState();
+    state.appliedMigrationVersion = SCHEMA_MIGRATION_VERSION;
+    return wrapDbForWeb(raw);
   };
 
   if (Platform.OS !== 'web') {
@@ -93,6 +261,9 @@ async function openDatabaseWithName(databaseName: string): Promise<SQLite.SQLite
 }
 
 async function openDatabaseOnce(): Promise<SQLite.SQLiteDatabase> {
+  if (isWebMemoryFallbackOnly()) {
+    return openDatabaseWithName(':memory:');
+  }
   return openDatabaseWithName('budget.db');
 }
 
@@ -106,6 +277,7 @@ async function openDatabaseResilient(): Promise<SQLite.SQLiteDatabase> {
       '[Boot] OPFS SQLite open failed; trying in-memory database for this session.',
       error,
     );
+    setWebMemoryFallbackOnly();
     return openDatabaseWithName(':memory:');
   }
 }
@@ -147,8 +319,10 @@ export function sortTransactionsNewestFirst(transactions: Transaction[]): Transa
 }
 
 async function initializeDatabaseSchema(db: SQLite.SQLiteDatabase): Promise<void> {
+  // WAL needs -wal/-shm sidecars; OPFS AccessHandlePoolVFS only has 6 slots and breaks
+  // under WAL (opaque NativeStatement#resetAsync / "Unknown" errors). Force DELETE on web.
+  await db.execAsync(`PRAGMA journal_mode = ${Platform.OS === 'web' ? 'DELETE' : 'WAL'};`);
   await db.execAsync(`
-        PRAGMA journal_mode = WAL;
         CREATE TABLE IF NOT EXISTS categories (
           id TEXT PRIMARY KEY NOT NULL,
           name TEXT NOT NULL,
@@ -251,6 +425,10 @@ async function initializeDatabaseSchema(db: SQLite.SQLiteDatabase): Promise<void
           valuation_source TEXT NOT NULL DEFAULT 'estimate',
           property_type TEXT,
           address TEXT,
+          photo_uri TEXT,
+          certificate_uri TEXT,
+          certificate_file_name TEXT,
+          linked_loan_id TEXT,
           notes TEXT,
           created_at TEXT NOT NULL
         );
@@ -274,6 +452,11 @@ async function initializeDatabaseSchema(db: SQLite.SQLiteDatabase): Promise<void
           created_at TEXT NOT NULL
         );
       `);
+  await applyIncrementalMigrations(db);
+  await removeDeprecatedBudgetCategories(db);
+}
+
+async function applyIncrementalMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   await ensureSavingsGoalColumns(db);
   await ensureSimulatedAccountColumns(db);
   await ensureTransactionColumns(db);
@@ -283,20 +466,52 @@ async function initializeDatabaseSchema(db: SQLite.SQLiteDatabase): Promise<void
   await ensureWealthAssetColumns(db);
   await ensureMerchantOverrideColumns(db);
   await ensureContactsTable(db);
-  await removeDeprecatedBudgetCategories(db);
+}
+
+function isLikelyMissingColumnError(error: unknown): boolean {
+  const message = sqliteErrorMessage(error).toLowerCase();
+  return (
+    message.includes('no such column') ||
+    message.includes('has no column') ||
+    message.includes('certificate_uri') ||
+    message.includes('certificate_file_name')
+  );
+}
+
+async function forceApplyIncrementalMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
+  const state = getDbSingletonState();
+  await applyIncrementalMigrations(db);
+  state.appliedMigrationVersion = SCHEMA_MIGRATION_VERSION;
 }
 
 export async function getDb(): Promise<SQLite.SQLiteDatabase> {
   const state = getDbSingletonState();
   if (!state.promise) {
     state.openFailed = false;
+    state.appliedMigrationVersion = 0;
     state.promise = openDatabaseResilient().catch((error: unknown) => {
       state.openFailed = true;
+      state.promise = null;
+      state.appliedMigrationVersion = 0;
       console.warn('[Boot] SQLite open failed', error);
       throw error;
     });
   }
-  return state.promise;
+  const db = await state.promise;
+  if ((state.appliedMigrationVersion ?? 0) < SCHEMA_MIGRATION_VERSION) {
+    try {
+      await forceApplyIncrementalMigrations(db);
+    } catch (error: unknown) {
+      console.warn(
+        `[Boot] SQLite migration v${SCHEMA_MIGRATION_VERSION} failed: ${sqliteErrorMessage(error)}`,
+        error,
+      );
+      throw new Error(`SQLite schema migration failed: ${sqliteErrorMessage(error)}`, {
+        cause: error,
+      });
+    }
+  }
+  return db;
 }
 
 async function ensureSavingsGoalColumns(db: SQLite.SQLiteDatabase): Promise<void> {
@@ -431,6 +646,8 @@ async function ensureWealthAssetColumns(db: SQLite.SQLiteDatabase): Promise<void
   await addColumn('address', 'address TEXT');
   await addColumn('notes', 'notes TEXT');
   await addColumn('photo_uri', 'photo_uri TEXT');
+  await addColumn('certificate_uri', 'certificate_uri TEXT');
+  await addColumn('certificate_file_name', 'certificate_file_name TEXT');
   await addColumn('linked_loan_id', 'linked_loan_id TEXT');
 }
 
@@ -654,10 +871,7 @@ export async function adjustSavingsGoalCurrentAmount(
   }
 }
 
-export async function getWealthAssets(): Promise<WealthAsset[]> {
-  const db = await getDb();
-  return db.getAllAsync<WealthAsset>(
-    `SELECT
+const WEALTH_ASSET_SELECT = `SELECT
        id,
        type,
        name,
@@ -674,43 +888,71 @@ export async function getWealthAssets(): Promise<WealthAsset[]> {
        property_type AS propertyType,
        address,
        photo_uri AS photoUri,
+       certificate_uri AS certificateUri,
+       certificate_file_name AS certificateFileName,
        linked_loan_id AS linkedLoanId,
        notes,
        created_at AS createdAt
-     FROM wealth_assets
-     ORDER BY created_at DESC`,
+     FROM wealth_assets`;
+
+async function withWealthSchemaRetry<T>(label: string, operation: (db: SQLite.SQLiteDatabase) => Promise<T>): Promise<T> {
+  const db = await getDb();
+  try {
+    return await operation(db);
+  } catch (error: unknown) {
+    if (!isLikelyMissingColumnError(error)) {
+      throw new Error(`${label}: ${sqliteErrorMessage(error)}`, { cause: error });
+    }
+    console.warn(`[DB] ${label} hit missing column; re-applying wealth_assets migrations`, error);
+    getDbSingletonState().appliedMigrationVersion = 0;
+    const migrated = await getDb();
+    try {
+      return await operation(migrated);
+    } catch (retryError: unknown) {
+      throw new Error(`${label}: ${sqliteErrorMessage(retryError)}`, { cause: retryError });
+    }
+  }
+}
+
+export async function getWealthAssets(): Promise<WealthAsset[]> {
+  return withWealthSchemaRetry('Failed to load wealth assets', (db) =>
+    db.getAllAsync<WealthAsset>(`${WEALTH_ASSET_SELECT} ORDER BY created_at DESC`),
   );
 }
 
 export async function upsertWealthAsset(asset: WealthAsset): Promise<void> {
-  const db = await getDb();
-  await db.runAsync(
-    `INSERT OR REPLACE INTO wealth_assets (
+  await withWealthSchemaRetry('Failed to save wealth asset', (db) =>
+    db.runAsync(
+      `INSERT OR REPLACE INTO wealth_assets (
        id, type, name, material, weight, weight_unit, karats, purity,
        purchase_cost, purchase_date, current_value, last_valuation_at,
-       valuation_source, property_type, address, photo_uri, linked_loan_id, notes, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      asset.id,
-      asset.type,
-      asset.name,
-      asset.material ?? null,
-      asset.weight ?? null,
-      asset.weightUnit ?? null,
-      asset.karats ?? null,
-      asset.purity ?? null,
-      asset.purchaseCost,
-      asset.purchaseDate ?? null,
-      asset.currentValue,
-      asset.lastValuationAt ?? null,
-      asset.valuationSource,
-      asset.propertyType ?? null,
-      asset.address ?? null,
-      asset.photoUri ?? null,
-      asset.linkedLoanId ?? null,
-      asset.notes ?? null,
-      asset.createdAt,
-    ],
+       valuation_source, property_type, address, photo_uri, certificate_uri,
+       certificate_file_name, linked_loan_id, notes, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        asset.id,
+        asset.type,
+        asset.name,
+        asset.material ?? null,
+        asset.weight ?? null,
+        asset.weightUnit ?? null,
+        asset.karats ?? null,
+        asset.purity ?? null,
+        asset.purchaseCost,
+        asset.purchaseDate ?? null,
+        asset.currentValue,
+        asset.lastValuationAt ?? null,
+        asset.valuationSource,
+        asset.propertyType ?? null,
+        asset.address ?? null,
+        asset.photoUri ?? null,
+        asset.certificateUri ?? null,
+        asset.certificateFileName ?? null,
+        asset.linkedLoanId ?? null,
+        asset.notes ?? null,
+        asset.createdAt,
+      ],
+    ),
   );
   dataEvents.emit();
 }
@@ -1291,32 +1533,8 @@ export async function deleteTransactionById(id: string): Promise<void> {
 export async function getWealthAssetById(id: string): Promise<WealthAsset | null> {
   const trimmed = id.trim();
   if (!trimmed) return null;
-  const db = await getDb();
-  return db.getFirstAsync<WealthAsset>(
-    `SELECT
-       id,
-       type,
-       name,
-       material,
-       weight,
-       weight_unit AS weightUnit,
-       karats,
-       purity,
-       purchase_cost AS purchaseCost,
-       purchase_date AS purchaseDate,
-       current_value AS currentValue,
-       last_valuation_at AS lastValuationAt,
-       valuation_source AS valuationSource,
-       property_type AS propertyType,
-       address,
-       photo_uri AS photoUri,
-       linked_loan_id AS linkedLoanId,
-       notes,
-       created_at AS createdAt
-     FROM wealth_assets
-     WHERE id = ?
-     LIMIT 1`,
-    [trimmed],
+  return withWealthSchemaRetry('Failed to load wealth asset', (db) =>
+    db.getFirstAsync<WealthAsset>(`${WEALTH_ASSET_SELECT} WHERE id = ? LIMIT 1`, [trimmed]),
   );
 }
 

@@ -1,6 +1,11 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
+import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
 import { ProgressBar } from '@/components/ProgressBar';
+import {
+  PLAN_FINANCE_CONTAINER,
+  planFinanceContainerPressedStyle,
+} from '@/constants/planFinanceKit';
 import {
   jakartaSemiboldText,
   moneyAmountTypography,
@@ -22,16 +27,12 @@ type Props = {
   category: BudgetCategoryUiModel;
   selected?: boolean;
   onPress: (id: string) => void;
-  embedded?: boolean;
-  isLast?: boolean;
 };
 
 export function BudgetCategoryRow({
   category,
   selected = false,
   onPress,
-  embedded = false,
-  isLast = false,
 }: Props) {
   const { colors, isLight } = useAppTheme();
   const barColor = categoryBudgetBarColor(
@@ -50,89 +51,79 @@ export function BudgetCategoryRow({
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected }}
+      accessibilityLabel={`${category.name}, ${formatDisplayMoneyAbsolute(category.spent)} sur ${formatDisplayMoneyAbsolute(category.limit)}`}
       onPress={() => {
         tapHaptic();
         onPress(category.id);
       }}
-      style={({ pressed }) => [
-        styles.row,
-        embedded && styles.rowEmbedded,
-        selected && {
-          backgroundColor: colors.successMuted,
-        },
-        pressed && styles.pressed,
-      ]}
+      style={({ pressed }) => [pressed && planFinanceContainerPressedStyle()]}
     >
-      <View style={styles.mainRow}>
-        <BudgetCategoryIcon icon={category.icon} name={category.name} id={category.id} />
+      <PlanFinanceContainer
+        style={[
+          styles.card,
+          selected && { borderColor: colors.success, backgroundColor: colors.successMuted },
+        ]}
+      >
+        <View style={styles.mainRow}>
+          <BudgetCategoryIcon icon={category.icon} name={category.name} id={category.id} />
 
-        <View style={styles.content}>
-          <View style={styles.titleRow}>
-            <View style={styles.nameCol}>
-              <Text
-                style={[styles.name, jakartaSemiboldText, { color: colors.text }]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {category.name}
-              </Text>
+          <View style={styles.content}>
+            <View style={styles.titleRow}>
+              <View style={styles.nameCol}>
+                <Text
+                  style={[styles.name, jakartaSemiboldText, { color: colors.text }]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {category.name}
+                </Text>
+              </View>
+              <View style={styles.amountsCol}>
+                <Text
+                  style={[moneyAmountTypography({ tier: 'row' }), styles.spentAmount, { color: colors.text }]}
+                >
+                  {formatDisplayMoneyAbsolute(category.spent)}
+                </Text>
+                <Text style={[styles.limitText, typographyKit.caption, { color: colors.textMuted }]}>
+                  {' / '}
+                  {formatDisplayMoneyAbsolute(category.limit)}
+                </Text>
+              </View>
             </View>
-            <View style={styles.amountsCol}>
-              <Text
-                style={[moneyAmountTypography({ tier: 'row' }), styles.spentAmount, { color: colors.text }]}
-              >
-                {formatDisplayMoneyAbsolute(category.spent)}
-              </Text>
-              <Text style={[styles.limitText, typographyKit.caption, { color: colors.textMuted }]}>
-                {' / '}
-                {formatDisplayMoneyAbsolute(category.limit)}
-              </Text>
-            </View>
-          </View>
 
-          <View style={styles.barRow}>
-            <View style={styles.barTrack}>
-              <ProgressBar
-                progress={category.usage.progress}
-                color={barColor}
-                height={3}
-                fillOpacity={barOpacity}
-                trackColor={barTrackColor}
-              />
+            <View style={styles.barRow}>
+              <View style={styles.barTrack}>
+                <ProgressBar
+                  progress={category.usage.progress}
+                  color={barColor}
+                  height={3}
+                  fillOpacity={barOpacity}
+                  trackColor={barTrackColor}
+                />
+              </View>
+              {showUsagePercent ? (
+                <Text
+                  style={[styles.barPercent, typographyKit.microMedium, { color: barColor }]}
+                >
+                  {category.usage.usagePercent} %
+                </Text>
+              ) : null}
             </View>
-            {showUsagePercent ? (
-              <Text
-                style={[styles.barPercent, typographyKit.microMedium, { color: barColor }]}
-              >
-                {category.usage.usagePercent} %
-              </Text>
-            ) : null}
           </View>
         </View>
-      </View>
-
-      {embedded && !isLast ? (
-        <View style={styles.divider} />
-      ) : null}
+      </PlanFinanceContainer>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  rowEmbedded: {
-    paddingVertical: spacing.md,
-  },
-  pressed: {
-    opacity: 0.88,
+  card: {
+    alignSelf: 'stretch',
+    padding: PLAN_FINANCE_CONTAINER.padding.row,
   },
   mainRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: spacing.md,
   },
   content: {
@@ -142,7 +133,7 @@ const styles = StyleSheet.create({
   },
   titleRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
@@ -153,6 +144,7 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 14,
     lineHeight: 18,
+    includeFontPadding: false,
   },
   amountsCol: {
     flexDirection: 'row',
@@ -184,10 +176,5 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     fontVariant: ['tabular-nums'],
     letterSpacing: -0.2,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginTop: spacing.xs,
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
   },
 });

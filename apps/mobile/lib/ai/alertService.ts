@@ -4,6 +4,7 @@ import {
   getLoans,
   getSimulatedAccounts,
 } from '@/lib/db';
+import { ALERT_TITLES } from '@/lib/alertPresentation';
 
 import { loadEncryptedJson, removeEncryptedItem, saveEncryptedJson } from './encryptedStorage';
 import { resolveDataMode } from './sanitizeForAI';
@@ -78,8 +79,8 @@ export async function evaluateAlerts(): Promise<AIAlert[]> {
       alerts = upsertAlert(alerts, {
         type: 'attention',
         categorie: 'solde_bas',
-        titre: 'Solde bas',
-        message: `Solde bas dans ton compte ${account.name} (${account.balance.toFixed(0)} $).`,
+        titre: ALERT_TITLES.balanceLow,
+        message: `Le solde de ${account.name} est bas (${account.balance.toFixed(0)} $). Un petit ajout avant le prochain paiement conserve ta tranquillité.`,
         montant: account.balance,
         compteReference: account.id,
         dateEcheance: null,
@@ -95,8 +96,8 @@ export async function evaluateAlerts(): Promise<AIAlert[]> {
       alerts = upsertAlert(alerts, {
         type: 'attention',
         categorie: 'budget',
-        titre: 'Budget dépassé',
-        message: `Tu as dépassé ton budget ${budget.categoryName} ce mois-ci.`,
+        titre: ALERT_TITLES.budgetOver,
+        message: `L’enveloppe ${budget.categoryName} a été dépassée ce mois-ci. Réajuster l’enveloppe ou revoir quelques dépenses te remet dans le rythme.`,
         montant: budget.spent - budget.limitAmount,
         compteReference: null,
         dateEcheance: null,
@@ -111,8 +112,8 @@ export async function evaluateAlerts(): Promise<AIAlert[]> {
     alerts = upsertAlert(alerts, {
       type: 'info',
       categorie: 'credit',
-      titre: 'Dette à taux élevé',
-      message: `${urgentLoan.name} affiche un taux de ${urgentLoan.interestRate.toFixed(2)} % — à prioriser.`,
+      titre: ALERT_TITLES.highInterestDebt,
+      message: `${urgentLoan.name} porte un taux de ${urgentLoan.interestRate.toFixed(2)} %. La prioriser t’épargne des intérêts au fil du temps.`,
       montant: urgentLoan.balanceRemaining,
       compteReference: urgentLoan.id,
       dateEcheance: urgentLoan.nextPaymentDate,

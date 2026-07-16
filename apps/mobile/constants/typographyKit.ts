@@ -63,10 +63,11 @@ export const typographyKit = {
     lineHeight: 24,
   },
 
-  /** DashboardSectionLabel — VALEUR NETTE, Actifs hors compte… */
+  /** DashboardSectionLabel — VALEUR NETTE, Actifs hors compte… (~iOS Footnote) */
   eyebrow: {
     ...labelText,
-    fontSize: sizes.micro,
+    fontSize: sizes.meta,
+    lineHeight: sizes.meta + 3,
   },
 
   body: {

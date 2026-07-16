@@ -262,20 +262,16 @@ export default function BudgetScreen() {
 
         {listCategories.length > 0 ? (
           <View style={pageStyles.categoriesSection}>
-            <DashboardCard padding={0} innerStyle={pageStyles.categoriesCard}>
-              {listCategories.map((item, index) => (
-                <BudgetCategoryRow
-                  key={item.id}
-                  category={item}
-                  onPress={openCategoryDetail}
-                  embedded
-                  isLast={!showAddButton && index === listCategories.length - 1}
-                />
-              ))}
-              {showAddButton ? (
-                <BudgetCategoryAddRow onPress={() => setAddVisible(true)} />
-              ) : null}
-            </DashboardCard>
+            {listCategories.map((item) => (
+              <BudgetCategoryRow
+                key={item.id}
+                category={item}
+                onPress={openCategoryDetail}
+              />
+            ))}
+            {showAddButton ? (
+              <BudgetCategoryAddRow onPress={() => setAddVisible(true)} />
+            ) : null}
           </View>
         ) : null}
       </View>
@@ -417,9 +413,8 @@ const pageStyles = StyleSheet.create({
   categoriesSection: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     marginBottom: spacing.md,
-  },
-  categoriesCard: {
-    overflow: 'hidden',
+    /** Match portefeuille account tile breathing room (not a single stacked list card). */
+    gap: spacing.md,
   },
   addButton: {
     width: 36,

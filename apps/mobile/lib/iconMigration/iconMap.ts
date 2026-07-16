@@ -41,6 +41,7 @@ export const LEGACY_TO_LUCIDE_MAP: Partial<Record<LegacyIconKey, string>> = {
   [key('ionicons', 'business-outline')]: 'Store',
   [key('ionicons', 'receipt-outline')]: 'ReceiptText',
   [key('ionicons', 'cash-outline')]: 'HandCoins',
+  [key('ionicons', 'cash-banknotes-outline')]: 'CashBanknotesStack',
   [key('ionicons', 'swap-horizontal-outline')]: 'ArrowLeftRight',
   [key('ionicons', 'arrow-down-circle-outline')]: 'BanknoteArrowDown',
   [key('ionicons', 'trending-up-outline')]: 'TrendingUp',

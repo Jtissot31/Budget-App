@@ -32,7 +32,7 @@ export function AlertCenterButton({ unreadCount, onPress }: Props) {
         pressed && styles.pressed,
       ]}
     >
-      <AppIcon family="ionicons" name="notifications-outline" size={21} color={colors.textSecondary} />
+      <AppIcon family="ionicons" name="notifications-outline" size={21} color={colors.text} />
       {hasUnread ? (
         <View style={[styles.badge, { backgroundColor: colors.danger, borderColor: colors.containerBackground }]}>
           <Text style={[styles.badgeText, { color: colors.background }]}>

@@ -1,0 +1,46 @@
+---
+description: Apply Onyx container from the theme kit when the user asks for onyx container
+alwaysApply: true
+---
+
+# Onyx container (theme kit)
+
+When the user asks to **apply onyx container** / **utiliser onyx container** /
+**même shell que plan financier**, use this recipe — do not invent a new card shell.
+
+## Source of truth
+
+| Piece | Location |
+|-------|----------|
+| Component | `apps/mobile/components/OnyxContainer.tsx` (alias of `PlanFinanceContainer`) |
+| Tokens | `ONYX_CONTAINER`, `onyxContainerShellStyle`, `onyxContainerPressedStyle`, `onyxContainerRowLayoutStyle` in `apps/mobile/constants/planFinanceKit.ts` |
+| Halo | `planFinanceCardHalo` (on by default) |
+
+Legacy name `PlanFinanceContainer` / `PLAN_FINANCE_CONTAINER` is the same shell — prefer **Onyx** in new code and when following a user request.
+
+## Shell properties
+
+- Fill: `colors.containerBackground` (`#111111` dark)
+- Outline: `colors.containerBorder` + `StyleSheet.hairlineWidth`
+- Radius: **13px**
+- Halo: charcoal lift (default `halo`)
+- Press: wrap `Pressable` + `onyxContainerPressedStyle()` (opacity **0.82**)
+
+## Apply pattern
+
+```tsx
+import { OnyxContainer } from '@/components/OnyxContainer';
+import { ONYX_CONTAINER, onyxContainerPressedStyle } from '@/constants/planFinanceKit';
+
+<Pressable style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}>
+  <OnyxContainer style={{ padding: ONYX_CONTAINER.padding.card, gap: spacing.md }}>
+    {children}
+  </OnyxContainer>
+</Pressable>
+```
+
+## Do not use for
+
+- Glass inputs, segmented controls
+- Protected `TransactionDetailSheet.tsx` unless explicitly requested
+- Places that must keep the older 18px `containerSurfaceStyle` / `SurfaceCard` glass look

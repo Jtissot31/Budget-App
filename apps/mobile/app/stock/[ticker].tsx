@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Pressable,
@@ -10,29 +10,27 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PageTransition } from '@/components/PageTransition';
-import {
-  StockHeroPriceRow,
-  StockIssuerRow,
-  StockPeriodPerformance,
-} from '@/components/stock/StockDetailSections';
+import { StockDetailHero, StockDetailIdentity } from '@/components/stock/StockDetailSections';
 import { StockSavingsDetailCard } from '@/components/stock/StockSavingsDetailCard';
 import {
   CHART_FULL_BLEED_RIGHT_INSET,
   PortfolioChartCard,
   type NetWorthChartPeriod,
   type PortfolioChartCardHandle,
-  type PortfolioChartCardPeriodData,
 } from '@/components/PortfolioChartCard';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
-import {
-  getMockStockDetail,
-  STOCK_PERIOD_CHANGE_LABELS,
-} from '@/constants/mockStockDetail';
+import { getMockStockDetail } from '@/constants/mockStockDetail';
 import {
   buildStockChartTrendPoints,
   STOCK_NET_WORTH_CHART_PERIODS,
 } from '@/lib/intradayStockSparkline';
-import { jakartaExtraBoldText, spacing, typography } from '@/constants/theme';
+import { jakartaExtraBoldText } from '@/constants/plusJakartaFonts';
+import {
+  DASHBOARD_VALUE_GREEN,
+  DASHBOARD_VALUE_RED,
+  spacing,
+  typography,
+} from '@/constants/theme';
 import { formatDisplayMoney } from '@/lib/formatDisplayMoney';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -50,33 +48,18 @@ export default function StockDetailScreen() {
   const detail = useMemo(() => getMockStockDetail(ticker), [ticker]);
   const chartRef = useRef<PortfolioChartCardHandle>(null);
 
-  const [chartPeriod, setChartPeriod] = useState<NetWorthChartPeriod>('1J');
-  const [periodData, setPeriodData] = useState<PortfolioChartCardPeriodData | null>(null);
-
   const getChartPoints = useCallback(
     (period: NetWorthChartPeriod) =>
       detail ? buildStockChartTrendPoints(detail.holding, period) : [],
     [detail],
   );
 
-  const handlePeriodData = useCallback((data: PortfolioChartCardPeriodData) => {
-    setChartPeriod(data.period);
-    setPeriodData(data);
-  }, []);
-
   const dismissChartCursor = useCallback(() => {
     chartRef.current?.clearSelection();
   }, []);
 
   const dayUp = (detail?.holding.dayChangePercent ?? 0) >= 0;
-  const chartLineColor = dayUp ? colors.success : colors.danger;
-  const isScrubbingChart = periodData?.isScrubbing ?? false;
-  const periodLabel =
-    isScrubbingChart && chartPeriod === '1J' && periodData?.selectedLabel
-      ? periodData.selectedLabel
-      : STOCK_PERIOD_CHANGE_LABELS[chartPeriod] ?? '';
-  const performanceDelta = periodData?.delta ?? 0;
-  const performancePercent = periodData?.deltaPercent ?? 0;
+  const chartLineColor = dayUp ? DASHBOARD_VALUE_GREEN : DASHBOARD_VALUE_RED;
 
   return (
     <PageTransition>
@@ -118,13 +101,8 @@ export default function StockDetailScreen() {
             <>
               <Pressable onPress={dismissChartCursor} accessibilityRole="none">
                 <View style={styles.heroBlock}>
-                  <StockIssuerRow detail={detail} />
-                  <StockHeroPriceRow detail={detail} />
-                  <StockPeriodPerformance
-                    delta={performanceDelta}
-                    deltaPercent={performancePercent}
-                    periodLabel={periodLabel}
-                  />
+                  <StockDetailIdentity detail={detail} />
+                  <StockDetailHero detail={detail} />
                 </View>
               </Pressable>
 
@@ -139,7 +117,6 @@ export default function StockDetailScreen() {
                   lineColor={chartLineColor}
                   plotHorizontalInset={0}
                   plotHorizontalInsetRight={CHART_FULL_BLEED_RIGHT_INSET}
-                  onPeriodData={handlePeriodData}
                   selectionPersistence="release"
                   scrubTimePeriods={['1J']}
                 />
@@ -196,7 +173,7 @@ const styles = StyleSheet.create({
     gap: spacing.xl,
   },
   heroBlock: {
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   belowChart: {
     gap: spacing.xl,

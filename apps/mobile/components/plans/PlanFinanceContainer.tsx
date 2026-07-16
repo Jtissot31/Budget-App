@@ -1,32 +1,32 @@
 import { ReactNode } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { planFinanceCardHalo, planFinanceKit } from '@/constants/planFinanceKit';
+import { planFinanceCardHalo, planFinanceContainerShellStyle } from '@/constants/planFinanceKit';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
-  /** Green accent halo — on by default for plan finance surfaces */
+  /** Charcoal lift halo — on by default for plan finance / portefeuille surfaces */
   halo?: boolean;
 };
 
-/** Plan finance card shell — #111 fill, hairline outline, optional green halo (matches PlanCard). */
+/**
+ * Shared card shell for portefeuille + plan finance —
+ * #111 fill, hairline outline, 13px radius, optional charcoal halo.
+ *
+ * Theme-kit name: **Onyx container** — import {@link OnyxContainer} for new work
+ * (`components/OnyxContainer.tsx`). Tokens: `ONYX_CONTAINER` in `planFinanceKit`.
+ *
+ * Layout styles (`flexDirection`, `gap`, `padding`, …) must stay on this root so
+ * row tiles (biens, prêts, suggestions) keep working — do not wrap children.
+ */
 export function PlanFinanceContainer({ children, style, halo = true }: Props) {
   const { colors, isLight } = useAppTheme();
   const haloTokens = isLight ? planFinanceCardHalo.light : planFinanceCardHalo.dark;
 
   return (
-    <View
-      style={[
-        styles.shell,
-        {
-          backgroundColor: colors.containerBackground,
-          borderColor: colors.containerBorder,
-        },
-        style,
-      ]}
-    >
+    <View style={[planFinanceContainerShellStyle(colors), styles.root, style]}>
       {halo ? (
         <View pointerEvents="none" style={styles.haloWrap}>
           <LinearGradient
@@ -51,13 +51,11 @@ export function PlanFinanceContainer({ children, style, halo = true }: Props) {
 }
 
 const styles = StyleSheet.create({
-  shell: {
-    borderRadius: planFinanceKit.radius.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
+  root: {
+    position: 'relative',
   },
+  /** Absolute only — no zIndex, so in-flow children paint above the halo. */
   haloWrap: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 0,
   },
 });

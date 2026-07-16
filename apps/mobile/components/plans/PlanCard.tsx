@@ -1,17 +1,21 @@
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
-import { interMediumText, interSemiboldText, spacing, typography } from '@/constants/theme';
+import { planFinanceContainerPressedStyle } from '@/constants/planFinanceKit';
+import { moneyAmountTypography, spacing, typographyKit } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { isPlanSuggere, planProgressionPourcent, type Plan } from '@/lib/plans/Plan';
 import {
   getCategoryIcon,
   PLAN_CARD_PADDING,
   planCardMetaLine,
+  planCardPrimaryMetricIsMoney,
+  planCardPrimaryMetricLine,
   planCardProgressColor,
   planCardSummaryLine,
 } from '@/lib/plans/planCardPresentation';
 import { useAppTheme } from '@/lib/themeContext';
+
 type Props = {
   plan: Plan;
   /** Affiche la raison de recommandation (sans barre de progression). */
@@ -22,12 +26,35 @@ type Props = {
   style?: StyleProp<ViewStyle>;
 };
 
+/** Compact carousel shell — tighter than full plan cards (~134px). */
+const CAROUSEL_PADDING = 8;
+const CAROUSEL_GAP = 2;
+const CAROUSEL_ICON = 16;
+const CAROUSEL_PROGRESS_H = 4;
+
+/**
+ * Uniform carousel height sized for the taller suggested layout
+ * (eyebrow + 2-line hint). Active cards share the same fixed height.
+ */
+const CAROUSEL_CARD_HEIGHT =
+  CAROUSEL_PADDING * 2 +
+  CAROUSEL_ICON +
+  typographyKit.rowTitle.lineHeight * 2 +
+  typographyKit.metaMedium.lineHeight +
+  typographyKit.metaMedium.lineHeight * 2 +
+  CAROUSEL_GAP * 4 +
+  CAROUSEL_PROGRESS_H;
+
 export function PlanCard({ plan, suggested = false, layout = 'full', onPress, style }: Props) {
   const { colors } = useAppTheme();
   const pct = planProgressionPourcent(plan);
   const progressColor = planCardProgressColor(plan);
   const showSuggested = suggested || isPlanSuggere(plan);
-  const summaryLines = showSuggested ? 4 : 2;
+  const isCarousel = layout === 'carousel';
+  const primaryMetric = showSuggested ? null : planCardPrimaryMetricLine(plan);
+  const primaryIsMoney = primaryMetric != null && planCardPrimaryMetricIsMoney(plan);
+  const hint = showSuggested ? planCardSummaryLine(plan) : null;
+  const hintLines = isCarousel ? 2 : 3;
 
   return (
     <Pressable
@@ -37,34 +64,75 @@ export function PlanCard({ plan, suggested = false, layout = 'full', onPress, st
         tapHaptic();
         onPress();
       }}
-      style={({ pressed }) => [pressed && styles.pressed]}
+      style={({ pressed }) => [
+        isCarousel && styles.pressableCarousel,
+        pressed && planFinanceContainerPressedStyle(),
+      ]}
     >
       <PlanFinanceContainer
-        style={[styles.card, layout === 'carousel' && styles.cardCarousel, style]}
+        style={[styles.card, isCarousel && styles.cardCarousel, style]}
       >
-        <AppIcon family="material-community" 
+        <AppIcon
+          family="material-community"
           name={getCategoryIcon(plan.category)}
-          size={20}
+          size={isCarousel ? CAROUSEL_ICON : 20}
           color={colors.textSecondary}
         />
 
-        <Text style={[styles.planName, { color: colors.text }, interSemiboldText]} numberOfLines={2}>
+        <Text
+          style={[styles.planName, isCarousel && styles.planNameCarousel, { color: colors.text }]}
+          numberOfLines={2}
+        >
           {plan.titre}
         </Text>
 
-        <Text style={[styles.planMeta, { color: colors.textMuted }, interMediumText]} numberOfLines={1}>
-          {planCardMetaLine(plan)}
-        </Text>
-
-        <Text
-          style={[styles.planHint, { color: colors.textMuted }, interMediumText]}
-          numberOfLines={summaryLines}
-        >
-          {planCardSummaryLine(plan)}
-        </Text>
+        {showSuggested ? (
+          <>
+            <Text
+              style={[styles.planMeta, isCarousel && styles.planMetaCarousel, { color: colors.textMuted }]}
+              numberOfLines={1}
+            >
+              {planCardMetaLine(plan)}
+            </Text>
+            <Text
+              style={[styles.planHint, isCarousel && styles.planHintCarousel, { color: colors.textMuted }]}
+              numberOfLines={hintLines}
+            >
+              {hint}
+            </Text>
+          </>
+        ) : (
+          <>
+            {primaryMetric ? (
+              <Text
+                style={[
+                  primaryIsMoney
+                    ? [moneyAmountTypography({ tier: 'row' }), isCarousel && styles.planPrimaryCarousel]
+                    : [styles.planPrimarySteps, isCarousel && styles.planPrimaryCarousel],
+                  { color: colors.text },
+                ]}
+                numberOfLines={1}
+              >
+                {primaryMetric}
+              </Text>
+            ) : null}
+            <Text
+              style={[styles.planMeta, isCarousel && styles.planMetaCarousel, { color: colors.textMuted }]}
+              numberOfLines={1}
+            >
+              {planCardMetaLine(plan)}
+            </Text>
+          </>
+        )}
 
         {!showSuggested ? (
-          <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+          <View
+            style={[
+              styles.progressTrack,
+              isCarousel && styles.progressTrackCarousel,
+              { backgroundColor: colors.border },
+            ]}
+          >
             <View
               style={[
                 styles.progressFill,
@@ -75,6 +143,8 @@ export function PlanCard({ plan, suggested = false, layout = 'full', onPress, st
               ]}
             />
           </View>
+        ) : isCarousel ? (
+          <View style={[styles.progressTrackPlaceholder, styles.progressTrackCarousel]} />
         ) : null}
       </PlanFinanceContainer>
     </Pressable>
@@ -82,26 +152,42 @@ export function PlanCard({ plan, suggested = false, layout = 'full', onPress, st
 }
 
 const styles = StyleSheet.create({
+  pressableCarousel: {
+    alignSelf: 'stretch',
+  },
   card: {
     padding: PLAN_CARD_PADDING,
     gap: spacing.sm,
     alignSelf: 'stretch',
   },
   cardCarousel: {
-    minWidth: 168,
-    maxWidth: 200,
+    height: CAROUSEL_CARD_HEIGHT,
+    padding: CAROUSEL_PADDING,
+    gap: CAROUSEL_GAP,
   },
   planName: {
-    fontSize: 13,
-    lineHeight: 18,
+    ...typographyKit.rowTitle,
+  },
+  planNameCarousel: {
+    minHeight: typographyKit.rowTitle.lineHeight * 2,
+  },
+  planPrimarySteps: {
+    ...typographyKit.rowTitle,
+  },
+  planPrimaryCarousel: {
+    minHeight: typographyKit.rowAmount.lineHeight,
   },
   planMeta: {
-    fontSize: 11,
-    lineHeight: 15,
+    ...typographyKit.metaMedium,
+  },
+  planMetaCarousel: {
+    minHeight: typographyKit.metaMedium.lineHeight,
   },
   planHint: {
-    fontSize: typography.meta,
-    lineHeight: 20,
+    ...typographyKit.metaMedium,
+  },
+  planHintCarousel: {
+    minHeight: typographyKit.metaMedium.lineHeight * 2,
   },
   progressTrack: {
     height: 4,
@@ -110,11 +196,17 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     alignSelf: 'stretch',
   },
+  progressTrackCarousel: {
+    height: CAROUSEL_PROGRESS_H,
+    marginTop: 0,
+  },
+  progressTrackPlaceholder: {
+    height: 4,
+    marginTop: spacing.xs,
+    alignSelf: 'stretch',
+  },
   progressFill: {
     height: '100%',
     borderRadius: 2,
-  },
-  pressed: {
-    opacity: 0.78,
   },
 });

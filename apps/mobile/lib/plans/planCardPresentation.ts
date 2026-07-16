@@ -1,8 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import {
   PLAN_CATEGORY_LABELS,
   PLAN_STATUT_LABELS,
   isPlanSuggere,
+  planEtapesCompletees,
   planMontantRestant,
   planPossedeCibleMonetaire,
   planProgressionPourcent,
@@ -11,8 +13,10 @@ import {
   type PlanCategory,
 } from './Plan';
 
+import { DARK_CANVAS } from '@/constants/theme';
+
 export const PLAN_HUB = {
-  background: '#0E0E10',
+  background: DARK_CANVAS,
   surface: '#111111',
   accent: '#4ADE80',
   danger: '#C96560',
@@ -55,33 +59,53 @@ export function planCategoryLabel(category: PlanCategory): string {
   return PLAN_CATEGORY_LABELS[category];
 }
 
+/**
+ * Secondary meta line — % appears here at most once (never again in the primary metric).
+ * Suggested: eyebrow « Suggéré · Catégorie ».
+ * Active / complete: « 62 % · Épargne » (bar repeats % visually only).
+ */
 export function planCardMetaLine(plan: Plan): string {
-  const pct = planProgressionPourcent(plan);
   if (isPlanSuggere(plan)) {
     return `Suggéré · ${planCategoryLabel(plan.category)}`;
   }
+  const pct = planProgressionPourcent(plan);
   return `${pct} % · ${planCategoryLabel(plan.category)}`;
 }
 
+/**
+ * Primary metric for active / complete plans — money or étapes, without %.
+ * Suggested plans: empty (hint goes through {@link planCardSummaryLine}).
+ */
+export function planCardPrimaryMetricLine(plan: Plan): string | null {
+  if (isPlanSuggere(plan)) return null;
+
+  if (planPossedeCibleMonetaire(plan)) {
+    if (plan.statut === 'complete') {
+      const attained = plan.montant_actuel ?? plan.montant_cible ?? 0;
+      return `${formatDisplayMoneyAbsolute(attained)} atteints`;
+    }
+    const remaining = planMontantRestant(plan) ?? 0;
+    return `${formatDisplayMoneyAbsolute(remaining)} restants`;
+  }
+
+  const { done, total } = planEtapesCompletees(plan);
+  return `${done}/${total} étapes`;
+}
+
+/** True when the primary metric is a dollar amount (use moneyAmountTypography). */
+export function planCardPrimaryMetricIsMoney(plan: Plan): boolean {
+  return !isPlanSuggere(plan) && planPossedeCibleMonetaire(plan);
+}
+
+/**
+ * Suggested-plan hint (raison). For active plans returns the primary metric
+ * (compat) — prefer {@link planCardPrimaryMetricLine} in new UI.
+ */
 export function planCardSummaryLine(plan: Plan): string {
-  const pct = planProgressionPourcent(plan);
   if (isPlanSuggere(plan)) {
     return plan.raison_recommandation;
   }
-  if (planPossedeCibleMonetaire(plan)) {
-    const remaining = planMontantRestant(plan) ?? 0;
-    const { formatDisplayMoneyAbsolute } = require('@/lib/formatDisplayMoney') as typeof import('@/lib/formatDisplayMoney');
-    return `${formatDisplayMoneyAbsolute(remaining)} restants · ${pct} %`;
-  }
-  const { done, total } = plan.etapes.reduce(
-    (acc, etape) => {
-      acc.total += 1;
-      if (etape.statut === 'complete') acc.done += 1;
-      return acc;
-    },
-    { done: 0, total: 0 },
-  );
-  return `${done}/${total} étapes · ${pct} %`;
+  return planCardPrimaryMetricLine(plan) ?? '';
 }
 
 /** Vert par défaut ; rouge seulement en urgence réelle (ex. budget dépassé). */

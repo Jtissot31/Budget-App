@@ -1,0 +1,71 @@
+---
+description: Default card container for patrimoine, plans, and new interactive tiles
+alwaysApply: true
+---
+
+# Default card container — Onyx / PlanFinanceContainer
+
+For **new** interactive cards, list rows, and grid tiles in `apps/mobile/`, use
+**Onyx container** — `OnyxContainer` (`components/OnyxContainer.tsx`), alias of
+`PlanFinanceContainer`. See also `onyx-container.mdc`.
+
+Reference implementations: `StockHoldingTile`, `WealthHoldingTile` in `PatrimoineHoldingsSections`,
+`HubLoansSection` obligation rows, `PlanCard`.
+
+## Shell (do not hardcode hex)
+
+- **Component**: `<PlanFinanceContainer halo? style={…}>…</PlanFinanceContainer>`
+- **Fill / outline**: `useAppTheme().colors.containerBackground` + `containerBorder`
+- **Radius**: 13px (`PLAN_FINANCE_CONTAINER.borderRadius` / `planFinanceKit.radius.card`)
+- **Border**: `StyleSheet.hairlineWidth`
+- **Halo**: on by default — `planFinanceCardHalo` from `constants/planFinanceKit.ts`
+- **Style-only** (no halo): `planFinanceContainerShellStyle(colors)` from `planFinanceKit`
+
+## Press feedback
+
+Wrap in `Pressable`; on pressed use `planFinanceContainerPressedStyle()` (opacity **0.82**).
+Do not put opacity on the container itself.
+
+## Interior padding
+
+| Layout | Helper | Values |
+|--------|--------|--------|
+| Full-width row (icon + copy + amount) | `planFinanceContainerRowLayoutStyle()` | `padding: 12`, `gap: 12`, row flex |
+| 2-column compact tile (stocks) | `planFinanceContainerCompactTilePaddingStyle()` | H/T 12px, bottom 14px |
+| Full plan card | `PLAN_FINANCE_CONTAINER.padding.card` | 20px |
+| Vertical list gap between rows | `PLAN_FINANCE_CONTAINER.listGap` | 8px (`spacing.sm`) |
+
+## When NOT to use
+
+- Dashboard alert cards, account balance rows, glass inputs → `containerSurfaceStyle()` in `theme.ts` (1px border, 18px radius, no halo)
+- `TransactionDetailSheet.tsx` — protected; do not modify unless explicitly requested
+
+## Bad — duplicated inline shell
+
+```tsx
+// ❌ BAD — reimplements PlanFinanceContainer
+<View style={{
+  backgroundColor: '#111111',
+  borderRadius: 13,
+  borderWidth: StyleSheet.hairlineWidth,
+  borderColor: 'rgba(255,255,255,0.12)',
+}}>
+```
+
+## Good
+
+```tsx
+import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
+import {
+  planFinanceContainerPressedStyle,
+  planFinanceContainerRowLayoutStyle,
+} from '@/constants/planFinanceKit';
+
+<Pressable style={({ pressed }) => [pressed && planFinanceContainerPressedStyle()]}>
+  <PlanFinanceContainer style={planFinanceContainerRowLayoutStyle()}>
+    {children}
+  </PlanFinanceContainer>
+</Pressable>
+```
+
+Tokens: `PLAN_FINANCE_CONTAINER`, `planFinanceCardHalo` in `constants/planFinanceKit.ts`.

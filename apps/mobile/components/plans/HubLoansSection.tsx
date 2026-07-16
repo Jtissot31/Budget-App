@@ -6,14 +6,17 @@ import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { HubSectionHeader } from '@/components/plans/HubSectionHeader';
 import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
 import { floatingGlassButtonPressed } from '@/constants/floatingGlassButton';
-import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import {
+  planFinanceContainerPressedStyle,
+  planFinanceContainerRowLayoutStyle,
+} from '@/constants/planFinanceKit';
 import { getLoans } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
 import { resolveLoanIcon } from '@/lib/loanIcons';
 import {
   formatLoanDebtAmount,
-  formatLoanDisplayTitle,
+  formatLoanObligationName,
   loanTypeBadgeLabel,
 } from '@/lib/loanPresentation';
 import { computeLineOfCreditUtilization } from '@/lib/loanDetailSections';
@@ -38,9 +41,7 @@ export function HubLoansSection() {
 
   useEffect(() => dataEvents.subscribe(load), [load]);
 
-  const totalDebt = loans.reduce((sum, loan) => sum + Math.max(loan.balanceRemaining, 0), 0);
   const previewLoans = loans.slice(0, PREVIEW_LIMIT);
-  const hasMore = loans.length > PREVIEW_LIMIT;
 
   const openLoan = useCallback(
     (loan: Loan) => {
@@ -57,32 +58,7 @@ export function HubLoansSection() {
 
   return (
     <View style={styles.section}>
-      <HubSectionHeader
-        eyebrow="Obligations"
-        title="Mes prêts et obligations"
-        trailing={
-          loans.length > 0 ? (
-            <View
-              style={[
-                styles.totalBadge,
-                {
-                  backgroundColor: colors.containerBackground,
-                  borderColor: colors.borderSubtle,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  moneyAmountTypography({ tier: 'row', fontSize: 12 }),
-                  { color: colors.text },
-                ]}
-              >
-                {formatDisplayMoneyAbsolute(totalDebt)}
-              </Text>
-            </View>
-          ) : null
-        }
-      />
+      <HubSectionHeader eyebrow="Obligations" title="Mes prêts et obligations" />
 
       {loans.length === 0 ? (
         <Text style={[styles.emptyText, { color: colors.textMuted }]}>
@@ -92,7 +68,7 @@ export function HubLoansSection() {
         <View style={styles.cardList}>
           {previewLoans.map((loan) => {
             const loanType = loan.type ?? 'personal_loan';
-            const displayTitle = formatLoanDisplayTitle(loan);
+            const displayTitle = formatLoanObligationName(loan);
             const isLineOfCredit = loanType === 'line_of_credit';
             const utilization = isLineOfCredit ? computeLineOfCreditUtilization(loan) : null;
 
@@ -102,7 +78,7 @@ export function HubLoansSection() {
                 accessibilityRole="button"
                 accessibilityLabel={`Voir le détail de ${displayTitle}`}
                 onPress={() => openLoan(loan)}
-                style={({ pressed }) => [pressed && styles.pressed]}
+                style={({ pressed }) => [pressed && planFinanceContainerPressedStyle()]}
               >
                 <PlanFinanceContainer style={styles.loanRow}>
                   <UserPickedIconWell icon={resolveLoanIcon(loan)} size={44} wellGlyphWhite />
@@ -137,17 +113,6 @@ export function HubLoansSection() {
       )}
 
       <View style={styles.actions}>
-        {hasMore ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Voir tous les prêts"
-            onPress={openPortfolioDebts}
-            style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}
-          >
-            <Text style={[styles.linkLabel, { color: colors.textSecondary }]}>Voir tout dans Portefeuille</Text>
-            <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
-          </Pressable>
-        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Ajouter un prêt ou une obligation"
@@ -173,35 +138,23 @@ const styles = StyleSheet.create({
   section: {
     gap: spacing.sm,
   },
-  totalBadge: {
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
   cardList: {
     gap: spacing.sm,
   },
-  loanRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    gap: spacing.md,
-    padding: spacing.md,
-  },
+  loanRow: planFinanceContainerRowLayoutStyle(),
   loanCopy: {
     flex: 1,
     minWidth: 0,
     gap: 2,
   },
   loanType: {
-    ...typographyKit.caption,
-    fontSize: 11,
+    ...typographyKit.metaMedium,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
   loanName: {
-    ...typographyKit.rowTitle,
+    ...typographyKit.bodyBold,
+    letterSpacing: -0.2,
   },
   loanAmount: {
     flexShrink: 0,
@@ -212,8 +165,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   utilCaption: {
-    ...typographyKit.caption,
-    fontSize: 11,
+    ...typographyKit.metaMedium,
     letterSpacing: 0.2,
   },
   emptyText: {
@@ -223,16 +175,6 @@ const styles = StyleSheet.create({
   actions: {
     gap: spacing.sm,
     marginTop: spacing.xs,
-  },
-  linkButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    minHeight: 36,
-  },
-  linkLabel: {
-    ...typographyKit.caption,
   },
   addCta: {
     flexDirection: 'row',
@@ -244,9 +186,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   addCtaLabel: {
-    ...typographyKit.caption,
-  },
-  pressed: {
-    opacity: 0.82,
+    ...typographyKit.bodyMedium,
   },
 });

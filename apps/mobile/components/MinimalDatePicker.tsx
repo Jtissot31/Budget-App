@@ -2,7 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { GhostTokens } from '@/constants/ghostUi';
-import { radius, spacing, typography, type AppColors } from '@/constants/theme';
+import {
+  containerSurfaceStyle,
+  radius,
+  spacing,
+  typography,
+  typographyKit,
+  type AppColors,
+} from '@/constants/theme';
 import { formatFriendlyDateLabel } from '@/lib/formatFriendlyDateLabel';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
@@ -34,10 +41,11 @@ export function DatePickerField({
   variant = 'compact',
   labelStyle,
 }: DatePickerFieldProps) {
-  const { colors, ghost } = useAppTheme();
+  const { colors, ghost, isLight } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, ghost), [colors, ghost]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const displayValue = value ? formatFriendlyDateLabel(value) : '';
+  const sheetSurface = variant === 'sheet' ? containerSurfaceStyle(isLight) : null;
 
   return (
     <View style={styles.field}>
@@ -52,10 +60,19 @@ export function DatePickerField({
         style={({ pressed }) => [
           styles.inputButton,
           variant === 'sheet' && styles.sheetInputButton,
+          sheetSurface,
           pressed && styles.pressed,
         ]}
       >
-        <Text style={[styles.inputText, !value && styles.placeholder]}>{displayValue || placeholder}</Text>
+        <Text
+          style={[
+            styles.inputText,
+            variant === 'sheet' && styles.sheetInputText,
+            !value && styles.placeholder,
+          ]}
+        >
+          {displayValue || placeholder}
+        </Text>
         <AppIcon family="ionicons" name="calendar-clear-outline" size={18} color={ghost.mutedSoft} />
       </Pressable>
 
@@ -416,11 +433,8 @@ function createStyles(colors: AppColors, ghost: GhostTokens) {
       textTransform: 'uppercase',
     },
     sheetLabel: {
-      fontSize: 16,
-      lineHeight: 21,
-      letterSpacing: 0,
-      textTransform: 'none',
-      color: ghost.mutedSoft,
+      ...typographyKit.eyebrow,
+      color: colors.textMuted,
     },
     inputButton: {
       minHeight: 50,
@@ -436,15 +450,18 @@ function createStyles(colors: AppColors, ghost: GhostTokens) {
       gap: spacing.sm,
     },
     sheetInputButton: {
-      borderRadius: 13,
-      backgroundColor: ghost.obsidianSoft,
-      paddingVertical: 12,
+      borderRadius: radius.md,
+      paddingVertical: spacing.sm + 2,
     },
     inputText: {
       flex: 1,
       color: colors.text,
       fontSize: typography.body,
       fontWeight: '700',
+      fontVariant: ['tabular-nums'],
+    },
+    sheetInputText: {
+      ...typographyKit.bodyMedium,
       fontVariant: ['tabular-nums'],
     },
     placeholder: { color: colors.textMuted },

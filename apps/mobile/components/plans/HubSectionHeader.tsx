@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
-import { SECTION_TITLE_STYLE, spacing } from '@/constants/theme';
+import { spacing, typographyKit } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   title: {
-    ...SECTION_TITLE_STYLE,
+    ...typographyKit.sectionTitle,
   },
   trailing: {
     flexShrink: 0,

@@ -15,21 +15,31 @@ import { DetailSectionsCard } from '@/components/DetailSectionRows';
 import { GlassContainer } from '@/components/GlassContainer';
 import { OverflowMenuButton } from '@/components/OverflowMenuButton';
 import { PageTransition } from '@/components/PageTransition';
+import {
+  CHART_FULL_BLEED_RIGHT_INSET,
+  PortfolioChartCard,
+  type NetWorthChartPeriod,
+  type PortfolioChartCardHandle,
+} from '@/components/PortfolioChartCard';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { TransactionRow } from '@/components/TransactionRow';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
+  DASHBOARD_VALUE_GREEN,
+  DASHBOARD_VALUE_RED,
   detailProgressBarStyle,
   detailSectionLabelStyle,
   detailSectionsCardStyle,
   jakartaBoldText,
   jakartaExtraBoldText,
   jakartaMediumText,
+  moneyAmountTypography,
   radius,
   spacing,
   typography,
 } from '@/constants/theme';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
+import { buildWealthAssetTrendSeries } from '@/lib/buildWealthAssetTrendSeries';
 import {
   deleteWealthAsset,
   getLoanById,
@@ -38,7 +48,7 @@ import {
   sortTransactionsNewestFirst,
 } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
-import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { formatDisplayMoney, formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
 import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import { parseItemizedNote } from '@/lib/itemizedNote';
@@ -56,6 +66,53 @@ import {
 import type { Loan, Transaction, WealthAsset } from '@/types';
 import { Image } from 'expo-image';
 
+/** Real-estate / wealth asset chart — longer horizons only. */
+const WEALTH_ASSET_CHART_PERIODS: NetWorthChartPeriod[] = [
+  '3M',
+  '6M',
+  '1A',
+  '2A',
+  '3A',
+  '5A',
+  '10A',
+];
+
+const WEALTH_ASSET_PERIOD_LABELS: Partial<Record<NetWorthChartPeriod, string>> = {
+  '3M': '3M',
+  '6M': '6M',
+  '1A': '1A',
+  '2A': '2A',
+  '3A': '3A',
+  '5A': '5A',
+  '10A': '10A',
+};
+
+/** Same daily windows as the patrimoine hub chart — dense mock series slices cleanly. */
+const WEALTH_ASSET_PERIOD_REAL_WINDOW: Partial<Record<NetWorthChartPeriod, number>> = {
+  '3M': 90,
+  '6M': 180,
+  '1A': 365,
+  '2A': 730,
+  '3A': 1095,
+  '5A': 1825,
+  '10A': 3650,
+};
+
+const WEALTH_ASSET_PERIOD_MAX_POINTS: Partial<Record<NetWorthChartPeriod, number>> = {
+  '3M': 42,
+  '6M': 48,
+  '1A': 56,
+  '2A': 58,
+  '3A': 60,
+  '5A': 60,
+  '10A': 72,
+};
+
+function formatWealthChartScrubValue(value: number): string {
+  const { main } = formatDisplayMoney(value);
+  return `${main} $`;
+}
+
 function getTransactionTitle(tx: Transaction, fallbackTitle: string) {
   const itemized = parseItemizedNote(tx.note);
   if (itemized.length === 0) return fallbackTitle;
@@ -71,6 +128,7 @@ export default function WealthAssetDetailScreen() {
   const assetId = typeof params.id === 'string' ? params.id.trim() : '';
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
+  const chartRef = useRef<PortfolioChartCardHandle>(null);
   const { colors, isLight } = useAppTheme();
   const [asset, setAsset] = useState<WealthAsset | null>(null);
   const [linkedLoan, setLinkedLoan] = useState<Loan | null>(null);
@@ -137,6 +195,16 @@ export default function WealthAssetDetailScreen() {
     : 0;
   const isGainLoss = !isRealEstate && gain < 0;
 
+  const chartPoints = useMemo(
+    () => (asset && asset.currentValue > 0 ? buildWealthAssetTrendSeries(asset) : []),
+    [asset],
+  );
+  const chartLineColor = gain >= 0 ? DASHBOARD_VALUE_GREEN : DASHBOARD_VALUE_RED;
+
+  const dismissChartCursor = useCallback(() => {
+    chartRef.current?.clearSelection();
+  }, []);
+
   const progressPct = useMemo(() => {
     if (!asset) return 0;
     if (isRealEstate && realEstateEquity && realEstateEquity.propertyValue > 0) {
@@ -147,6 +215,11 @@ export default function WealthAssetDetailScreen() {
     }
     return 0;
   }, [asset, isRealEstate, realEstateEquity, gainPct]);
+
+  const mortgagePct = useMemo(() => {
+    if (!isRealEstate || !realEstateEquity || realEstateEquity.propertyValue <= 0) return 0;
+    return (realEstateEquity.mortgageBalance / realEstateEquity.propertyValue) * 100;
+  }, [isRealEstate, realEstateEquity]);
 
   const showProgressCard =
     (isRealEstate && realEstateEquity && realEstateEquity.propertyValue > 0) ||
@@ -180,6 +253,8 @@ export default function WealthAssetDetailScreen() {
   };
 
   const progressBar = detailProgressBarStyle();
+  const equityBarWidth = Math.max(Math.min(progressPct, 100), 0);
+  const mortgageBarWidth = Math.max(Math.min(mortgagePct, 100 - equityBarWidth), 0);
 
   const valueHeroCard = showValueHero ? (
     <GlassContainer
@@ -201,38 +276,134 @@ export default function WealthAssetDetailScreen() {
     <GlassContainer
       style={styles.progressCardShell}
       innerStyle={styles.progressCardInner}
-      padding={spacing.md}
+      padding={spacing.lg}
       borderRadius={radius.lg}
     >
-      <View style={styles.progressHeader}>
-        <Text style={[styles.progressLabel, { color: colors.textMuted }]}>
-          {isRealEstate ? 'Équité' : gain >= 0 ? 'Plus-value' : 'Perte'}
-        </Text>
+      <View
+        accessible
+        accessibilityLabel={
+          isRealEstate && realEstateEquity
+            ? `Tu possèdes ${progressPct.toFixed(0)} pour cent de ce bien. Ta part ${formatDisplayMoneyAbsolute(realEstateEquity.netEquity)}, hypothèque restante ${formatDisplayMoneyAbsolute(realEstateEquity.mortgageBalance)}, valeur marchande ${formatDisplayMoneyAbsolute(realEstateEquity.propertyValue)}.`
+            : undefined
+        }
+      >
+        <View style={styles.progressHeader}>
+          <Text style={[styles.progressLabel, { color: colors.textMuted }]}>
+            {isRealEstate ? 'Ta part du bien' : gain >= 0 ? 'Plus-value' : 'Perte'}
+          </Text>
         <Text
-          style={[styles.progressPct, { color: isGainLoss ? colors.danger : colors.primary }]}
-        >
-          {isGainLoss ? '−' : ''}{progressPct.toFixed(0)} %
-        </Text>
-      </View>
-      <View style={[progressBar.track, { backgroundColor: trackColor }]}>
-        <View
           style={[
-            progressBar.fill,
-            {
-              width: `${Math.max(Math.min(progressPct, 100), 3)}%`,
-              backgroundColor: isGainLoss ? colors.danger : colors.primary,
-            },
+            styles.progressPct,
+            moneyAmountTypography({ tier: 'row', fontSize: typography.meta, textAlign: 'right' }),
+            { color: isGainLoss ? colors.danger : colors.primary },
           ]}
-        />
-      </View>
-      <View style={styles.progressFooter}>
-        <Text style={[styles.progressFootnote, { color: colors.textMuted }]}>
-          {isRealEstate ? 'Équité nette' : gain >= 0 ? 'Plus-value' : 'Perte'} ·{' '}
-          {formatDisplayMoneyAbsolute(isRealEstate ? progressPaidAmount : Math.abs(gain))}
+        >
+          {isGainLoss ? '−' : ''}
+          {progressPct.toFixed(0)} %
         </Text>
-        <Text style={[styles.progressFootnote, { color: colors.textMuted }]}>
-          {isRealEstate ? 'Valeur' : 'Achat'} · {formatDisplayMoneyAbsolute(progressTotalAmount)}
-        </Text>
+        </View>
+
+        {isRealEstate && realEstateEquity ? (
+          <>
+            <View style={[progressBar.track, styles.equityTrack, { backgroundColor: trackColor }]}>
+              {equityBarWidth > 0 ? (
+                <View
+                  style={[
+                    progressBar.fill,
+                    styles.equitySegment,
+                    {
+                      width: `${Math.max(equityBarWidth, 3)}%`,
+                      backgroundColor: colors.primary,
+                    },
+                  ]}
+                />
+              ) : null}
+              {mortgageBarWidth > 0 ? (
+                <View
+                  style={[
+                    progressBar.fill,
+                    styles.equitySegment,
+                    {
+                      width: `${mortgageBarWidth}%`,
+                      backgroundColor: isLight ? 'rgba(17,17,17,0.18)' : 'rgba(255,255,255,0.18)',
+                    },
+                  ]}
+                />
+              ) : null}
+            </View>
+
+            <View style={styles.equityLegend}>
+              <View style={styles.equityLegendRow}>
+                <View style={[styles.equitySwatch, { backgroundColor: colors.primary }]} />
+                <Text style={[styles.equityLegendLabel, { color: colors.textMuted }]} numberOfLines={1}>
+                  Ta part
+                </Text>
+                <Text
+                  style={[styles.equityLegendValue, moneyAmountTypography({ tier: 'row' }), { color: colors.text }]}
+                  numberOfLines={1}
+                >
+                  {formatDisplayMoneyAbsolute(realEstateEquity.netEquity)}
+                </Text>
+              </View>
+              <View style={styles.equityLegendRow}>
+                <View
+                  style={[
+                    styles.equitySwatch,
+                    {
+                      backgroundColor: isLight ? 'rgba(17,17,17,0.18)' : 'rgba(255,255,255,0.18)',
+                    },
+                  ]}
+                />
+                <Text style={[styles.equityLegendLabel, { color: colors.textMuted }]} numberOfLines={1}>
+                  Hypothèque
+                </Text>
+                <Text
+                  style={[styles.equityLegendValue, moneyAmountTypography({ tier: 'row' }), { color: colors.text }]}
+                  numberOfLines={1}
+                >
+                  {formatDisplayMoneyAbsolute(realEstateEquity.mortgageBalance)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={[styles.equityTotalRow, { borderTopColor: colors.containerBorder }]}>
+              <Text style={[styles.equityTotalLabel, { color: colors.textMuted }]} numberOfLines={1}>
+                Valeur marchande
+              </Text>
+              <Text
+                style={[styles.equityTotalValue, moneyAmountTypography({ tier: 'row' }), { color: colors.text }]}
+                numberOfLines={1}
+              >
+                {formatDisplayMoneyAbsolute(realEstateEquity.propertyValue)}
+              </Text>
+            </View>
+          </>
+        ) : (
+          <>
+            <View style={[progressBar.track, { backgroundColor: trackColor }]}>
+              <View
+                style={[
+                  progressBar.fill,
+                  {
+                    width: `${Math.max(Math.min(progressPct, 100), 3)}%`,
+                    backgroundColor: isGainLoss ? colors.danger : colors.primary,
+                  },
+                ]}
+              />
+            </View>
+            <View style={styles.progressFooter}>
+              <Text style={[styles.progressFootnote, { color: colors.textMuted }]} numberOfLines={1}>
+                {`${gain >= 0 ? 'Plus-value' : 'Perte'} · ${formatDisplayMoneyAbsolute(Math.abs(gain))}`}
+              </Text>
+              <Text
+                style={[styles.progressFootnote, styles.progressFootnoteRight, { color: colors.textMuted }]}
+                numberOfLines={1}
+              >
+                {`Achat · ${formatDisplayMoneyAbsolute(progressTotalAmount)}`}
+              </Text>
+            </View>
+          </>
+        )}
       </View>
     </GlassContainer>
   ) : null;
@@ -283,6 +454,7 @@ export default function WealthAssetDetailScreen() {
         <ScrollView
           ref={scrollRef}
           showsVerticalScrollIndicator={false}
+          onScrollBeginDrag={dismissChartCursor}
           contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom + spacing.xl, 56) }]}
           refreshControl={
             <RefreshControl
@@ -298,9 +470,33 @@ export default function WealthAssetDetailScreen() {
         >
           {asset ? (
             <>
-              {progressCard ?? valueHeroCard}
+              {chartPoints.length >= 2 ? (
+                <View style={styles.chartBleed}>
+                  <PortfolioChartCard
+                    ref={chartRef}
+                    points={chartPoints}
+                    allowedPeriods={WEALTH_ASSET_CHART_PERIODS}
+                    periodLabels={WEALTH_ASSET_PERIOD_LABELS}
+                    periodRealWindowOverride={WEALTH_ASSET_PERIOD_REAL_WINDOW}
+                    periodMaxChartPointsOverride={WEALTH_ASSET_PERIOD_MAX_POINTS}
+                    initialPeriod="1A"
+                    formatScrubValue={formatWealthChartScrubValue}
+                    lineColor={chartLineColor}
+                    plotHorizontalInset={0}
+                    plotHorizontalInsetRight={CHART_FULL_BLEED_RIGHT_INSET}
+                    selectionPersistence="release"
+                    showAreaFill
+                  />
+                </View>
+              ) : null}
 
-              <DetailSectionsCard sections={detailSections} colors={colors} />
+              <Pressable onPress={dismissChartCursor} accessibilityRole="none">
+                {progressCard ?? valueHeroCard}
+              </Pressable>
+
+              <Pressable onPress={dismissChartCursor} accessibilityRole="none">
+                <DetailSectionsCard sections={detailSections} colors={colors} />
+              </Pressable>
 
               {isRealEstate && linkedLoan ? (
                 <Pressable
@@ -316,10 +512,20 @@ export default function WealthAssetDetailScreen() {
                   >
                     <View style={styles.linkedCopy}>
                       <Text style={[styles.sectionTitle, { color: colors.text }]}>Hypothèque liée</Text>
-                      <Text style={[styles.sectionMeta, { color: colors.textMuted }]}>
-                        {formatLoanDisplayTitle(linkedLoan)} · Solde{' '}
-                        {formatDisplayMoneyAbsolute(linkedLoan.balanceRemaining)}
-                      </Text>
+                      <View style={styles.linkedMetaRow}>
+                        <Text style={[styles.sectionMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                          {formatLoanDisplayTitle(linkedLoan)} · Solde{' '}
+                        </Text>
+                        <Text
+                          style={[
+                            moneyAmountTypography({ tier: 'row', fontSize: typography.micro }),
+                            { color: colors.textMuted },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {formatDisplayMoneyAbsolute(linkedLoan.balanceRemaining)}
+                        </Text>
+                      </View>
                     </View>
                     <AppIcon family="ionicons" name="chevron-forward" size={18} color={colors.textMuted} />
                   </GlassContainer>
@@ -423,6 +629,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     gap: spacing.lg,
   },
+  chartBleed: {
+    marginHorizontal: -spacing.lg,
+    width: '100%',
+    alignSelf: 'center',
+  },
   bannerWrap: {
     borderRadius: radius.xl,
     overflow: 'hidden',
@@ -439,16 +650,68 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   valueHeroAmount: {
-    ...jakartaBoldText,
+    ...moneyAmountTypography({ tier: 'row', fontSize: typography.meta, textAlign: 'right' }),
     flexShrink: 0,
-    textAlign: 'right',
-    fontSize: typography.meta,
   },
   progressCardShell: {
     borderRadius: radius.lg,
   },
   progressCardInner: {
+    gap: spacing.md,
+  },
+  equityTrack: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  equitySegment: {
+    minWidth: 0,
+  },
+  equityLegend: {
     gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  equityLegendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minWidth: 0,
+    paddingVertical: 2,
+  },
+  equitySwatch: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    flexShrink: 0,
+  },
+  equityLegendLabel: {
+    ...jakartaMediumText,
+    flex: 1,
+    minWidth: 0,
+    fontSize: typography.meta,
+  },
+  equityLegendValue: {
+    flexShrink: 0,
+  },
+  equityTotalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    marginTop: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    minWidth: 0,
+  },
+  equityTotalLabel: {
+    ...jakartaMediumText,
+    flex: 1,
+    minWidth: 0,
+    fontSize: typography.meta,
+  },
+  equityTotalValue: {
+    flexShrink: 0,
   },
   progressHeader: {
     flexDirection: 'row',
@@ -466,11 +729,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   progressPct: {
-    ...jakartaBoldText,
     flexShrink: 0,
     minWidth: 44,
-    textAlign: 'right',
-    fontSize: typography.meta,
   },
   progressFooter: {
     flexDirection: 'row',
@@ -479,7 +739,13 @@ const styles = StyleSheet.create({
   },
   progressFootnote: {
     ...jakartaMediumText,
+    flexShrink: 1,
+    minWidth: 0,
     fontSize: typography.meta,
+  },
+  progressFootnoteRight: {
+    flexShrink: 1,
+    textAlign: 'right',
   },
   linkedCardInner: {
     flexDirection: 'row',
@@ -490,13 +756,20 @@ const styles = StyleSheet.create({
   linkedCopy: {
     flex: 1,
     gap: 2,
+    minWidth: 0,
+  },
+  linkedMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    minWidth: 0,
   },
   sectionTitle: {
     ...jakartaExtraBoldText,
     fontSize: typography.caption,
   },
   sectionMeta: {
-    ...jakartaBoldText,
+    ...jakartaMediumText,
     fontSize: typography.micro,
   },
   transactionGroups: {

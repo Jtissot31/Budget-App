@@ -1,16 +1,14 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { Ionicons } from '@expo/vector-icons';
-import type { LucideIcon } from 'lucide-react-native';
+import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
 import {
-  containerSurfaceStyle,
   jakartaExtraBoldText,
   jakartaMediumText,
   jakartaSemiboldText,
-  radius,
   spacing,
   typography,
 } from '@/constants/theme';
+import { planFinanceContainerPressedStyle, planFinanceKit } from '@/constants/planFinanceKit';
 import { useAppTheme } from '@/lib/themeContext';
 import {
   ALERT_SECTION_LABELS,
@@ -19,34 +17,18 @@ import {
   type AlertCenterItem,
   type AlertCenterSection,
 } from '@/lib/alerts';
-import { getSelectedLucideIcon } from '@/lib/iconMigration/selectedLucideIcons';
+import { alertListIcon } from '@/lib/alertPresentation';
 import { tapHaptic } from '@/lib/haptics';
 
 type Props = {
   items: AlertCenterItem[];
-  onMarkRead: (item: AlertCenterItem) => void;
+  onOpenAlert: (item: AlertCenterItem) => void;
 };
 
-const MESSAGES_COLORS = {
-  screen: '#000000',
-  urgent: '#FBBF24',
-  opportunities: '#34D399',
-  description: 'rgba(255,255,255,0.55)',
-  timestamp: 'rgba(255,255,255,0.38)',
-  title: '#FFFFFF',
-  filterButton: '#1A1A1A',
-} as const;
-
-const CircleAlertIcon = getSelectedLucideIcon('CircleAlert');
-const BrainIcon = getSelectedLucideIcon('Brain');
-
-function sectionAccent(section: AlertCenterSection): string {
-  return section === 'urgent' ? MESSAGES_COLORS.urgent : MESSAGES_COLORS.opportunities;
-}
-
-function sectionLucideIcon(section: AlertCenterSection): LucideIcon | null {
-  return section === 'urgent' ? CircleAlertIcon : BrainIcon;
-}
+const SECTION_ACCENT: Record<AlertCenterSection, string> = {
+  urgent: planFinanceKit.colors.accent,
+  opportunities: planFinanceKit.colors.accent,
+};
 
 function AlertCenterCard({
   item,
@@ -55,66 +37,62 @@ function AlertCenterCard({
   item: AlertCenterItem;
   onPress: () => void;
 }) {
-  const { isLight } = useAppTheme();
-  const surface = containerSurfaceStyle(isLight);
-  const accent = sectionAccent(item.section);
-  const SectionIcon = sectionLucideIcon(item.section);
+  const { colors } = useAppTheme();
+  const icon = alertListIcon(item.kind);
+  const accent = SECTION_ACCENT[item.section];
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
+      accessibilityLabel={`Ouvrir l'alerte ${item.title}`}
       accessibilityState={{ selected: !item.read }}
-      style={({ pressed }) => [styles.card, surface, pressed && styles.pressed]}
+      style={({ pressed }) => [pressed && planFinanceContainerPressedStyle()]}
     >
-      <View style={styles.cardHeader}>
-        <View style={styles.iconSlot}>
-          {SectionIcon ? (
-            <SectionIcon
-              size={18}
-              color={accent}
-              strokeWidth={item.section === 'urgent' ? 2.5 : 2.25}
-              fill="transparent"
-            />
-          ) : (
-            <Ionicons
-              name={item.section === 'urgent' ? 'alert-circle-outline' : 'bulb-outline'}
-              size={18}
-              color={accent}
-            />
-          )}
-        </View>
-
-        <View style={styles.cardMain}>
-          <View style={styles.titleRow}>
-            <Text style={styles.cardTitle} numberOfLines={2}>
-              {item.title}
-            </Text>
-            {!item.read ? (
-              <View style={[styles.unreadDot, { backgroundColor: accent }]} accessibilityLabel="Non lu" />
-            ) : null}
+      <PlanFinanceContainer style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={[styles.iconSlot, { backgroundColor: 'rgba(74, 222, 128, 0.12)' }]}>
+            <AppIcon family={icon.family} name={icon.name} size={18} color={accent} />
           </View>
-          <Text style={styles.cardDescription} numberOfLines={4}>
-            {item.message}
-          </Text>
-        </View>
-      </View>
 
-      <Text style={styles.cardTimestamp}>{formatAlertCenterTimestamp(item.timestamp)}</Text>
+          <View style={styles.cardMain}>
+            <View style={styles.titleRow}>
+              <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
+                {item.title}
+              </Text>
+              {!item.read ? (
+                <View
+                  style={[styles.unreadDot, { backgroundColor: accent }]}
+                  accessibilityLabel="Non lu"
+                />
+              ) : null}
+            </View>
+            <Text style={[styles.cardDescription, { color: colors.textMuted }]} numberOfLines={3}>
+              {item.message}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={[styles.cardTimestamp, { color: colors.textMuted }]}>
+          {formatAlertCenterTimestamp(item.timestamp)}
+        </Text>
+      </PlanFinanceContainer>
     </Pressable>
   );
 }
 
-export function AlertCenterContent({ items, onMarkRead }: Props) {
+export function AlertCenterContent({ items, onOpenAlert }: Props) {
+  const { colors } = useAppTheme();
   const groups = groupAlertCenterItems(items);
 
   if (items.length === 0) {
     return (
       <View style={styles.empty}>
-        <AppIcon family="ionicons" name="notifications-off-outline" size={28} color={MESSAGES_COLORS.timestamp} />
-        <Text style={styles.emptyTitle}>Aucun message</Text>
-        <Text style={styles.emptyMessage}>
-          Les alertes de fonds, de limite de crédit et les opportunités Fyn apparaîtront ici.
+        <AppIcon family="ionicons" name="notifications-off-outline" size={28} color={colors.textMuted} />
+        <Text style={[styles.emptyTitle, { color: colors.text }]}>Aucun message</Text>
+        <Text style={[styles.emptyMessage, { color: colors.textMuted }]}>
+          Les rappels utiles et les opportunités Fyn apparaîtront ici — toujours avec des pistes
+          concrètes.
         </Text>
       </View>
     );
@@ -124,7 +102,7 @@ export function AlertCenterContent({ items, onMarkRead }: Props) {
     <View style={styles.list}>
       {groups.map((group) => (
         <View key={group.section} style={styles.section}>
-          <Text style={[styles.sectionHeader, { color: sectionAccent(group.section) }]}>
+          <Text style={[styles.sectionHeader, { color: SECTION_ACCENT[group.section] }]}>
             {ALERT_SECTION_LABELS[group.section]}
           </Text>
           <View style={styles.sectionCards}>
@@ -134,7 +112,7 @@ export function AlertCenterContent({ items, onMarkRead }: Props) {
                 item={item}
                 onPress={() => {
                   tapHaptic();
-                  onMarkRead(item);
+                  onOpenAlert(item);
                 }}
               />
             ))}
@@ -162,29 +140,27 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   card: {
-    borderRadius: radius.card,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
+    paddingVertical: spacing.md,
     gap: spacing.xs,
   },
-  pressed: { opacity: 0.82 },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
   },
   iconSlot: {
-    width: 28,
-    height: 28,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    marginTop: 1,
   },
   cardMain: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: 4,
   },
   titleRow: {
     flexDirection: 'row',
@@ -196,14 +172,13 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginTop: 5,
+    marginTop: 6,
     flexShrink: 0,
   },
   cardTitle: {
     ...jakartaExtraBoldText,
     fontSize: typography.body,
     lineHeight: typography.body + 3,
-    color: MESSAGES_COLORS.title,
     flex: 1,
     minWidth: 0,
   },
@@ -211,14 +186,12 @@ const styles = StyleSheet.create({
     ...jakartaMediumText,
     fontSize: typography.meta,
     lineHeight: typography.meta + 4,
-    color: MESSAGES_COLORS.description,
   },
   cardTimestamp: {
     ...jakartaMediumText,
     fontSize: typography.micro,
-    color: MESSAGES_COLORS.timestamp,
     alignSelf: 'flex-end',
-    marginTop: 1,
+    marginTop: 2,
   },
   empty: {
     alignItems: 'center',
@@ -229,13 +202,11 @@ const styles = StyleSheet.create({
   emptyTitle: {
     ...jakartaSemiboldText,
     fontSize: typography.body,
-    color: MESSAGES_COLORS.title,
   },
   emptyMessage: {
     ...jakartaMediumText,
     fontSize: typography.meta,
     lineHeight: typography.meta + 4,
     textAlign: 'center',
-    color: MESSAGES_COLORS.description,
   },
 });

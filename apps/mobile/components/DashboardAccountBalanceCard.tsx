@@ -9,11 +9,13 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
 import {
-  containerSurfaceStyle,
-  jakartaSemiboldText,
+  planFinanceContainerCompactTilePaddingStyle,
+  planFinanceContainerPressedStyle,
+} from '@/constants/planFinanceKit';
+import {
   moneyAmountTypography,
-  radius,
   spacing,
   typographyKit,
 } from '@/constants/theme';
@@ -21,6 +23,7 @@ import {
   accountBalanceRowTitle,
   accountBalanceIconForKind,
   accountBalanceIconTone,
+  accountBalanceSubtitle,
   accountBalanceValueColor,
   accountKindTypeLabel,
   type AccountBalanceDisplayAccount,
@@ -35,14 +38,21 @@ type Props = {
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
-  /** Flat row inside a parent card — hairline dividers between rows. */
-  embedded?: boolean;
-  isLast?: boolean;
 };
 
-/** Square slot — bank logos render at ~68% inset; fallback glyphs use the same visual weight. */
-const ICON_SLOT_SIZE = 40;
-const FALLBACK_ACCOUNT_ICON_SIZE = userPickedIconLogoSize(ICON_SLOT_SIZE);
+/** Matches StockHoldingTile logo / compact tile proportions. */
+const AVATAR_SIZE = 28;
+const CARD_MIN_HEIGHT = 148;
+const CARD_BODY_MIN_HEIGHT = 52;
+const FALLBACK_ACCOUNT_ICON_SIZE = userPickedIconLogoSize(AVATAR_SIZE);
+
+function normalizeLabel(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .trim();
+}
 
 export const DashboardAccountBalanceCard = memo(function DashboardAccountBalanceCard({
   account,
@@ -50,87 +60,84 @@ export const DashboardAccountBalanceCard = memo(function DashboardAccountBalance
   onPress,
   style,
   accessibilityLabel,
-  embedded = false,
-  isLast = false,
 }: Props) {
-  const { colors, isLight } = useAppTheme();
+  const { colors } = useAppTheme();
   const muted = colors.textMuted;
   const balanceColor = accountBalanceValueColor(account, colors.text);
   const logoTone = accountBalanceIconTone(account.kind, colors);
-  const title = accountBalanceRowTitle(account);
   const typeLabel = accountKindTypeLabel(account.kind);
-  const surface = containerSurfaceStyle(isLight);
+  const primary = accountBalanceRowTitle(account);
+  const subtitle = accountBalanceSubtitle(account);
+  const secondary =
+    subtitle && normalizeLabel(subtitle) !== normalizeLabel(primary) ? subtitle : null;
 
   const card = (
-    <View
-      style={[
-        styles.shell,
-        embedded
-          ? styles.shellEmbedded
-          : {
-              backgroundColor: surface.backgroundColor,
-              borderColor: colors.borderSubtle,
-            },
-        style,
-      ]}
-    >
-      <View style={[styles.mainRow, embedded && styles.mainRowEmbedded]}>
-        <View style={logoUrl ? styles.logoSlot : styles.iconSlot}>
-          {logoUrl ? (
-            <Image
-              source={{ uri: logoUrl }}
-              style={styles.logoImage}
-              contentFit="contain"
-              contentPosition="center"
-              transition={150}
-              cachePolicy="memory-disk"
-              recyclingKey={logoUrl}
-            />
-          ) : (
-            <AppIcon family="ionicons"
-              name={accountBalanceIconForKind(account.kind)}
-              size={FALLBACK_ACCOUNT_ICON_SIZE}
-              color={logoTone}
-            />
-          )}
-        </View>
-
-        <View style={styles.content}>
-          <View style={styles.nameRow}>
-            <Text
-              style={[styles.name, jakartaSemiboldText, { color: colors.text }]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {title}
-            </Text>
-            <Text
-              style={[styles.typeLabel, typographyKit.caption, { color: muted }]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {typeLabel}
-            </Text>
-          </View>
-
-          <Text
-            style={[
-              moneyAmountTypography({ tier: 'row' }),
-              styles.balance,
-              { color: balanceColor },
-            ]}
-          >
-            {formatCompactCurrency(account.balance, {
-              leadingPlusWhenPositive: account.kind === 'credit' && account.balance > 0,
-            })}
+    <PlanFinanceContainer style={[styles.card, style]}>
+      <View style={styles.headerArea}>
+        <View style={styles.typeRow}>
+          <Text style={[styles.typeLabel, typographyKit.metaSemibold, { color: muted }]} numberOfLines={1}>
+            {typeLabel}
           </Text>
+        </View>
+        <View style={styles.identityRow}>
+          <View style={logoUrl ? styles.logoSlot : styles.iconSlot}>
+            {logoUrl ? (
+              <Image
+                source={{ uri: logoUrl }}
+                style={styles.logoImage}
+                contentFit="contain"
+                contentPosition="center"
+                transition={150}
+                cachePolicy="memory-disk"
+                recyclingKey={logoUrl}
+              />
+            ) : (
+              <AppIcon
+                family="ionicons"
+                name={accountBalanceIconForKind(account.kind)}
+                size={FALLBACK_ACCOUNT_ICON_SIZE}
+                color={logoTone}
+              />
+            )}
+          </View>
+          <View style={styles.identityTextCol}>
+            <Text
+              style={[styles.primary, typographyKit.captionSemibold, { color: colors.text }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {primary}
+            </Text>
+            {secondary ? (
+              <Text
+                style={[styles.secondary, typographyKit.microMedium, { color: muted }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {secondary}
+              </Text>
+            ) : null}
+          </View>
         </View>
       </View>
 
-      {embedded && !isLast ? (
-        <View style={styles.dividerEmbedded} />
-      ) : null}
-    </View>
+      <View style={styles.cardValueRow}>
+        <Text
+          style={[
+            moneyAmountTypography({ fontSize: 17, lineHeight: 21 }),
+            styles.value,
+            { color: balanceColor },
+          ]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+        >
+          {formatCompactCurrency(account.balance, {
+            leadingPlusWhenPositive: account.kind === 'credit' && account.balance > 0,
+          })}
+        </Text>
+      </View>
+    </PlanFinanceContainer>
   );
 
   if (!onPress) return card;
@@ -139,8 +146,8 @@ export const DashboardAccountBalanceCard = memo(function DashboardAccountBalance
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? `Voir le détail de ${title}`}
-      style={({ pressed }) => [pressed && styles.pressed]}
+      accessibilityLabel={accessibilityLabel ?? `Voir le détail de ${primary}`}
+      style={({ pressed }) => [styles.pressable, pressed && planFinanceContainerPressedStyle()]}
     >
       {card}
     </Pressable>
@@ -148,79 +155,76 @@ export const DashboardAccountBalanceCard = memo(function DashboardAccountBalance
 });
 
 const styles = StyleSheet.create({
-  shell: {
-    borderRadius: radius.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    minHeight: 72,
-    paddingVertical: spacing.xl,
-    paddingHorizontal: spacing.xl,
+  pressable: {
+    width: '100%',
   },
-  shellEmbedded: {
-    borderWidth: 0,
-    borderRadius: 0,
-    backgroundColor: 'transparent',
-    minHeight: 0,
-    gap: spacing.lg,
-    paddingVertical: spacing.md,
-    paddingHorizontal: 0,
+  card: {
+    width: '100%',
+    ...planFinanceContainerCompactTilePaddingStyle(),
+    minHeight: CARD_MIN_HEIGHT,
   },
-  mainRowEmbedded: {
-    paddingHorizontal: spacing.lg,
+  headerArea: {
+    minWidth: 0,
   },
-  dividerEmbedded: {
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: spacing.lg,
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
-  },
-  mainRow: {
+  typeRow: {
     flexDirection: 'row',
+    justifyContent: 'flex-end',
     alignItems: 'flex-start',
-    gap: spacing.lg,
-  },
-  iconSlot: {
-    width: ICON_SLOT_SIZE,
-    height: ICON_SLOT_SIZE,
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  logoSlot: {
-    width: ICON_SLOT_SIZE,
-    height: ICON_SLOT_SIZE,
-    position: 'relative',
-    flexShrink: 0,
-  },
-  logoImage: remoteLogoImageStyle(ICON_SLOT_SIZE),
-  content: {
-    flex: 1,
-    minWidth: 0,
-    gap: spacing.xs,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minWidth: 0,
-  },
-  name: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
     minWidth: 0,
   },
   typeLabel: {
-    flexShrink: 0,
-    fontSize: 10,
-    lineHeight: 14,
     letterSpacing: 0.2,
     textAlign: 'right',
   },
-  balance: {
-    alignSelf: 'flex-start',
-    textAlign: 'left',
+  identityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+    minWidth: 0,
   },
-  pressed: {
-    opacity: 0.88,
+  identityTextCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+    justifyContent: 'center',
+  },
+  iconSlot: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    backgroundColor: 'transparent',
+  },
+  logoSlot: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    backgroundColor: 'transparent',
+    overflow: 'visible',
+  },
+  logoImage: remoteLogoImageStyle(AVATAR_SIZE),
+  primary: {
+    flexShrink: 1,
+    fontSize: 14,
+    lineHeight: 18,
+    letterSpacing: 0.1,
+    includeFontPadding: false,
+  },
+  secondary: {
+    letterSpacing: 0.05,
+  },
+  cardValueRow: {
+    flex: 1,
+    minHeight: CARD_BODY_MIN_HEIGHT,
+    justifyContent: 'flex-end',
+    paddingTop: spacing.md,
+  },
+  value: {
+    alignSelf: 'stretch',
+    includeFontPadding: false,
   },
 });

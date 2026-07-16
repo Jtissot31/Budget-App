@@ -1,4 +1,3 @@
-import type { Ionicons } from '@expo/vector-icons';
 import { DASHBOARD_VALUE_GREEN, DASHBOARD_VALUE_RED } from '@/constants/theme';
 import type { AccountKind, SimulatedAccount } from '@/types';
 
@@ -25,11 +24,63 @@ function subtitlePartRedundantWithName(part: string, accountName: string): boole
   return false;
 }
 
-function institutionLabel(account: AccountBalanceDisplayAccount): string | null {
-  const institution = account.institution?.trim();
-  if (!institution) return null;
-  if (subtitlePartRedundantWithName(institution, account.name)) return null;
-  return institution.toUpperCase();
+/** Bare hostname / URL used as institution (seed stores logo domains). */
+function isWebsiteOrDomainLabel(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed.includes('.') || /\s/.test(trimmed)) return false;
+  let host = trimmed.replace(/^https?:\/\//i, '').split('/')[0]?.split('?')[0] ?? '';
+  if (!host) return false;
+  if (host.startsWith('www.')) host = host.slice(4);
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host);
+}
+
+function humanizeDomainLabel(value: string): string | null {
+  if (!isWebsiteOrDomainLabel(value)) return null;
+  let host = value.trim().replace(/^https?:\/\//i, '').split('/')[0]?.split('?')[0] ?? '';
+  if (host.startsWith('www.')) host = host.slice(4);
+  const base = host.split('.')[0]?.trim();
+  if (!base) return null;
+  return base.charAt(0).toUpperCase() + base.slice(1).toLowerCase();
+}
+
+const CARD_NETWORK_BRANDS = new Set([
+  'visa',
+  'mastercard',
+  'master card',
+  'mc',
+  'amex',
+  'american express',
+  'visa mc',
+]);
+
+function isCardNetworkBrand(value: string): boolean {
+  return CARD_NETWORK_BRANDS.has(normalizeAccountLabel(value.trim()));
+}
+
+/** Strip trailing last4 / digit suffixes from account display names. */
+function stripTrailingAccountDigits(name: string): string {
+  return name
+    .replace(/(?:\s*[·•]\s*|\*{4}|····)\d{4}\s*$/u, '')
+    .replace(/\s+\d{4}\s*$/u, '')
+    .trim();
+}
+
+/**
+ * Institution suitable for on-tile text — never a website/domain.
+ * Network brands (Visa, MC) are not treated as bank issuers.
+ */
+function resolveDisplayInstitution(
+  account: AccountBalanceDisplayAccount,
+  options?: { allowNetworkBrand?: boolean },
+): string | null {
+  const raw = account.institution?.trim();
+  if (!raw) return null;
+
+  // Logo domains (desjardins.com, visa.com) are never shown as text.
+  if (isWebsiteOrDomainLabel(raw)) return null;
+
+  if (!options?.allowNetworkBrand && isCardNetworkBrand(raw)) return null;
+  return raw;
 }
 
 /** Discreet account-type line on balance rows (Portefeuille / dashboard). */
@@ -68,43 +119,17 @@ export function accountKindDisplayLabel(account: AccountBalanceDisplayAccount): 
   return label;
 }
 
-function last4RedundantWithName(name: string, last4: string): boolean {
-  const trimmedLast4 = last4.trim();
-  if (!trimmedLast4) return true;
-
-  const normalizedName = normalizeAccountLabel(name);
-  const normalizedLast4 = normalizeAccountLabel(trimmedLast4);
-  if (normalizedName.endsWith(normalizedLast4)) return true;
-
-  const suffixPatterns = [
-    `· ${trimmedLast4}`,
-    `·${trimmedLast4}`,
-    `• ${trimmedLast4}`,
-    `•${trimmedLast4}`,
-    `****${trimmedLast4}`,
-    `····${trimmedLast4}`,
-  ];
-  return suffixPatterns.some((pattern) => name.includes(pattern));
-}
-
-function resolveAccountLast4(account: AccountBalanceDisplayAccount): string | undefined {
-  const explicit = account.last4?.trim();
-  if (explicit) return explicit;
-
-  const name = account.name.trim();
-  const fromSeparator = name.match(/(?:[·•]\s*|\*{4}|····)(\d{4})\s*$/);
-  if (fromSeparator) return fromSeparator[1];
-  return undefined;
-}
-
-function institutionLast4Title(account: AccountBalanceDisplayAccount): string {
-  const institution = account.institution?.trim();
-  const last4 = resolveAccountLast4(account);
-
-  if (institution && last4) return `${institution} · ${last4}`;
+function institutionOnlyTitle(account: AccountBalanceDisplayAccount): string {
+  const institution = resolveDisplayInstitution(account, { allowNetworkBrand: true });
   if (institution) return institution;
-  if (last4) return `····${last4}`;
-  return account.name.trim();
+
+  // Last resort: humanize logo domain when name is empty / type-only.
+  const fromDomain = account.institution?.trim()
+    ? humanizeDomainLabel(account.institution)
+    : null;
+  if (fromDomain) return fromDomain;
+
+  return stripTrailingAccountDigits(account.name.trim()) || account.name.trim();
 }
 
 function nameStartsWithTypeLabel(name: string, typeLabel: string): boolean {
@@ -116,58 +141,63 @@ function nameStartsWithTypeLabel(name: string, typeLabel: string): boolean {
   return separators.some((sep) => normalizedName.startsWith(`${normalizedType}${normalizeAccountLabel(sep)}`));
 }
 
-/** Row title — strips redundant kind prefix (e.g. "Épargne · 7832" → institution · last4). */
+/** Row title — clean name without last4 / digits; never a website. */
 export function accountBalanceRowTitle(account: AccountBalanceDisplayAccount): string {
-  const name = account.name.trim();
+  const name = stripTrailingAccountDigits(account.name.trim());
   const typeLabel = accountKindTypeLabel(account.kind);
 
-  if (!name) return institutionLast4Title(account);
+  if (!name) return institutionOnlyTitle(account);
 
   if (subtitlePartRedundantWithName(typeLabel, name) || nameStartsWithTypeLabel(name, typeLabel)) {
-    const institutionTitle = institutionLast4Title(account);
-    if (institutionTitle && institutionTitle !== name) return institutionTitle;
+    const institutionTitle = institutionOnlyTitle(account);
+    if (institutionTitle && normalizeAccountLabel(institutionTitle) !== normalizeAccountLabel(name)) {
+      return institutionTitle;
+    }
   }
 
   return accountBalanceDisplayName(account);
 }
 
-/** Single-line card title — name with last4 when available and not already in the name. */
+/** Single-line card title — account name without trailing last4 digits. */
 export function accountBalanceDisplayName(account: AccountBalanceDisplayAccount): string {
-  const name = account.name.trim();
-  if (!name) return '';
-
-  const last4 = resolveAccountLast4(account);
-  if (!last4 || last4RedundantWithName(name, last4)) return name;
-  return `${name} · ${last4}`;
+  const name = stripTrailingAccountDigits(account.name.trim());
+  return name || account.name.trim();
 }
 
-/** Subtitle under the balance — institution / last4 only (kind lives in trailing badge). */
+/**
+ * Secondary line under the title.
+ * - Never websites/domains (desjardins.com, visa.com)
+ * - Never last4 / digits-only
+ * - Credit: issuer bank when primary is a network brand (Visa, MC, …)
+ * - Bank/cash: non-domain institution only when it adds info vs the title
+ */
 export function accountBalanceSubtitle(account: AccountBalanceDisplayAccount): string | undefined {
-  const institution = institutionLabel(account);
-  if (institution) return institution;
+  const primary = accountBalanceRowTitle(account);
+  const issuer = resolveDisplayInstitution(account);
 
-  if (account.last4) {
-    const rawInstitution = account.institution?.trim();
-    if (rawInstitution && !subtitlePartRedundantWithName(rawInstitution, account.name)) {
-      return `${rawInstitution.toUpperCase()} · ${account.last4}`;
+  if (account.kind === 'credit') {
+    if (!issuer) return undefined;
+    if (subtitlePartRedundantWithName(issuer, primary)) return undefined;
+    // Show issuer under network-brand titles (Visa → Desjardins).
+    if (isCardNetworkBrand(primary) || isCardNetworkBrand(stripTrailingAccountDigits(account.name))) {
+      return issuer;
     }
-    return `····${account.last4}`;
+    // Issuer already in / as primary — no secondary.
+    return undefined;
   }
 
-  const rawInstitution = account.institution?.trim();
-  if (rawInstitution && !subtitlePartRedundantWithName(rawInstitution, account.name)) {
-    return rawInstitution.toUpperCase();
-  }
-
-  return undefined;
+  if (!issuer) return undefined;
+  if (subtitlePartRedundantWithName(issuer, primary)) return undefined;
+  if (normalizeAccountLabel(issuer) === normalizeAccountLabel(primary)) return undefined;
+  return issuer;
 }
 
 export function accountBalanceIconForKind(
   kind: SimulatedAccount['kind'],
-): keyof typeof Ionicons.glyphMap {
+): string {
   if (kind === 'credit') return 'card-outline';
   if (kind === 'savings') return 'cash-outline';
-  if (kind === 'cash') return 'wallet-outline';
+  if (kind === 'cash') return 'cash-banknotes-outline';
   return 'wallet-outline';
 }
 

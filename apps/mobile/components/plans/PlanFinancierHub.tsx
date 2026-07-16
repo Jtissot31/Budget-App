@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { AppIcon } from '@/components/icons/AppIcon';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -19,26 +17,38 @@ import { HubSavingsGoalsSection } from '@/components/plans/HubSavingsGoalsSectio
 import { HubSectionHeader } from '@/components/plans/HubSectionHeader';
 import { PlanHubCardCarousel } from '@/components/plans/PlanHubCardCarousel';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
-import { planFinanceKit, planFinanceIconButtonStyle } from '@/constants/planFinanceKit';
+import { planFinanceKit } from '@/constants/planFinanceKit';
 import { FLOATING_NAV_CONTENT_PADDING, PAGE_TITLE_STYLE, spacing } from '@/constants/theme';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { dataEvents } from '@/lib/events';
-import { tapHaptic } from '@/lib/haptics';
-import type { PlanActifOuTermine } from '@/lib/plans/Plan';
-import { buildManualPlanCreateEntryParams } from '@/lib/plans/planCreateNavigation';
+import type { Plan, PlanActifOuTermine, PlanSuggere } from '@/lib/plans/Plan';
+import { buildTemplateDetailParams } from '@/lib/plans/planCreateNavigation';
 import { loadPlanHubSnapshot, selectPlansForMainHub } from '@/lib/plans/planHubData';
+
+/** Active/paused only when any exist; otherwise suggestions only — never mixed. */
+function plansForHubCarousel(activePlans: PlanActifOuTermine[], suggestions: PlanSuggere[]): Plan[] {
+  if (activePlans.length > 0) return activePlans;
+  return suggestions;
+}
 
 export function PlanFinancierHub() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [listPlans, setListPlans] = useState<PlanActifOuTermine[]>([]);
+  const [suggestedPlans, setSuggestedPlans] = useState<PlanSuggere[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadPlans = useCallback(async () => {
     const snapshot = await loadPlanHubSnapshot();
     setListPlans(selectPlansForMainHub(snapshot.listPlans) as PlanActifOuTermine[]);
+    setSuggestedPlans(snapshot.suggestedPlans);
   }, []);
+
+  const carouselPlans = useMemo(
+    () => plansForHubCarousel(listPlans, suggestedPlans),
+    [listPlans, suggestedPlans],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -61,23 +71,29 @@ export function PlanFinancierHub() {
     setRefreshing(false);
   }, [loadPlans]);
 
-  const handleOpenCreate = useCallback(() => {
-    tapHaptic();
-    router.push({ pathname: '/plans/create', params: buildManualPlanCreateEntryParams() });
-  }, [router]);
-
   const handleOpenPlan = useCallback(
     (planId: string) => {
+      const suggested = suggestedPlans.find((plan) => plan.id === planId);
+      if (suggested) {
+        router.push({
+          pathname: '/plans/template/[subtype]',
+          params: buildTemplateDetailParams(suggested.subtype, {
+            raison: suggested.raison_recommandation,
+            suggestedId: suggested.id,
+          }),
+        });
+        return;
+      }
       router.push({ pathname: '/plans/[id]', params: { id: planId } });
     },
-    [router],
+    [router, suggestedPlans],
   );
 
   const handleOpenExplorer = useCallback(() => {
     router.push('/plans/explore');
   }, [router]);
 
-  const isEmpty = listPlans.length === 0;
+  const isEmpty = carouselPlans.length === 0;
   const pf = planFinanceKit.colors;
 
   return (
@@ -107,21 +123,7 @@ export function PlanFinancierHub() {
             }
           >
             <View style={styles.plansSection}>
-              <HubSectionHeader
-                eyebrow="Stratégie"
-                title="Plan financier"
-                trailing={
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Créer un plan financier"
-                    hitSlop={10}
-                    onPress={handleOpenCreate}
-                    style={({ pressed }) => [planFinanceIconButtonStyle(), pressed && styles.pressed]}
-                  >
-                    <AppIcon family="material-community" name="plus" size={22} color={pf.text} />
-                  </Pressable>
-                }
-              />
+              <HubSectionHeader eyebrow="Stratégie" title="Plan financier" />
 
               {isEmpty ? (
                 <View style={styles.emptyState}>
@@ -132,7 +134,7 @@ export function PlanFinancierHub() {
                 </View>
               ) : (
                 <>
-                  <PlanHubCardCarousel plans={listPlans} onOpenPlan={handleOpenPlan} />
+                  <PlanHubCardCarousel plans={carouselPlans} onOpenPlan={handleOpenPlan} />
                   <ExploreMorePlansRow onPress={handleOpenExplorer} />
                 </>
               )}
@@ -179,7 +181,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: planFinanceKit.colors.textMuted,
-    fontSize: 15,
+    fontSize: 16,
     lineHeight: 22,
     textAlign: 'center',
   },
@@ -187,8 +189,5 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  pressed: {
-    opacity: 0.82,
   },
 });

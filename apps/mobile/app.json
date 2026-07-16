@@ -46,6 +46,13 @@
           "savePhotosPermission": "Budget Tracker enregistre vos reçus dans votre photothèque."
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Budget Tracker utilise ta galerie pour joindre un certificat d’authenticité ou une photo de bien."
+        }
+      ],
+      "expo-document-picker",
       "expo-secure-store"
     ],
     "experiments": {

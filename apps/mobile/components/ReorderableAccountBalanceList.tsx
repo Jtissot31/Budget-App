@@ -1,11 +1,9 @@
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
-import DraggableFlatList, {
-  ScaleDecorator,
-  type RenderItemParams,
-} from 'react-native-draggable-flatlist';
+import { useCallback, useEffect, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import Sortable, { type SortableGridRenderItem } from 'react-native-sortables';
 import { DashboardAccountBalanceCard } from '@/components/DashboardAccountBalanceCard';
-import { DashboardCard } from '@/components/DashboardCard';
+import { planFinanceContainerPressedStyle } from '@/constants/planFinanceKit';
+import { spacing } from '@/constants/theme';
 import { getAccountLogoUrl } from '@/lib/merchantLogo';
 import { tapHaptic } from '@/lib/haptics';
 import type { SimulatedAccount } from '@/types';
@@ -17,11 +15,43 @@ type Props = {
   onDragStateChange?: (dragging: boolean) => void;
 };
 
+const ACCOUNT_DRAG_ACTIVATION_MS = 280;
+
 function resolveAccountLogoUrl(account: SimulatedAccount) {
   return (
     account.logoUrl ??
     getAccountLogoUrl(account.institution?.trim() || account.name) ??
     getAccountLogoUrl(account.name)
+  );
+}
+
+function AccountBalanceSortableTile({
+  account,
+  onPress,
+  showReorderAffordance,
+}: {
+  account: SimulatedAccount;
+  onPress: () => void;
+  showReorderAffordance: boolean;
+}) {
+  const [pressed, setPressed] = useState(false);
+
+  return (
+    <Sortable.Touchable
+      accessibilityRole="button"
+      accessibilityLabel={`Compte ${account.name}`}
+      accessibilityHint={
+        showReorderAffordance
+          ? "Maintiens appuyé puis fais glisser pour changer l'ordre."
+          : undefined
+      }
+      onTap={onPress}
+      onTouchesDown={() => setPressed(true)}
+      onTouchesUp={() => setPressed(false)}
+      style={[styles.tilePressable, pressed && planFinanceContainerPressedStyle()]}
+    >
+      <DashboardAccountBalanceCard account={account} logoUrl={resolveAccountLogoUrl(account)} />
+    </Sortable.Touchable>
   );
 }
 
@@ -39,14 +69,36 @@ export function ReorderableAccountBalanceList({
 
   const showReorderAffordance = items.length >= 2;
 
+  const renderItem = useCallback<SortableGridRenderItem<SimulatedAccount>>(
+    ({ item }) => (
+      <AccountBalanceSortableTile
+        account={item}
+        showReorderAffordance={showReorderAffordance}
+        onPress={() => {
+          onAccountPress(item);
+        }}
+      />
+    ),
+    [onAccountPress, showReorderAffordance],
+  );
+
   return (
-    <DashboardCard padding={0} innerStyle={styles.groupCard}>
-      <DraggableFlatList
+    <View style={styles.grid}>
+      <Sortable.Grid
+        columns={2}
         data={items}
         keyExtractor={(item) => item.id}
-        scrollEnabled={false}
-        activationDistance={12}
-        onDragBegin={() => {
+        renderItem={renderItem}
+        rowGap={spacing.xl}
+        columnGap={spacing.lg}
+        sortEnabled={showReorderAffordance}
+        dragActivationDelay={ACCOUNT_DRAG_ACTIVATION_MS}
+        activeItemScale={1.02}
+        activeItemOpacity={0.96}
+        inactiveItemOpacity={1}
+        inactiveItemScale={1}
+        overDrag="vertical"
+        onDragStart={() => {
           tapHaptic();
           onDragStateChange?.(true);
         }}
@@ -55,58 +107,17 @@ export function ReorderableAccountBalanceList({
           setItems(data);
           onReorder(data);
         }}
-        renderItem={({ item, drag, isActive, getIndex }: RenderItemParams<SimulatedAccount>) => {
-          const index = getIndex();
-          const isLast = index != null && index === items.length - 1;
-
-          return (
-            <ScaleDecorator activeScale={1.02}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Compte ${item.name}`}
-                accessibilityHint={
-                  showReorderAffordance
-                    ? 'Maintiens appuyé puis fais glisser pour changer l\'ordre.'
-                    : undefined
-                }
-                onPress={() => {
-                  if (isActive) return;
-                  onAccountPress(item);
-                }}
-                onLongPress={drag}
-                delayLongPress={280}
-                style={({ pressed }) => [
-                  styles.itemShell,
-                  isActive && styles.itemDragging,
-                  pressed && !isActive && styles.pressed,
-                ]}
-              >
-                <DashboardAccountBalanceCard
-                  account={item}
-                  logoUrl={resolveAccountLogoUrl(item)}
-                  embedded
-                  isLast={isLast}
-                />
-              </Pressable>
-            </ScaleDecorator>
-          );
-        }}
       />
-    </DashboardCard>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  groupCard: {
-    overflow: 'hidden',
+  grid: {
+    width: '100%',
   },
-  itemShell: {
+  tilePressable: {
+    width: '100%',
     minWidth: 0,
-  },
-  itemDragging: {
-    opacity: 0.96,
-  },
-  pressed: {
-    opacity: 0.92,
   },
 });

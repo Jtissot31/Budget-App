@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react-native';
+import { CashBanknotesStackIcon } from '@/components/icons/CashBanknotesOutlineIcon';
 import { resolveLucideIcon } from '@/lib/lucideIconCatalog';
 
 import ArrowDownFromLineMod from 'lucide-react-native/dist/cjs/icons/arrow-down-from-line.js';
@@ -63,6 +64,7 @@ function buildSelectedLucideIcons(): Map<string, LucideIcon> {
     bind('ArrowUpToLine', ArrowUpToLineMod),
     bind('BanknoteArrowDown', BanknoteArrowDownMod),
     bind('BanknoteCheck', BanknoteCheckMod),
+    ['CashBanknotesStack', CashBanknotesStackIcon],
     bind('Brain', BrainMod),
     bind('ChartPie', ChartPieMod),
     bind('ChevronUp', ChevronUpMod),

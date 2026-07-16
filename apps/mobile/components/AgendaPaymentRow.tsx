@@ -19,7 +19,7 @@ import type { Loan, AgendaBill } from '@/types';
 import { resolveAgendaBillDisplayIcon } from '@/lib/recurringPaymentPresentation';
 import { getMerchantLogoUrl, getMerchantLogoUrls } from '@/lib/merchantLogo';
 
-const EMBEDDED_ICON_WELL_SIZE = 34;
+const EMBEDDED_ICON_WELL_SIZE = 30;
 const EMBEDDED_ROW_TITLE_SIZE = 15.5;
 const EMBEDDED_ROW_META_SIZE = 12.5;
 

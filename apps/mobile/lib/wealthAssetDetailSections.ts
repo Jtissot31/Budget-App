@@ -1,6 +1,7 @@
 import type { DetailSection } from '@/components/DetailSectionRows';
 import { formatCompactGainDollars } from '@/lib/formatCompactGainDollars';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { computeLoanRepaymentProgress } from '@/lib/loanPresentation';
 import {
   computeRealEstateNetEquity,
   formatWealthShortDate,
@@ -23,22 +24,51 @@ function buildRealEstateSections(
 
   if (asset.currentValue > 0) {
     patrimoineRows.push({
-      label: 'Valeur actuelle',
+      label: 'Valeur marchande actuelle',
       value: formatDisplayMoneyAbsolute(asset.currentValue),
       icon: 'home-outline',
+      valueLayout: 'amount',
     });
   }
 
-  if (equity.hasMortgage) {
+  if (equity.hasMortgage && linkedLoan?.type === 'mortgage') {
+    const { paidAmount } = computeLoanRepaymentProgress(linkedLoan);
+    const principal = Math.max(Number(linkedLoan.principal) || 0, 0);
+
+    if (principal > 0) {
+      patrimoineRows.push({
+        label: 'Payé sur l’hypothèque',
+        value: formatDisplayMoneyAbsolute(paidAmount),
+        icon: 'checkmark-circle-outline',
+        valueLayout: 'amount',
+      });
+    }
+
     patrimoineRows.push({
-      label: 'Hypothèque',
+      label: 'Restant sur l’hypothèque',
       value: formatDisplayMoneyAbsolute(equity.mortgageBalance),
       icon: 'document-text-outline',
+      valueLayout: 'amount',
+    });
+
+    patrimoineRows.push({
+      label: 'Équité nette',
+      value: formatDisplayMoneyAbsolute(equity.netEquity),
+      icon: 'shield-checkmark-outline',
+      valueLayout: 'amount',
+    });
+  } else if (equity.hasMortgage) {
+    patrimoineRows.push({
+      label: 'Restant sur l’hypothèque',
+      value: formatDisplayMoneyAbsolute(equity.mortgageBalance),
+      icon: 'document-text-outline',
+      valueLayout: 'amount',
     });
     patrimoineRows.push({
       label: 'Équité nette',
       value: formatDisplayMoneyAbsolute(equity.netEquity),
       icon: 'shield-checkmark-outline',
+      valueLayout: 'amount',
     });
   }
 
@@ -48,6 +78,7 @@ function buildRealEstateSections(
       label: 'Valeur à l’achat',
       value: formatDisplayMoneyAbsolute(asset.purchaseCost),
       icon: 'cash-outline',
+      valueLayout: 'amount',
     });
   }
   if (asset.purchaseDate?.trim()) {
@@ -63,6 +94,7 @@ function buildRealEstateSections(
       value: formatCompactGainDollars(gain, { leadingPlusWhenPositive: true }),
       icon: 'trending-up-outline',
       valueColor: gainTone,
+      valueLayout: 'amount',
     });
   }
 
@@ -120,6 +152,7 @@ function buildPreciousMaterialSections(
       label: 'Valeur actuelle',
       value: formatDisplayMoneyAbsolute(asset.currentValue),
       icon: 'trending-up-outline',
+      valueLayout: 'amount',
     });
   }
   valorisationRows.push({
@@ -139,6 +172,7 @@ function buildPreciousMaterialSections(
       label: 'Coût d’achat',
       value: formatDisplayMoneyAbsolute(asset.purchaseCost),
       icon: 'cash-outline',
+      valueLayout: 'amount',
     });
   }
   if (asset.purchaseDate?.trim()) {
@@ -154,6 +188,7 @@ function buildPreciousMaterialSections(
       value: formatCompactGainDollars(gain, { leadingPlusWhenPositive: true }),
       icon: 'trending-up-outline',
       valueColor: gainTone,
+      valueLayout: 'amount',
     });
   }
 

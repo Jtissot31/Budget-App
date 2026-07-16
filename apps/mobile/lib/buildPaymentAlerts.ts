@@ -8,6 +8,7 @@ import {
 import { creditUsedFromBalance } from '@/lib/creditLimitUtilization';
 import { formatPersonDirectedPaymentLabel } from '@/lib/loanPresentation';
 import type { PaymentAlertSource } from '@/lib/alerts';
+import { ALERT_TITLES } from '@/lib/alertPresentation';
 import type { RecurringPayment, RecurringPaymentKind, SimulatedAccount, Transaction } from '@/types';
 
 type UpcomingPayment = {
@@ -68,8 +69,8 @@ const UPCOMING_PAYMENTS: UpcomingPayment[] = [
   },
 ];
 
-const PAYMENT_WARNING_TITLE_CHECKING = 'Fonds insuffisants';
-const PAYMENT_WARNING_TITLE_CREDIT_LIMIT = 'Limite de crédit';
+const PAYMENT_WARNING_TITLE_CHECKING = ALERT_TITLES.lowFunds;
+const PAYMENT_WARNING_TITLE_CREDIT_LIMIT = ALERT_TITLES.creditLimit;
 
 const MOCK_CREDIT_CARD_NAME = 'Visa · 4782';
 const MOCK_CREDIT_BALANCE_BEFORE = -4350;
@@ -363,14 +364,16 @@ export function buildPaymentAlertSources({
   const forecastShortfallMessage = (() => {
     if (creditRiskActive) {
       return creditRiskActive.reason === 'over_limit'
-        ? 'Ce paiement dépasse ta limite.'
-        : 'Moins de 10 % de marge après ce paiement.';
+        ? `Le paiement de ${nextPaymentDisplayName} pourrait dépasser ta marge disponible. On peut l’ajuster avant l’échéance.`
+        : `Après ${nextPaymentDisplayName}, il resterait peu de marge sur ta carte. Garder un coussin te laisse plus de flexibilité.`;
     }
     if (checkingFundsAlert || (!creditRiskActive && showInsufficientFundsWarning)) {
       const shortfall = checkingFundsAlert?.currentShortfall ?? nextPaymentShortfall;
       const noPayFragment =
-        checkingFundsAlert && !checkingFundsAlert.paycheckArrivesBeforePayment ? " Paie après l'échéance." : '';
-      return `Il manque ${formatMoneyDetailed(shortfall)} pour le paiement de ${nextPaymentDisplayName}.${noPayFragment}`.trim();
+        checkingFundsAlert && !checkingFundsAlert.paycheckArrivesBeforePayment
+          ? ' Ton prochain dépôt arrive après l’échéance — anticiper aide à rester serein.'
+          : '';
+      return `Il te manque ${formatMoneyDetailed(shortfall)} pour ${nextPaymentDisplayName}.${noPayFragment}`.trim();
     }
     return '';
   })();
@@ -378,24 +381,31 @@ export function buildPaymentAlertSources({
   const sources: PaymentAlertSource[] = [];
 
   if (showInsufficientFundsWarning && forecastShortfallMessage) {
+    const kind = creditRiskActive ? ('credit_limit' as const) : ('low_funds' as const);
     sources.push({
       id: 'live',
+      kind,
       title: creditRiskActive ? PAYMENT_WARNING_TITLE_CREDIT_LIMIT : PAYMENT_WARNING_TITLE_CHECKING,
       body: forecastShortfallMessage,
       dateLabel: formatShortDate(nextPaymentDate),
       paymentDateRaw: nextPaymentDate,
       accountId: nextPayment.accountId,
+      recurring: nextPayment.recurring,
+      paymentName: nextPayment.name,
     });
   }
 
   if (includeMockCredit) {
     sources.push({
       id: 'mock-credit',
+      kind: 'credit_limit',
       title: PAYMENT_WARNING_TITLE_CREDIT_LIMIT,
-      body: '96 % de ta limite atteinte après ce paiement.',
+      body: 'Après ce paiement, environ 96 % de ta limite serait utilisée. Tu as plusieurs façons de garder de la marge.',
       dateLabel: formatShortDate(today),
       paymentDateRaw: today,
       accountId: undefined,
+      recurring: false,
+      paymentName: MOCK_CREDIT_PAYMENT_NAME,
     });
   }
 

@@ -4,9 +4,9 @@ import { getCategoryIconName, isIconName, type IconName } from '@/constants/cate
 
 export const BUDGET_CATEGORY_ICON_GLYPH_COLOR = 'rgba(255,255,255,0.85)';
 export const BUDGET_CATEGORY_ICON_WELL_BG = '#28282E';
-export const BUDGET_CATEGORY_ICON_WELL_SIZE = 44;
+export const BUDGET_CATEGORY_ICON_WELL_SIZE = 36;
 export const BUDGET_CATEGORY_ICON_WELL_RADIUS = 10;
-export const BUDGET_CATEGORY_ICON_GLYPH_SIZE = 27;
+export const BUDGET_CATEGORY_ICON_GLYPH_SIZE = 22;
 export const BUDGET_CATEGORY_OUTLINE_STROKE_WIDTH = 2.3;
 
 /** Lucide PascalCase names stored on mock budget categories → filled Ionicons. */

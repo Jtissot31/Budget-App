@@ -15,9 +15,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import { GoalSparkChartCarousel } from '@/components/GoalSparkChartCarousel';
+import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
+import { ThemeSegmentedControl } from '@/components/ThemeSegmentedControl';
 import { formValidationError, type FormFeedback, type FormSaveResult } from '@/lib/formFeedback';
 import { tapHaptic } from '@/lib/haptics';
 import {
@@ -28,27 +30,30 @@ import {
   toWeeklyContributionAmount,
   type SavingsGoalContributionFrequency,
 } from '@/lib/savingsGoalContribution';
-import { ProgressBar } from '@/components/ProgressBar';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { SCREEN_TOP_GUTTER, ghost, ghostCardShadow } from '@/constants/ghostUi';
 import { LINEAR_CHART_ACCENT_LIGHT } from '@/constants/linearChart';
 import {
-  CHIP_BORDER_WIDTH,
-  CHIP_PADDING_HORIZONTAL,
+  ONYX_CONTAINER,
+  planFinanceKit,
+} from '@/constants/planFinanceKit';
+import {
   FLOATING_NAV_CONTENT_PADDING,
+  containerSurfaceStyle,
   getGoalGreenShade,
+  moneyAmountTypography,
   PAGE_TITLE_CONTENT_GAP,
   colors,
   radius,
   spacing,
   typography,
+  typographyKit,
 } from '@/constants/theme';
-import { getCategoryBudgets, getDashboard, getRecurringPayments, getSavingsGoals, upsertSavingsGoal } from '@/lib/db';
+import { upsertSavingsGoal } from '@/lib/db';
 import { savingsGoalIncrementalProgress } from '@/lib/savingsGoalProgress';
 import { useAppTheme } from '@/lib/themeContext';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { parseFormattedNumber, sanitizeNumericInput, formatNumberDisplay } from '@/lib/formatNumber';
-import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
 import type { CategoryBudget, DashboardSummary, RecurringPayment, SavingsGoal } from '@/types';
 
 export type GoalForm = {
@@ -156,7 +161,7 @@ export function SavingsGoalFormModal({
   onSave: () => void | Promise<void>;
 }) {
   const insets = useSafeAreaInsets();
-  const { colors: themeColors, ghost: themeGhost, isLight } = useAppTheme();
+  const { colors: themeColors, isLight } = useAppTheme();
   const projection = useMemo(
     () => getGoalProjection(form, dashboard, categoryBudgets, recurringPayments, goals),
     [categoryBudgets, dashboard, form, goals, recurringPayments],
@@ -187,11 +192,12 @@ export function SavingsGoalFormModal({
   const themed = useMemo(
     () => ({
       modalBackdrop: { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' },
-      sheet: { backgroundColor: themeColors.containerBackground, borderColor: themeColors.containerBorder },
+      sheet: {
+        backgroundColor: themeColors.background,
+        borderColor: themeColors.containerBorder,
+      },
       handle: { backgroundColor: themeColors.borderStrong },
-      closeButton: { backgroundColor: themeGhost.obsidianSoft },
-      selected: { backgroundColor: themeColors.text },
-      selectedText: { color: themeGhost.void },
+      closeButton: containerSurfaceStyle(isLight),
       text: { color: themeColors.text },
       textMuted: { color: themeColors.textMuted },
       warningCard: {
@@ -199,9 +205,12 @@ export function SavingsGoalFormModal({
         borderColor: themeColors.warning,
       },
       warningText: { color: themeColors.warning },
-      submitDisabled: { backgroundColor: themeGhost.obsidianSoft },
     }),
-    [isLight, themeColors, themeGhost],
+    [isLight, themeColors],
+  );
+  const fieldLabelStyle = useMemo(
+    () => ({ ...typographyKit.eyebrow, color: themeColors.textMuted }),
+    [themeColors.textMuted],
   );
   const selectedColor = form ? getGoalGreenShade(form.id, isLight) : LINEAR_CHART_ACCENT_LIGHT;
   const chartCarouselTone = useMemo(
@@ -224,8 +233,14 @@ export function SavingsGoalFormModal({
           <View style={[styles.modalCard, themed.sheet]}>
             <View style={[styles.handle, themed.handle]} />
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, themed.text]}>{form?.name ? 'Modifier' : 'Nouvel objectif'}</Text>
-              <Pressable onPress={onDismiss} hitSlop={12} style={[styles.modalClose, themed.closeButton]}>
+              <Text style={[styles.modalTitle, themed.text]}>
+                {form?.name ? 'Modifier' : 'Nouvel objectif'}
+              </Text>
+              <Pressable
+                onPress={onDismiss}
+                hitSlop={12}
+                style={[styles.modalClose, themed.closeButton]}
+              >
                 <AppIcon family="ionicons" name="close" size={19} color={themeColors.textMuted} />
               </Pressable>
             </View>
@@ -235,7 +250,7 @@ export function SavingsGoalFormModal({
               showsVerticalScrollIndicator={false}
               contentContainerStyle={[
                 styles.modalContent,
-                { paddingBottom: Math.max(insets.bottom, 20) },
+                { paddingBottom: Math.max(insets.bottom, spacing.xl) },
               ]}
             >
               <GoalKindHeader
@@ -254,6 +269,7 @@ export function SavingsGoalFormModal({
                   )
                 }
               />
+
               {form != null && goals.some((g) => g.id === form.id) ? (
                 <GoalSparkChartCarousel
                   goals={goals}
@@ -266,91 +282,104 @@ export function SavingsGoalFormModal({
                   captionTemplate="Courbe · %s"
                 />
               ) : null}
-              <View style={styles.twoCols}>
-                <FormField
-                  label="Cible"
-                  value={form?.targetAmount ?? ''}
-                  placeholder="5000"
-                  keyboardType="decimal-pad"
-                  onChangeText={(value) =>
-                    setForm((cur) => (cur ? { ...cur, targetAmount: sanitizeAmount(value) } : cur))
-                  }
-                />
-                <FormField
-                  label="Épargné"
-                  value={form?.currentAmount ?? ''}
-                  placeholder="0"
-                  keyboardType="decimal-pad"
-                  onChangeText={(value) =>
-                    setForm((cur) => (cur ? { ...cur, currentAmount: sanitizeAmount(value) } : cur))
-                  }
+
+              <View style={styles.sectionBlock}>
+                <View style={styles.twoCols}>
+                  <FormField
+                    label="Cible"
+                    value={form?.targetAmount ?? ''}
+                    placeholder="5 000"
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setForm((cur) => (cur ? { ...cur, targetAmount: sanitizeAmount(value) } : cur))
+                    }
+                  />
+                  <FormField
+                    label="Épargné"
+                    value={form?.currentAmount ?? ''}
+                    placeholder="0"
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setForm((cur) => (cur ? { ...cur, currentAmount: sanitizeAmount(value) } : cur))
+                    }
+                  />
+                </View>
+              </View>
+
+              <View style={styles.sectionBlock}>
+                <DatePickerField
+                  label="Date cible (optionnelle)"
+                  value={form?.dueDate ?? ''}
+                  placeholder="Aucune date maximale"
+                  allowClear
+                  variant="sheet"
+                  labelStyle={fieldLabelStyle}
+                  onChangeDate={(value) => setForm((cur) => (cur ? { ...cur, dueDate: value } : cur))}
                 />
               </View>
-              <DatePickerField
-                label="Date cible (optionnelle)"
-                value={form?.dueDate ?? ''}
-                placeholder="Aucune date maximale"
-                allowClear
-                variant="sheet"
-                onChangeDate={(value) => setForm((cur) => (cur ? { ...cur, dueDate: value } : cur))}
-              />
-              <FormField
-                label="Montant des versements"
-                value={form?.weeklyContribution ?? ''}
-                placeholder={contributionPlaceholder}
-                keyboardType="decimal-pad"
-                onChangeText={(value) =>
-                  setForm((cur) => (cur ? { ...cur, weeklyContribution: sanitizeAmount(value) } : cur))
-                }
-              />
-              <ContributionFrequencyField
-                frequency={contributionFrequency}
-                onSelectFrequency={(frequency) =>
-                  setForm((cur) => {
-                    if (!cur) return cur;
-                    const currentAmount = cur.weeklyContribution.trim()
-                      ? parseAmount(cur.weeklyContribution)
-                      : null;
-                    let nextAmount = cur.weeklyContribution;
-                    if (
-                      currentAmount != null &&
-                      !Number.isNaN(currentAmount) &&
-                      currentAmount > 0 &&
-                      frequency !== cur.contributionFrequency
-                    ) {
-                      nextAmount = formatSuggestedAmount(
-                        convertContributionAmountBetweenFrequencies(
-                          currentAmount,
-                          cur.contributionFrequency,
-                          frequency,
-                        ),
-                      );
-                    }
-                    return {
-                      ...cur,
-                      contributionFrequency: frequency,
-                      weeklyContribution: nextAmount,
-                    };
-                  })
-                }
-                themed={themed}
-              />
-              {suggestedWeekly != null ? (
-                <Text style={[styles.minimumHint, themed.textMuted]}>
-                  Minimum requis pour atteindre la date cible: {formatSuggestedAmount(suggestedAtFrequency ?? suggestedWeekly)} $ {savingsGoalContributionFrequencyLabel(contributionFrequency).toLowerCase()}.
-                </Text>
-              ) : null}
-              {isWeeklyBelowSuggestion && suggestedWeekly != null ? (
-                <View style={[styles.weeklyWarning, themed.warningCard]}>
-                  <Text style={[styles.weeklyWarningText, themed.warningText]}>
-                    Ce montant ne permettra pas d'atteindre la date cible. Entre au moins{' '}
-                    {formatSuggestedAmount(suggestedAtFrequency ?? suggestedWeekly)} $ {savingsGoalContributionFrequencyLabel(contributionFrequency).toLowerCase()} pour la respecter.
+
+              <View style={styles.sectionBlock}>
+                <FormField
+                  label="Montant des versements"
+                  value={form?.weeklyContribution ?? ''}
+                  placeholder={contributionPlaceholder}
+                  keyboardType="decimal-pad"
+                  onChangeText={(value) =>
+                    setForm((cur) => (cur ? { ...cur, weeklyContribution: sanitizeAmount(value) } : cur))
+                  }
+                />
+                <ContributionFrequencyField
+                  frequency={contributionFrequency}
+                  onSelectFrequency={(frequency) =>
+                    setForm((cur) => {
+                      if (!cur) return cur;
+                      const currentAmount = cur.weeklyContribution.trim()
+                        ? parseAmount(cur.weeklyContribution)
+                        : null;
+                      let nextAmount = cur.weeklyContribution;
+                      if (
+                        currentAmount != null &&
+                        !Number.isNaN(currentAmount) &&
+                        currentAmount > 0 &&
+                        frequency !== cur.contributionFrequency
+                      ) {
+                        nextAmount = formatSuggestedAmount(
+                          convertContributionAmountBetweenFrequencies(
+                            currentAmount,
+                            cur.contributionFrequency,
+                            frequency,
+                          ),
+                        );
+                      }
+                      return {
+                        ...cur,
+                        contributionFrequency: frequency,
+                        weeklyContribution: nextAmount,
+                      };
+                    })
+                  }
+                />
+                {suggestedWeekly != null ? (
+                  <Text style={[styles.minimumHint, themed.textMuted]}>
+                    Minimum requis pour atteindre la date cible:{' '}
+                    {formatSuggestedAmount(suggestedAtFrequency ?? suggestedWeekly)} ${' '}
+                    {savingsGoalContributionFrequencyLabel(contributionFrequency).toLowerCase()}.
                   </Text>
-                </View>
-              ) : null}
-              {!isWeeklyBelowSuggestion && weeklyFeedback ? (
-                <Text style={[styles.minimumHint, themed.textMuted]}>{weeklyFeedback}</Text>
-              ) : null}
+                ) : null}
+                {isWeeklyBelowSuggestion && suggestedWeekly != null ? (
+                  <View style={[styles.weeklyWarning, themed.warningCard]}>
+                    <Text style={[styles.weeklyWarningText, themed.warningText]}>
+                      Ce montant ne permettra pas d'atteindre la date cible. Entre au moins{' '}
+                      {formatSuggestedAmount(suggestedAtFrequency ?? suggestedWeekly)} ${' '}
+                      {savingsGoalContributionFrequencyLabel(contributionFrequency).toLowerCase()} pour
+                      la respecter.
+                    </Text>
+                  </View>
+                ) : null}
+                {!isWeeklyBelowSuggestion && weeklyFeedback ? (
+                  <Text style={[styles.minimumHint, themed.textMuted]}>{weeklyFeedback}</Text>
+                ) : null}
+              </View>
 
               {projection ? <GoalProjectionCard projection={projection} /> : null}
 
@@ -378,47 +407,26 @@ export function SavingsGoalFormModal({
 function ContributionFrequencyField({
   frequency,
   onSelectFrequency,
-  themed,
 }: {
   frequency: SavingsGoalContributionFrequency;
   onSelectFrequency: (frequency: SavingsGoalContributionFrequency) => void;
-  themed: {
-    selected: { backgroundColor: string };
-    selectedText: { color: string };
-    text: { color: string };
-  };
 }) {
-  const { colors, ghost } = useAppTheme();
+  const { colors } = useAppTheme();
 
   return (
     <View style={styles.frequencyField}>
-      <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Fréquence des versements</Text>
-      <View style={styles.frequencyRow}>
-        {SAVINGS_GOAL_CONTRIBUTION_FREQUENCIES.map((item) => {
-          const on = frequency === item.id;
-          return (
-            <Pressable
-              key={item.id}
-              onPress={() => {
-                tapHaptic();
-                onSelectFrequency(item.id);
-              }}
-              style={[
-                styles.frequencyChip,
-                { backgroundColor: ghost.obsidianSoft, borderColor: colors.borderStrong },
-                on && themed.selected,
-              ]}
-            >
-              <Text
-                style={[styles.frequencyChipText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                {...chipLabelTextProps()}
-              >
-                {item.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Fréquence des versements</Text>
+      <ThemeSegmentedControl
+        tabs={SAVINGS_GOAL_CONTRIBUTION_FREQUENCIES}
+        active={frequency}
+        onChange={(next) => {
+          tapHaptic();
+          onSelectFrequency(next);
+        }}
+        size="section"
+        variant="section"
+        showDivider={false}
+      />
     </View>
   );
 }
@@ -436,23 +444,28 @@ function FormField({
   keyboardType?: 'default' | 'decimal-pad';
   onChangeText: (value: string) => void;
 }) {
-  const { colors, ghost } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
   const InputComponent = keyboardType === 'decimal-pad' ? NumericAmountInput : TextInput;
+  const inputSurface = containerSurfaceStyle(isLight);
+  const isAmount = keyboardType === 'decimal-pad';
 
   return (
     <View style={styles.field}>
-      <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>{label}</Text>
-      <InputComponent
-        style={[
-          styles.input,
-          { backgroundColor: ghost.obsidianSoft, borderColor: colors.borderStrong, color: colors.text },
-        ]}
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textMuted}
-      />
+      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{label}</Text>
+      <View style={[styles.inputShell, inputSurface]}>
+        <InputComponent
+          style={[
+            styles.input,
+            isAmount ? styles.amountInput : styles.textInput,
+            { color: colors.text },
+          ]}
+          value={value}
+          onChangeText={onChangeText}
+          keyboardType={keyboardType}
+          placeholder={placeholder}
+          placeholderTextColor={colors.textMuted}
+        />
+      </View>
     </View>
   );
 }
@@ -466,12 +479,10 @@ function GoalKindHeader({
   resolvedIcon: string;
   onChangeName: (value: string) => void;
 }) {
-  const { colors, ghost } = useAppTheme();
+  const { colors } = useAppTheme();
 
   return (
-    <View
-      style={[styles.goalKindHeader, { backgroundColor: ghost.obsidianSoft, borderColor: colors.borderStrong }]}
-    >
+    <PlanFinanceContainer style={styles.goalKindHeader} halo={false}>
       <UserPickedIconWell icon={resolvedIcon} size={52} wellGlyphWhite />
       <TextInput
         style={[styles.goalKindName, { color: colors.text }]}
@@ -481,7 +492,7 @@ function GoalKindHeader({
         placeholderTextColor={colors.textMuted}
         accessibilityLabel="Nom de l'objectif"
       />
-    </View>
+    </PlanFinanceContainer>
   );
 }
 
@@ -500,24 +511,36 @@ type GoalProjection = {
 };
 
 function GoalProjectionCard({ projection }: { projection: GoalProjection }) {
-  const { colors, ghost } = useAppTheme();
+  const { colors } = useAppTheme();
 
   return (
-    <View style={[styles.projectionCard, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
-      <Text style={[styles.projectionTitle, { color: colors.text }]}>Projection</Text>
+    <PlanFinanceContainer style={styles.projectionCard} halo={false}>
+      <Text style={[styles.projectionTitle, { color: colors.textMuted }]}>Projection</Text>
       <ProjectionRow label="Progression" value={formatPercent(projection.progress)} />
-      <ProjectionRow label="Reste à épargner" value={formatDisplayMoneyAbsolute(projection.remaining)} />
+      <ProjectionRow
+        label="Reste à épargner"
+        value={formatDisplayMoneyAbsolute(projection.remaining)}
+        monetary
+      />
       {projection.weeksToGoal != null ? (
         <ProjectionRow label="Durée au rythme choisi" value={formatGoalDuration(projection.weeksToGoal)} />
       ) : null}
       {projection.requiredWeekly != null ? (
-        <ProjectionRow label="Requis par semaine" value={formatDisplayMoneyAbsolute(projection.requiredWeekly)} />
+        <ProjectionRow
+          label="Requis par semaine"
+          value={formatDisplayMoneyAbsolute(projection.requiredWeekly)}
+          monetary
+        />
       ) : null}
       {projection.targetDate != null && projection.requiredWeekly == null ? (
         <ProjectionRow label="Date estimée d'atteinte" value={projection.targetDate} />
       ) : null}
       {projection.monthlyContribution > 0 ? (
-        <ProjectionRow label="Montant par mois" value={formatDisplayMoneyAbsolute(projection.monthlyContribution)} />
+        <ProjectionRow
+          label="Montant par mois"
+          value={formatDisplayMoneyAbsolute(projection.monthlyContribution)}
+          monetary
+        />
       ) : null}
       {projection.budgetUseRatio != null && projection.monthlyContribution > 0 ? (
         <ProjectionRow label="Part du budget" value={formatPercent(projection.budgetUseRatio)} />
@@ -526,20 +549,36 @@ function GoalProjectionCard({ projection }: { projection: GoalProjection }) {
         <ProjectionRow
           label="Obligations + objectif / semaine"
           value={`${formatDisplayMoneyAbsolute(projection.weeklyObligationsTotal)} / semaine`}
+          monetary
         />
       ) : null}
       <Text style={[styles.projectionHint, { color: colors.textMuted }]}>{projection.hint}</Text>
-    </View>
+    </PlanFinanceContainer>
   );
 }
 
-function ProjectionRow({ label, value }: { label: string; value: string }) {
+function ProjectionRow({
+  label,
+  value,
+  monetary = false,
+}: {
+  label: string;
+  value: string;
+  monetary?: boolean;
+}) {
   const { colors } = useAppTheme();
 
   return (
     <View style={styles.projectionRow}>
       <Text style={[styles.projectionLabel, { color: colors.textMuted }]}>{label}</Text>
-      <Text style={[styles.projectionValue, { color: colors.text }]}>{value}</Text>
+      <Text
+        style={[
+          monetary ? styles.projectionMoney : styles.projectionValue,
+          { color: colors.text },
+        ]}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
@@ -901,114 +940,111 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: ghost.obsidian,
+    backgroundColor: colors.background,
     marginTop: 88,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
+    borderTopLeftRadius: radius.xxl,
+    borderTopRightRadius: radius.xxl,
     borderWidth: StyleSheet.hairlineWidth,
     maxHeight: '92%',
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
   },
   handle: {
     alignSelf: 'center',
     width: 44,
     height: 4,
     borderRadius: radius.pill,
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  modalTitle: { flex: 1, color: colors.text, fontSize: 22, fontWeight: '800', letterSpacing: -0.4 },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  modalTitle: {
+    flex: 1,
+    ...typographyKit.sectionTitle,
+  },
   modalClose: {
     width: 34,
     height: 34,
-    borderRadius: 17,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalContent: { gap: 14, paddingTop: 14 },
+  modalContent: {
+    gap: planFinanceKit.layout.sectionGap,
+    paddingTop: planFinanceKit.layout.headerFieldGap - spacing.sm,
+  },
+  sectionBlock: {
+    gap: planFinanceKit.layout.fieldGap,
+  },
   field: { flex: 1, gap: spacing.sm },
   fieldLabel: {
-    color: colors.textMuted,
-    fontSize: 16,
-    fontWeight: '800',
-    lineHeight: 21,
+    ...typographyKit.eyebrow,
+  },
+  inputShell: {
+    borderRadius: planFinanceKit.radius.card,
+    paddingHorizontal: spacing.md,
+    minHeight: 50,
+    justifyContent: 'center',
   },
   input: {
-    minHeight: 50,
-    borderRadius: 13,
-    borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: ghost.obsidianSoft,
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '700',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: spacing.sm,
+    backgroundColor: 'transparent',
+  },
+  amountInput: {
+    ...moneyAmountTypography({ tier: 'card' }),
+  },
+  textInput: {
+    ...typographyKit.bodyMedium,
   },
   twoCols: { flexDirection: 'row', gap: spacing.md },
   frequencyField: { gap: spacing.sm },
-  frequencyRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  frequencyChip: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 0,
-    minWidth: 96,
-    borderRadius: radius.md,
-    borderWidth: CHIP_BORDER_WIDTH,
-    paddingHorizontal: CHIP_PADDING_HORIZONTAL,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  frequencyChipText: {
-    maxWidth: '100%',
-    fontSize: typography.caption,
-    fontWeight: '800',
-    lineHeight: 20,
-    textAlign: 'center',
-  },
   goalKindHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: spacing.md,
+    padding: ONYX_CONTAINER.padding.row,
   },
   goalKindName: {
     flex: 1,
     minWidth: 0,
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.3,
+    ...typographyKit.sectionTitle,
     paddingVertical: 4,
   },
   minimumHint: {
-    color: colors.textMuted,
-    fontSize: typography.caption,
-    fontWeight: '700',
+    ...typographyKit.metaMedium,
     lineHeight: 19,
-    marginTop: -6,
   },
   suggestionCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
-    borderRadius: 14,
+    borderRadius: planFinanceKit.radius.card,
     borderWidth: StyleSheet.hairlineWidth,
     backgroundColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
   },
-  suggestionText: { flex: 1, color: colors.text, fontSize: typography.caption, fontWeight: '800', lineHeight: 18 },
+  suggestionText: {
+    flex: 1,
+    ...typographyKit.caption,
+    lineHeight: 18,
+  },
   weeklyWarning: {
-    borderRadius: 12,
+    borderRadius: planFinanceKit.radius.small,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.md,
-    paddingVertical: 10,
+    paddingVertical: spacing.sm + 2,
   },
-  weeklyWarningText: { color: colors.warning, fontSize: typography.caption, fontWeight: '700', lineHeight: 20 },
+  weeklyWarningText: {
+    ...typographyKit.metaMedium,
+    lineHeight: 20,
+  },
   suggestionButton: {
     borderRadius: radius.pill,
     backgroundColor: colors.primary,
@@ -1017,20 +1053,37 @@ const styles = StyleSheet.create({
   },
   suggestionButtonText: { color: '#000000', fontSize: typography.micro, fontWeight: '800' },
   projectionCard: {
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: ghost.obsidianSoft,
-    padding: spacing.md,
+    padding: ONYX_CONTAINER.padding.card,
     gap: spacing.sm,
   },
-  projectionTitle: { color: colors.text, fontSize: typography.body, fontWeight: '800' },
-  projectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
-  projectionLabel: { flex: 1, color: colors.textMuted, fontSize: typography.caption, fontWeight: '700' },
-  projectionValue: { color: colors.text, fontSize: typography.caption, fontWeight: '800' },
-  projectionHint: { color: colors.textMuted, fontSize: typography.caption, lineHeight: 20 },
+  projectionTitle: {
+    ...typographyKit.eyebrow,
+    marginBottom: spacing.xs,
+  },
+  projectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  projectionLabel: {
+    flex: 1,
+    ...typographyKit.metaMedium,
+  },
+  projectionValue: {
+    ...typographyKit.metaSemibold,
+  },
+  projectionMoney: {
+    ...moneyAmountTypography({ tier: 'row' }),
+  },
+  projectionHint: {
+    ...typographyKit.metaMedium,
+    lineHeight: 20,
+    marginTop: spacing.xs,
+  },
   saveBtn: {
     alignItems: 'center',
-    borderRadius: 14,
+    borderRadius: planFinanceKit.radius.button,
     backgroundColor: colors.primary,
     paddingVertical: 17,
   },

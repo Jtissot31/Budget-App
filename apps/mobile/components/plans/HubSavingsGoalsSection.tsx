@@ -135,7 +135,9 @@ export function HubSavingsGoalsSection() {
             Aucun objectif pour l&apos;instant.
           </Text>
           <View style={styles.suggestionsBlock}>
-            <Text style={[styles.suggestionsLabel, { color: colors.textMuted }]}>Suggestions</Text>
+            <Text style={[styles.suggestionsLabel, { color: colors.accentGreen }]}>
+              Suggéré pour toi
+            </Text>
             <View style={styles.cardList}>
               {SAVINGS_GOAL_SUGGESTIONS.map((suggestion) => (
                 <Pressable
@@ -155,13 +157,6 @@ export function HubSavingsGoalsSection() {
                         {suggestion.name}
                       </Text>
                     </View>
-                    {suggestion.targetAmount != null ? (
-                      <Text
-                        style={[styles.suggestionAmount, moneyAmountTypography({ tier: 'row' }), { color: colors.text }]}
-                      >
-                        {formatDisplayMoneyAbsolute(suggestion.targetAmount)}
-                      </Text>
-                    ) : null}
                     <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
                   </PlanFinanceContainer>
                 </Pressable>
@@ -265,10 +260,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   suggestionsLabel: {
-    ...typographyKit.caption,
-    fontSize: 11,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
+    ...typographyKit.captionSemibold,
+    letterSpacing: 0.2,
   },
   suggestionRow: {
     flexDirection: 'row',
@@ -283,13 +276,13 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   suggestionHint: {
-    ...typographyKit.caption,
-    fontSize: 11,
+    ...typographyKit.metaMedium,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
   suggestionName: {
-    ...typographyKit.rowTitle,
+    ...typographyKit.bodyBold,
+    letterSpacing: -0.2,
   },
   suggestionAmount: {
     flexShrink: 0,
@@ -303,10 +296,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
-    minHeight: 36,
+    minHeight: 40,
   },
   linkLabel: {
-    ...typographyKit.caption,
+    ...typographyKit.bodyMedium,
   },
   addCta: {
     flexDirection: 'row',
@@ -318,7 +311,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   addCtaLabel: {
-    ...typographyKit.caption,
+    ...typographyKit.bodyMedium,
   },
   pressed: {
     opacity: 0.82,

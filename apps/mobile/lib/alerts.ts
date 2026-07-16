@@ -1,6 +1,10 @@
 import { getSetting, setSetting } from '@/lib/db';
 import { evaluateAlerts, markAlertRead } from '@/lib/ai/alertService';
 import type { AIAlert, AlertCategory } from '@/lib/ai/types';
+import {
+  ALERT_SECTION_LABELS_REASSURING,
+  paymentKindFromSourceTitle,
+} from '@/lib/alertPresentation';
 
 export type AlertCenterKind =
   | 'low_funds'
@@ -28,14 +32,15 @@ export type AlertCenterItem = {
   fynAlertId?: string;
   /** Optional numeric amount from Fyn alerts. */
   montant?: number | null;
+  /** Linked upcoming payment is a recurring bill (subscriptions, telecom, rent, etc.). */
+  recurring?: boolean;
+  /** Merchant or label for the payment tied to this alert. */
+  paymentName?: string;
 };
 
 export const ALERT_SECTION_ORDER: AlertCenterSection[] = ['urgent', 'opportunities'];
 
-export const ALERT_SECTION_LABELS: Record<AlertCenterSection, string> = {
-  urgent: 'URGENT',
-  opportunities: 'OPPORTUNITÉS',
-};
+export const ALERT_SECTION_LABELS: Record<AlertCenterSection, string> = ALERT_SECTION_LABELS_REASSURING;
 
 const PAYMENT_READ_KEY = (id: string) => `alert_center_read_${id}`;
 
@@ -68,20 +73,13 @@ export function alertSectionForKind(kind: AlertCenterKind): AlertCenterSection {
 }
 
 export function paymentAlertSeverityFromTitle(title: string): AlertCenterSeverity {
-  const lower = title.toLowerCase();
-  if (lower.includes('limite') || lower.includes('crédit') || lower.includes('credit')) {
-    return 'danger';
-  }
+  const kind = paymentKindFromSourceTitle(title);
+  if (kind === 'credit_limit') return 'warning';
   return 'warning';
 }
 
 export function paymentAlertKindFromTitle(title: string): AlertCenterKind {
-  const lower = title.toLowerCase();
-  if (lower.includes('limite') || lower.includes('crédit') || lower.includes('credit')) {
-    return 'credit_limit';
-  }
-  if (lower.includes('budget')) return 'budget_over';
-  return 'low_funds';
+  return paymentKindFromSourceTitle(title);
 }
 
 export function groupAlertCenterItems(
@@ -107,6 +105,12 @@ export type PaymentAlertSource = {
   dateLabel: string;
   paymentDateRaw?: Date;
   accountId?: string;
+  /** Prefer explicit kind over title heuristics. */
+  kind?: AlertCenterKind;
+  /** True when the alert is tied to a recurring bill. */
+  recurring?: boolean;
+  /** Merchant or label for the payment tied to this alert. */
+  paymentName?: string;
 };
 
 export async function paymentSourcesToCenterItems(
@@ -114,7 +118,7 @@ export async function paymentSourcesToCenterItems(
 ): Promise<AlertCenterItem[]> {
   const readFlags = await Promise.all(sources.map((source) => isPaymentAlertRead(source.id)));
   return sources.map((source, index) => {
-    const kind = paymentAlertKindFromTitle(source.title);
+    const kind = source.kind ?? paymentAlertKindFromTitle(source.title);
     return {
       id: `payment-${source.id}`,
       kind,
@@ -125,6 +129,8 @@ export async function paymentSourcesToCenterItems(
       timestamp: (source.paymentDateRaw ?? new Date()).toISOString(),
       read: readFlags[index] ?? false,
       accountId: source.accountId,
+      recurring: source.recurring,
+      paymentName: source.paymentName,
     };
   });
 }
@@ -175,6 +181,25 @@ export async function markAlertCenterItemRead(item: AlertCenterItem): Promise<vo
   }
   const paymentId = item.id.startsWith('payment-') ? item.id.slice('payment-'.length) : item.id;
   await markPaymentAlertRead(paymentId);
+}
+
+/** Expo Router params for `/alert-detail` (hub + Accueil). */
+export function alertDetailRouteParams(item: AlertCenterItem): Record<string, string> {
+  return {
+    id: item.id,
+    kind: item.kind,
+    title: item.title,
+    message: item.message,
+    accountId: item.accountId ?? '',
+    montant: item.montant != null ? String(item.montant) : '',
+    recurring: item.recurring === true ? '1' : item.recurring === false ? '0' : '',
+    paymentName: item.paymentName ?? '',
+  };
+}
+
+/** Hub id for a dashboard payment alert source (`live` → `payment-live`). */
+export function paymentAlertCenterId(sourceId: string): string {
+  return sourceId.startsWith('payment-') ? sourceId : `payment-${sourceId}`;
 }
 
 export function formatAlertCenterTimestamp(iso: string): string {

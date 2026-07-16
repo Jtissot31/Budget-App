@@ -1,6 +1,5 @@
 import { Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { Ionicons } from '@expo/vector-icons';
 import { jakartaMediumText, radius, spacing, typography, typographyKit } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 import type { AccountKind } from '@/types';
@@ -24,10 +23,10 @@ type PaymentMethodFieldProps = {
   emptyHint?: string;
 };
 
-function iconForKind(kind: AccountKind): keyof typeof Ionicons.glyphMap {
+function iconForKind(kind: AccountKind): string {
   if (kind === 'credit') return 'card-outline';
   if (kind === 'savings') return 'cash-outline';
-  if (kind === 'cash') return 'wallet-outline';
+  if (kind === 'cash') return 'cash-banknotes-outline';
   return 'wallet-outline';
 }
 

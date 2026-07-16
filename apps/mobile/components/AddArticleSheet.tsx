@@ -13,7 +13,7 @@ import {
   type TextStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DetailSingleLineRow, DetailSubSection } from '@/components/DetailSectionRows';
+import { DetailSubSection } from '@/components/DetailSectionRows';
 import { EditableField } from '@/components/EditableField';
 import { GhostNumpad } from '@/components/GhostNumpad';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
@@ -465,27 +465,6 @@ export function AddArticleSheet({
           $
         </Text>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Ajouter l'article"
-        disabled={!canSave}
-        onPress={handleSave}
-        hitSlop={8}
-        style={({ pressed }) => [
-          styles.inlineAddLink,
-          pressed && canSave && styles.pressed,
-        ]}
-      >
-        <Text
-          style={[
-            typographyKit.metaMedium,
-            { color: canSave ? colors.primary : colors.textMuted },
-            !canSave && styles.inlineAddLinkDisabled,
-          ]}
-        >
-          Ajouter
-        </Text>
-      </Pressable>
     </View>
   );
 
@@ -538,24 +517,99 @@ export function AddArticleSheet({
 
   const inlineCategoryField = categories.length > 0 ? (
     <View
-      style={[styles.inlineCategoryRow, { borderTopColor: colors.border }]}
+      style={[styles.inlineCategoryBlock, { borderTopColor: colors.border }]}
       onLayout={() => {
         notifyInlineContentLayout();
       }}
     >
-      <DetailSingleLineRow
-        row={{
-          label: 'Catégorie',
-          value: categoryLabel,
-          icon: 'pricetag-outline',
-          valueContent: categoryPickerField,
-        }}
-        colors={colors}
-        isLast
-        rowPaddingVertical={spacing.sm}
-      />
+      <View style={styles.inlineCategoryHeader}>
+        <Text style={[detailSubSectionHeaderStyle(), { color: colors.textMuted, marginBottom: 0 }]}>
+          Catégorie
+        </Text>
+        <Text style={[typographyKit.microMedium, { color: colors.textMuted }]}>
+          Choisis où ce montant ira dans ton budget
+        </Text>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="always"
+        contentContainerStyle={styles.inlineCategoryChips}
+      >
+        {categories.map((category) => {
+          const selected = effectiveCategoryId === category.id;
+          const suggested = !categoryManuallySelected && inferredCategoryId === category.id;
+          return (
+            <Pressable
+              key={category.id}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`Catégorie ${category.name}${suggested ? ', suggérée' : ''}`}
+              onPress={() => onCategorySelect(category.id)}
+              style={({ pressed }) => [
+                styles.inlineCategoryChip,
+                {
+                  backgroundColor: selected
+                    ? 'rgba(74, 222, 128, 0.16)'
+                    : isLight
+                      ? 'rgba(0,0,0,0.04)'
+                      : 'rgba(255,255,255,0.06)',
+                  borderColor: selected ? colors.primary : colors.border,
+                },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text
+                style={[
+                  typographyKit.metaMedium,
+                  { color: selected ? colors.primary : colors.text },
+                ]}
+                numberOfLines={1}
+              >
+                {category.name}
+              </Text>
+              {suggested && !selected ? (
+                <Text style={[typographyKit.microMedium, { color: colors.textMuted }]}>suggéré</Text>
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      {!effectiveCategoryId && trimmedName.length > 0 ? (
+        <Text style={[typographyKit.microMedium, { color: colors.warning }]}>
+          Sélectionne une catégorie pour continuer
+        </Text>
+      ) : null}
     </View>
   ) : null;
+
+  const inlineFooterActions = (
+    <View style={[styles.inlineFooterActions, { borderTopColor: colors.border }]}>
+      {inlineCancelLink}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Ajouter l'article"
+        disabled={!canSave}
+        onPress={handleSave}
+        style={({ pressed }) => [
+          styles.inlineAddButton,
+          { backgroundColor: colors.primary },
+          !canSave && styles.inlineAddButtonDisabled,
+          pressed && canSave && styles.pressed,
+        ]}
+      >
+        <Text
+          style={[
+            typographyKit.caption,
+            styles.inlineAddButtonLabel,
+            { color: canSave ? '#000000' : colors.textMuted },
+          ]}
+        >
+          Ajouter
+        </Text>
+      </Pressable>
+    </View>
+  );
 
   const sheetPriceField = (
     <View
@@ -647,7 +701,7 @@ export function AddArticleSheet({
       {inlineBudgetHint}
       {inlineBudgetError}
       {inlineCategoryField}
-      {inlineCancelLink}
+      {inlineFooterActions}
     </View>
   );
 
@@ -778,14 +832,6 @@ const styles = StyleSheet.create({
   inlineAmountCurrency: {
     flexShrink: 0,
   },
-  inlineAddLink: {
-    flexShrink: 0,
-    paddingVertical: spacing.xs,
-    paddingLeft: spacing.xs,
-  },
-  inlineAddLinkDisabled: {
-    opacity: 0.35,
-  },
   inlineBudgetHint: {
     textAlign: 'right' as const,
     marginTop: -spacing.xs,
@@ -795,13 +841,57 @@ const styles = StyleSheet.create({
     marginTop: -spacing.xs,
     paddingRight: spacing.sm,
   },
-  inlineCategoryRow: {
+  inlineCategoryBlock: {
     borderTopWidth: StyleSheet.hairlineWidth,
     marginTop: spacing.xs,
+    paddingTop: spacing.md,
+    gap: spacing.sm,
+  },
+  inlineCategoryHeader: {
+    gap: 2,
+  },
+  inlineCategoryChips: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: spacing.xs,
+    paddingVertical: 2,
+  },
+  inlineCategoryChip: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    maxWidth: 180,
+  },
+  inlineFooterActions: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: spacing.xs,
+    paddingTop: spacing.md,
   },
   inlineCancelLink: {
-    alignSelf: 'flex-start' as const,
-    paddingVertical: spacing.xs,
+    flexShrink: 0,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  inlineAddButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: radius.lg,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  inlineAddButtonDisabled: {
+    opacity: 0.35,
+    backgroundColor: 'transparent',
+  },
+  inlineAddButtonLabel: {
+    letterSpacing: 0.1,
   },
   articleSheetFixedTop: {
     gap: spacing.md,

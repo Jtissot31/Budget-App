@@ -6,8 +6,8 @@ import {
 } from '@/constants/mockStockPortfolio';
 import { generateIntradaySparkline } from '@/lib/intradayStockSparkline';
 
-/** Enough daily samples for 1A window (365) with headroom. */
-export const PATRIMOINE_MOCK_DAILY_POINT_COUNT = 400;
+/** Enough daily samples for 10A window (3650) with headroom. */
+export const PATRIMOINE_MOCK_DAILY_POINT_COUNT = 3700;
 
 const DAY_LABELS_FR = ['DIM', 'LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM'];
 

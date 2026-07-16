@@ -1,14 +1,36 @@
+import type { CurrencyCode } from '@/lib/settings';
 import type { WealthAsset, WealthMaterial, WealthValuationSource, WealthWeightUnit } from '@/types';
 
 const TROY_OUNCE_IN_GRAMS = 31.1034768;
 
-const FALLBACK_CAD_PER_GRAM: Record<Exclude<WealthMaterial, 'diamond'>, number> = {
-  gold: 150,
-  silver: 1.65,
-  platinum: 48,
+/** Demo spot prices per gram (metals) — used when live market fetch fails or for form auto-fill. */
+const MOCK_SPOT_PER_GRAM: Record<'CAD' | 'USD', Record<Exclude<WealthMaterial, 'diamond'>, number>> = {
+  CAD: {
+    gold: 150,
+    silver: 1.65,
+    platinum: 48,
+  },
+  USD: {
+    gold: 110,
+    silver: 1.2,
+    platinum: 35,
+  },
 };
 
-const FALLBACK_DIAMOND_CAD_PER_CARAT = 4200;
+/** Demo diamond price per carat. */
+const MOCK_DIAMOND_PER_CARAT: Record<'CAD' | 'USD', number> = {
+  CAD: 4200,
+  USD: 3100,
+};
+
+/** Approximate USD→currency multipliers for non CAD/USD display currencies. */
+const USD_TO_CURRENCY: Record<CurrencyCode, number> = {
+  USD: 1,
+  CAD: 1.36,
+  EUR: 0.92,
+  GBP: 0.79,
+  CHF: 0.88,
+};
 
 const MARKET_SYMBOLS: Partial<Record<WealthMaterial, string>> = {
   gold: 'xauusd',
@@ -27,10 +49,40 @@ export type AssetValuationResult = {
 export type AssetValuationInput = Pick<
   WealthAsset,
   'type' | 'material' | 'weight' | 'weightUnit' | 'karats' | 'purity' | 'purchaseCost' | 'currentValue'
->;
+> & {
+  currency?: CurrencyCode;
+};
+
+export type PreciousMetalEstimateInput = {
+  material: WealthMaterial;
+  weight: number;
+  weightUnit?: WealthWeightUnit | null;
+  karats?: number | null;
+  purity?: number | null;
+  currency?: CurrencyCode;
+};
+
+/**
+ * Sync estimate for form auto-fill: weight × mock spot/unit × purity, in display currency.
+ * Metals priced per gram; diamond per carat. Units are converted before applying the table.
+ */
+export function estimatePreciousMetalValueSync(input: PreciousMetalEstimateInput): number {
+  if (!input.weight || input.weight <= 0) return 0;
+
+  const currency = input.currency ?? 'CAD';
+  const purityMultiplier = getPurityMultiplier(input.material, input.karats, input.purity);
+
+  if (input.material === 'diamond') {
+    return roundCurrency(weightToCarats(input.weight, input.weightUnit) * mockDiamondPerCarat(currency));
+  }
+
+  const perGram = mockMetalPerGram(input.material, currency);
+  return roundCurrency(weightToGrams(input.weight, input.weightUnit) * perGram * purityMultiplier);
+}
 
 export async function estimateWealthAssetValue(input: AssetValuationInput): Promise<AssetValuationResult> {
   const now = new Date().toISOString();
+  const currency = input.currency ?? 'CAD';
 
   if (input.type === 'real_estate') {
     return {
@@ -53,7 +105,9 @@ export async function estimateWealthAssetValue(input: AssetValuationInput): Prom
 
   if (input.material === 'diamond') {
     return {
-      currentValue: roundCurrency(weightToCarats(input.weight, input.weightUnit) * FALLBACK_DIAMOND_CAD_PER_CARAT),
+      currentValue: roundCurrency(
+        weightToCarats(input.weight, input.weightUnit) * mockDiamondPerCarat(currency),
+      ),
       source: 'estimate',
       sourceLabel: 'Estimation diamant',
       lastValuationAt: now,
@@ -61,11 +115,11 @@ export async function estimateWealthAssetValue(input: AssetValuationInput): Prom
     };
   }
 
-  const marketRate = await fetchCadPerGram(input.material);
+  const marketRate = await fetchCurrencyPerGram(input.material, currency);
   const source = marketRate ? 'market' : 'estimate';
-  const cadPerGram = marketRate ?? FALLBACK_CAD_PER_GRAM[input.material];
+  const perGram = marketRate ?? mockMetalPerGram(input.material, currency);
   const purityMultiplier = getPurityMultiplier(input.material, input.karats, input.purity);
-  const currentValue = weightToGrams(input.weight, input.weightUnit) * cadPerGram * purityMultiplier;
+  const currentValue = weightToGrams(input.weight, input.weightUnit) * perGram * purityMultiplier;
 
   return {
     currentValue: roundCurrency(currentValue),
@@ -76,14 +130,37 @@ export async function estimateWealthAssetValue(input: AssetValuationInput): Prom
   };
 }
 
-async function fetchCadPerGram(material: Exclude<WealthMaterial, 'diamond'>): Promise<number | null> {
+function mockMetalPerGram(material: Exclude<WealthMaterial, 'diamond'>, currency: CurrencyCode): number {
+  if (currency === 'CAD' || currency === 'USD') {
+    return MOCK_SPOT_PER_GRAM[currency][material];
+  }
+  return MOCK_SPOT_PER_GRAM.USD[material] * USD_TO_CURRENCY[currency];
+}
+
+function mockDiamondPerCarat(currency: CurrencyCode): number {
+  if (currency === 'CAD' || currency === 'USD') {
+    return MOCK_DIAMOND_PER_CARAT[currency];
+  }
+  return MOCK_DIAMOND_PER_CARAT.USD * USD_TO_CURRENCY[currency];
+}
+
+async function fetchCurrencyPerGram(
+  material: Exclude<WealthMaterial, 'diamond'>,
+  currency: CurrencyCode,
+): Promise<number | null> {
   const symbol = MARKET_SYMBOLS[material];
   if (!symbol) return null;
 
   try {
-    const [spotUsd, usdCad] = await Promise.all([fetchStooqSpotUsd(symbol), fetchUsdCad()]);
-    if (!spotUsd || !usdCad) return null;
-    return (spotUsd * usdCad) / TROY_OUNCE_IN_GRAMS;
+    const spotUsd = await fetchStooqSpotUsd(symbol);
+    if (!spotUsd) return null;
+
+    const usdPerGram = spotUsd / TROY_OUNCE_IN_GRAMS;
+    if (currency === 'USD') return usdPerGram;
+
+    const usdToTarget = await fetchUsdToCurrency(currency);
+    if (!usdToTarget) return null;
+    return usdPerGram * usdToTarget;
   } catch {
     return null;
   }
@@ -102,13 +179,19 @@ async function fetchStooqSpotUsd(symbol: string): Promise<number | null> {
   return Number.isFinite(close) && close > 0 ? close : null;
 }
 
-async function fetchUsdCad(): Promise<number | null> {
-  const response = await fetch('https://api.frankfurter.app/latest?from=USD&to=CAD');
-  if (!response.ok) return null;
+async function fetchUsdToCurrency(currency: CurrencyCode): Promise<number | null> {
+  if (currency === 'USD') return 1;
 
-  const json = await response.json();
-  const rate = Number(json?.rates?.CAD);
-  return Number.isFinite(rate) && rate > 0 ? rate : null;
+  try {
+    const response = await fetch(`https://api.frankfurter.app/latest?from=USD&to=${currency}`);
+    if (!response.ok) return null;
+
+    const json = await response.json();
+    const rate = Number(json?.rates?.[currency]);
+    return Number.isFinite(rate) && rate > 0 ? rate : null;
+  } catch {
+    return USD_TO_CURRENCY[currency] ?? null;
+  }
 }
 
 function getPurityMultiplier(material: WealthMaterial, karats?: number | null, purity?: number | null) {

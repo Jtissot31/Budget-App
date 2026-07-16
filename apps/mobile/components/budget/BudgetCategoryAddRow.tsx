@@ -1,5 +1,10 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
+import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
+import {
+  PLAN_FINANCE_CONTAINER,
+  planFinanceContainerPressedStyle,
+} from '@/constants/planFinanceKit';
 import { jakartaSemiboldText, spacing } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
@@ -19,29 +24,28 @@ export function BudgetCategoryAddRow({ onPress }: Props) {
         tapHaptic();
         onPress();
       }}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      style={({ pressed }) => [pressed && planFinanceContainerPressedStyle()]}
     >
-      <View style={styles.mainRow}>
-        <BudgetCategoryIcon variant="add" />
+      <PlanFinanceContainer style={styles.card}>
+        <View style={styles.mainRow}>
+          <BudgetCategoryIcon variant="add" />
 
-        <Text
-          style={[styles.label, jakartaSemiboldText, { color: colors.textSecondary }]}
-          numberOfLines={1}
-        >
-          Ajouter une catégorie
-        </Text>
-      </View>
+          <Text
+            style={[styles.label, jakartaSemiboldText, { color: colors.textSecondary }]}
+            numberOfLines={1}
+          >
+            Ajouter une catégorie
+          </Text>
+        </View>
+      </PlanFinanceContainer>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.lg,
-  },
-  pressed: {
-    opacity: 0.88,
+  card: {
+    alignSelf: 'stretch',
+    padding: PLAN_FINANCE_CONTAINER.padding.row,
   },
   mainRow: {
     flexDirection: 'row',

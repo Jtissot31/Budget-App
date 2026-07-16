@@ -15,7 +15,8 @@ import { AgendaView, type AgendaViewRef } from '@/components/AgendaView';
 import { ContactFormModal } from '@/components/ContactFormModal';
 import { MerchantDirectory } from '@/components/MerchantDirectory';
 import { MerchantEditModal, type MerchantEditTarget } from '@/components/MerchantEditModal';
-import { DashboardCard } from '@/components/DashboardCard';
+import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
+import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
 import { type FormFeedback } from '@/lib/formFeedback';
 import {
   createNewRecurringPaymentForm,
@@ -38,15 +39,13 @@ import {
   colors,
   FLOATING_NAV_CONTENT_PADDING,
   ICON_WELL_SIZE,
-  jakartaSemiboldText,
   PAGE_PADDING_HORIZONTAL,
-  SECTION_TITLE_STYLE,
   radius,
   screenHorizontalGutter,
   spacing,
   typography,
+  typographyKit,
 } from '@/constants/theme';
-import { listDayTotal } from '@/lib/textLayout';
 import { getContacts, getMerchantOverrides, getTransactions, sortTransactionsNewestFirst, getCategories, getCategoryBudgets, getSimulatedAccounts } from '@/lib/db';
 import { ensureDbReady } from '@/lib/init';
 import { isContactTransferTx } from '@/lib/accountTransactionFlow';
@@ -104,7 +103,6 @@ type HistoryDayGroupProps = {
   savingsGoals: readonly { id: string; name: string }[];
   contactPhotoByKey: ReadonlyMap<string, string>;
   merchantOverrideByLabel: ReadonlyMap<string, MerchantOverride>;
-  mutedColor: string;
   horizontalGutter: number;
   onPressTransaction: (transactionId: string) => void;
 };
@@ -116,18 +114,17 @@ const HistoryDayGroup = memo(function HistoryDayGroup({
   savingsGoals,
   contactPhotoByKey,
   merchantOverrideByLabel,
-  mutedColor,
   horizontalGutter,
   onPressTransaction,
 }: HistoryDayGroupProps) {
   return (
     <View style={[styles.group, { paddingHorizontal: horizontalGutter }]}>
       <View style={styles.groupHeaderRow}>
-        <Text style={[styles.groupLabel, { color: mutedColor }]}>
+        <DashboardSectionLabel>
           {new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
-        </Text>
+        </DashboardSectionLabel>
       </View>
-      <DashboardCard padding={0} innerStyle={styles.groupCard}>
+      <PlanFinanceContainer style={styles.groupCard}>
         {txs.map((tx, index) => (
           <TransactionRow
             key={tx.id}
@@ -141,7 +138,7 @@ const HistoryDayGroup = memo(function HistoryDayGroup({
             isLast={index === txs.length - 1}
           />
         ))}
-      </DashboardCard>
+      </PlanFinanceContainer>
     </View>
   );
 });
@@ -446,12 +443,11 @@ export default function TransactionsScreen() {
         savingsGoals={savingsGoals}
         contactPhotoByKey={contactPhotoByKey}
         merchantOverrideByLabel={merchantOverrideMap}
-        mutedColor={colors.textMuted}
         horizontalGutter={contentGutter}
         onPressTransaction={handlePressTransaction}
       />
     ),
-    [colors.textMuted, contactPhotoByKey, contentGutter, handlePressTransaction, merchantOverrideMap, savingsGoals, simulatedAccounts],
+    [contactPhotoByKey, contentGutter, handlePressTransaction, merchantOverrideMap, savingsGoals, simulatedAccounts],
   );
 
   const renderScrollHeader = useCallback(
@@ -526,36 +522,38 @@ export default function TransactionsScreen() {
             }
             ListEmptyComponent={
               <View style={{ paddingHorizontal: contentGutter }}>
-              <DashboardCard padding={spacing.lg} innerStyle={styles.historyEmptyInner}>
-                <View style={[styles.historyEmptyIcon, { backgroundColor: colors.surfaceElevated }]}>
-                  <AppIcon family="ionicons" name="receipt-outline" size={22} color={colors.textMuted} />
-                </View>
-                <Text style={[styles.historyEmptyTitle, { color: colors.text }]}>
-                  {historyHasActiveFilters ? 'Aucun résultat' : 'Aucune transaction'}
-                </Text>
-                <Text style={[styles.historyEmptyHint, { color: colors.textMuted }]}>
-                  {historyHasActiveFilters
-                    ? 'Essaie un autre filtre ou une autre recherche.'
-                    : 'Scanne un reçu pour ajouter ta première transaction.'}
-                </Text>
-                {!historyHasActiveFilters ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => {
-                      tapHaptic();
-                      router.push('/scan');
-                    }}
-                    style={({ pressed }) => [
-                      styles.historyEmptyCta,
-                      { backgroundColor: colors.text, borderColor: colors.text },
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <AppIcon family="ionicons" name="scan-outline" size={16} color={colors.background} />
-                    <Text style={[styles.historyEmptyCtaText, { color: colors.background }]}>Scanner un reçu</Text>
-                  </Pressable>
-                ) : null}
-              </DashboardCard>
+                <PlanFinanceContainer style={styles.historyEmptyInner}>
+                  <View style={[styles.historyEmptyIcon, { backgroundColor: colors.surfaceElevated }]}>
+                    <AppIcon family="ionicons" name="receipt-outline" size={22} color={colors.textMuted} />
+                  </View>
+                  <Text style={[styles.historyEmptyTitle, { color: colors.text }]}>
+                    {historyHasActiveFilters ? 'Aucun résultat' : 'Aucune transaction'}
+                  </Text>
+                  <Text style={[styles.historyEmptyHint, { color: colors.textMuted }]}>
+                    {historyHasActiveFilters
+                      ? 'Essaie un autre filtre ou une autre recherche.'
+                      : 'Scanne un reçu pour ajouter ta première transaction.'}
+                  </Text>
+                  {!historyHasActiveFilters ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => {
+                        tapHaptic();
+                        router.push('/scan');
+                      }}
+                      style={({ pressed }) => [
+                        styles.historyEmptyCta,
+                        { backgroundColor: colors.text, borderColor: colors.text },
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <AppIcon family="ionicons" name="scan-outline" size={16} color={colors.background} />
+                      <Text style={[styles.historyEmptyCtaText, { color: colors.background }]}>
+                        Scanner un reçu
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </PlanFinanceContainer>
               </View>
             }
             renderItem={renderHistoryDayGroup}
@@ -652,7 +650,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     marginTop: spacing.xxl,
-    paddingVertical: spacing.lg,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
   },
   historyEmptyIcon: {
     width: 48,
@@ -705,7 +704,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   group: {
-    marginBottom: 26,
+    marginBottom: spacing.xl,
+    gap: spacing.md,
   },
   groupHeaderRow: {
     flexDirection: 'row',
@@ -713,20 +713,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
     minHeight: UNIFORM_SECTION_HEADER_MIN_HEIGHT,
-    marginBottom: spacing.lg,
     paddingHorizontal: spacing.xs,
-  },
-  groupLabel: {
-    ...jakartaSemiboldText,
-    fontSize: typography.meta,
-    lineHeight: typography.meta + 5,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    flex: 1,
-    minWidth: 0,
-  },
-  groupDayTotal: {
-    ...listDayTotal,
   },
   groupCard: {
     overflow: 'hidden',
@@ -905,7 +892,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   confirmTitle: {
-    ...SECTION_TITLE_STYLE,
+    ...typographyKit.sectionTitle,
     color: colors.text,
     textAlign: 'center',
   },

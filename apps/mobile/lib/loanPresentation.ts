@@ -46,6 +46,16 @@ export function loanTypeBadgeLabel(type: LoanType) {
   return 'Prêt personnel';
 }
 
+function stripTrailingLender(value: string, lender: string): string {
+  const trimmed = value.trim();
+  if (!lender) return trimmed;
+  if (trimmed.localeCompare(lender, 'fr', { sensitivity: 'accent' }) === 0) return '';
+  if (trimmed.toLocaleLowerCase('fr').endsWith(` ${lender.toLocaleLowerCase('fr')}`)) {
+    return trimmed.slice(0, -(lender.length + 1)).trim();
+  }
+  return trimmed;
+}
+
 export function resolveLoanReason(loan: Pick<Loan, 'type' | 'reason' | 'name' | 'lender'>): string {
   const trimmedReason = loan.reason?.trim();
   if (trimmedReason) return trimmedReason;
@@ -58,24 +68,20 @@ export function resolveLoanReason(loan: Pick<Loan, 'type' | 'reason' | 'name' | 
   if (type === 'mortgage') {
     if (name === MORTGAGE_DEFAULT_NAME) return MORTGAGE_DEFAULT_REASON;
     if (name.startsWith(`${typeLabel} `)) {
-      return name.slice(typeLabel.length + 1).trim() || MORTGAGE_DEFAULT_REASON;
+      return (
+        stripTrailingLender(name.slice(typeLabel.length + 1), lender) || MORTGAGE_DEFAULT_REASON
+      );
     }
-    return name || MORTGAGE_DEFAULT_REASON;
+    return stripTrailingLender(name, lender) || MORTGAGE_DEFAULT_REASON;
   }
 
   if (name.startsWith(`${typeLabel} `)) {
-    let remainder = name.slice(typeLabel.length + 1).trim();
-    if (lender && remainder.endsWith(` ${lender}`)) {
-      remainder = remainder.slice(0, -(lender.length + 1)).trim();
-    }
+    const remainder = stripTrailingLender(name.slice(typeLabel.length + 1), lender);
     if (remainder) return remainder;
   }
 
   if (type === 'personal_loan' && name.startsWith('Prêt ')) {
-    let remainder = name.slice('Prêt '.length).trim();
-    if (lender && remainder.endsWith(` ${lender}`)) {
-      remainder = remainder.slice(0, -(lender.length + 1)).trim();
-    }
+    const remainder = stripTrailingLender(name.slice('Prêt '.length), lender);
     if (remainder) return remainder;
   }
 
@@ -88,8 +94,32 @@ export function resolveLoanReason(loan: Pick<Loan, 'type' | 'reason' | 'name' | 
     return name.slice(typeLabel.length + 1).trim();
   }
 
-  if (type !== 'friend_debt' && name && name !== lender) return name;
+  if (type !== 'friend_debt' && name && name !== lender) {
+    const stripped = stripTrailingLender(
+      name.startsWith(`${typeLabel} `) ? name.slice(typeLabel.length + 1) : name,
+      lender,
+    );
+    if (stripped && stripped !== typeLabel) return stripped;
+  }
   return '';
+}
+
+/**
+ * List-row obligation name under a type badge — purpose only
+ * (ex. Maison, Auto, Rénovations). Never repeats type or lender.
+ */
+export function formatLoanObligationName(
+  loan: Pick<Loan, 'type' | 'reason' | 'name' | 'lender'>,
+): string {
+  const type = loan.type ?? 'personal_loan';
+  const reason = resolveLoanReason(loan);
+  if (reason) return reason;
+
+  const lender = loan.lender?.trim() ?? '';
+  if (lender) return lender;
+
+  if (type === 'mortgage') return MORTGAGE_DEFAULT_REASON;
+  return loanTypeLabel(type);
 }
 
 /** `{typeLabel} {reason} {lender?}` with compact personal-loan titles when a reason is set. */
@@ -136,7 +166,10 @@ export function formatLoanDisplayTitle(loan: Pick<Loan, 'type' | 'reason' | 'nam
 
   const parts = [typePart];
   if (reason) parts.push(reason);
-  if (lender) parts.push(lender);
+  // Skip lender when it already is (or equals) the purpose — avoids "Desjardins Desjardins".
+  if (lender && reason.localeCompare(lender, 'fr', { sensitivity: 'accent' }) !== 0) {
+    parts.push(lender);
+  }
   return parts.join(' ');
 }
 

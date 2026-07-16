@@ -9,6 +9,7 @@ import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { jakartaExtraBoldText, PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
 import { useAlertCenter, useAlertCenterSources } from '@/hooks/useAlertCenter';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
+import { alertDetailRouteParams } from '@/lib/alerts';
 import { tapHaptic } from '@/lib/haptics';
 
 const MESSAGES_SCREEN_BG = '#000000';
@@ -72,7 +73,16 @@ export default function AlertCenterScreen() {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <AlertCenterContent items={items} onMarkRead={(item) => void markRead(item)} />
+          <AlertCenterContent
+            items={items}
+            onOpenAlert={(item) => {
+              void markRead(item);
+              router.push({
+                pathname: '/alert-detail',
+                params: alertDetailRouteParams(item),
+              });
+            }}
+          />
         </ScrollView>
       </View>
     </PageTransition>

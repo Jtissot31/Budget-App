@@ -45,6 +45,7 @@ import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
 import {
   accountDetailHeroBlockStyle,
   articlesReceiptTypography,
+  containerSurfaceStyle,
   detailSectionLabelStyle,
   detailSectionsCardStyle,
   detailSubSectionHeaderStyle,
@@ -470,7 +471,10 @@ function hasAttachedReceipt(transaction: Transaction) {
   return Boolean(transaction.receiptUri?.trim() || transaction.receiptStatus);
 }
 
-type DetailCardColors = Pick<AppColors, 'text' | 'textMuted' | 'border' | 'surfaceElevated'>;
+type DetailCardColors = Pick<
+  AppColors,
+  'text' | 'textMuted' | 'textSecondary' | 'border' | 'surfaceElevated' | 'containerBorder'
+>;
 
 function TransactionDetailCard({
   sections,
@@ -489,8 +493,19 @@ function TransactionDetailCard({
   onNotesEditStart?: () => void;
   onNotesFocusEdit?: () => void;
 }) {
+  const { isLight } = useAppTheme();
+  const surface = containerSurfaceStyle(isLight);
   return (
-    <SurfaceCard style={[detailSectionsCardStyle(), { gap: spacing.md }]}>
+    <SurfaceCard
+      style={[
+        detailSectionsCardStyle(),
+        {
+          gap: spacing.md,
+          borderWidth: surface.borderWidth,
+          borderColor: surface.borderColor,
+        },
+      ]}
+    >
       <Text style={[detailSectionLabelStyle(), { color: colors.textMuted }]}>DÉTAILS</Text>
       <DetailSectionsList sections={sections} colors={colors} />
       <View style={styles.notesSection}>
@@ -1067,130 +1082,218 @@ function TransactionReceiptCard({
             backgroundColor: cardFill,
             marginTop: zigzagDepth,
             marginBottom: zigzagDepth,
+            // Vertical outline only — top/bottom stay zigzag (torn-receipt edge)
+            borderLeftWidth: 1,
+            borderRightWidth: 1,
+            borderColor: colors.containerBorder,
           },
         ]}
       >
-      {/* Header: receipt icon + "ARTICLES" eyebrow only */}
-      <View style={styles.receiptHeaderLeft}>
-        <AppIcon family="ionicons" name="receipt-outline" size={12} color={colors.textMuted} />
-        <Text style={[detailSectionLabelStyle(), { color: colors.textMuted }]}>ARTICLES</Text>
+      {/* Header group: eyebrow + caption hint (tight) */}
+      <View style={styles.receiptHeaderBlock}>
+        <View style={styles.receiptHeaderLeft}>
+          <AppIcon family="ionicons" name="receipt-outline" size={12} color={colors.textMuted} />
+          <Text style={[detailSectionLabelStyle(), { color: colors.textMuted }]}>ARTICLES</Text>
+        </View>
+        <Text style={[styles.receiptHeaderHint, typographyKit.microMedium, { color: colors.textSecondary }]}>
+          Attribue chaque montant à une catégorie budgétaire.
+        </Text>
       </View>
 
       {/* Dashed tear-line — receipt paper separation effect */}
       <View style={[styles.receiptTearLine, { borderColor: tearColor }]} />
 
-      {/* Article list — above inline add form when articles exist */}
-      {articles.length > 0 ? (
-        <View style={styles.receiptArticlesBlock}>
-          <View style={styles.receiptTableHead}>
-            <Text style={[detailSubSectionHeaderStyle(), styles.receiptTableHeadLabel, { color: colors.textMuted }]}>
-              Article
-            </Text>
-            <Text style={[detailSubSectionHeaderStyle(), styles.receiptTableHeadAmount, { color: colors.textMuted }]}>
-              Montant
-            </Text>
-            <View style={styles.receiptTableHeadAction} />
-          </View>
-          {articles.map((article, index) => (
-            <View
-              key={`${article.name}-${index}`}
-              style={[
-                styles.receiptArticleRow,
-                index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: rowDivider },
-              ]}
-            >
-              <View style={styles.receiptArticleCopy}>
-                <Text
-                  style={[styles.receiptArticleName, articlesReceiptTypography('regular'), { color: colors.text }]}
-                  numberOfLines={1}
-                >
-                  {article.name}
-                </Text>
-                {article.categoryName ? (
+      {/* Content: article list or empty state (air above) */}
+      <View style={styles.receiptContentBlock}>
+        {articles.length > 0 ? (
+          <View style={styles.receiptArticlesBlock}>
+            <View style={styles.receiptTableHead}>
+              <Text style={[detailSubSectionHeaderStyle(), styles.receiptTableHeadLabel, { color: colors.textMuted }]}>
+                Article
+              </Text>
+              <Text style={[detailSubSectionHeaderStyle(), styles.receiptTableHeadAmount, { color: colors.textMuted }]}>
+                Montant
+              </Text>
+              <View style={styles.receiptTableHeadAction} />
+            </View>
+            {articles.map((article, index) => (
+              <View
+                key={`${article.name}-${index}`}
+                style={[
+                  styles.receiptArticleRow,
+                  index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: rowDivider },
+                ]}
+              >
+                <View style={styles.receiptArticleCopy}>
                   <Text
-                    style={[styles.receiptArticleCategory, articlesReceiptTypography('regular'), { color: colors.textMuted }]}
+                    style={[styles.receiptArticleName, typographyKit.rowTitle, { color: colors.text }]}
                     numberOfLines={1}
                   >
-                    {article.categoryName}
+                    {article.name}
                   </Text>
-                ) : null}
+                  {article.categoryName ? (
+                    <Text
+                      style={[styles.receiptArticleCategory, typographyKit.microMedium, { color: colors.textMuted }]}
+                      numberOfLines={1}
+                    >
+                      {article.categoryName}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={[styles.receiptArticlePrice, articlesReceiptTypography('medium'), { color: colors.text }]}>
+                  {formatDisplayMoneyAbsolute(article.price)}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Retirer ${article.name}`}
+                  hitSlop={8}
+                  onPress={() => onRemoveArticle(index)}
+                  style={({ pressed }) => [styles.receiptArticleRemoveBtn, pressed && styles.pressed]}
+                >
+                  <AppIcon family="ionicons" name="close" size={13} color={colors.textMuted} />
+                </Pressable>
               </View>
-              <Text style={[styles.receiptArticlePrice, articlesReceiptTypography('medium'), { color: colors.text }]}>
-                {formatDisplayMoneyAbsolute(article.price)}
-              </Text>
+            ))}
+            {total > 0 ? (
+              <View style={[styles.receiptArticleTotalRow, { borderTopColor: tearColor }]}>
+                <Text style={[styles.receiptArticleTotalLabel, typographyKit.microUpper, { color: colors.textMuted }]}>
+                  TOTAL
+                </Text>
+                <Text style={[styles.receiptArticleTotalValue, articlesReceiptTypography('medium'), { color: colors.text }]}>
+                  {formatDisplayMoneyAbsolute(total)}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ) : !inlineArticleExpanded ? (
+          <Text style={[styles.receiptEmptyText, typographyKit.metaMedium, { color: colors.textMuted }]}>
+            Aucun article
+          </Text>
+        ) : null}
+
+        {inlineArticleExpanded ? (
+          <View
+            ref={inlineArticleFormRef}
+            style={[
+              styles.receiptInlineFormWrap,
+              articles.length > 0 && styles.receiptInlineFormWrapBelowArticles,
+              articles.length > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: rowDivider },
+            ]}
+          >
+            <AddArticleSheet
+              variant="inline"
+              visible={inlineArticleExpanded}
+              maxArticlePrice={maxArticlePrice}
+              scrollToOffset={onInlineArticleScrollToOffset}
+              onInlineScrollTargetChange={onInlineArticleScrollTargetChange}
+              onNameFocusChange={onInlineArticleNameFocusChange}
+              onContentLayout={onInlineArticleContentLayout}
+              onAdd={onInlineArticleAdd}
+              onClose={onCloseInlineArticle}
+            />
+          </View>
+        ) : null}
+      </View>
+
+      {/* Actions: primary Ajouter, then quieter scan / attachment */}
+      {!inlineArticleExpanded ? (
+        <View style={styles.receiptActionsBlock}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Ajouter un article"
+            onPress={onOpenInlineArticle}
+            style={({ pressed }) => [
+              styles.receiptJoinButton,
+              { borderColor: ghostBorder },
+              pressed && styles.pressed,
+            ]}
+          >
+            <AppIcon family="ionicons" name="add-outline" size={15} color={colors.text} />
+            <Text style={[styles.receiptJoinButtonText, typographyKit.captionSemibold, { color: colors.text }]}>
+              Ajouter
+            </Text>
+          </Pressable>
+
+          {!receiptLabel ? (
+            <View style={styles.receiptScanBlock}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Retirer ${article.name}`}
-                hitSlop={8}
-                onPress={() => onRemoveArticle(index)}
-                style={({ pressed }) => [styles.receiptArticleRemoveBtn, pressed && styles.pressed]}
+                accessibilityLabel="Scan automatique des articles"
+                accessibilityState={{ expanded: scanSourcePickerOpen }}
+                onPress={() => {
+                  tapHaptic();
+                  setScanSourcePickerOpen((open) => !open);
+                }}
+                style={({ pressed }) => [
+                  styles.receiptScanButton,
+                  pressed && styles.pressed,
+                ]}
               >
-                <AppIcon family="ionicons" name="close" size={13} color={colors.textMuted} />
+                <AppIcon family="ionicons" name="scan-outline" size={14} color={colors.textSecondary} />
+                <View style={styles.receiptScanCopy}>
+                  <Text style={[styles.receiptScanLabel, typographyKit.metaMedium, { color: colors.textSecondary }]}>
+                    Scan automatique des articles
+                  </Text>
+                  <Text style={[styles.receiptScanHint, typographyKit.microMedium, { color: colors.textMuted }]}>
+                    Galerie ou caméra
+                  </Text>
+                </View>
+                <AppIcon family="ionicons"
+                  name={scanSourcePickerOpen ? 'chevron-up' : 'chevron-down'}
+                  size={13}
+                  color={colors.textMuted}
+                />
               </Pressable>
-            </View>
-          ))}
-          {total > 0 ? (
-            <View style={[styles.receiptArticleTotalRow, { borderTopColor: tearColor }]}>
-              <Text style={[styles.receiptArticleTotalLabel, articlesReceiptTypography('medium'), { color: colors.textMuted }]}>
-                TOTAL
-              </Text>
-              <Text style={[styles.receiptArticleTotalValue, articlesReceiptTypography('medium'), { color: colors.text }]}>
-                {formatDisplayMoneyAbsolute(total)}
-              </Text>
+              {scanSourcePickerOpen ? (
+                <View style={styles.receiptScanSourceRow}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Galerie"
+                    onPress={() => {
+                      tapHaptic();
+                      setScanSourcePickerOpen(false);
+                      onScanArticles('gallery');
+                    }}
+                    style={({ pressed }) => [
+                      styles.receiptScanSourceOption,
+                      { borderColor: ghostBorder },
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <AppIcon family="ionicons" name="images-outline" size={14} color={colors.textSecondary} />
+                    <Text style={[styles.receiptScanSourceLabel, typographyKit.metaMedium, { color: colors.textSecondary }]}>
+                      Galerie
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Caméra"
+                    onPress={() => {
+                      tapHaptic();
+                      setScanSourcePickerOpen(false);
+                      onScanArticles('camera');
+                    }}
+                    style={({ pressed }) => [
+                      styles.receiptScanSourceOption,
+                      { borderColor: ghostBorder },
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <AppIcon family="ionicons" name="camera-outline" size={14} color={colors.textSecondary} />
+                    <Text style={[styles.receiptScanSourceLabel, typographyKit.metaMedium, { color: colors.textSecondary }]}>
+                      Caméra
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
             </View>
           ) : null}
         </View>
-      ) : !inlineArticleExpanded ? (
-        <Text style={[styles.receiptEmptyText, articlesReceiptTypography('regular'), { color: colors.textMuted }]}>
-          Aucun article
-        </Text>
       ) : null}
 
-      {inlineArticleExpanded ? (
-        <View
-          ref={inlineArticleFormRef}
-          style={[
-            styles.receiptInlineFormWrap,
-            articles.length > 0 && styles.receiptInlineFormWrapBelowArticles,
-            articles.length > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: rowDivider },
-          ]}
-        >
-          <AddArticleSheet
-            variant="inline"
-            visible={inlineArticleExpanded}
-            maxArticlePrice={maxArticlePrice}
-            scrollToOffset={onInlineArticleScrollToOffset}
-            onInlineScrollTargetChange={onInlineArticleScrollTargetChange}
-            onNameFocusChange={onInlineArticleNameFocusChange}
-            onContentLayout={onInlineArticleContentLayout}
-            onAdd={onInlineArticleAdd}
-            onClose={onCloseInlineArticle}
-          />
-        </View>
-      ) : null}
-
-      {!inlineArticleExpanded ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Ajouter un article"
-          onPress={onOpenInlineArticle}
-          style={({ pressed }) => [
-            styles.receiptJoinButton,
-            { borderColor: ghostBorder },
-            pressed && styles.pressed,
-          ]}
-        >
-          <AppIcon family="ionicons" name="add-outline" size={14} color={colors.textMuted} />
-          <Text style={[styles.receiptJoinButtonText, typographyKit.metaMedium, { color: colors.textMuted }]}>
-            Ajouter
-          </Text>
-        </Pressable>
-      ) : null}
-
-      {/* Receipt attachment section */}
       {receiptLabel ? (
-        <>
-          <View style={[styles.receiptTearLine, { borderColor: tearColor }]} />
+        <View style={styles.receiptAttachmentBlock}>
+          <View style={[styles.receiptTearLine, { borderColor: tearColor, marginTop: 0 }]} />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={canPreviewReceipt ? 'Voir le reçu' : receiptLabel}
@@ -1224,79 +1327,6 @@ function TransactionReceiptCard({
               <AppIcon family="ionicons" name="chevron-forward" size={15} color={colors.textMuted} />
             ) : null}
           </Pressable>
-        </>
-      ) : !inlineArticleExpanded ? (
-        <View style={styles.receiptScanBlock}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Scan automatique des articles"
-            accessibilityState={{ expanded: scanSourcePickerOpen }}
-            onPress={() => {
-              tapHaptic();
-              setScanSourcePickerOpen((open) => !open);
-            }}
-            style={({ pressed }) => [
-              styles.receiptScanButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <AppIcon family="ionicons" name="scan-outline" size={16} color={colors.textMuted} />
-            <View style={styles.receiptScanCopy}>
-              <Text style={[styles.receiptScanLabel, typographyKit.bodyMedium, { color: colors.text }]}>
-                Scan automatique des articles
-              </Text>
-              <Text style={[styles.receiptScanHint, typographyKit.microMedium, { color: colors.textMuted }]}>
-                Galerie ou caméra
-              </Text>
-            </View>
-            <AppIcon family="ionicons"
-              name={scanSourcePickerOpen ? 'chevron-up' : 'chevron-down'}
-              size={15}
-              color={colors.textMuted}
-            />
-          </Pressable>
-          {scanSourcePickerOpen ? (
-            <View style={styles.receiptScanSourceRow}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Galerie"
-                onPress={() => {
-                  tapHaptic();
-                  setScanSourcePickerOpen(false);
-                  onScanArticles('gallery');
-                }}
-                style={({ pressed }) => [
-                  styles.receiptScanSourceOption,
-                  { borderColor: ghostBorder },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <AppIcon family="ionicons" name="images-outline" size={16} color={colors.text} />
-                <Text style={[styles.receiptScanSourceLabel, typographyKit.metaMedium, { color: colors.text }]}>
-                  Galerie
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Caméra"
-                onPress={() => {
-                  tapHaptic();
-                  setScanSourcePickerOpen(false);
-                  onScanArticles('camera');
-                }}
-                style={({ pressed }) => [
-                  styles.receiptScanSourceOption,
-                  { borderColor: ghostBorder },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <AppIcon family="ionicons" name="camera-outline" size={16} color={colors.text} />
-                <Text style={[styles.receiptScanSourceLabel, typographyKit.metaMedium, { color: colors.text }]}>
-                  Caméra
-                </Text>
-              </Pressable>
-            </View>
-          ) : null}
         </View>
       ) : null}
       </View>
@@ -2350,8 +2380,9 @@ const styles = StyleSheet.create({
   },
   receiptCardBody: {
     paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
     paddingBottom: spacing.lg,
-    gap: spacing.md,
+    gap: 0,
     overflow: 'visible' as const,
   },
   receiptZigzag: {
@@ -2366,14 +2397,33 @@ const styles = StyleSheet.create({
     right: 0,
     height: 1.5,
   },
+  receiptHeaderBlock: {
+    gap: 2,
+  },
   receiptHeaderLeft: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: spacing.xs,
   },
+  receiptHeaderHint: {
+    lineHeight: 15,
+  },
   receiptTearLine: {
     borderTopWidth: 1,
     borderStyle: 'dashed' as const,
+    marginTop: spacing.sm,
+  },
+  receiptContentBlock: {
+    marginTop: spacing.md,
+    gap: 0,
+  },
+  receiptActionsBlock: {
+    marginTop: spacing.md,
+    gap: spacing.sm,
+  },
+  receiptAttachmentBlock: {
+    marginTop: spacing.md,
+    gap: spacing.sm,
   },
   receiptInlineFormWrap: {
     marginTop: -spacing.xs,
@@ -2384,7 +2434,7 @@ const styles = StyleSheet.create({
     marginTop: 0,
   },
   noteBody: {
-    ...typographyKit.body,
+    ...typographyKit.caption,
   },
   receiptAttachmentRow: {
     flexDirection: 'row' as const,
@@ -2413,12 +2463,12 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     gap: spacing.sm,
-    minHeight: 38,
+    minHeight: 40,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
   },
   receiptJoinButtonText: {
-    letterSpacing: 0.2,
+    letterSpacing: 0.15,
   },
   receiptScanBlock: {
     gap: spacing.xs,
@@ -2427,7 +2477,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: 2,
   },
   receiptScanCopy: {
     flex: 1,
@@ -2435,14 +2485,15 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   receiptScanLabel: {
-    letterSpacing: 0.1,
+    letterSpacing: 0.05,
   },
   receiptScanHint: {
-    letterSpacing: 0.15,
+    letterSpacing: 0.1,
   },
   receiptScanSourceRow: {
     flexDirection: 'row' as const,
     gap: spacing.sm,
+    marginTop: spacing.xs,
   },
   receiptScanSourceOption: {
     flex: 1,
@@ -2450,14 +2501,14 @@ const styles = StyleSheet.create({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     gap: spacing.xs,
-    minHeight: 42,
+    minHeight: 36,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   receiptScanSourceLabel: {
-    letterSpacing: 0.15,
+    letterSpacing: 0.1,
   },
   receiptPreviewBackdrop: {
     flex: 1,
@@ -2553,14 +2604,10 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   receiptArticleName: {
-    fontSize: 13,
-    letterSpacing: 0.3,
-    lineHeight: 18,
+    letterSpacing: -0.1,
   },
   receiptArticleCategory: {
-    fontSize: 10,
-    letterSpacing: 0.4,
-    lineHeight: 14,
+    letterSpacing: 0.2,
   },
   receiptArticlePrice: {
     fontSize: 13,
@@ -2585,19 +2632,15 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   receiptArticleTotalLabel: {
-    fontSize: 10,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 1.2,
+    letterSpacing: 0.8,
   },
   receiptArticleTotalValue: {
     fontSize: 13,
     letterSpacing: 0.4,
   },
   receiptEmptyText: {
-    fontSize: 12,
     textAlign: 'center' as const,
-    paddingVertical: spacing.md,
-    letterSpacing: 0.4,
+    paddingVertical: spacing.sm,
   },
   receiptStatusLabel: {
     lineHeight: 18,

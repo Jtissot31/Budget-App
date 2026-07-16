@@ -1,9 +1,15 @@
 import { StyleSheet } from 'react-native';
-import { interMediumText, interRegularText, interSemiboldText, spacing } from '@/constants/theme';
+import {
+  DARK_CANVAS,
+  interMediumText,
+  interRegularText,
+  interSemiboldText,
+  spacing,
+} from '@/constants/theme';
 
 /** Palette dédiée écran détail plan (Wealthsimple-inspired). */
 export const PLAN_DETAIL = {
-  background: '#0E0E10',
+  background: DARK_CANVAS,
   surface: '#111111',
   accent: '#4ADE80',
   accentMuted: 'rgba(74, 222, 128, 0.15)',
