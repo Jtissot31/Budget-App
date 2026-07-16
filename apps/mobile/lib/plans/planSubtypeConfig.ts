@@ -37,7 +37,7 @@ export const PLAN_SITUATIONS: readonly PlanSituation[] = [
   {
     id: 'sortir_dettes',
     label: 'Te sortir de tes dettes',
-    subtypes: ['dette_individuelle', 'snowball', 'avalanche', 'consolidation', 'marge_credit'],
+    subtypes: ['dette_individuelle', 'snowball', 'avalanche', 'bombe_nucleaire', 'consolidation', 'marge_credit'],
   },
   {
     id: 'fructifier_argent',
@@ -157,6 +157,12 @@ export const PLAN_SUBTYPE_CONFIGS: Record<PlanSubtype, PlanSubtypeConfig> = {
     'Priorise les dettes au taux d’intérêt le plus élevé pour minimiser le coût total du remboursement.',
     'Surplus dirigé vers la dette la plus coûteuse en intérêts.',
     ['Minimise les intérêts totaux.', 'Approche mathématiquement optimale.', 'Accélère la liberté financière.'],
+  ),
+  bombe_nucleaire: buildConfig(
+    'bombe_nucleaire',
+    'Utilise un montant important en une seule fois — bonus, épargne au-delà du coussin d’urgence ou vente d’actif — pour éliminer ou réduire drastiquement une dette cible.',
+    'Paiement massif unique sur la dette la plus coûteuse ou celle qui libère le plus de cashflow.',
+    ['Coupe nettement les intérêts sur la cible.', 'Crée un élan psychologique fort.', 'Libère des paiements minimums rapidement.'],
   ),
   consolidation: buildConfig(
     'consolidation',

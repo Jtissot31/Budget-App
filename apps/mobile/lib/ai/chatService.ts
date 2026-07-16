@@ -10,17 +10,53 @@ import {
   messageBlocksToPlainText,
   parseMessageBlocks,
   stripCodeFromAssistantText,
+  suppressDuplicateActionProse,
 } from './messageBlocks';
+
+import {
+  buildPlanSuggestionsIntro,
+} from '@/lib/plans/planRecommendationEngine';
+
+import {
+  buildPlanGoalChoiceIntro,
+  buildPlanGoalChoiceState,
+  buildPlanGoalConfirmedIntro,
+  buildPlanSuggestionsForGoal,
+  detectPlanGoal,
+  isPlanGoalFollowUpMessage,
+  isVaguePlanRequest,
+  parsePlanGoalFromText,
+  type ChatPlanGoalChoice,
+  type PlanGoal,
+} from '@/lib/plans/planGoalClarification';
 
 import type { ActivityPhase } from './activityPhases';
 
 import { loadEncryptedJson, removeEncryptedItem, saveEncryptedJson } from './encryptedStorage';
 
-import { getAnthropicApiKey } from './env';
+import { getAnthropicApiKey, getGeminiApiKey, isFynChatApiKeyConfigured } from './env';
 
-import { loadRFA, regenerateRFA } from './rfaService';
+import { GeminiApiError, generateGeminiChat } from './geminiClient';
 
-import { resolveDataMode, sanitizeForAI } from './sanitizeForAI';
+import { loadRFA, regenerateRFA, saveRFA } from './rfaService';
+
+import {
+  buildHeuristicRFA,
+  buildRFAInputFromAppData,
+  resolveDataMode,
+  sanitizeForAI,
+} from './sanitizeForAI';
+
+import {
+  getChatSessionContext,
+  invalidateChatSessionCache,
+  isChatSessionContextCached,
+  setChatSessionContext,
+} from './chatSession';
+
+import { readChatImageAttachment } from './imageAttachment';
+
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 
 import type {
 
@@ -31,6 +67,8 @@ import type {
   ChatImageAttachment,
 
   ChatMessage,
+
+  ChatPlanSuggestions,
 
   ChatQuotaState,
 
@@ -46,7 +84,11 @@ const CHAT_QUOTA_KEY = 'bt_ai_chat_quota_v1';
 
 const MAX_HISTORY_MESSAGES = 50;
 
-const MONTHLY_MESSAGE_LIMIT = 180;
+/** Recent turns sent to the model — full history stays persisted locally. */
+const MAX_API_HISTORY_MESSAGES = 12;
+
+// Prompt revision 3 — short FR replies + plain text; clear warm cache on module reload.
+invalidateChatSessionCache();
 
 
 
@@ -110,6 +152,12 @@ function createMessageId(role: ChatMessage['role']): string {
 
 }
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+}
+
 
 
 function buildWidgetCapabilitiesSection(): string {
@@ -127,7 +175,8 @@ function buildWidgetCapabilitiesSection(): string {
     'WIDGETS STRUCTURÉS (UI génératif) :',
     'Pour montants, pourcentages, tableaux de dettes, comparaisons, projections et graphiques, produis un bloc JSON widget AU LIEU de tableaux markdown.',
     'Types disponibles : progress_card, debt_table, comparison_card, alert_card, line_chart, bar_chart, allocation_chart.',
-    'Le texte conversationnel reste en prose ; les widgets sont des blocs JSON séparés (```json``` ou objet standalone), parsés par l\'app — jamais affichés bruts.',
+    'Place chaque widget dans son propre bloc JSON (objet standalone ou ```json```) — JAMAIS dans la prose, JAMAIS tronqué, JAMAIS visible pour l\'utilisateur.',
+    'Le texte conversationnel reste en prose courte ; les widgets sont des blocs JSON séparés parsés par l\'app.',
     'Les widgets peuvent coexister avec le bloc action JSON (champ "action") — ne pas mélanger les formats.',
     '',
     'Quand utiliser un graphique :',
@@ -151,6 +200,32 @@ function buildWidgetCapabilitiesSection(): string {
     '',
     'Exemples :',
     ...examples.map((example) => `- ${example}`),
+  ].join('\n');
+}
+
+function buildResponseStyleSection(): string {
+  return [
+    'STYLE DE RÉPONSE (prioritaire — respecte STRICTEMENT) :',
+    '- Langue : FRANÇAIS par défaut. Anglais UNIQUEMENT si le message de l\'utilisateur est en anglais.',
+    '- LONGUEUR MAX : 4 à 6 phrases courtes, OU au plus 3 puces. Jamais un mur de texte, jamais une analyse multiparagraphe.',
+    '- Structure : 1ère phrase = la réponse / recommandation directe. Puis détail minimal si besoin.',
+    '- TEXTE BRUT UNIQUEMENT. Interdit absolument : markdown (###, ##, #, **, __, *, `, ```), titres, gras, italique, listes numérotées longues.',
+    '- INTERDIT ABSOLU : afficher du JSON, du code, ou des blocs `{ "type": ... }` dans le texte visible — même partiellement.',
+    '- Les widgets et actions passent UNIQUEMENT dans des blocs JSON séparés parsés par l\'app (jamais mélangés à la prose).',
+    '- Pas de préambule (« Based on your profile… », « D\'après ton profil… »), pas de récapitulatif complet de la situation.',
+    '- Pas de plan en 3+ étapes sauf si l\'utilisateur demande explicitement un plan détaillé / étape par étape.',
+    '- Ton Fyn : chaleureux, actionnable, concis — jamais sec ni condescendant.',
+    '- Chiffres, tableaux et graphiques → widgets JSON séparés ; le texte visible reste minimal.',
+  ].join('\n');
+}
+
+function buildPlanFinancierGuidanceSection(): string {
+  return [
+    'DEMANDES « PLAN FINANCIER » / « GENERATE A PLAN » :',
+    '- Réponse = 1 phrase courte d\'intro + widgets (debt_table, progress_card, comparison_card) si pertinent + bloc action JSON si modification.',
+    '- Ne jamais rédiger un plan multiparagraphe dans le texte — l\'app affiche des cartes de plan et widgets structurés.',
+    '- Exemple bon : « Voici un plan priorisé pour tes dettes. » + debt_table JSON + éventuellement action modifier_priorite_dette.',
+    '- Exemple mauvais : 3 paragraphes d\'analyse + `{ "type": "debt_table", ...` visible dans le texte.',
   ].join('\n');
 }
 
@@ -212,6 +287,12 @@ function buildActionCapabilitiesSection(): string {
 
     '- Toujours inclure confirmation en français, claire et courte.',
 
+    '- Quand tu émets un bloc action JSON : le texte visible = UNE phrase courte max (contexte ou recommandation), sans répéter la question de confirmation — la carte d\'action affiche déjà le CTA.',
+
+    '- Exemple bon : prose « Bonne idée pour sécuriser tes dépenses. » + action JSON confirmation « Créer l\'objectif Fonds d\'urgence (10 000 $)? »',
+
+    '- Exemple mauvais : prose « Veux-tu que je crée l\'objectif Fonds d\'urgence de 10 000 $? » + la même question dans confirmation.',
+
     '- Pour modifier_* : inclure id OU nom/libellé/nom_original pour identifier l\'entité.',
 
     '- Montants en nombres (pas de symbole $ dans le JSON).',
@@ -234,6 +315,42 @@ function buildActionCapabilitiesSection(): string {
 
 
 
+const STATIC_FYN_SYSTEM_PREFIX = [
+
+  'Tu es Fyn, un conseiller financier personnel intégré dans une app de finances personnelles canadienne.',
+
+  'Tu as accès au profil financier complet et anonymisé de l\'utilisateur ci-dessous.',
+
+  '',
+
+  'RÈGLES ABSOLUES :',
+
+  '- Ne jamais demander le nom, email ou informations personnelles de l\'utilisateur',
+
+  '- Adapter ton registre au profil détecté (simple pour débutant, technique pour utilisateur avancé)',
+
+  '- Être direct, honnête, jamais condescendant',
+
+  '',
+
+  buildResponseStyleSection(),
+
+  '',
+
+  buildPlanFinancierGuidanceSection(),
+
+  '',
+
+  buildActionCapabilitiesSection(),
+
+  '',
+
+  buildWidgetCapabilitiesSection(),
+
+].join('\n');
+
+
+
 function buildSystemPrompt(rfa: FinancialSummaryAnonymous, dataMode: 'plaid' | 'manual'): string {
 
   const manualRule =
@@ -248,21 +365,7 @@ function buildSystemPrompt(rfa: FinancialSummaryAnonymous, dataMode: 'plaid' | '
 
   return [
 
-    'Tu es Fyn, un conseiller financier personnel intégré dans une app de finances personnelles canadienne.',
-
-    'Tu as accès au profil financier complet et anonymisé de l\'utilisateur ci-dessous.',
-
-    '',
-
-    'RÈGLES ABSOLUES :',
-
-    '- Ne jamais demander le nom, email ou informations personnelles de l\'utilisateur',
-
-    '- Toujours répondre dans la langue de l\'utilisateur (FR / EN / ES)',
-
-    '- Adapter ton registre au profil détecté (simple pour débutant, technique pour utilisateur avancé)',
-
-    '- Être direct, honnête, jamais condescendant',
+    STATIC_FYN_SYSTEM_PREFIX,
 
     manualRule,
 
@@ -271,14 +374,6 @@ function buildSystemPrompt(rfa: FinancialSummaryAnonymous, dataMode: 'plaid' | '
     '- Si une question dépasse tes capacités (légal, fiscal complexe), recommander un professionnel',
 
     '- Ne jamais inclure de JSON, code ou blocs techniques dans le texte visible. Les actions passent uniquement via le bloc JSON interne parsé par l\'app.',
-
-    '',
-
-    buildActionCapabilitiesSection(),
-
-    '',
-
-    buildWidgetCapabilitiesSection(),
 
     '',
 
@@ -346,12 +441,13 @@ export function parseActionsFromResponse(text: string): {
 
 
 
-  const plainFromBlocks = messageBlocksToPlainText(blocks);
+  const dedupedBlocks = actions.length > 0 ? suppressDuplicateActionProse(blocks, actions) : blocks;
+  const plainFromBlocks = messageBlocksToPlainText(dedupedBlocks);
 
   return {
-    cleanText: plainFromBlocks || stripCodeFromAssistantText(text),
+    cleanText: plainFromBlocks || (actions.length > 0 ? '' : stripCodeFromAssistantText(text)),
     actions,
-    blocks,
+    blocks: dedupedBlocks,
   };
 
 }
@@ -440,7 +536,7 @@ async function executeTextConfirmation(
 
     quota,
 
-    offlineMode: !getAnthropicApiKey(),
+    offlineMode: false,
 
   };
 
@@ -472,6 +568,100 @@ export async function clearChatHistory(): Promise<void> {
 
   await removeEncryptedItem(CHAT_QUOTA_KEY);
 
+  invalidateChatSessionCache();
+
+}
+
+
+
+async function resolveRfaForChat(): Promise<FinancialSummaryAnonymous> {
+
+  const existing = await loadRFA();
+
+  if (existing) return existing;
+
+
+
+  const input = await buildRFAInputFromAppData();
+
+  const heuristic = buildHeuristicRFA(input);
+
+  await saveRFA(heuristic);
+
+
+
+  void regenerateRFA({ reason: 'initial_setup' }).then(() => {
+
+    invalidateChatSessionCache();
+
+  });
+
+
+
+  return heuristic;
+
+}
+
+
+
+async function getChatContext(): Promise<{
+
+  systemPrompt: string;
+
+  rfa: FinancialSummaryAnonymous;
+
+  dataMode: 'plaid' | 'manual';
+
+}> {
+
+  const cached = getChatSessionContext();
+
+  if (cached) return cached;
+
+
+
+  const [rfa, dataMode] = await Promise.all([resolveRfaForChat(), resolveDataMode()]);
+
+  const context = {
+
+    systemPrompt: buildSystemPrompt(rfa, dataMode),
+
+    rfa,
+
+    dataMode,
+
+  };
+
+  setChatSessionContext(context);
+
+  return context;
+
+}
+
+
+
+/** Pre-warm RFA + system prompt so the first send skips cold-start DB work. */
+
+export async function warmChatContext(): Promise<void> {
+
+  await getChatContext();
+
+}
+
+
+
+export { invalidateChatSessionCache };
+
+
+
+function trimHistoryForApi(history: ChatMessage[]): ChatMessage[] {
+
+  return history
+
+    .filter((message) => message.role === 'user' || message.role === 'assistant')
+
+    .slice(-MAX_API_HISTORY_MESSAGES);
+
 }
 
 
@@ -492,7 +682,7 @@ export async function getChatQuotaState(): Promise<ChatQuotaState> {
 
       messagesThisMonth: 0,
 
-      monthlyLimit: MONTHLY_MESSAGE_LIMIT,
+      monthlyLimit: 0,
 
       tokensUsedEstimate: 0,
 
@@ -512,7 +702,7 @@ export async function getChatQuotaState(): Promise<ChatQuotaState> {
 
       messagesThisMonth: 0,
 
-      monthlyLimit: MONTHLY_MESSAGE_LIMIT,
+      monthlyLimit: 0,
 
       tokensUsedEstimate: 0,
 
@@ -528,11 +718,11 @@ export async function getChatQuotaState(): Promise<ChatQuotaState> {
 
     messagesThisMonth: withMonth.messagesThisMonth,
 
-    monthlyLimit: MONTHLY_MESSAGE_LIMIT,
+    monthlyLimit: 0,
 
     tokensUsedEstimate: withMonth.tokensUsedEstimate,
 
-    warningThresholdReached: withMonth.messagesThisMonth >= MONTHLY_MESSAGE_LIMIT * 0.85,
+    warningThresholdReached: false,
 
   };
 
@@ -552,11 +742,11 @@ async function incrementQuota(userText: string, assistantText: string): Promise<
 
     messagesThisMonth: current.messagesThisMonth + 1,
 
-    monthlyLimit: MONTHLY_MESSAGE_LIMIT,
+    monthlyLimit: 0,
 
     tokensUsedEstimate: current.tokensUsedEstimate + Math.ceil((userText.length + assistantText.length) / 4),
 
-    warningThresholdReached: current.messagesThisMonth + 1 >= MONTHLY_MESSAGE_LIMIT * 0.85,
+    warningThresholdReached: false,
 
     monthKey,
 
@@ -570,69 +760,21 @@ async function incrementQuota(userText: string, assistantText: string): Promise<
 
 
 
-function buildDemoActionForMessage(userText: string): ChatAction | null {
+function buildGeminiFailureReply(error: unknown): string {
+  const detail =
+    error instanceof GeminiApiError
+      ? error.userMessage
+      : error instanceof Error
+        ? error.message
+        : null;
 
-  const normalized = userText.toLowerCase();
-
-  if (normalized.includes('objectif') && (normalized.includes('cré') || normalized.includes('cre') || normalized.includes('ajout'))) {
-
-    return {
-
-      action: 'creer_objectif',
-
-      params: { nom: 'Vacances', montant_cible: 5000, montant_actuel: 0 },
-
-      confirmation: "Créer l'objectif Vacances (5 000 $)?",
-
-    };
-
-  }
-
-  if (normalized.includes('transaction') || normalized.includes('facture') || normalized.includes('dépense') || normalized.includes('depense')) {
-
-    return {
-
-      action: 'creer_transaction',
-
-      params: {
-
-        libelle: 'Dépense démo',
-
-        montant: 42.5,
-
-        type: 'depense',
-
-        date: new Date().toISOString().slice(0, 10),
-
-      },
-
-      confirmation: 'Enregistrer la dépense démo (42,50 $)?',
-
-    };
-
-  }
-
-  if (normalized.includes('compte') && (normalized.includes('cré') || normalized.includes('cre') || normalized.includes('ajout'))) {
-
-    return {
-
-      action: 'creer_compte',
-
-      params: { nom: 'Compte démo', type: 'cheque', solde: 0 },
-
-      confirmation: 'Créer le compte démo?',
-
-    };
-
-  }
-
-  return null;
-
+  return detail
+    ? `Je n'ai pas pu joindre Gemini (${detail}). Réessaie dans un instant.`
+    : "Je n'ai pas pu joindre Gemini pour le moment. Réessaie dans un instant.";
 }
 
-
-
-function buildOfflineAssistantReply(
+/** Local RFA-based reply when no API key is configured (offline demo mode). */
+function buildLocalFallbackReply(
 
   userText: string,
 
@@ -653,8 +795,6 @@ function buildOfflineAssistantReply(
 
 
   const normalized = userText.toLowerCase();
-
-  const demoAction = buildDemoActionForMessage(userText);
 
 
 
@@ -708,28 +848,181 @@ function buildOfflineAssistantReply(
 
 
 
-  const intro = [
+  return `${prefix}${rfa.analyse} Pose-moi une question sur ton budget, tes dettes ou tes objectifs.`;
 
-    'Mode démo — configure EXPO_PUBLIC_ANTHROPIC_API_KEY pour activer Fyn.',
+}
 
-    rfa.analyse,
+function isDebtFocusedPlanRequest(userText: string): boolean {
+  const normalized = userText
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 
-    'Pose-moi une question sur ton budget, tes dettes ou tes objectifs.',
+  return /\b(dette|dettes|rembours|rembourser|desendett|snowball|avalanche)\b/.test(normalized);
+}
 
-  ].join(' ');
+function isFinancialPlanRequest(userText: string): boolean {
+  const normalized = userText
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 
-
-
-  if (demoAction) {
-
-    return `${intro}\n\n${JSON.stringify(demoAction)}`;
-
+  if (/\b(plan\s*financier|financial\s*plan|money\s*plan)\b/.test(normalized)) {
+    return true;
   }
 
+  return (
+    /\b(generer|generat|create|creer|propose|suggest|build|make|elaborer|bâtir|batir)\b.*\bplan\b/.test(
+      normalized,
+    ) || /\bplan\b.*\b(financier|financial|budget|dette|epargne|épargne)\b/.test(normalized)
+  );
+}
 
+function buildDebtTableWidget(rfa: FinancialSummaryAnonymous): import('@/types/aiWidgets').AIWidgetData | null {
+  if (!rfa.dettes.length) return null;
 
-  return intro;
+  return {
+    type: 'debt_table',
+    label: 'Dettes actives',
+    rows: rfa.dettes.slice(0, 4).map((debt) => ({
+      name: debt.institution,
+      balance: formatDisplayMoneyAbsolute(debt.solde),
+      rate: `${debt.tauxInteret.toFixed(1)} %`,
+      payment: formatDisplayMoneyAbsolute(debt.paiementMinimum),
+    })),
+    total: {
+      label: 'Total',
+      balance: formatDisplayMoneyAbsolute(rfa.dettes.reduce((sum, debt) => sum + debt.solde, 0)),
+      payment: formatDisplayMoneyAbsolute(
+        rfa.dettes.reduce((sum, debt) => sum + debt.paiementMinimum, 0),
+      ),
+    },
+  };
+}
 
+async function buildPlanFinancierChatReply(
+  rfa: FinancialSummaryAnonymous,
+  userText: string,
+  goalOverride?: PlanGoal,
+): Promise<{
+  content: string;
+  blocks: import('@/types/aiWidgets').MessageBlock[];
+  planSuggestions?: ChatPlanSuggestions;
+  planGoalChoice?: ChatPlanGoalChoice;
+}> {
+  const explicitGoal = goalOverride ?? detectPlanGoal(userText);
+  const vagueRequest = isVaguePlanRequest(userText) && !goalOverride;
+
+  if (vagueRequest && !explicitGoal) {
+    const goalChoice = await buildPlanGoalChoiceState(rfa);
+    const intro = buildPlanGoalChoiceIntro({
+      suggested: goalChoice.suggested,
+      reason: goalChoice.reason,
+    });
+
+    return {
+      content: intro,
+      blocks: [{ type: 'text', content: intro }],
+      planGoalChoice: goalChoice,
+    };
+  }
+
+  const goal = explicitGoal ?? 'debt_repayment';
+  const summary = buildPlanGoalConfirmedIntro(goal);
+  const suggestions = await buildPlanSuggestionsForGoal(rfa, goal);
+  const intro =
+    suggestions.length > 0
+      ? summary
+      : buildPlanSuggestionsIntro(0);
+
+  const blocks: import('@/types/aiWidgets').MessageBlock[] = [{ type: 'text', content: intro }];
+
+  if (goal === 'debt_repayment') {
+    const debtWidget = buildDebtTableWidget(rfa);
+    if (debtWidget) {
+      blocks.push(debtWidget);
+    }
+  }
+
+  return {
+    content: intro,
+    blocks,
+    planSuggestions: {
+      suggestions,
+      intro,
+      frozen: false,
+      confirmedIds: [],
+    },
+  };
+}
+
+function findPendingPlanGoalChoice(history: ChatMessage[]): ChatMessage | null {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const message = history[index];
+    if (message.role === 'assistant' && message.planGoalChoice && !message.planGoalChoice.frozen) {
+      return message;
+    }
+    if (message.role === 'user') break;
+  }
+  return null;
+}
+
+async function executePlanGoalFollowUp(
+  trimmed: string,
+  history: ChatMessage[],
+  pendingMessage: ChatMessage,
+  rfa: FinancialSummaryAnonymous,
+  completedPhases: ActivityPhase[],
+): Promise<SendChatMessageResult> {
+  const pendingChoice = pendingMessage.planGoalChoice!;
+  const goal = parsePlanGoalFromText(trimmed, pendingChoice.suggested, pendingChoice.options);
+
+  if (!goal) {
+    throw new Error('Plan goal not recognized');
+  }
+
+  const userMessage: ChatMessage = {
+    id: createMessageId('user'),
+    role: 'user',
+    content: trimmed,
+    createdAt: new Date().toISOString(),
+  };
+
+  const planReply = await buildPlanFinancierChatReply(rfa, trimmed, goal);
+
+  const assistantMessage: ChatMessage = {
+    id: createMessageId('assistant'),
+    role: 'assistant',
+    content: planReply.content,
+    blocks: planReply.blocks,
+    planSuggestions: planReply.planSuggestions,
+    createdAt: new Date().toISOString(),
+    activityPhases: completedPhases.length > 0 ? completedPhases : undefined,
+  };
+
+  const updatedHistory = history.map((message) =>
+    message.id === pendingMessage.id
+      ? {
+          ...message,
+          planGoalChoice: {
+            ...pendingChoice,
+            frozen: true,
+            confirmedGoal: goal,
+          },
+        }
+      : message,
+  );
+
+  const nextHistory = [...updatedHistory, userMessage, assistantMessage];
+  await saveChatHistory(nextHistory);
+  const quota = await incrementQuota(trimmed, assistantMessage.content);
+
+  return {
+    userMessage,
+    assistantMessage,
+    quota,
+    offlineMode: false,
+  };
 }
 
 
@@ -758,6 +1051,54 @@ type AnthropicMessage = {
 
 
 
+async function callGemini(
+
+  systemPrompt: string,
+
+  history: ChatMessage[],
+
+  userText: string,
+
+  image?: ChatImageAttachment,
+
+  onToken?: (accumulated: string, delta: string) => void,
+
+  signal?: AbortSignal,
+
+): Promise<string> {
+
+  const chatHistory = trimHistoryForApi(history).map((message) => ({
+
+    role: message.role as 'user' | 'assistant',
+
+    content: message.content,
+
+  }));
+
+
+
+  return generateGeminiChat({
+
+    systemInstruction: systemPrompt,
+
+    history: chatHistory,
+
+    userText,
+
+    image: image ? { base64: image.base64, mediaType: image.mediaType } : undefined,
+
+    maxOutputTokens: 768,
+
+    onToken,
+
+    signal,
+
+  });
+
+}
+
+
+
 async function callClaude(
 
   systemPrompt: string,
@@ -767,6 +1108,8 @@ async function callClaude(
   userText: string,
 
   image?: ChatImageAttachment,
+
+  signal?: AbortSignal,
 
 ): Promise<string | null> {
 
@@ -778,17 +1121,13 @@ async function callClaude(
 
   const messages: AnthropicMessage[] = [
 
-    ...history
+    ...trimHistoryForApi(history).map((message) => ({
 
-      .filter((message) => message.role === 'user' || message.role === 'assistant')
+      role: message.role,
 
-      .map((message) => ({
+      content: message.content,
 
-        role: message.role,
-
-        content: message.content,
-
-      })),
+    })),
 
   ];
 
@@ -840,13 +1179,15 @@ async function callClaude(
 
       model: ANTHROPIC_MODEL,
 
-      max_tokens: 1024,
+      max_tokens: 384,
 
       system: systemPrompt,
 
       messages,
 
     }),
+
+    signal,
 
   });
 
@@ -879,6 +1220,10 @@ export type SendChatMessageOptions = {
   imageUri?: string;
 
   onActivity?: (phase: ActivityPhase) => void;
+
+  onToken?: (accumulated: string, delta: string) => void;
+
+  signal?: AbortSignal;
 
 };
 
@@ -922,21 +1267,43 @@ export async function sendChatMessage(
 
   };
 
+  const signal = options?.signal;
+
+  throwIfAborted(signal);
+
   const completedPhases: ActivityPhase[] = [];
 
+  const coldContext = !isChatSessionContextCached();
+
+  if (coldContext) {
+
+    emitActivity('analyse_finances');
+
+  }
 
 
-  emitActivity('analyse_finances');
 
-  const [history, rfaExisting, dataMode] = await Promise.all([
+  const imageReadPromise =
+
+    options?.imageUri && getGeminiApiKey()
+
+      ? readChatImageAttachment(options.imageUri).catch(() => undefined)
+
+      : Promise.resolve(options?.image);
+
+
+
+  const [history, context, imageAttachment] = await Promise.all([
 
     loadChatHistory(),
 
-    loadRFA(),
+    getChatContext(),
 
-    resolveDataMode(),
+    imageReadPromise,
 
   ]);
+
+  throwIfAborted(signal);
 
 
 
@@ -950,11 +1317,13 @@ export async function sendChatMessage(
 
 
 
-  const rfa = rfaExisting ?? (await regenerateRFA({ reason: 'initial_setup' }));
+  if (coldContext) {
 
-  completedPhases.push('analyse_finances');
+    completedPhases.push('analyse_finances');
 
-  const systemPrompt = buildSystemPrompt(rfa, dataMode);
+  }
+
+  const { systemPrompt, rfa, dataMode } = context;
 
 
 
@@ -976,19 +1345,129 @@ export async function sendChatMessage(
 
   let assistantRaw: string;
 
+  let usedLocalFallback = false;
+
   emitActivity('reflexion');
 
-  if (!getAnthropicApiKey()) {
+  const pendingPlanGoal = findPendingPlanGoalChoice(history);
+  if (pendingPlanGoal) {
+    throwIfAborted(signal);
+    completedPhases.push('reflexion');
+    emitActivity('analyse');
+    return executePlanGoalFollowUp(trimmed, history, pendingPlanGoal, rfa, completedPhases);
+  }
 
-    assistantRaw = buildOfflineAssistantReply(trimmed, rfa, dataMode);
+  if (isFinancialPlanRequest(trimmed)) {
+    throwIfAborted(signal);
+    const planReply = await buildPlanFinancierChatReply(rfa, trimmed);
+    completedPhases.push('reflexion');
+    emitActivity('analyse');
+
+    const assistantMessage: ChatMessage = {
+      id: createMessageId('assistant'),
+      role: 'assistant',
+      content: planReply.content,
+      blocks: planReply.blocks,
+      planSuggestions: planReply.planSuggestions,
+      planGoalChoice: planReply.planGoalChoice,
+      createdAt: new Date().toISOString(),
+      activityPhases: completedPhases.length > 0 ? completedPhases : undefined,
+    };
+
+    const nextHistory = [...history, userMessage, assistantMessage];
+    await saveChatHistory(nextHistory);
+    const quota = await incrementQuota(trimmed, assistantMessage.content);
+
+    return {
+      userMessage,
+      assistantMessage,
+      quota,
+      offlineMode: false,
+    };
+  }
+
+  if (isPlanGoalFollowUpMessage(trimmed)) {
+    throwIfAborted(signal);
+    const goal = detectPlanGoal(trimmed);
+    if (goal) {
+      const planReply = await buildPlanFinancierChatReply(rfa, trimmed, goal);
+      completedPhases.push('reflexion');
+      emitActivity('analyse');
+
+      const assistantMessage: ChatMessage = {
+        id: createMessageId('assistant'),
+        role: 'assistant',
+        content: planReply.content,
+        blocks: planReply.blocks,
+        planSuggestions: planReply.planSuggestions,
+        createdAt: new Date().toISOString(),
+        activityPhases: completedPhases.length > 0 ? completedPhases : undefined,
+      };
+
+      const nextHistory = [...history, userMessage, assistantMessage];
+      await saveChatHistory(nextHistory);
+      const quota = await incrementQuota(trimmed, assistantMessage.content);
+
+      return {
+        userMessage,
+        assistantMessage,
+        quota,
+        offlineMode: false,
+      };
+    }
+  }
+
+  if (getGeminiApiKey()) {
+
+    try {
+
+      assistantRaw = await callGemini(
+
+        systemPrompt,
+
+        history,
+
+        trimmed,
+
+        imageAttachment,
+
+        options?.onToken,
+
+        signal,
+
+      );
+
+    } catch (error) {
+
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+
+      assistantRaw = buildGeminiFailureReply(error);
+
+    }
+
+  } else if (getAnthropicApiKey()) {
+
+    const fromClaude = await callClaude(systemPrompt, history, trimmed, imageAttachment, signal);
+
+    if (fromClaude) {
+
+      assistantRaw = fromClaude;
+
+    } else {
+
+      assistantRaw = buildLocalFallbackReply(trimmed, rfa, dataMode);
+
+      usedLocalFallback = true;
+
+    }
 
   } else {
 
-    assistantRaw =
+    assistantRaw = buildLocalFallbackReply(trimmed, rfa, dataMode);
 
-      (await callClaude(systemPrompt, history, trimmed, options?.image)) ??
-
-      buildOfflineAssistantReply(trimmed, rfa, dataMode);
+    usedLocalFallback = true;
 
   }
 
@@ -996,17 +1475,11 @@ export async function sendChatMessage(
 
 
 
-  emitActivity('analyse');
-
   const { cleanText, actions, blocks } = parseActionsFromResponse(assistantRaw);
 
   const hasWidgets = blocks.some((block) => block.type !== 'text');
 
-  completedPhases.push('analyse');
 
-
-
-  emitActivity('redaction');
 
   const assistantMessage: ChatMessage = {
 
@@ -1014,19 +1487,19 @@ export async function sendChatMessage(
 
     role: 'assistant',
 
-    content: cleanText || 'Je n\'ai pas pu formuler de réponse.',
+    content: cleanText || (actions.length > 0 ? '' : 'Je n\'ai pas pu formuler de réponse.'),
 
-    blocks: hasWidgets ? blocks : undefined,
+    blocks: hasWidgets || (actions.length > 0 && blocks.some((block) => block.type === 'text'))
+      ? blocks
+      : undefined,
 
     createdAt: new Date().toISOString(),
 
     actions: actions.length > 0 ? actions : undefined,
 
-    activityPhases: [...completedPhases, 'redaction'],
+    activityPhases: completedPhases.length > 0 ? completedPhases : undefined,
 
   };
-
-  completedPhases.push('redaction');
 
 
 
@@ -1046,7 +1519,7 @@ export async function sendChatMessage(
 
     quota,
 
-    offlineMode: !getAnthropicApiKey(),
+    offlineMode: usedLocalFallback && !isFynChatApiKeyConfigured(),
 
   };
 

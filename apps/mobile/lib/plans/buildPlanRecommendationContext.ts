@@ -20,6 +20,13 @@ export type PlanRecommendationContext = {
   depense_discretionnaire_tendance: 'hausse' | 'stable' | 'baisse';
   mois_consecutifs_depense_hausse: number;
   nombre_abonnements_recurrents: number;
+  dette_totale: number;
+  /** Liquidités au-delà d'environ 1 mois de dépenses — candidat bombe nucléaire. */
+  liquidites_excedentaires: number;
+  /** Marge de crédit active dans le profil de dettes. */
+  a_marge_credit_active: boolean;
+  /** Dettes dominent — prioriser remboursement / cashflow, pas l'investissement. */
+  contexte_dette_lourde: boolean;
   activePlanSubtypes: ReadonlySet<PlanSubtype>;
   revenu_mensuel_net: number;
   depenses_mensuelles: number;
@@ -96,6 +103,15 @@ export function buildPlanRecommendationContext(
   const discretionaryTrend: PlanRecommendationContext['depense_discretionnaire_tendance'] =
     savingsRate < 0 ? 'hausse' : savingsRate < 5 ? 'hausse' : 'stable';
 
+  const detteTotale = rfa.dettes.reduce((sum, debt) => sum + debt.solde, 0);
+  const situationStressante =
+    rfa.profil.situationGlobale === 'critique' || rfa.profil.situationGlobale === 'tendue';
+  const contexteDetteLourde =
+    rfa.dettes.length >= 1 &&
+    (situationStressante ||
+      detteTotale >= Math.max(revenu * 3, 3_000) ||
+      (liquidites > 0 && detteTotale > liquidites * 1.5));
+
   return {
     couverture_mois: liquidites / depenses,
     plan_epargne_actif: planEpargneActif,
@@ -113,6 +129,10 @@ export function buildPlanRecommendationContext(
     depense_discretionnaire_tendance: discretionaryTrend,
     mois_consecutifs_depense_hausse: discretionaryTrend === 'hausse' ? 3 : 0,
     nombre_abonnements_recurrents: rfa.abonnementsDetectes.length,
+    dette_totale: detteTotale,
+    liquidites_excedentaires: Math.max(0, liquidites - depenses),
+    a_marge_credit_active: rfa.dettes.some((debt) => debt.type === 'marge'),
+    contexte_dette_lourde: contexteDetteLourde,
     activePlanSubtypes: activeSubtypes,
     revenu_mensuel_net: revenu,
     depenses_mensuelles: rfa.profil.depensesMensuellesMoyennes,

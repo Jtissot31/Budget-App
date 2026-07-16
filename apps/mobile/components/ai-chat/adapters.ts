@@ -1,7 +1,21 @@
 import type { ChatAction } from '@/lib/ai/types';
-import { messageBlocksToPlainText, parseMessageBlocks, stripCodeFromAssistantText } from '@/lib/ai/messageBlocks';
-import type { AlertCardData } from '@/types/aiWidgets';
+import {
+  messageBlocksToPlainText,
+  parseMessageBlocks,
+  stripCodeFromAssistantText,
+  stripMarkdownForChatDisplay,
+  suppressDuplicateActionProse,
+} from '@/lib/ai/messageBlocks';
+import type { AlertCardData, MessageBlock } from '@/types/aiWidgets';
 import type { AIChatUiAction, AIChatUiMessage } from './types';
+
+function sanitizeAssistantBlocks(blocks: MessageBlock[]): MessageBlock[] {
+  return blocks.map((block) =>
+    block.type === 'text'
+      ? { ...block, content: stripMarkdownForChatDisplay(block.content) }
+      : block,
+  );
+}
 
 export function createUiActionsFromChatActions(actions: ChatAction[], messageId: string): AIChatUiAction[] {
   return actions.map((action, index) => ({
@@ -20,8 +34,10 @@ export function aiMessageToUiMessage(message: {
   blocks?: import('@/types/aiWidgets').MessageBlock[];
   imageUri?: string;
   activityPhases?: import('@/lib/ai/activityPhases').ActivityPhase[];
+  planSuggestions?: import('@/lib/ai/types').ChatPlanSuggestions;
+  planGoalChoice?: import('@/lib/plans/planGoalClarification').ChatPlanGoalChoice;
 }): AIChatUiMessage {
-  const blocks =
+  const rawBlocks =
     message.role === 'assistant'
       ? message.blocks?.length
         ? message.blocks
@@ -30,11 +46,26 @@ export function aiMessageToUiMessage(message: {
           : undefined
       : undefined;
 
+  const dedupedBlocks =
+    message.role === 'assistant' && message.actions?.length && rawBlocks?.length
+      ? suppressDuplicateActionProse(rawBlocks, message.actions)
+      : rawBlocks;
+
+  const blocks =
+    message.role === 'assistant' && dedupedBlocks?.length
+      ? sanitizeAssistantBlocks(dedupedBlocks)
+      : dedupedBlocks;
+
+  const strippedContent =
+    message.role === 'assistant' ? stripCodeFromAssistantText(message.content) : message.content;
+
   const text =
     message.role === 'assistant'
       ? blocks?.length
-        ? messageBlocksToPlainText(blocks) || stripCodeFromAssistantText(message.content)
-        : stripCodeFromAssistantText(message.content)
+        ? messageBlocksToPlainText(blocks) || (message.actions?.length ? '' : strippedContent)
+        : message.actions?.length
+          ? ''
+          : strippedContent
       : message.content;
 
   return {
@@ -48,6 +79,8 @@ export function aiMessageToUiMessage(message: {
       ? createUiActionsFromChatActions(message.actions, message.id)
       : undefined,
     activityPhases: message.activityPhases,
+    planSuggestions: message.planSuggestions,
+    planGoalChoice: message.planGoalChoice,
   };
 }
 

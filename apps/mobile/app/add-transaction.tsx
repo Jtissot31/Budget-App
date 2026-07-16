@@ -334,6 +334,7 @@ export default function AddTransactionScreen() {
   const articlesSectionYRef = useRef(0);
   const inlineArticleLocalYRef = useRef(0);
   const lastAutocompleteScrollKeyRef = useRef('');
+  const labelInputFocusedRef = useRef(false);
   const pendingIncomeContactScrollRef = useRef(false);
 
   const merchantSuggestions = useMemo(() => {
@@ -940,6 +941,8 @@ export default function AddTransactionScreen() {
             return;
           }
         }
+        // Income: keep sheet scrolled to top so "Nouveau revenu" stays visible on open.
+        if (type === 'income') return;
         labelInputRef.current?.focus();
       }, 180);
     });
@@ -1034,7 +1037,7 @@ export default function AddTransactionScreen() {
   // When autocomplete suggestions appear while the keyboard is open, scroll the
   // sheet so the suggestion list stays visible above the keyboard.
   useEffect(() => {
-    if (!hasNameSuggestions) {
+    if (!hasNameSuggestions || !labelInputFocusedRef.current) {
       lastAutocompleteScrollKeyRef.current = '';
       return;
     }
@@ -1603,6 +1606,12 @@ export default function AddTransactionScreen() {
                         return;
                       }
                       setLabel(value);
+                    }}
+                    onFocus={() => {
+                      labelInputFocusedRef.current = true;
+                    }}
+                    onBlur={() => {
+                      labelInputFocusedRef.current = false;
                     }}
                     returnKeyType={type === 'income' ? 'next' : 'done'}
                     blurOnSubmit={type === 'income'}

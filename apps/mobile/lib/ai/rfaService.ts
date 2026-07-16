@@ -1,4 +1,4 @@
-import { getGeminiApiKey } from './env';
+import { generateGeminiContent } from './geminiClient';
 import {
   buildHeuristicRFA,
   buildRFAInputFromAppData,
@@ -6,6 +6,7 @@ import {
   sanitizeForAI,
 } from './sanitizeForAI';
 import { loadEncryptedJson, removeEncryptedItem, saveEncryptedJson } from './encryptedStorage';
+import { invalidateChatSessionCache } from './chatSession';
 import type { FinancialSummaryAnonymous, RfaRegenerationTrigger } from './types';
 
 const RFA_STORAGE_KEY = 'bt_ai_rfa_v1';
@@ -13,9 +14,6 @@ const RFA_LAST_GENERATED_KEY = 'bt_ai_rfa_last_generated_v1';
 
 const REGENERATION_THROTTLE_MS = 24 * 60 * 60 * 1000;
 const BALANCE_DELTA_THRESHOLD = 500;
-
-const GEMINI_MODEL = 'gemini-2.5-flash';
-const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 let cachedRfa: FinancialSummaryAnonymous | null = null;
 
@@ -36,6 +34,7 @@ export async function saveRFA(rfa: FinancialSummaryAnonymous): Promise<void> {
   cachedRfa = rfa;
   await saveEncryptedJson(RFA_STORAGE_KEY, rfa);
   await saveEncryptedJson(RFA_LAST_GENERATED_KEY, { generatedAt: rfa.generatedAt });
+  invalidateChatSessionCache();
 }
 
 export async function clearRFA(): Promise<void> {
@@ -58,27 +57,13 @@ function buildGeminiPrompt(input: Awaited<ReturnType<typeof buildRFAInputFromApp
 async function callGeminiForRFA(
   input: Awaited<ReturnType<typeof buildRFAInputFromAppData>>,
 ): Promise<FinancialSummaryAnonymous | null> {
-  const apiKey = getGeminiApiKey();
-  if (!apiKey) return null;
-
-  const response = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: buildGeminiPrompt(input) }] }],
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: 'application/json',
-      },
-    }),
+  const text = await generateGeminiContent({
+    prompt: buildGeminiPrompt(input),
+    temperature: 0.2,
+    maxOutputTokens: 2048,
+    responseMimeType: 'application/json',
   });
 
-  if (!response.ok) return null;
-
-  const payload = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-  const text = payload.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) return null;
 
   try {

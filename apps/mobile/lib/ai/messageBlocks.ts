@@ -1,3 +1,4 @@
+import type { ChatAction } from '@/lib/ai/types';
 import {
   AI_WIDGET_TYPES,
   type AIWidgetData,
@@ -17,6 +18,8 @@ const WIDGET_TYPE_REGEX = new RegExp(
 );
 
 const ACTION_KEY_REGEX = /"action"\s*:/;
+const STRUCTURED_JSON_LEAD_REGEX = /^\{\s*"(?:type|action)"\s*:/;
+const INCOMPLETE_FENCE_TAIL_REGEX = /```[\w-]*\s*\n?[\s\S]*$/;
 
 function isWidgetType(value: string): value is AIWidgetType {
   return WIDGET_TYPE_SET.has(value);
@@ -163,18 +166,104 @@ function stripSpan(text: string, start: number, end: number): string {
   return `${text.slice(0, start)}${text.slice(end)}`;
 }
 
-function cleanTextSegment(segment: string): string {
-  let result = stripFencedCodeBlocks(segment);
+function looksLikeStructuredJsonFragment(fragment: string): boolean {
+  const trimmed = fragment.trimStart();
+  if (!trimmed.startsWith('{')) return false;
+  return (
+    STRUCTURED_JSON_LEAD_REGEX.test(trimmed) ||
+    WIDGET_TYPE_REGEX.test(trimmed) ||
+    ACTION_KEY_REGEX.test(trimmed)
+  );
+}
+
+/**
+ * Hide trailing JSON/widget/action blocks that are still streaming or truncated.
+ * Safe to call on every token — only strips unbalanced structured tails.
+ */
+export function stripIncompleteStructuredJson(text: string): string {
+  let result = text.replace(INCOMPLETE_FENCE_TAIL_REGEX, '');
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+
+    for (let index = result.length - 1; index >= 0; index -= 1) {
+      if (result[index] !== '{') continue;
+
+      const extracted = extractBalancedJsonObject(result, index);
+      if (extracted) continue;
+
+      const tail = result.slice(index);
+      if (!looksLikeStructuredJsonFragment(tail)) continue;
+
+      result = result.slice(0, index);
+      changed = true;
+      break;
+    }
+  }
+
+  return result;
+}
+
+/** Remove balanced widget/action JSON spans from prose — including invalid widget payloads. */
+function stripStructuredJsonFromProse(text: string): string {
+  let result = stripFencedCodeBlocks(text);
 
   for (const block of findActionJsonBlocks(result)) {
     result = result.split(block).join('');
   }
 
-  for (const block of findWidgetJsonBlocks(result)) {
-    result = result.split(block).join('');
+  const spans = [...findBalancedJsonSpans(result)].sort((a, b) => b.start - a.start);
+  for (const span of spans) {
+    if (WIDGET_TYPE_REGEX.test(span.json)) {
+      result = stripSpan(result, span.start, span.end);
+    }
   }
 
+  return stripIncompleteStructuredJson(result);
+}
+
+/**
+ * Strip markdown the ChatBubble does not render, so users never see raw ### / ** etc.
+ * Keeps plain bullet lines (- / •). Safe to call repeatedly (incl. while streaming).
+ */
+export function stripMarkdownForChatDisplay(text: string): string {
+  if (!text) return text;
+
+  let result = text.replace(/\r\n/g, '\n');
+
+  // Incomplete or complete fenced blocks (streaming-safe)
+  result = result.replace(/```[\w-]*\s*\n?[\s\S]*?```/g, '');
+  result = result.replace(/```[\w-]*\s*\n?/g, '');
+
+  // ATX headers: ### Title → Title (space optional)
+  result = result.replace(/^\s{0,3}#{1,6}[ \t]*/gm, '');
+
+  // Bold / strong — no /s flag (Hermes-safe)
+  result = result.replace(/\*\*([^*]+)\*\*/g, '$1');
+  result = result.replace(/__([^_]+)__/g, '$1');
+
+  // Italic *phrase* only (do not strip single _ — breaks FR / snake_case)
+  result = result.replace(/(^|[^\w*])\*([^*\n]+)\*(?!\*)/g, '$1$2');
+
+  // Inline code, strikethrough, markdown links
+  result = result.replace(/`([^`\n]+)`/g, '$1');
+  result = result.replace(/~~([^~]+)~~/g, '$1');
+  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1');
+
+  // Horizontal rules
+  result = result.replace(/^\s*([-*_]){3,}\s*$/gm, '');
+
+  // Orphan markers that still leak as raw symbols (keep single # for « priorité #1 »)
+  result = result.replace(/#{2,6}/g, '');
+  result = result.replace(/\*\*/g, '');
+  result = result.replace(/__/g, '');
+
   return collapseExtraBlankLines(result);
+}
+
+function cleanTextSegment(segment: string): string {
+  return stripMarkdownForChatDisplay(collapseExtraBlankLines(stripStructuredJsonFromProse(segment)));
 }
 
 export function parseMessageBlocks(text: string): MessageBlock[] {
@@ -221,16 +310,124 @@ export function messageBlocksToPlainText(blocks: MessageBlock[]): string {
     .trim();
 }
 
+function normalizeComparableText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s$]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenSet(value: string): Set<string> {
+  return new Set(
+    normalizeComparableText(value)
+      .split(' ')
+      .filter((token) => token.length > 2),
+  );
+}
+
+function tokenOverlapRatio(a: string, b: string): number {
+  const tokensA = tokenSet(a);
+  const tokensB = tokenSet(b);
+  if (tokensA.size === 0 || tokensB.size === 0) return 0;
+
+  let shared = 0;
+  for (const token of tokensA) {
+    if (tokensB.has(token)) shared += 1;
+  }
+
+  return shared / Math.min(tokensA.size, tokensB.size);
+}
+
+/** True when visible prose repeats an action card confirmation CTA. */
+export function isProseDuplicateOfActionConfirmation(prose: string, confirmation: string): boolean {
+  const normalizedProse = normalizeComparableText(prose);
+  const normalizedConfirmation = normalizeComparableText(confirmation);
+  if (!normalizedProse || !normalizedConfirmation) return false;
+  if (normalizedProse === normalizedConfirmation) return true;
+
+  const shorter =
+    normalizedProse.length <= normalizedConfirmation.length ? normalizedProse : normalizedConfirmation;
+  const longer =
+    normalizedProse.length <= normalizedConfirmation.length ? normalizedConfirmation : normalizedProse;
+
+  if (shorter.length >= 12 && longer.includes(shorter)) return true;
+  if (tokenOverlapRatio(prose, confirmation) >= 0.72) return true;
+
+  return false;
+}
+
+/**
+ * When action cards carry the CTA, drop prose that repeats the same question.
+ * Keeps short non-duplicative context (e.g. one intro sentence).
+ */
+export function suppressDuplicateActionProse(
+  blocks: MessageBlock[],
+  actions: ChatAction[],
+): MessageBlock[] {
+  if (!actions.length) return blocks;
+
+  const confirmations = actions.map((action) => action.confirmation).filter(Boolean);
+  if (!confirmations.length) return blocks;
+
+  const filtered: MessageBlock[] = [];
+
+  for (const block of blocks) {
+    if (block.type !== 'text') {
+      filtered.push(block);
+      continue;
+    }
+
+    const trimmed = block.content.trim();
+    if (!trimmed) continue;
+
+    const duplicateConfirmation = confirmations.some((confirmation) =>
+      isProseDuplicateOfActionConfirmation(trimmed, confirmation),
+    );
+    if (duplicateConfirmation) continue;
+
+    const sentences = trimmed.split(/(?<=[.!?…])\s+/).map((sentence) => sentence.trim()).filter(Boolean);
+    if (sentences.length <= 1) {
+      filtered.push(block);
+      continue;
+    }
+
+    const nonDuplicateSentences = sentences.filter(
+      (sentence) =>
+        !confirmations.some((confirmation) => isProseDuplicateOfActionConfirmation(sentence, confirmation)),
+    );
+
+    if (!nonDuplicateSentences.length) continue;
+    if (nonDuplicateSentences.length === sentences.length) {
+      filtered.push(block);
+      continue;
+    }
+
+    filtered.push({ type: 'text', content: nonDuplicateSentences.join(' ') });
+  }
+
+  return filtered;
+}
+
 export function stripCodeFromAssistantText(text: string): string {
-  let result = stripFencedCodeBlocks(text);
+  return stripMarkdownForChatDisplay(collapseExtraBlankLines(stripStructuredJsonFromProse(text)));
+}
 
-  for (const block of findActionJsonBlocks(result)) {
-    result = result.split(block).join('');
-  }
+/** Streaming-safe display: parsed widgets + prose with all JSON stripped (incl. partial). */
+export function buildStreamingAssistantDisplay(partial: string): {
+  text: string;
+  blocks?: MessageBlock[];
+} {
+  const blocks = parseMessageBlocks(partial);
+  const text = messageBlocksToPlainText(blocks) || stripCodeFromAssistantText(partial);
+  const displayBlocks = blocks.filter(
+    (block) => block.type !== 'text' || block.content.trim().length > 0,
+  );
 
-  for (const block of findWidgetJsonBlocks(result)) {
-    result = result.split(block).join('');
-  }
-
-  return collapseExtraBlankLines(result);
+  return {
+    text,
+    blocks: displayBlocks.length > 0 ? displayBlocks : undefined,
+  };
 }

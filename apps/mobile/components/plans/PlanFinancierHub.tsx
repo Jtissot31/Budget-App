@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -23,7 +23,12 @@ import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { dataEvents } from '@/lib/events';
 import type { Plan, PlanActifOuTermine, PlanSuggere } from '@/lib/plans/Plan';
 import { buildTemplateDetailParams } from '@/lib/plans/planCreateNavigation';
-import { loadPlanHubSnapshot, selectPlansForMainHub } from '@/lib/plans/planHubData';
+import {
+  enrichPlanHubSuggestions,
+  loadPlanHubStoredPlans,
+  loadPlanHubSuggestions,
+  selectPlansForMainHub,
+} from '@/lib/plans/planHubData';
 
 /** Active/paused only when any exist; otherwise suggestions only — never mixed. */
 function plansForHubCarousel(activePlans: PlanActifOuTermine[], suggestions: PlanSuggere[]): Plan[] {
@@ -36,14 +41,50 @@ export function PlanFinancierHub() {
   const insets = useSafeAreaInsets();
   const [listPlans, setListPlans] = useState<PlanActifOuTermine[]>([]);
   const [suggestedPlans, setSuggestedPlans] = useState<PlanSuggere[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const enrichGenerationRef = useRef(0);
 
-  const loadPlans = useCallback(async () => {
-    const snapshot = await loadPlanHubSnapshot();
-    setListPlans(selectPlansForMainHub(snapshot.listPlans) as PlanActifOuTermine[]);
-    setSuggestedPlans(snapshot.suggestedPlans);
+  const applyStoredPlans = useCallback((storedPlans: Plan[]) => {
+    setListPlans(selectPlansForMainHub(storedPlans) as PlanActifOuTermine[]);
   }, []);
+
+  const loadStoredPlans = useCallback(async () => {
+    const storedPlans = await loadPlanHubStoredPlans();
+    applyStoredPlans(storedPlans);
+    return storedPlans;
+  }, [applyStoredPlans]);
+
+  const loadSuggestions = useCallback(async () => {
+    const suggestions = await loadPlanHubSuggestions({ skipEnrichment: true });
+    setSuggestedPlans(suggestions);
+
+    if (suggestions.length === 0) return suggestions;
+
+    const generation = enrichGenerationRef.current + 1;
+    enrichGenerationRef.current = generation;
+
+    void enrichPlanHubSuggestions(suggestions)
+      .then((enriched) => {
+        if (enrichGenerationRef.current !== generation) return;
+        setSuggestedPlans(enriched);
+      })
+      .catch((error: unknown) => {
+        if (__DEV__) console.warn('[PlanFinancierHub] suggestion enrichment failed', error);
+      });
+
+    return suggestions;
+  }, []);
+
+  const reloadHub = useCallback(async () => {
+    setSuggestionsLoading(true);
+    try {
+      await Promise.all([loadStoredPlans(), loadSuggestions()]);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }, [loadStoredPlans, loadSuggestions]);
 
   const carouselPlans = useMemo(
     () => plansForHubCarousel(listPlans, suggestedPlans),
@@ -53,23 +94,49 @@ export function PlanFinancierHub() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      setLoading(true);
-      await loadPlans();
-      if (!cancelled) setLoading(false);
+      setPlansLoading(true);
+      try {
+        await loadStoredPlans();
+      } catch (error: unknown) {
+        if (__DEV__) console.warn('[PlanFinancierHub] stored plans load failed', error);
+      } finally {
+        if (!cancelled) setPlansLoading(false);
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [loadPlans]);
+  }, [loadStoredPlans]);
 
-  useEffect(() => dataEvents.subscribe(loadPlans), [loadPlans]);
-  useRefreshOnFocus(loadPlans, { skipInitial: true });
+  useEffect(() => {
+    void (async () => {
+      setSuggestionsLoading(true);
+      try {
+        await loadSuggestions();
+      } catch (error: unknown) {
+        if (__DEV__) console.warn('[PlanFinancierHub] suggestions load failed', error);
+      } finally {
+        setSuggestionsLoading(false);
+      }
+    })();
+    return () => {
+      enrichGenerationRef.current += 1;
+    };
+  }, [loadSuggestions]);
+
+  useEffect(() => dataEvents.subscribe(reloadHub), [reloadHub]);
+  useRefreshOnFocus(reloadHub, { skipInitial: true });
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadPlans();
-    setRefreshing(false);
-  }, [loadPlans]);
+    try {
+      await reloadHub();
+    } catch (error: unknown) {
+      if (__DEV__) console.warn('[PlanFinancierHub] refresh failed', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [reloadHub]);
 
   const handleOpenPlan = useCallback(
     (planId: string) => {
@@ -93,7 +160,9 @@ export function PlanFinancierHub() {
     router.push('/plans/explore');
   }, [router]);
 
-  const isEmpty = carouselPlans.length === 0;
+  const showCarouselSpinner =
+    carouselPlans.length === 0 && (plansLoading || suggestionsLoading);
+  const isEmpty = !plansLoading && !suggestionsLoading && carouselPlans.length === 0;
   const pf = planFinanceKit.colors;
 
   return (
@@ -103,50 +172,48 @@ export function PlanFinancierHub() {
           <Text style={[styles.title, PAGE_TITLE_STYLE, { color: pf.text }]}>Plan financier</Text>
         </View>
 
-        {loading ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator color={pf.accent} />
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING + spacing.xl },
+          ]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void handleRefresh()}
+              tintColor={pf.accent}
+            />
+          }
+        >
+          <View style={styles.plansSection}>
+            <HubSectionHeader eyebrow="Stratégie" title="Plan financier" />
+
+            {showCarouselSpinner ? (
+              <View style={styles.carouselLoadingWrap}>
+                <ActivityIndicator color={pf.accent} />
+              </View>
+            ) : isEmpty ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyText}>
+                  Aucun plan financier actif pour l&apos;instant.
+                </Text>
+                <ExploreMorePlansRow onPress={handleOpenExplorer} prominent />
+              </View>
+            ) : (
+              <>
+                <PlanHubCardCarousel plans={carouselPlans} onOpenPlan={handleOpenPlan} />
+                <ExploreMorePlansRow onPress={handleOpenExplorer} />
+              </>
+            )}
           </View>
-        ) : (
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={[
-              styles.scrollContent,
-              { paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING + spacing.xl },
-            ]}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={() => void handleRefresh()}
-                tintColor={pf.accent}
-              />
-            }
-          >
-            <View style={styles.plansSection}>
-              <HubSectionHeader eyebrow="Stratégie" title="Plan financier" />
 
-              {isEmpty ? (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyText}>
-                    Aucun plan financier actif pour l&apos;instant.
-                  </Text>
-                  <ExploreMorePlansRow onPress={handleOpenExplorer} prominent />
-                </View>
-              ) : (
-                <>
-                  <PlanHubCardCarousel plans={carouselPlans} onOpenPlan={handleOpenPlan} />
-                  <ExploreMorePlansRow onPress={handleOpenExplorer} />
-                </>
-              )}
-            </View>
+          <HubSavingsGoalsSection />
 
-            <HubSavingsGoalsSection />
+          <HubLoansSection />
 
-            <HubLoansSection />
-
-            <FynChatEntryCard />
-          </ScrollView>
-        )}
+          <FynChatEntryCard />
+        </ScrollView>
       </View>
     </PageTransition>
   );
@@ -174,6 +241,12 @@ const styles = StyleSheet.create({
   plansSection: {
     gap: spacing.sm,
   },
+  carouselLoadingWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 180,
+    paddingVertical: spacing.xl,
+  },
   emptyState: {
     alignItems: 'stretch',
     gap: spacing.xl,
@@ -184,10 +257,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     textAlign: 'center',
-  },
-  loadingWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

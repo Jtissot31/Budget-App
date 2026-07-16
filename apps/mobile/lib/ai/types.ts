@@ -717,6 +717,16 @@ export interface ChatAction {
 
 
 import type { MessageBlock } from '@/types/aiWidgets';
+import type { PlanSuggere } from '@/lib/plans/Plan';
+
+export type ChatPlanSuggestions = {
+  suggestions: PlanSuggere[];
+  intro: string;
+  frozen: boolean;
+  confirmedIds: string[];
+};
+
+export type { ChatPlanGoalChoice } from '@/lib/plans/planGoalClarification';
 
 export interface ChatMessage {
 
@@ -740,6 +750,12 @@ export interface ChatMessage {
   /** Assistant steps performed while generating this reply. */
 
   activityPhases?: import('./activityPhases').ActivityPhase[];
+
+  /** Curated plan suggestions for on-demand plan financier requests. */
+  planSuggestions?: ChatPlanSuggestions;
+
+  /** Ask-first goal clarification for vague plan financier requests. */
+  planGoalChoice?: import('@/lib/plans/planGoalClarification').ChatPlanGoalChoice;
 
 }
 

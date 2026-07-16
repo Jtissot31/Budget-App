@@ -2,13 +2,13 @@ import { FlatList, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { PlanCard } from '@/components/plans/PlanCard';
 import { planFinanceKit } from '@/constants/planFinanceKit';
-import { PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
+import { PAGE_PADDING_HORIZONTAL } from '@/constants/theme';
 import type { Plan } from '@/lib/plans/Plan';
+import { PLAN_CAROUSEL } from '@/lib/plans/planCardPresentation';
 
-const CARD_GAP = spacing.md;
-/** Shorter than content so the next card peeks under the edge fade. */
-const CARD_WIDTH_RATIO = 0.68;
-const EDGE_FADE_WIDTH = 56;
+const CARD_GAP = PLAN_CAROUSEL.cardGap;
+const CARD_WIDTH = PLAN_CAROUSEL.cardWidth;
+const EDGE_FADE_WIDTH = PLAN_CAROUSEL.edgeFadeWidth;
 
 type Props = {
   plans: Plan[];
@@ -17,11 +17,9 @@ type Props = {
 
 export function PlanHubCardCarousel({ plans, onOpenPlan }: Props) {
   const { width: screenWidth } = useWindowDimensions();
-  const contentWidth = screenWidth - PAGE_PADDING_HORIZONTAL * 2;
-  const cardWidth = contentWidth * CARD_WIDTH_RATIO;
-  const snapInterval = cardWidth + CARD_GAP;
+  const snapInterval = CARD_WIDTH + CARD_GAP;
   const listViewportWidth = screenWidth - PAGE_PADDING_HORIZONTAL;
-  const trailingPadding = Math.max(listViewportWidth - cardWidth, EDGE_FADE_WIDTH);
+  const trailingPadding = Math.max(listViewportWidth - CARD_WIDTH, EDGE_FADE_WIDTH);
   const canvas = planFinanceKit.colors.background;
   const showFade = plans.length > 0;
 
@@ -50,10 +48,7 @@ export function PlanHubCardCarousel({ plans, onOpenPlan }: Props) {
             suggested={item.statut === 'suggere'}
             layout="carousel"
             onPress={() => onOpenPlan(item.id)}
-            style={{
-              width: cardWidth,
-              marginRight: index < plans.length - 1 ? CARD_GAP : 0,
-            }}
+            style={index < plans.length - 1 ? { marginRight: CARD_GAP } : undefined}
           />
         )}
       />

@@ -27,11 +27,10 @@ import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
 import {
-  getChatQuotaState,
   loadChatHistory,
   sendChatMessage,
 } from '@/lib/ai/chatService';
-import { isAnthropicApiKeyConfigured } from '@/lib/ai/env';
+import { isFynChatApiKeyConfigured } from '@/lib/ai/env';
 
 import { aiMessageToUi, createUiUserMessage } from '@/lib/ai/chatUiAdapter';
 
@@ -89,9 +88,7 @@ export function ChatScreen() {
 
   const [isResponding, setIsResponding] = useState(false);
 
-  const [offlineMode, setOfflineMode] = useState(() => !isAnthropicApiKeyConfigured());
-
-  const [quotaWarning, setQuotaWarning] = useState<string | null>(null);
+  const [offlineMode, setOfflineMode] = useState(() => !isFynChatApiKeyConfigured());
 
   const [historyLoaded, setHistoryLoaded] = useState(false);
 
@@ -103,23 +100,13 @@ export function ChatScreen() {
 
     void (async () => {
 
-      const [history, quota] = await Promise.all([loadChatHistory(), getChatQuotaState()]);
+      const [history] = await Promise.all([loadChatHistory()]);
 
       if (cancelled) return;
 
       setMessages(history.map(aiMessageToUi));
 
-      setQuotaWarning(
-
-        quota.warningThresholdReached
-
-          ? 'Tu approches ta limite mensuelle de conversations.'
-
-          : null,
-
-      );
-
-      setOfflineMode(!isAnthropicApiKeyConfigured());
+      setOfflineMode(!isFynChatApiKeyConfigured());
 
       setHistoryLoaded(true);
 
@@ -190,16 +177,6 @@ export function ChatScreen() {
 
 
         setOfflineMode(result.offlineMode);
-
-        setQuotaWarning(
-
-          result.quota.warningThresholdReached
-
-            ? 'Tu approches ta limite mensuelle de conversations.'
-
-            : null,
-
-        );
 
         setMessages((prev) => {
 
@@ -305,21 +282,9 @@ export function ChatScreen() {
 
           <Text style={[styles.bannerText, { color: colors.text }]}>
 
-            Clé API : absente — copie .env.example vers .env, ajoute EXPO_PUBLIC_ANTHROPIC_API_KEY, puis redémarre Expo (npx expo start -c).
+            Clé API absente — copie .env.example vers .env, ajoute EXPO_PUBLIC_GEMINI_API_KEY, puis redémarre Expo (npx expo start -c).
 
           </Text>
-
-        </View>
-
-      ) : null}
-
-
-
-      {quotaWarning ? (
-
-        <View style={[styles.banner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-
-          <Text style={[styles.bannerText, { color: colors.textMuted }]}>{quotaWarning}</Text>
 
         </View>
 

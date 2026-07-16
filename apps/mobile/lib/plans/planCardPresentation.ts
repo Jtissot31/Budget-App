@@ -1,4 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import type { TextStyle, ViewStyle } from 'react-native';
+import { PLAN_FINANCE_CONTAINER } from '@/constants/planFinanceKit';
+import { DARK_CANVAS, interMediumText, interSemiboldText, spacing } from '@/constants/theme';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import {
   PLAN_CATEGORY_LABELS,
@@ -12,8 +15,6 @@ import {
   type Plan,
   type PlanCategory,
 } from './Plan';
-
-import { DARK_CANVAS } from '@/constants/theme';
 
 export const PLAN_HUB = {
   background: DARK_CANVAS,
@@ -30,6 +31,58 @@ export const PLAN_HUB = {
 export const PLAN_CARD_PADDING = 20;
 /** Espacement vertical entre cartes dans une liste. */
 export const PLAN_CARD_LIST_GAP = 14;
+
+/**
+ * Tuiles carrousel « Tes plans » — Accueil ({@link HomePlansCarousel}) et hub
+ * ({@link PlanHubCardCarousel}). Source unique pour éviter la dérive visuelle.
+ */
+export const PLAN_CAROUSEL = {
+  cardWidth: 190,
+  cardGap: spacing.sm,
+  edgeFadeWidth: 56,
+  iconSize: 20,
+  padding: PLAN_FINANCE_CONTAINER.padding.card,
+  contentGap: spacing.sm,
+  titleFontSize: 13,
+  metaFontSize: 11,
+  progressHeight: 4,
+  progressRadius: 2,
+  progressMarginTop: spacing.xs,
+} as const;
+
+/** @deprecated Préférer {@link PLAN_CAROUSEL.cardWidth}. */
+export const PLAN_CAROUSEL_CARD_MIN_WIDTH = PLAN_CAROUSEL.cardWidth;
+
+export function planCarouselCardShellStyle(): Pick<ViewStyle, 'width' | 'padding' | 'gap'> {
+  return {
+    width: PLAN_CAROUSEL.cardWidth,
+    padding: PLAN_CAROUSEL.padding,
+    gap: PLAN_CAROUSEL.contentGap,
+  };
+}
+
+export function planCarouselTitleStyle(): TextStyle {
+  return {
+    ...interSemiboldText,
+    fontSize: PLAN_CAROUSEL.titleFontSize,
+  };
+}
+
+export function planCarouselMetaStyle(): TextStyle {
+  return {
+    ...interMediumText,
+    fontSize: PLAN_CAROUSEL.metaFontSize,
+  };
+}
+
+export function planCarouselProgressTrackStyle(): ViewStyle {
+  return {
+    height: PLAN_CAROUSEL.progressHeight,
+    borderRadius: PLAN_CAROUSEL.progressRadius,
+    overflow: 'hidden',
+    marginTop: PLAN_CAROUSEL.progressMarginTop,
+  };
+}
 
 /** Icône fixe par catégorie — source unique pour toute l'app. */
 export const PLAN_CATEGORY_ICONS = {
@@ -70,6 +123,14 @@ export function planCardMetaLine(plan: Plan): string {
   }
   const pct = planProgressionPourcent(plan);
   return `${pct} % · ${planCategoryLabel(plan.category)}`;
+}
+
+/** Meta carrousel Accueil / hub — « Catégorie · Statut » (sans % ni montant). */
+export function planCardCarouselMetaLine(plan: Plan): string {
+  if (isPlanSuggere(plan)) {
+    return `Suggéré · ${planCategoryLabel(plan.category)}`;
+  }
+  return `${planCategoryLabel(plan.category)} · ${PLAN_STATUT_LABELS[plan.statut]}`;
 }
 
 /**

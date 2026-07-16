@@ -2,7 +2,7 @@ import type { ChatMessage as UiChatMessage } from '@/components/chat/types';
 import type { ChatMessage as AiChatMessage } from '@/lib/ai/types';
 import { stripCodeFromAssistantText } from './messageBlocks';
 
-export { findActionJsonBlocks, findWidgetJsonBlocks, parseMessageBlocks, stripCodeFromAssistantText } from './messageBlocks';
+export { findActionJsonBlocks, findWidgetJsonBlocks, parseMessageBlocks, stripCodeFromAssistantText, stripMarkdownForChatDisplay, buildStreamingAssistantDisplay } from './messageBlocks';
 
 export function aiMessageToUi(message: AiChatMessage): UiChatMessage {
   const displayText =

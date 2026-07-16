@@ -23,6 +23,9 @@ export type AIChatMultimodalInputProps = {
   onAttach?: () => void;
   onCamera?: () => void;
   onMic?: () => void;
+  /** While a reply is sending or streaming — shows stop instead of camera/mic. */
+  isBusy?: boolean;
+  onStop?: () => void;
   chips?: readonly AIQuickChip[];
   disabled?: boolean;
   bottomInset?: number;
@@ -43,6 +46,8 @@ export function AIChatMultimodalInput({
   onAttach,
   onCamera,
   onMic,
+  isBusy = false,
+  onStop,
   chips = AI_QUICK_CHIPS,
   disabled = false,
   bottomInset = 0,
@@ -50,7 +55,8 @@ export function AIChatMultimodalInput({
   wrapInKeyboardAvoidingView = false,
 }: AIChatMultimodalInputProps) {
   const palette = useAIChatColors();
-  const canSend = value.trim().length > 0 && !disabled;
+  const canSend = value.trim().length > 0 && !disabled && !isBusy;
+  const inputDisabled = disabled || isBusy;
 
   const handleSend = useCallback(() => {
     const text = value.trim();
@@ -86,6 +92,12 @@ export function AIChatMultimodalInput({
     showComingSoonAlert('Dictée vocale');
   }, [onMic]);
 
+  const handleStop = useCallback(() => {
+    if (!isBusy || !onStop) return;
+    tapHaptic();
+    onStop();
+  }, [isBusy, onStop]);
+
   const content = (
     <>
       {chips.length > 0 ? (
@@ -110,7 +122,7 @@ export function AIChatMultimodalInput({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Ajouter une pièce jointe"
-            disabled={disabled}
+            disabled={inputDisabled}
             onPress={handleAttach}
             style={({ pressed }) => [styles.inputIconButton, pressed && styles.pressed]}
           >
@@ -125,48 +137,65 @@ export function AIChatMultimodalInput({
             onChangeText={onChangeText}
             multiline
             maxLength={500}
-            editable={!disabled}
+            editable={!inputDisabled}
             returnKeyType="send"
             blurOnSubmit={false}
             onSubmitEditing={handleSend}
             onBlur={onInputBlur}
           />
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Prendre une photo"
-            disabled={disabled}
-            onPress={handleCamera}
-            style={({ pressed }) => [styles.inputIconButton, pressed && styles.pressed]}
-          >
-            <AppIcon family="material-community" name="camera-outline" size={24} color={palette.textMuted} />
-          </Pressable>
-
-          {canSend ? (
+          {isBusy ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Envoyer"
-              disabled={disabled}
-              onPress={handleSend}
+              accessibilityLabel="Interrompre la réponse"
+              onPress={handleStop}
               style={({ pressed }) => [
-                styles.sendButton,
-                { backgroundColor: palette.primary },
+                styles.stopButton,
+                { backgroundColor: palette.textMuted },
                 pressed && styles.pressed,
-                disabled && styles.sendDisabled,
               ]}
             >
-              <AppIcon family="material-community" name="send" size={20} color={palette.userBubbleText} />
+              <AppIcon family="material-community" name="stop" size={18} color={palette.surface} />
             </Pressable>
           ) : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Dictée vocale"
-              disabled={disabled}
-              onPress={handleMic}
-              style={({ pressed }) => [styles.micButton, pressed && styles.pressed]}
-            >
-              <AppIcon family="material-community" name="microphone" size={24} color={palette.sendMuted} />
-            </Pressable>
+            <>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Prendre une photo"
+                disabled={disabled}
+                onPress={handleCamera}
+                style={({ pressed }) => [styles.inputIconButton, pressed && styles.pressed]}
+              >
+                <AppIcon family="material-community" name="camera-outline" size={24} color={palette.textMuted} />
+              </Pressable>
+
+              {canSend ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Envoyer"
+                  disabled={disabled}
+                  onPress={handleSend}
+                  style={({ pressed }) => [
+                    styles.sendButton,
+                    { backgroundColor: palette.primary },
+                    pressed && styles.pressed,
+                    disabled && styles.sendDisabled,
+                  ]}
+                >
+                  <AppIcon family="material-community" name="send" size={20} color={palette.userBubbleText} />
+                </Pressable>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Dictée vocale"
+                  disabled={disabled}
+                  onPress={handleMic}
+                  style={({ pressed }) => [styles.micButton, pressed && styles.pressed]}
+                >
+                  <AppIcon family="material-community" name="microphone" size={24} color={palette.sendMuted} />
+                </Pressable>
+              )}
+            </>
           )}
         </View>
       </View>
@@ -226,6 +255,14 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   sendButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginLeft: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stopButton: {
     width: 32,
     height: 32,
     borderRadius: 16,

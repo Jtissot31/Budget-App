@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { AlertProblemInsightCard } from '@/components/alerts/AlertProblemInsightCard';
+import { CreditLimitProblemTimeline } from '@/components/alerts/CreditLimitProblemTimeline';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,11 +13,24 @@ import {
   planFinanceContainerPressedStyle,
   planFinanceContainerRowLayoutStyle,
 } from '@/constants/planFinanceKit';
-import { interExtraBoldText, interMediumText, interSemiboldText, spacing } from '@/constants/theme';
+import {
+  interExtraBoldText,
+  interMediumText,
+  interSemiboldText,
+  spacing,
+  typographyKit,
+} from '@/constants/theme';
 import { useAlertCenter, useAlertCenterSources } from '@/hooks/useAlertCenter';
 import { tapHaptic } from '@/lib/haptics';
 import type { AlertCenterItem, AlertCenterKind, AlertCenterSeverity } from '@/lib/alerts';
-import { buildAlertDetailContent, type AlertSolution } from '@/lib/alertPresentation';
+import {
+  alertTypeHeaderTitle,
+  buildAlertDetailContent,
+  resolveAlertAccountIdentity,
+  type AlertSolution,
+} from '@/lib/alertPresentation';
+import { generateAlertSolutions } from '@/lib/ai/alertSolutionService';
+import { resolveCreditLimitTimelineData } from '@/lib/resolveCreditLimitTimeline';
 import { useAppTheme } from '@/lib/themeContext';
 
 function asString(value: string | string[] | undefined): string {
@@ -57,9 +72,6 @@ function solutionIcon(solution: AlertSolution): { family: 'ionicons' | 'material
   }
   if (solution.href?.includes('budget')) {
     return { family: 'ionicons', name: 'pie-chart-outline' };
-  }
-  if (solution.href?.includes('add-transaction') || solution.id.includes('transfer')) {
-    return { family: 'ionicons', name: 'swap-horizontal-outline' };
   }
   if (solution.href?.includes('account') || solution.href?.includes('accounts')) {
     return { family: 'ionicons', name: 'wallet-outline' };
@@ -143,12 +155,68 @@ export default function AlertDetailScreen() {
             kind: 'fyn',
             title: 'Message',
             message: 'Cette alerte n’est plus disponible.',
+            id: 'unavailable',
           }),
     [item],
   );
 
+  const [solutions, setSolutions] = useState(detail.solutions);
+
+  useEffect(() => {
+    setSolutions(detail.solutions);
+    if (!item) return;
+
+    let cancelled = false;
+    void (async () => {
+      const refined = await generateAlertSolutions(
+        {
+          id: item.id,
+          kind: item.kind,
+          title: item.title,
+          message: item.message,
+          montant: item.montant,
+          recurring: item.recurring,
+          paymentName: item.paymentName,
+        },
+        detail.solutions,
+      );
+      if (!cancelled) setSolutions(refined);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detail.solutions, item]);
+
   const severity = item?.severity ?? 'warning';
   const severityColor = resolveSeverityColor(severity, colors);
+
+  const insightContext = useMemo(
+    () =>
+      item
+        ? {
+            id: item.id,
+            kind: item.kind,
+            title: item.title,
+            message: item.message,
+            montant: item.montant,
+            recurring: item.recurring,
+            paymentName: item.paymentName,
+            categoryLabel: detail.eyebrow,
+          }
+        : null,
+    [detail.eyebrow, item],
+  );
+
+  const creditLimitTimeline = useMemo(() => {
+    if (!item || item.kind !== 'credit_limit') return null;
+    return resolveCreditLimitTimelineData(item, { simulatedAccounts, recurringPayments });
+  }, [item, recurringPayments, simulatedAccounts]);
+
+  const alertAccountLine = useMemo(() => {
+    if (!item) return null;
+    return resolveAlertAccountIdentity(item, simulatedAccounts);
+  }, [item, simulatedAccounts]);
 
   const handleBack = useCallback(() => {
     tapHaptic();
@@ -182,7 +250,7 @@ export default function AlertDetailScreen() {
             <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: colors.text }, interExtraBoldText]} numberOfLines={1}>
-            {item?.title ?? 'Alerte'}
+            {alertTypeHeaderTitle(item?.kind ?? 'fyn')}
           </Text>
           <View style={styles.headerSpacer} />
         </View>
@@ -194,8 +262,6 @@ export default function AlertDetailScreen() {
             { paddingBottom: Math.max(insets.bottom + spacing.xl, 56) },
           ]}
         >
-          <Text style={[styles.eyebrow, { color: colors.textMuted }, interMediumText]}>{detail.eyebrow}</Text>
-
           {/* 1. Le problème */}
           <View
             style={[
@@ -210,14 +276,31 @@ export default function AlertDetailScreen() {
             <Text style={[styles.sectionLabel, { color: severityColor }, interSemiboldText]}>
               {detail.problemLabel}
             </Text>
+            {alertAccountLine ? (
+              <Text
+                style={[typographyKit.metaMedium, styles.accountLine, { color: colors.textMuted }]}
+                numberOfLines={1}
+              >
+                {alertAccountLine}
+              </Text>
+            ) : null}
             <Text style={[styles.problemBody, { color: colors.text }, interMediumText]}>{detail.problemBody}</Text>
+            {creditLimitTimeline ? <CreditLimitProblemTimeline data={creditLimitTimeline} /> : null}
           </View>
 
-          {/* 2. Comment le régler — unboxed guidance (no twin card) */}
-          <View style={styles.fixSection}>
-            <Text style={[planDetailFonts.sectionCaps, { color: colors.textMuted }]}>{detail.fixLabel}</Text>
-            <Text style={[planDetailFonts.body, { color: colors.text }]}>{detail.fixBody}</Text>
-          </View>
+          {/* 2. Conseil préventif INSIGHT (Gemini ou fallback statique) */}
+          {insightContext ? (
+            <AlertProblemInsightCard
+              context={insightContext}
+              fallbackBody={detail.insightFallbackBody}
+            />
+          ) : (
+            <View style={styles.fixSection}>
+              <Text style={[planDetailFonts.body, { color: colors.text }]}>
+                {detail.insightFallbackBody}
+              </Text>
+            </View>
+          )}
 
           {/* 3. Tes actions */}
           <View style={styles.actionsSection}>
@@ -226,7 +309,7 @@ export default function AlertDetailScreen() {
             </Text>
 
             <View style={styles.actionsList}>
-              {detail.solutions.map((solution, index) => {
+              {solutions.map((solution, index) => {
                 const interactive = Boolean(solution.href);
                 const icon = solutionIcon(solution);
 
@@ -309,16 +392,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     gap: PLAN_DETAIL.sectionGap,
   },
-  eyebrow: {
-    fontSize: 13,
-    marginTop: -spacing.xs,
-  },
   sectionLabel: {
     fontSize: 13,
     letterSpacing: 0.1,
   },
   problemCard: {
-    gap: spacing.sm,
+    gap: spacing.md,
+  },
+  accountLine: {
+    marginTop: -spacing.xs,
+    letterSpacing: -0.1,
   },
   problemBody: {
     fontSize: 16,

@@ -40,6 +40,7 @@ export type PlanSubtypeDette =
   | 'dette_individuelle'
   | 'snowball'
   | 'avalanche'
+  | 'bombe_nucleaire'
   | 'consolidation'
   | 'marge_credit';
 
@@ -83,7 +84,7 @@ export const PLAN_SUBTYPES_BY_CATEGORY = {
     'coussin_saisonnier',
     'evenement_vie',
   ],
-  dette: ['dette_individuelle', 'snowball', 'avalanche', 'consolidation', 'marge_credit'],
+  dette: ['dette_individuelle', 'snowball', 'avalanche', 'bombe_nucleaire', 'consolidation', 'marge_credit'],
   investissement: ['reer', 'celi', 'reee', 'celiapp', 'rattrapage_cotisation'],
   budget: ['enveloppe', 'zero_based', 'ratio_fixe_variable'],
   fiscal: ['reserve_impots_autonome', 'acomptes_provisionnels', 'optimisation_reer_celi'],
@@ -116,6 +117,10 @@ export type PlanSignalDeclencheur =
   | 'celiapp:locataire_jeune_epargne_recurrente'
   | 'snowball:plusieurs_dettes_actives'
   | 'avalanche:plusieurs_dettes_actives'
+  | 'bombe_nucleaire:liquidites_disponibles'
+  | 'consolidation:plusieurs_dettes_actives'
+  | 'dette_individuelle:dette_unique'
+  | 'marge_credit:marge_utilisee'
   | 'reserve_impots_autonome:travailleur_autonome'
   | 'enveloppe:categories_depassees_consecutives'
   | 'no_spend_challenge:depenses_discretionnaires_hausse'
@@ -197,6 +202,7 @@ export const PLAN_SUBTYPE_LABELS: Record<PlanSubtype, string> = {
   dette_individuelle: 'Dette individuelle',
   snowball: 'Boule de neige',
   avalanche: 'Avalanche',
+  bombe_nucleaire: 'Bombe nucléaire',
   consolidation: 'Consolidation',
   marge_credit: 'Marge de crédit',
   reer: 'REER',
@@ -236,6 +242,13 @@ export function isPlanSubtypeForCategory(category: PlanCategory, subtype: string
 
 export function isPlanSuggere(plan: Plan): plan is PlanSuggere {
   return plan.statut === 'suggere';
+}
+
+/** Sous-types gérés comme objectifs d'épargne — exclus du carrousel plans financiers. */
+export const SAVINGS_GOAL_PLAN_SUBTYPES: readonly PlanSubtype[] = ['fonds_urgence'] as const;
+
+export function isSavingsGoalPlanSubtype(subtype: PlanSubtype): boolean {
+  return (SAVINGS_GOAL_PLAN_SUBTYPES as readonly string[]).includes(subtype);
 }
 
 export function planSubtypeSansMontantCible(subtype: PlanSubtype): boolean {

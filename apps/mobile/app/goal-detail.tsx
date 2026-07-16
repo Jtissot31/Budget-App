@@ -28,12 +28,11 @@ import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 
 import { DetailSingleLineRow, type DetailSection } from '@/components/DetailSectionRows';
 
-import { GlassContainer } from '@/components/GlassContainer';
-
 import { SurfaceCard } from '@/components/SurfaceCard';
 
 import { GoalProgressChart } from '@/components/GoalProgressChart';
 import { SavingsGoalDetailGamification } from '@/components/goals/SavingsGoalDetailGamification';
+import { planDetailFonts } from '@/components/plans/planDetailTheme';
 
 import { OverflowMenuButton } from '@/components/OverflowMenuButton';
 
@@ -49,16 +48,6 @@ import {
 
   accountDetailSectionDividerStyle,
 
-  accountDetailStatementStatColStyle,
-
-  accountDetailStatementStatLabelStyle,
-
-  accountDetailStatementStatsRowStyle,
-
-  accountDetailStatementStatValueStyle,
-
-  detailProgressBarStyle,
-
   detailSectionFootnoteStyle,
 
   detailSectionLabelStyle,
@@ -68,8 +57,6 @@ import {
   jakartaBoldText,
 
   jakartaExtraBoldText,
-
-  jakartaMediumText,
 
   radius,
 
@@ -194,88 +181,6 @@ function getTransactionTitle(tx: Transaction, fallbackTitle: string) {
   const suffix = itemized.length > names.length ? ` + ${itemized.length - names.length}` : '';
 
   return `${names.join(', ')}${suffix}`;
-
-}
-
-
-
-function StatementStatColumn({
-
-  label,
-
-  value,
-
-  valueColor,
-
-  align = 'center',
-
-  prominent,
-
-}: {
-
-  label: string;
-
-  value: string;
-
-  valueColor?: string;
-
-  align?: 'left' | 'center' | 'right';
-
-  prominent?: boolean;
-
-}) {
-
-  const { colors } = useAppTheme();
-
-  const textAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
-
-
-
-  return (
-
-    <View style={accountDetailStatementStatColStyle({ align, prominent })}>
-
-      <Text
-
-        style={[
-
-          accountDetailStatementStatValueStyle(prominent),
-
-          { color: valueColor ?? colors.text, textAlign },
-
-        ]}
-
-        numberOfLines={1}
-
-        adjustsFontSizeToFit
-
-      >
-
-        {value}
-
-      </Text>
-
-      <Text
-
-        style={[
-
-          accountDetailStatementStatLabelStyle(),
-
-          { color: colors.textMuted, textAlign },
-
-        ]}
-
-        numberOfLines={1}
-
-      >
-
-        {label}
-
-      </Text>
-
-    </View>
-
-  );
 
 }
 
@@ -678,16 +583,6 @@ export default function GoalDetailScreen() {
 
 
 
-  const progressPct = useMemo(() => {
-
-    if (!goal || goal.targetAmount <= 0) return 0;
-
-    return Math.min((goal.currentAmount / goal.targetAmount) * 100, 100);
-
-  }, [goal]);
-
-
-
   const plannedDates = useMemo(() => {
 
     if (!goal) return null;
@@ -924,98 +819,6 @@ export default function GoalDetailScreen() {
 
   const displayTitle = goal?.name ?? 'Objectif';
 
-  const showProgressCard = goal != null && goal.targetAmount > 0;
-
-  const progressBar = detailProgressBarStyle();
-
-  const trackColor = isLight ? '#E8EDF3' : '#08090B';
-
-  const progressFillColor = progressPct >= 100 ? colors.success : colors.primary;
-
-
-
-  const progressCard = showProgressCard ? (
-
-    <GlassContainer
-
-      style={styles.progressCardShell}
-
-      innerStyle={styles.progressCardInner}
-
-      padding={spacing.lg}
-
-      borderRadius={radius.lg}
-
-    >
-
-      <View style={styles.progressHeader}>
-
-        <Text
-
-          style={[styles.progressLabel, { color: colors.textMuted }]}
-
-          numberOfLines={1}
-
-          ellipsizeMode="tail"
-
-        >
-
-          Progression
-
-        </Text>
-
-        <Text style={[styles.progressPct, { color: progressFillColor }]} numberOfLines={1}>
-
-          {progressPct.toFixed(0)} %
-
-        </Text>
-
-      </View>
-
-      <View style={[progressBar.track, { backgroundColor: trackColor }]}>
-
-        <View
-
-          style={[
-
-            progressBar.fill,
-
-            {
-
-              width: `${Math.max(progressPct, 3)}%`,
-
-              backgroundColor: progressFillColor,
-
-            },
-
-          ]}
-
-        />
-
-      </View>
-
-      <View style={styles.progressFooter}>
-
-        <Text style={[styles.progressFootnote, { color: colors.textMuted }]}>
-
-          Épargné · {formatMoney(goal!.currentAmount)}
-
-        </Text>
-
-        <Text style={[styles.progressFootnote, { color: colors.textMuted }]}>
-
-          Cible · {formatMoney(goal!.targetAmount)}
-
-        </Text>
-
-      </View>
-
-    </GlassContainer>
-
-  ) : null;
-
-
-
   return (
 
     <PageTransition>
@@ -1145,51 +948,23 @@ export default function GoalDetailScreen() {
                   goals={goals}
                   transactions={transactions}
                   accounts={accounts}
+                  weeklyContributionLabel={weeklyContributionLabel}
+                  plannedDates={plannedDates}
                 />
 
-                <GoalProgressChart goal={goal} transactions={transactions} accounts={accounts} />
-
-                <View style={[accountDetailStatementStatsRowStyle(), styles.statsRow]}>
-
-                  <StatementStatColumn
-
-                    label="Cible"
-
-                    value={formatMoney(goal.targetAmount)}
-
-                    align="left"
-
+                <View style={styles.chartSection}>
+                  <Text style={[planDetailFonts.sectionCaps, { color: colors.textMuted }]}>
+                    ÉVOLUTION
+                  </Text>
+                  <GoalProgressChart
+                    goal={goal}
+                    transactions={transactions}
+                    accounts={accounts}
+                    showAmountHero={false}
                   />
-
-                  <StatementStatColumn
-
-                    label="Épargné"
-
-                    value={formatMoney(goal.currentAmount)}
-
-                    align="center"
-
-                    prominent
-
-                  />
-
-                  <StatementStatColumn
-
-                    label="Montant restant"
-
-                    value={formatMoney(remaining)}
-
-                    align="right"
-
-                  />
-
                 </View>
 
               </View>
-
-
-
-              {progressCard}
 
 
 
@@ -1665,13 +1440,13 @@ const styles = StyleSheet.create({
 
   heroSection: {
 
-    gap: spacing.lg,
+    gap: spacing.xxl,
 
   },
 
-  statsRow: {
+  chartSection: {
 
-    paddingTop: spacing.md,
+    gap: spacing.md,
 
   },
 
@@ -1688,80 +1463,6 @@ const styles = StyleSheet.create({
   },
 
   pressed: { opacity: 0.78 },
-
-  progressCardShell: {
-
-    borderRadius: radius.lg,
-
-  },
-
-  progressCardInner: {
-
-    gap: spacing.md,
-
-  },
-
-  progressHeader: {
-
-    flexDirection: 'row',
-
-    alignItems: 'center',
-
-    justifyContent: 'space-between',
-
-    gap: spacing.sm,
-
-  },
-
-  progressLabel: {
-
-    ...jakartaBoldText,
-
-    flex: 1,
-
-    flexShrink: 1,
-
-    minWidth: 0,
-
-    fontSize: typography.micro,
-
-    letterSpacing: 0.6,
-
-    textTransform: 'uppercase',
-
-  },
-
-  progressPct: {
-
-    ...jakartaBoldText,
-
-    flexShrink: 0,
-
-    minWidth: 44,
-
-    textAlign: 'right',
-
-    fontSize: typography.meta,
-
-  },
-
-  progressFooter: {
-
-    flexDirection: 'row',
-
-    justifyContent: 'space-between',
-
-    gap: spacing.md,
-
-  },
-
-  progressFootnote: {
-
-    ...jakartaMediumText,
-
-    fontSize: typography.meta,
-
-  },
 
   transactionList: {
 

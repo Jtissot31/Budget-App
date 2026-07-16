@@ -1,38 +1,30 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
-import { interMediumText, interSemiboldText, spacing, typography } from '@/constants/theme';
+import { spacing, typographyKit } from '@/constants/theme';
 import {
   PLAN_CARD_PADDING,
   planFinanceCardIconColor,
   planFinanceContainerPressedStyle,
-  planFinanceFonts,
-  planFinanceKit,
 } from '@/constants/planFinanceKit';
-import type { PlanCatalogEntry } from '@/lib/plans/planCatalogData';
+import {
+  planCatalogCardMetaLine,
+  type PlanCatalogEntry,
+} from '@/lib/plans/planCatalogData';
 import { getCategoryIcon } from '@/lib/plans/planCardPresentation';
 import { tapHaptic } from '@/lib/haptics';
+import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
   entry: PlanCatalogEntry;
   onPress: () => void;
 };
 
-type DescriptionMode = 'pending' | 'full' | 'cta';
-
-/** Carte template catalogue — pas de barre ni de %. */
+/** Carte template catalogue — alignée sur PlanCard (suggested): meta + description. */
 export function PlanCatalogCard({ entry, onPress }: Props) {
+  const { colors } = useAppTheme();
   const iconColor = planFinanceCardIconColor();
-  const [descriptionMode, setDescriptionMode] = useState<DescriptionMode>('pending');
-
-  useEffect(() => {
-    setDescriptionMode('pending');
-  }, [entry.description, entry.subtype]);
-
-  const handleMeasureLayout = useCallback((lineCount: number) => {
-    setDescriptionMode(lineCount > 1 ? 'cta' : 'full');
-  }, []);
+  const metaLine = planCatalogCardMetaLine(entry.category);
 
   return (
     <Pressable
@@ -52,36 +44,15 @@ export function PlanCatalogCard({ entry, onPress }: Props) {
           size={20}
           color={iconColor}
         />
-        <Text style={[styles.title, interSemiboldText]} numberOfLines={2}>
+        <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>
           {entry.label}
         </Text>
-
-        {descriptionMode === 'pending' ? (
-          <>
-            {/* Slot so layout height stays stable while measuring. */}
-            <View style={styles.descriptionSlot} />
-            <Text
-              style={[styles.description, styles.descriptionMeasure, interMediumText]}
-              onTextLayout={(event) => handleMeasureLayout(event.nativeEvent.lines.length)}
-            >
-              {entry.description}
-            </Text>
-          </>
-        ) : descriptionMode === 'cta' ? (
-          <View style={styles.detailsRow}>
-            <Text style={[styles.detailsLabel, interMediumText]}>Voir les détails</Text>
-            <AppIcon
-              family="ionicons"
-              name="chevron-forward"
-              size={14}
-              color={planFinanceKit.colors.textMuted}
-            />
-          </View>
-        ) : (
-          <Text style={[styles.description, interMediumText]} numberOfLines={1}>
-            {entry.description}
-          </Text>
-        )}
+        <Text style={[styles.meta, { color: colors.textMuted }]} numberOfLines={1}>
+          {metaLine}
+        </Text>
+        <Text style={[styles.description, { color: colors.textMuted }]} numberOfLines={3}>
+          {entry.description}
+        </Text>
       </PlanFinanceContainer>
     </Pressable>
   );
@@ -94,32 +65,12 @@ const styles = StyleSheet.create({
     padding: PLAN_CARD_PADDING,
   },
   title: {
-    color: planFinanceKit.colors.text,
-    fontSize: 13,
-    lineHeight: 18,
+    ...typographyKit.rowTitle,
   },
-  descriptionSlot: {
-    height: 18,
+  meta: {
+    ...typographyKit.metaMedium,
   },
   description: {
-    color: planFinanceKit.colors.textMuted,
-    fontSize: typography.meta,
-    lineHeight: 18,
-  },
-  descriptionMeasure: {
-    position: 'absolute',
-    opacity: 0,
-    left: 0,
-    right: 0,
-  },
-  detailsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    minHeight: 18,
-  },
-  detailsLabel: {
-    ...planFinanceFonts.cardMeta,
-    color: planFinanceKit.colors.textMuted,
+    ...typographyKit.metaMedium,
   },
 });

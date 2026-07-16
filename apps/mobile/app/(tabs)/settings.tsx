@@ -75,7 +75,7 @@ import {
 } from '@/lib/payEstimationSettings';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import { clearChatHistory, getChatQuotaState, getDataModeLabel } from '@/lib/ai/chatService';
-import { isAnthropicApiKeyConfigured } from '@/lib/ai/env';
+import { isAnthropicApiKeyConfigured, isGeminiApiKeyConfigured } from '@/lib/ai/env';
 import { useAppTheme } from '@/lib/themeContext';
 
 type PickerKind = 'currency' | 'language' | 'region' | 'pay_frequency' | null;
@@ -97,6 +97,7 @@ export default function SettingsScreen() {
   const [cloudConnected, setCloudConnected] = useState(false);
   const [aiDataModeLabel, setAiDataModeLabel] = useState('Saisie manuelle');
   const [aiQuotaLabel, setAiQuotaLabel] = useState<string | undefined>(undefined);
+  const [geminiApiKeyConfigured, setGeminiApiKeyConfigured] = useState(false);
   const [anthropicApiKeyConfigured, setAnthropicApiKeyConfigured] = useState(false);
   const [clearingChatHistory, setClearingChatHistory] = useState(false);
 
@@ -162,7 +163,12 @@ export default function SettingsScreen() {
     setAutocompleteEnabledState(storedAutocomplete);
     setCloudConnected(storedCloud);
     setAiDataModeLabel(dataModeLabel);
-    setAiQuotaLabel(`${quota.messagesThisMonth}/${quota.monthlyLimit} messages ce mois`);
+    setAiQuotaLabel(
+      quota.monthlyLimit > 0
+        ? `${quota.messagesThisMonth}/${quota.monthlyLimit} messages ce mois`
+        : `${quota.messagesThisMonth} message${quota.messagesThisMonth > 1 ? 's' : ''} ce mois`,
+    );
+    setGeminiApiKeyConfigured(isGeminiApiKeyConfigured());
     setAnthropicApiKeyConfigured(isAnthropicApiKeyConfigured());
     setPayFrequency(paySettings.frequency);
     setPaySecondLastDate(paySettings.secondLastDate ?? '');
@@ -446,8 +452,45 @@ export default function SettingsScreen() {
 
           <SettingsSection title="Fyn">
             <SettingsNavigationRow
+              label="Clé Gemini"
+              hint="Gemini Flash — moteur principal de Fyn (chat, insights, plans)."
+              icon="key-outline"
+              value={geminiApiKeyConfigured ? 'Active' : 'Absente'}
+              onPress={() => {
+                tapHaptic();
+                showFeedback(
+                  geminiApiKeyConfigured ? 'Clé Gemini active' : 'Clé Gemini absente',
+                  geminiApiKeyConfigured
+                    ? 'La clé Gemini est chargée. Si Fyn ne répond pas, redémarre Expo avec le cache vidé : npx expo start -c'
+                    : '1. Copie apps/mobile/.env.example vers apps/mobile/.env\n2. Colle ta clé dans EXPO_PUBLIC_GEMINI_API_KEY=\n3. Redémarre Expo : npx expo start -c',
+                  geminiApiKeyConfigured ? 'success' : 'warning',
+                );
+              }}
+              accessory={
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      backgroundColor: geminiApiKeyConfigured
+                        ? colors.successMuted
+                        : colors.surfaceElevated,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusBadgeText,
+                      { color: geminiApiKeyConfigured ? colors.primary : colors.textMuted },
+                    ]}
+                  >
+                    {geminiApiKeyConfigured ? 'OK' : '—'}
+                  </Text>
+                </View>
+              }
+            />
+            <SettingsNavigationRow
               label="Clé Anthropic"
-              hint="Anthropic (Claude) — requise pour le chat IA complet."
+              hint="Anthropic (Claude) — repli optionnel si Gemini est absent."
               icon="key-outline"
               value={anthropicApiKeyConfigured ? 'Active' : 'Absente'}
               onPress={() => {
@@ -455,9 +498,9 @@ export default function SettingsScreen() {
                 showFeedback(
                   anthropicApiKeyConfigured ? 'Clé Anthropic active' : 'Clé Anthropic absente',
                   anthropicApiKeyConfigured
-                    ? 'La clé Anthropic est chargée. Si le chat reste en mode démo, redémarre Expo avec le cache vidé : npx expo start -c'
-                    : '1. Copie apps/mobile/.env.example vers apps/mobile/.env\n2. Colle ta clé dans EXPO_PUBLIC_ANTHROPIC_API_KEY=\n3. Redémarre Expo : npx expo start -c\n\nSans .env, l\'app reste en mode démo.',
-                  anthropicApiKeyConfigured ? 'success' : 'warning',
+                    ? 'Clé de repli chargée — utilisée seulement si EXPO_PUBLIC_GEMINI_API_KEY est vide.'
+                    : 'Optionnel : EXPO_PUBLIC_ANTHROPIC_API_KEY dans .env pour un repli chat sans Gemini.',
+                  anthropicApiKeyConfigured ? 'success' : 'info',
                 );
               }}
               accessory={
@@ -497,14 +540,14 @@ export default function SettingsScreen() {
               }}
             />
             <SettingsNavigationRow
-              label="Quota mensuel"
+              label="Messages ce mois"
               hint="Suivi local des messages envoyés à Fyn."
               icon="chatbubble-ellipses-outline"
               value={aiQuotaLabel}
               onPress={() => {
                 tapHaptic();
                 if (aiQuotaLabel) {
-                  showFeedback('Quota mensuel', aiQuotaLabel, 'info');
+                  showFeedback('Messages ce mois', aiQuotaLabel, 'info');
                 }
               }}
             />

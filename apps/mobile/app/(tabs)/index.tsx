@@ -43,7 +43,7 @@ import {
   type DashboardAlertSeverity,
 } from '@/components/MinimizedAlertCard';
 import { DashboardStatCard } from '@/components/DashboardStatCard';
-import { HomeInsightCard } from '@/components/dashboard/HomeInsightCard';
+import { HomeInsightCardWithAI } from '@/components/dashboard/HomeInsightCardWithAI';
 import { HomeAvailableNowHero } from '@/components/dashboard/HomeAvailableNowHero';
 import { HomePlansCarousel } from '@/components/dashboard/HomePlansCarousel';
 import { PaycheckAllocationWidget } from '@/components/PaycheckAllocationWidget';
@@ -79,7 +79,11 @@ import {
 import { creditUsedFromBalance } from '@/lib/creditLimitUtilization';
 import { formatPersonDirectedPaymentLabel } from '@/lib/loanPresentation';
 import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
-import { ALERT_TITLES } from '@/lib/alertPresentation';
+import {
+  ALERT_TITLES,
+  buildCreditLimitAlertTitle,
+  buildLowFundsAlertTitle,
+} from '@/lib/alertPresentation';
 import {
   heroStatAmount,
   percentStat,
@@ -184,7 +188,6 @@ const DASHBOARD_BOTTOM_PADDING = FLOATING_NAV_CONTENT_PADDING;
 
 const PAYMENT_WARNING_TITLE_CHECKING = ALERT_TITLES.lowFunds;
 const PAYMENT_SUCCESS_TITLE_CHECKING = 'Fonds disponibles';
-const PAYMENT_WARNING_TITLE_CREDIT_LIMIT = ALERT_TITLES.creditLimit;
 
 function greetingLine() {
   const h = new Date().getHours();
@@ -1310,7 +1313,9 @@ export default function HomeScreen() {
   const mockCreditOverLimitBody =
     'Après ce paiement, environ 96 % de ta limite serait utilisée. Tu as plusieurs façons de garder de la marge.';
   const livePaycheckMeta = paycheckMetaFromTimeline(nextPaymentDate, resolvedPaycheckForTimeline, estimatedPayDate);
-  const liveAlertTitle = creditRiskActive ? PAYMENT_WARNING_TITLE_CREDIT_LIMIT : PAYMENT_WARNING_TITLE_CHECKING;
+  const liveAlertTitle = creditRiskActive
+    ? buildCreditLimitAlertTitle(nextPayment.name)
+    : buildLowFundsAlertTitle(nextPayment.name);
   const liveAccountLabel = resolvedAccount
     ? insufficientFundsAlertPillLabel(resolvedAccount)
     : nextPaymentAccountName;
@@ -1347,14 +1352,14 @@ export default function HomeScreen() {
       color: dashPalette.red,
       bg: 'rgba(255,85,85,0.08)',
       severity: 'danger',
-      title: PAYMENT_WARNING_TITLE_CREDIT_LIMIT,
+      title: buildCreditLimitAlertTitle(MOCK_CREDIT_PAYMENT_NAME),
       body: mockCreditOverLimitBody,
       date: formatShortDate(mockCreditNextPaymentDate),
       accountName: MOCK_CREDIT_CARD_NAME,
       paymentName: MOCK_CREDIT_PAYMENT_NAME,
       paymentDateRaw: mockCreditNextPaymentDate,
       paycheckDateRaw: mockCreditPaycheckDate,
-      collapsedSummary: `${PAYMENT_WARNING_TITLE_CREDIT_LIMIT} · ${mockCreditOverLimitBody}`,
+      collapsedSummary: `${buildCreditLimitAlertTitle(MOCK_CREDIT_PAYMENT_NAME)} · ${mockCreditOverLimitBody}`,
       paycheckBeforePayment: true,
       paycheckIsEstimated: true,
       stats: {
@@ -1466,9 +1471,8 @@ export default function HomeScreen() {
 
       {primaryInsight ? (
         <View style={dashStyles.sectionAfterHero}>
-          <HomeInsightCard
-            title={primaryInsight.title}
-            message={primaryInsight.message}
+          <HomeInsightCardWithAI
+            insight={primaryInsight}
             onPress={() => openAlertDetail(primaryInsight)}
           />
         </View>

@@ -1,4 +1,5 @@
 import { loadRFA, regenerateRFA } from '@/lib/ai/rfaService';
+import { enrichPlanSuggestions } from '@/lib/ai/planAdaptationService';
 import { buildHeuristicRFA, buildRFAInputFromAppData } from '@/lib/ai/sanitizeForAI';
 import {
   PLAN_CATEGORY_LABELS,
@@ -8,6 +9,7 @@ import {
   type PlanSuggere,
 } from './Plan';
 import { buildPlanRecommendationContext } from './buildPlanRecommendationContext';
+import { isInvestmentPlanSubtype } from './planSuggestionCopy';
 import {
   PLAN_RECOMMENDATION_RULES,
   resolveDefaultMontantCible,
@@ -21,7 +23,54 @@ export type PlanRecommendationEngineOptions = {
   /** Bypass le throttle 24h — utilisé par le chat à la demande. */
   onDemand?: boolean;
   maxSuggestions?: number;
+  /** Heuristic raisons only — skip Gemini enrichment on the critical path. */
+  skipEnrichment?: boolean;
+  /** Chat / widget context — renforce l'exclusion des plans investissement. */
+  debtHeavy?: boolean;
 };
+
+function debtAwareRuleRank(rule: PlanRecommendationRule, debtHeavy: boolean): number {
+  if (!debtHeavy) return 0;
+  if (rule.category === 'dette') return 0;
+  if (rule.category === 'comportemental') return 1;
+  if (rule.category === 'budget' || rule.category === 'fiscal') return 2;
+  if (rule.subtype === 'fonds_urgence') return 3;
+  if (isInvestmentPlanSubtype(rule.subtype)) return 4;
+  return 2;
+}
+
+function sortRulesByPriority(
+  rules: PlanRecommendationRule[],
+  debtHeavy: boolean,
+): PlanRecommendationRule[] {
+  return [...rules].sort((a, b) => {
+    const debtRankA = debtAwareRuleRank(a, debtHeavy);
+    const debtRankB = debtAwareRuleRank(b, debtHeavy);
+    if (debtRankA !== debtRankB) return debtRankA - debtRankB;
+
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    return a.titre.localeCompare(b.titre, 'fr', { sensitivity: 'base' });
+  });
+}
+
+function isDebtContextExcludedSubtype(subtype: PlanRecommendationRule['subtype']): boolean {
+  return isInvestmentPlanSubtype(subtype) || subtype === 'reduction_abonnements';
+}
+
+function filterRulesForContext(
+  rules: PlanRecommendationRule[],
+  ctx: ReturnType<typeof buildPlanRecommendationContext>,
+  debtHeavy: boolean,
+): PlanRecommendationRule[] {
+  const debtContext = ctx.contexte_dette_lourde || debtHeavy;
+  if (!debtContext) return rules;
+
+  const preferred = rules.filter((rule) => !isDebtContextExcludedSubtype(rule.subtype));
+  if (preferred.length > 0) return preferred;
+
+  // Fallback: keep non–debt-context exclusions (e.g. investissement) but never subscription reduction.
+  return rules.filter((rule) => rule.subtype !== 'reduction_abonnements');
+}
 
 function ruleToPlanSuggere(rule: PlanRecommendationRule, ctx: ReturnType<typeof buildPlanRecommendationContext>): PlanSuggere {
   const montantCible = planSubtypeSansMontantCible(rule.subtype)
@@ -43,13 +92,6 @@ function ruleToPlanSuggere(rule: PlanRecommendationRule, ctx: ReturnType<typeof 
   };
 }
 
-function sortRulesByPriority(rules: PlanRecommendationRule[]): PlanRecommendationRule[] {
-  return [...rules].sort((a, b) => {
-    if (a.priority !== b.priority) return a.priority - b.priority;
-    return a.titre.localeCompare(b.titre, 'fr', { sensitivity: 'base' });
-  });
-}
-
 /**
  * Évalue les règles contre le RFA courant et retourne des plans `suggere`.
  * Mode passif dashboard : max 2 suggestions. Mode chat à la demande : max 4, sans throttle.
@@ -58,17 +100,21 @@ export async function evaluatePlanRecommendations(
   options: PlanRecommendationEngineOptions = {},
 ): Promise<PlanSuggere[]> {
   const onDemand = options.onDemand ?? false;
+  const debtHeavy = options.debtHeavy ?? false;
   const maxSuggestions = options.maxSuggestions ?? (onDemand ? ON_DEMAND_PLAN_SUGGESTION_LIMIT : PASSIVE_DASHBOARD_PLAN_SUGGESTION_LIMIT);
 
   const input = await buildRFAInputFromAppData();
   const rfa = onDemand ? (await loadRFA()) ?? buildHeuristicRFA(input) : await regenerateRFA({ reason: 'plan_change' });
   const ctx = buildPlanRecommendationContext(input, rfa);
 
+  const eligible = PLAN_RECOMMENDATION_RULES.filter((rule) => {
+    if (ctx.activePlanSubtypes.has(rule.subtype)) return false;
+    return rule.evaluate(ctx);
+  });
+
   const triggered = sortRulesByPriority(
-    PLAN_RECOMMENDATION_RULES.filter((rule) => {
-      if (ctx.activePlanSubtypes.has(rule.subtype)) return false;
-      return rule.evaluate(ctx);
-    }),
+    filterRulesForContext(eligible, ctx, debtHeavy),
+    ctx.contexte_dette_lourde || debtHeavy,
   );
 
   const deduped: PlanRecommendationRule[] = [];
@@ -80,7 +126,11 @@ export async function evaluatePlanRecommendations(
     if (deduped.length >= maxSuggestions) break;
   }
 
-  return deduped.map((rule) => ruleToPlanSuggere(rule, ctx));
+  const suggestions = deduped.map((rule) => ruleToPlanSuggere(rule, ctx));
+  if (options.skipEnrichment) return suggestions;
+
+  const snapshot = rfa.analyse?.slice(0, 200);
+  return enrichPlanSuggestions(suggestions, snapshot);
 }
 
 export function planSuggestionCategoryLabel(plan: PlanSuggere): string {

@@ -1,4 +1,11 @@
+import { DASHBOARD_ACCOUNTS } from '@/constants/dashboardMockAccounts';
 import type { AlertCenterItem, AlertCenterKind, AlertCenterSection } from '@/lib/alerts';
+import {
+  accountBalanceRowTitle,
+  accountBalanceSubtitle,
+} from '@/lib/accountBalancePresentation';
+import { formatPersonDirectedPaymentLabel } from '@/lib/loanPresentation';
+import type { SimulatedAccount } from '@/types';
 
 /** Softer section labels for the Messages list. */
 export const ALERT_SECTION_LABELS_REASSURING: Record<AlertCenterSection, string> = {
@@ -8,11 +15,122 @@ export const ALERT_SECTION_LABELS_REASSURING: Record<AlertCenterSection, string>
 
 export const ALERT_TITLES = {
   lowFunds: 'Solde serré avant échéance',
-  creditLimit: 'Peu de marge sur ta carte',
+  creditLimit: 'Marge insuffisante sur ta carte',
   budgetOver: 'Enveloppe budgétaire dépassée',
   highInterestDebt: 'Dette à taux élevé',
   balanceLow: 'Solde bas sur un compte',
 } as const;
+
+function merchantLabelFromPaymentName(paymentName?: string): string | null {
+  const trimmed = paymentName?.trim();
+  if (!trimmed) return null;
+  return formatPersonDirectedPaymentLabel(trimmed);
+}
+
+/** Merchant-aware title for credit-limit payment alerts (e.g. « Fizz : marge insuffisante »). */
+export function buildCreditLimitAlertTitle(paymentName?: string): string {
+  const merchant = merchantLabelFromPaymentName(paymentName);
+  if (merchant) return `${merchant} : marge insuffisante`;
+  return ALERT_TITLES.creditLimit;
+}
+
+/** Merchant-aware title for low-funds payment alerts. */
+export function buildLowFundsAlertTitle(paymentName?: string): string {
+  const merchant = merchantLabelFromPaymentName(paymentName);
+  if (merchant) return `${merchant} : solde insuffisant`;
+  return ALERT_TITLES.lowFunds;
+}
+
+/** Prefer merchant-aware title when payment metadata is available. */
+export function resolveAlertDisplayTitle(
+  item: Pick<AlertCenterItem, 'kind' | 'title' | 'paymentName'>,
+): string {
+  if (item.kind === 'credit_limit') {
+    return buildCreditLimitAlertTitle(item.paymentName);
+  }
+  if (item.kind === 'low_funds') {
+    return buildLowFundsAlertTitle(item.paymentName);
+  }
+  return item.title;
+}
+
+/** Short type-only nav/header title on alert detail (not merchant-aware). */
+export function alertTypeHeaderTitle(kind: AlertCenterKind): string {
+  switch (kind) {
+    case 'credit_limit':
+      return 'Alerte Limite de crédit';
+    case 'low_funds':
+      return 'Alerte Solde bas';
+    case 'budget_over':
+      return 'Alerte Budget';
+    case 'high_interest_debt':
+      return 'Alerte Dette';
+    case 'fyn':
+    default:
+      return 'Alerte Fyn';
+  }
+}
+
+function normalizeAccountLast4(value?: string | null): string | null {
+  if (!value?.trim()) return null;
+  const digits = value.replace(/\D/g, '');
+  if (digits.length < 4) return null;
+  return digits.slice(-4);
+}
+
+function extractLast4FromAccountName(name: string): string | null {
+  const digits = name.replace(/\D/g, '');
+  if (digits.length < 4) return null;
+  return digits.slice(-4);
+}
+
+/**
+ * Premium one-line account identity for alert detail
+ * (e.g. « Visa Desjardins ···· 4242 »).
+ */
+export function formatAlertAccountIdentity(
+  account: Pick<SimulatedAccount, 'name' | 'last4' | 'institution' | 'kind'>,
+): string {
+  const title = accountBalanceRowTitle(account);
+  const subtitle = accountBalanceSubtitle(account);
+  const base = subtitle ? `${title} ${subtitle}` : title;
+  const last4 = normalizeAccountLast4(account.last4) ?? extractLast4FromAccountName(account.name);
+  if (last4 && !base.includes(last4)) {
+    return `${base} ···· ${last4}`;
+  }
+  return base;
+}
+
+/**
+ * Resolve the specific account this alert refers to (name + last4), not a generic category.
+ * Prefer `accountId`; for credit-limit alerts, fall back to the linked credit card.
+ */
+export function resolveAlertAccountIdentity(
+  item: Pick<AlertCenterItem, 'accountId' | 'kind'>,
+  simulatedAccounts: SimulatedAccount[],
+): string | null {
+  if (item.accountId) {
+    const matched = simulatedAccounts.find((account) => account.id === item.accountId);
+    if (matched) return formatAlertAccountIdentity(matched);
+  }
+
+  if (item.kind === 'credit_limit') {
+    const creditFromDb = simulatedAccounts.find((account) => account.kind === 'credit');
+    if (creditFromDb) return formatAlertAccountIdentity(creditFromDb);
+
+    const dashboardCredit = DASHBOARD_ACCOUNTS.find((account) => account.kind === 'credit');
+    if (dashboardCredit) {
+      return formatAlertAccountIdentity({
+        name: dashboardCredit.name,
+        kind: dashboardCredit.kind,
+        last4: normalizeAccountLast4(dashboardCredit.number),
+        institution: dashboardCredit.domain,
+      });
+    }
+  }
+
+  return null;
+}
 
 export type AlertSolution = {
   id: string;
@@ -30,8 +148,8 @@ export type AlertDetailContent = {
   accentToken: 'accent' | 'muted';
   problemLabel: string;
   problemBody: string;
-  fixLabel: string;
-  fixBody: string;
+  /** Preventative tip fallback for the AI insight card (not shown as subtitle). */
+  insightFallbackBody: string;
   actionsLabel: string;
   solutions: AlertSolution[];
 };
@@ -227,7 +345,8 @@ export function buildAlertDetailContent(
   >,
 ): AlertDetailContent {
   switch (item.kind) {
-    case 'credit_limit':
+    case 'credit_limit': {
+      const merchant = merchantLabelFromPaymentName(item.paymentName);
       return {
         eyebrow: 'Carte de crédit',
         icon: { family: 'ionicons', name: 'card-outline' },
@@ -235,14 +354,16 @@ export function buildAlertDetailContent(
         problemLabel: 'Le problème',
         problemBody:
           item.message ||
-          'Ce paiement laisserait peu de marge sur ta carte de crédit.',
-        fixLabel: 'Comment le régler',
-        fixBody: isRecurringPaymentAlert(item)
-          ? 'Garde au moins 20–30 % de marge libre : vire de l’argent disponible d’un autre compte, ou rembourse avant l’échéance. Un paiement récurrent se paie en entier — ajuste ailleurs si besoin.'
-          : 'Garde au moins 20–30 % de marge libre : vire de l’argent disponible d’un autre compte, ou rembourse un montant avant l’échéance.',
+          (merchant
+            ? `Le paiement ${merchant} laisserait peu de marge sur ta carte de crédit.`
+            : 'Ce paiement laisserait peu de marge sur ta carte de crédit.'),
+        insightFallbackBody: isRecurringPaymentAlert(item)
+          ? 'Pour les paiements récurrents sur carte, garde 20–30 % de marge libre avant chaque échéance — tu éviteras ce genre d’alerte.'
+          : 'Avant un gros achat sur carte, vérifie ta marge disponible : un coussin de 20–30 % t’évite les surprises.',
         actionsLabel: 'Tes actions',
         solutions: creditLimitSolutions(item),
       };
+    }
 
     case 'budget_over':
       return {
@@ -253,9 +374,8 @@ export function buildAlertDetailContent(
         problemBody:
           item.message ||
           'Une enveloppe budgétaire a été dépassée ce mois-ci.',
-        fixLabel: 'Comment le régler',
-        fixBody:
-          'Réajuste l’enveloppe concernée ou déplace du budget d’une catégorie moins utilisée pour revenir dans tes limites.',
+        insightFallbackBody:
+          'En début de mois, répartis ton budget avec une petite marge dans chaque enveloppe — tu limites les dépassements.',
         actionsLabel: 'Tes actions',
         solutions: [
           {
@@ -291,9 +411,8 @@ export function buildAlertDetailContent(
         problemBody:
           item.message ||
           'Une dette porte un taux d’intérêt élevé et te coûte plus cher au fil du temps.',
-        fixLabel: 'Comment le régler',
-        fixBody:
-          'Priorise le remboursement de cette dette — chaque surplus réduit les intérêts futurs.',
+        insightFallbackBody:
+          'Quand tu as un surplus, vise d’abord les dettes à taux élevé — chaque mois compte pour réduire les intérêts.',
         actionsLabel: 'Tes actions',
         solutions: [
           {
@@ -329,10 +448,9 @@ export function buildAlertDetailContent(
         problemBody:
           item.message ||
           'Il pourrait manquer de liquidités pour couvrir un prochain paiement.',
-        fixLabel: 'Comment le régler',
-        fixBody: isRecurringPaymentAlert(item)
-          ? 'Couvre le montant manquant par un virement ou en réduisant d’autres dépenses avant l’échéance.'
-          : 'Couvre le montant manquant par un virement, un report de paiement ou en attendant le prochain dépôt.',
+        insightFallbackBody: isRecurringPaymentAlert(item)
+          ? 'Vérifie ton solde 3–4 jours avant chaque paiement récurrent — un petit rappel t’évite les mauvaises surprises.'
+          : 'Garde un coussin de quelques jours de dépenses sur ton compte courant pour absorber les échéances imprévues.',
         actionsLabel: 'Tes actions',
         solutions: lowFundsSolutions(item),
       };
@@ -345,8 +463,8 @@ export function buildAlertDetailContent(
         accentToken: 'accent',
         problemLabel: 'Le problème',
         problemBody: item.message || item.title,
-        fixLabel: 'Comment le régler',
-        fixBody: 'Discute avec Fyn ou explore un plan pour clarifier la prochaine étape.',
+        insightFallbackBody:
+          'Consulte régulièrement tes alertes et ton budget — repérer les tendances tôt simplifie les ajustements.',
         actionsLabel: 'Tes actions',
         solutions: [
           {

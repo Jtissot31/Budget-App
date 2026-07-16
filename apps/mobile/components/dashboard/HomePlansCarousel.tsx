@@ -3,7 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
-import { PLAN_FINANCE_CONTAINER, planFinanceKit } from '@/constants/planFinanceKit';
+import { planFinanceKit } from '@/constants/planFinanceKit';
 import {
   PAGE_PADDING_HORIZONTAL,
   interMediumText,
@@ -12,9 +12,16 @@ import {
   typography,
 } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
+import {
+  PLAN_CAROUSEL,
+  planCarouselCardShellStyle,
+  planCarouselMetaStyle,
+  planCarouselProgressTrackStyle,
+  planCarouselTitleStyle,
+} from '@/lib/plans/planCardPresentation';
 import { useAppTheme } from '@/lib/themeContext';
 
-const EDGE_FADE_WIDTH = 56;
+const EDGE_FADE_WIDTH = PLAN_CAROUSEL.edgeFadeWidth;
 
 // TODO: brancher sur vraies données plans (RfaActivePlan / table dédiée — voir lib/ai/types.ts)
 type MockDashboardPlan = {
@@ -93,11 +100,11 @@ export function HomePlansCarousel() {
             const progressColor = plan.progressPositive ? colors.accentGreen : colors.danger;
             return (
               <PlanFinanceContainer key={plan.id} style={styles.planCard}>
-                <AppIcon family="material-community" name={plan.icon} size={20} color={colors.textSecondary} />
-                <Text style={[styles.planName, { color: colors.text }, interSemiboldText]} numberOfLines={2}>
+                <AppIcon family="material-community" name={plan.icon} size={PLAN_CAROUSEL.iconSize} color={colors.textSecondary} />
+                <Text style={[styles.planName, { color: colors.text }]} numberOfLines={2}>
                   {plan.name}
                 </Text>
-                <Text style={[styles.planMeta, { color: colors.textMuted }, interMediumText]} numberOfLines={1}>
+                <Text style={[styles.planMeta, { color: colors.textMuted }]} numberOfLines={1}>
                   {plan.category} · {plan.status}
                 </Text>
                 <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
@@ -157,7 +164,7 @@ const styles = StyleSheet.create({
     marginRight: -PAGE_PADDING_HORIZONTAL,
   },
   carouselContent: {
-    gap: spacing.sm,
+    gap: PLAN_CAROUSEL.cardGap,
     paddingRight: EDGE_FADE_WIDTH,
   },
   edgeFade: {
@@ -168,23 +175,10 @@ const styles = StyleSheet.create({
     width: EDGE_FADE_WIDTH,
     zIndex: 2,
   },
-  planCard: {
-    minWidth: 150,
-    padding: PLAN_FINANCE_CONTAINER.padding.card,
-    gap: spacing.sm,
-  },
-  planName: {
-    fontSize: 13,
-  },
-  planMeta: {
-    fontSize: 11,
-  },
-  progressTrack: {
-    height: 4,
-    borderRadius: 2,
-    overflow: 'hidden',
-    marginTop: spacing.xs,
-  },
+  planCard: planCarouselCardShellStyle(),
+  planName: planCarouselTitleStyle(),
+  planMeta: planCarouselMetaStyle(),
+  progressTrack: planCarouselProgressTrackStyle(),
   progressFill: {
     height: '100%',
     borderRadius: 2,

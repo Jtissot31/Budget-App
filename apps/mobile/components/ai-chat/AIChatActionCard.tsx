@@ -1,9 +1,19 @@
+import { Fragment } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { AppIcon } from '@/components/icons/AppIcon';
-import { jakartaMediumText, jakartaRegularText, radius, spacing, typography } from '@/constants/theme';
-import { tapHaptic } from '@/lib/haptics';
+
+import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
+import {
+  planFinanceEyebrowStyle,
+  planFinanceFonts,
+  planFinanceKit,
+  planFinancePrimaryButtonStyle,
+  planFinanceSecondaryButtonStyle,
+} from '@/constants/planFinanceKit';
+import { interSemiboldText, moneyAmountTypography, spacing } from '@/constants/theme';
 import type { ChatAction } from '@/lib/ai/types';
-import { useAIChatColors } from './theme';
+import { tapHaptic } from '@/lib/haptics';
+import { useAppTheme } from '@/lib/themeContext';
+
 import type { AIChatUiAction } from './types';
 
 export type { AIChatActionState, AIChatUiAction } from './types';
@@ -14,6 +24,10 @@ type Props = {
   onCancel: (actionKey: string) => void;
   disabled?: boolean;
 };
+
+/** French Canadian money fragments inside confirmation copy (e.g. `10 000 $`, `400 $/mois`). */
+const CONFIRMATION_MONEY_REGEX =
+  /(?:[\d][\d\s]*(?:,\d{1,2})?\s*(?:\$|CAD)(?:\s*\/\s*(?:mois|semaine|an))?|\$\s*[\d][\d\s]*(?:,\d{1,2})?)/gi;
 
 function actionTypeLabel(action: ChatAction['action']): string {
   const labels: Partial<Record<ChatAction['action'], string>> = {
@@ -38,42 +52,68 @@ function actionTypeLabel(action: ChatAction['action']): string {
   return labels[action] ?? 'Action';
 }
 
+function splitConfirmationText(text: string): { kind: 'text' | 'money'; value: string }[] {
+  const segments: { kind: 'text' | 'money'; value: string }[] = [];
+  let lastIndex = 0;
+
+  for (const match of text.matchAll(CONFIRMATION_MONEY_REGEX)) {
+    const start = match.index ?? 0;
+    if (start > lastIndex) {
+      segments.push({ kind: 'text', value: text.slice(lastIndex, start) });
+    }
+    segments.push({ kind: 'money', value: match[0] });
+    lastIndex = start + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    segments.push({ kind: 'text', value: text.slice(lastIndex) });
+  }
+
+  return segments.length ? segments : [{ kind: 'text', value: text }];
+}
+
+function ConfirmationCopy({ text, color }: { text: string; color: string }) {
+  const segments = splitConfirmationText(text);
+
+  return (
+    <Text style={[planFinanceFonts.cardTitle, { color }]}>
+      {segments.map((segment, index) =>
+        segment.kind === 'money' ? (
+          <Text key={`money-${index}`} style={moneyAmountTypography({ tier: 'card', fontSize: 16, lineHeight: 22 })}>
+            {segment.value}
+          </Text>
+        ) : (
+          <Fragment key={`text-${index}`}>{segment.value}</Fragment>
+        ),
+      )}
+    </Text>
+  );
+}
+
 export function AIChatActionCard({ action, onConfirm, onCancel, disabled = false }: Props) {
-  const palette = useAIChatColors();
+  const { colors } = useAppTheme();
   const isPending = action.status === 'pending';
   const isExecuting = action.status === 'executing';
   const isTerminal = action.status === 'success' || action.status === 'error' || action.status === 'cancelled';
 
   return (
-    <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-      <View style={styles.headerRow}>
-        <AppIcon family="material-community" 
-          name={isPending || isExecuting ? 'lightning-bolt-outline' : 'check-circle-outline'}
-          size={18}
-          color={palette.primary}
-        />
-        <Text style={[styles.actionType, { color: palette.textMuted }, jakartaRegularText]}>
-          {actionTypeLabel(action.action)}
-        </Text>
-      </View>
+    <PlanFinanceContainer halo={false} style={styles.card}>
+      <Text style={planFinanceEyebrowStyle()}>{actionTypeLabel(action.action)}</Text>
 
-      <Text style={[styles.confirmation, { color: palette.text }, jakartaRegularText]}>
-        {action.confirmation}
-      </Text>
+      <ConfirmationCopy text={action.confirmation} color={colors.text} />
 
       {action.resultMessage ? (
         <Text
           style={[
-            styles.result,
+            planFinanceFonts.cardMeta,
             {
               color:
                 action.status === 'error'
-                  ? '#EF4444'
+                  ? planFinanceKit.colors.danger
                   : action.status === 'success'
-                    ? palette.primary
-                    : palette.textMuted,
+                    ? colors.accentGreen
+                    : colors.textSecondary,
             },
-            jakartaRegularText,
           ]}
         >
           {action.resultMessage}
@@ -91,12 +131,12 @@ export function AIChatActionCard({ action, onConfirm, onCancel, disabled = false
               onCancel(action.actionKey);
             }}
             style={({ pressed }) => [
-              styles.secondaryButton,
-              { borderColor: palette.border },
+              styles.button,
+              planFinanceSecondaryButtonStyle(),
               pressed && styles.pressed,
             ]}
           >
-            <Text style={[styles.secondaryButtonText, { color: palette.textMuted }, jakartaMediumText]}>
+            <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }, interSemiboldText]}>
               Annuler
             </Text>
           </Pressable>
@@ -110,12 +150,12 @@ export function AIChatActionCard({ action, onConfirm, onCancel, disabled = false
               onConfirm(action.actionKey);
             }}
             style={({ pressed }) => [
-              styles.primaryButton,
-              { backgroundColor: palette.primary },
+              styles.button,
+              planFinancePrimaryButtonStyle(),
               pressed && styles.pressed,
             ]}
           >
-            <Text style={[styles.primaryButtonText, { color: palette.userBubbleText }, jakartaMediumText]}>
+            <Text style={[styles.primaryButtonText, interSemiboldText]}>
               {isExecuting ? 'En cours…' : 'Confirmer'}
             </Text>
           </Pressable>
@@ -123,64 +163,34 @@ export function AIChatActionCard({ action, onConfirm, onCancel, disabled = false
       ) : null}
 
       {isTerminal && action.status === 'cancelled' ? (
-        <Text style={[styles.result, { color: palette.textMuted }, jakartaRegularText]}>Action annulée.</Text>
+        <Text style={[planFinanceFonts.cardMeta, { color: colors.textSecondary }]}>Action annulée.</Text>
       ) : null}
-    </View>
+    </PlanFinanceContainer>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    padding: planFinanceKit.layout.cardPadding,
     gap: spacing.sm,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  actionType: {
-    fontSize: typography.meta,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  confirmation: {
-    fontSize: typography.body,
-    lineHeight: typography.body + 6,
-  },
-  result: {
-    fontSize: typography.meta,
-    lineHeight: typography.meta + 4,
+    alignSelf: 'stretch',
   },
   buttonRow: {
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.xs,
   },
-  secondaryButton: {
+  button: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
   },
   secondaryButtonText: {
-    fontSize: typography.body,
-  },
-  primaryButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
+    fontSize: 15,
   },
   primaryButtonText: {
-    fontSize: typography.body,
+    fontSize: 15,
+    color: planFinanceKit.colors.textOnAccent,
   },
   pressed: {
-    opacity: 0.78,
+    opacity: 0.82,
   },
 });

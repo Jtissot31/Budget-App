@@ -1,5 +1,6 @@
 import {
   PLAN_CATEGORIES,
+  PLAN_CATEGORY_LABELS,
   PLAN_SUBTYPES_BY_CATEGORY,
   PLAN_SUBTYPE_LABELS,
   planCategoryForSubtype,
@@ -18,6 +19,7 @@ export const PLAN_SUBTYPE_DESCRIPTIONS: Record<PlanSubtype, string> = {
   dette_individuelle: 'Rembourser une dette précise avec un plan structuré.',
   snowball: 'Éliminer les dettes de la plus petite à la plus grande.',
   avalanche: 'Prioriser les dettes au taux d’intérêt le plus élevé.',
+  bombe_nucleaire: 'Régler une dette d’un coup avec un montant massif (bonus, épargne, vente).',
   consolidation: 'Regrouper plusieurs dettes en un seul paiement.',
   marge_credit: 'Réduire l’utilisation de votre marge de crédit.',
   reer: 'Cotiser au REER selon votre espace et vos objectifs.',
@@ -44,6 +46,11 @@ export type PlanCatalogEntry = {
   label: string;
   description: string;
 };
+
+/** Meta ligne catalogue — libellé de catégorie (ex. « Épargne »). */
+export function planCatalogCardMetaLine(category: PlanCategory): string {
+  return PLAN_CATEGORY_LABELS[category];
+}
 
 export const PLAN_CATALOG_ENTRIES: readonly PlanCatalogEntry[] = PLAN_CATEGORIES.flatMap(
   (category) =>

@@ -27,8 +27,10 @@ export const GoalProgressChart = forwardRef<
     goal: SavingsGoal;
     transactions?: readonly Transaction[];
     accounts?: readonly SimulatedAccount[];
+    /** When false, only the chart is shown (hero amount lives elsewhere on the screen). */
+    showAmountHero?: boolean;
   }
->(function GoalProgressChart({ goal, transactions = [], accounts = [] }, ref) {
+>(function GoalProgressChart({ goal, transactions = [], accounts = [], showAmountHero = true }, ref) {
   const chartRef = useRef<PortfolioChartCardHandle>(null);
   const [periodData, setPeriodData] = useState<PortfolioChartCardPeriodData | null>(null);
   const points = useMemo(
@@ -65,16 +67,18 @@ export const GoalProgressChart = forwardRef<
 
   return (
     <View style={styles.wrapper}>
-      <Pressable
-        onPress={clearSelection}
-        style={styles.heroBlock}
-        accessibilityRole="none"
-        accessibilityLabel="Effacer la sélection du graphique"
-      >
-        <DashboardSectionLabel style={styles.heroEyebrow}>PROGRESSION</DashboardSectionLabel>
-        <NetWorthAmountRow totalBalance={periodData?.currentValue ?? fallbackTotal} />
-        <HeroChartDelta periodData={periodData} />
-      </Pressable>
+      {showAmountHero ? (
+        <Pressable
+          onPress={clearSelection}
+          style={styles.heroBlock}
+          accessibilityRole="none"
+          accessibilityLabel="Effacer la sélection du graphique"
+        >
+          <DashboardSectionLabel style={styles.heroEyebrow}>PROGRESSION</DashboardSectionLabel>
+          <NetWorthAmountRow totalBalance={periodData?.currentValue ?? fallbackTotal} />
+          <HeroChartDelta periodData={periodData} />
+        </Pressable>
+      ) : null}
       <Pressable
         onPress={clearSelection}
         accessibilityRole="none"

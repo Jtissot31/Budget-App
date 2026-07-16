@@ -29,10 +29,11 @@ import {
 } from '@/constants/theme';
 import { dataEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
-import { PLAN_SUBTYPE_LABELS, planCategoryForSubtype, type PlanSuggere, type PlanSubtype } from '@/lib/plans/Plan';
+import { type PlanSuggere, type PlanSubtype } from '@/lib/plans/Plan';
 import { PLAN_CARD_LIST_GAP } from '@/lib/plans/planCardPresentation';
+import { getCatalogEntry } from '@/lib/plans/planCatalogData';
 import { buildTemplateDetailParams } from '@/lib/plans/planCreateNavigation';
-import { getPlanSubtypeConfig, PLAN_SITUATIONS } from '@/lib/plans/planSubtypeConfig';
+import { PLAN_SITUATIONS } from '@/lib/plans/planSubtypeConfig';
 import { loadExplorerSnapshot } from '@/lib/plans/planHubData';
 
 export function ExplorerPlansScreen() {
@@ -44,7 +45,7 @@ export function ExplorerPlansScreen() {
   const pf = planFinanceKit.colors;
 
   const load = useCallback(async () => {
-    const snapshot = await loadExplorerSnapshot();
+    const snapshot = await loadExplorerSnapshot({ skipEnrichment: true });
     setSuggestedPlans(snapshot.suggestedPlans);
   }, []);
 
@@ -52,8 +53,13 @@ export function ExplorerPlansScreen() {
     let cancelled = false;
     void (async () => {
       setLoading(true);
-      await load();
-      if (!cancelled) setLoading(false);
+      try {
+        await load();
+      } catch (error: unknown) {
+        if (__DEV__) console.warn('[ExplorerPlansScreen] load failed', error);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => {
       cancelled = true;
@@ -156,16 +162,12 @@ export function ExplorerPlansScreen() {
                 <Text style={[styles.situationTitle, interSemiboldText]}>{situation.label}</Text>
                 <View style={styles.cardList}>
                   {situation.subtypes.map((subtype) => {
-                    const config = getPlanSubtypeConfig(subtype);
+                    const entry = getCatalogEntry(subtype);
+                    if (!entry) return null;
                     return (
                       <PlanCatalogCard
                         key={subtype}
-                        entry={{
-                          category: planCategoryForSubtype(subtype),
-                          subtype,
-                          label: PLAN_SUBTYPE_LABELS[subtype],
-                          description: config.shortDescription,
-                        }}
+                        entry={entry}
                         onPress={() => handleOpenTemplate(subtype)}
                       />
                     );

@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { HubSectionHeader } from '@/components/plans/HubSectionHeader';
 import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
+import { SavingsGoalHubRow } from '@/components/plans/SavingsGoalHubRow';
 import {
   createNewGoalForm,
   createNewGoalFormFromSuggestion,
@@ -14,14 +15,15 @@ import {
 } from '@/components/SavingsGoalsForm';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { floatingGlassButtonPressed } from '@/constants/floatingGlassButton';
-import { moneyAmountTypography, radius, spacing, typographyKit } from '@/constants/theme';
+import { radius, spacing, typographyKit } from '@/constants/theme';
 import { getCategoryBudgets, getDashboard, getRecurringPayments, getSavingsGoals } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
 import type { FormFeedback } from '@/lib/formFeedback';
 import { isFormSaveSuccess } from '@/lib/formFeedback';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { tapHaptic } from '@/lib/haptics';
-import { buildGoalProgressions, type GoalProgressionSnapshot } from '@/lib/savingsGamification';
+import { formatSavingsGoalHubRowCopy } from '@/lib/savingsGoalPresentation';
+import { buildGoalProgressions } from '@/lib/savingsGamification';
 import { useAppTheme } from '@/lib/themeContext';
 import type { CategoryBudget, DashboardSummary, RecurringPayment, SavingsGoal } from '@/types';
 
@@ -38,11 +40,6 @@ const SAVINGS_GOAL_SUGGESTIONS: readonly SavingsGoalSuggestion[] = [
   { name: 'Mise de côté', targetAmount: 1000, icon: 'cash-outline', hint: 'Épargne flexible' },
   { name: 'Achat important', targetAmount: 3000, icon: 'diamond-outline', hint: 'Projet ou équipement' },
 ];
-
-function goalRowHint(goal: GoalProgressionSnapshot): string {
-  if (goal.completed) return 'Objectif atteint';
-  return `${goal.pct} %`;
-}
 
 export function HubSavingsGoalsSection() {
   const router = useRouter();
@@ -166,33 +163,20 @@ export function HubSavingsGoalsSection() {
         </View>
       ) : (
         <View style={styles.cardList}>
-          {previewGoals.map((goal) => (
-            <Pressable
-              key={goal.goalId}
-              accessibilityRole="button"
-              accessibilityLabel={`Voir l'objectif ${goal.name}`}
-              onPress={() => openGoal(goal.goalId)}
-              style={({ pressed }) => [pressed && styles.pressed]}
-            >
-              <PlanFinanceContainer style={styles.suggestionRow}>
-                <UserPickedIconWell icon={goal.icon} size={44} wellGlyphWhite noBackground />
-                <View style={styles.suggestionCopy}>
-                  <Text style={[styles.suggestionHint, { color: colors.textMuted }]} numberOfLines={1}>
-                    {goalRowHint(goal)}
-                  </Text>
-                  <Text style={[styles.suggestionName, { color: colors.text }]} numberOfLines={2}>
-                    {goal.name}
-                  </Text>
-                </View>
-                <Text
-                  style={[styles.suggestionAmount, moneyAmountTypography({ tier: 'row' }), { color: colors.text }]}
-                >
-                  {formatDisplayMoneyAbsolute(goal.currentAmount)}
-                </Text>
-                <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
-              </PlanFinanceContainer>
-            </Pressable>
-          ))}
+          {previewGoals.map((goal) => {
+            const { title, meta } = formatSavingsGoalHubRowCopy(goal);
+            return (
+              <SavingsGoalHubRow
+                key={goal.goalId}
+                icon={goal.icon}
+                title={title}
+                meta={meta}
+                amount={formatDisplayMoneyAbsolute(goal.currentAmount)}
+                accessibilityLabel={`Voir l'objectif ${goal.name}`}
+                onPress={() => openGoal(goal.goalId)}
+              />
+            );
+          })}
         </View>
       )}
 

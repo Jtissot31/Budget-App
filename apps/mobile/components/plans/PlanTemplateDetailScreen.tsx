@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -14,6 +15,7 @@ import {
 } from '@/constants/planFinanceKit';
 import { interMediumText, interSemiboldText, spacing } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
+import { enrichPlanTemplateWhy } from '@/lib/ai/planAdaptationService';
 import { PLAN_SUBTYPE_LABELS, planCategoryForSubtype, type PlanSubtype } from '@/lib/plans/Plan';
 import { getCategoryIcon } from '@/lib/plans/planCardPresentation';
 import { buildPrefilledSubtypeEntryParams } from '@/lib/plans/planCreateNavigation';
@@ -31,8 +33,33 @@ export function PlanTemplateDetailScreen({ subtype, raison }: Props) {
   const config = getPlanSubtypeConfig(subtype);
   const category = planCategoryForSubtype(subtype);
   const pf = planFinanceKit.colors;
-  const whyText = raison?.trim() || config.fullDescription;
+  const staticWhy = config.fullDescription;
+  const [whyText, setWhyText] = useState(raison?.trim() || staticWhy);
   const strategyText = config.strategy;
+
+  useEffect(() => {
+    if (raison?.trim()) {
+      setWhyText(raison.trim());
+      return;
+    }
+
+    let cancelled = false;
+    setWhyText(staticWhy);
+
+    async function loadWhy() {
+      const enriched = await enrichPlanTemplateWhy(
+        subtype,
+        PLAN_SUBTYPE_LABELS[subtype],
+        staticWhy,
+      );
+      if (!cancelled) setWhyText(enriched);
+    }
+
+    void loadWhy();
+    return () => {
+      cancelled = true;
+    };
+  }, [raison, staticWhy, subtype]);
 
   const handleBack = () => {
     tapHaptic();
@@ -45,7 +72,7 @@ export function PlanTemplateDetailScreen({ subtype, raison }: Props) {
       pathname: '/plans/create',
       params: {
         ...buildPrefilledSubtypeEntryParams(subtype, category),
-        ...(raison ? { raison } : {}),
+        ...(whyText !== staticWhy || raison ? { raison: whyText } : {}),
       },
     });
   };

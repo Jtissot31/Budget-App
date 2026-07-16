@@ -222,6 +222,8 @@ export function SavingsGoalFormModal({
     [isLight, selectedColor],
   );
   const resolvedIcon = form ? getAutomaticGoalIcon(form.name) : DEFAULT_ICON;
+  const isEditingExistingGoal =
+    form != null && goals.some((goal) => goal.id === form.id);
 
   return (
     <Modal visible={form != null} animationType="slide" transparent onRequestClose={onDismiss}>
@@ -234,7 +236,7 @@ export function SavingsGoalFormModal({
             <View style={[styles.handle, themed.handle]} />
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, themed.text]}>
-                {form?.name ? 'Modifier' : 'Nouvel objectif'}
+                {isEditingExistingGoal ? 'Modifier' : 'Nouvel objectif'}
               </Text>
               <Pressable
                 onPress={onDismiss}
@@ -270,7 +272,7 @@ export function SavingsGoalFormModal({
                 }
               />
 
-              {form != null && goals.some((g) => g.id === form.id) ? (
+              {isEditingExistingGoal ? (
                 <GoalSparkChartCarousel
                   goals={goals}
                   focusGoalId={form.id}
@@ -482,8 +484,8 @@ function GoalKindHeader({
   const { colors } = useAppTheme();
 
   return (
-    <PlanFinanceContainer style={styles.goalKindHeader} halo={false}>
-      <UserPickedIconWell icon={resolvedIcon} size={52} wellGlyphWhite />
+    <View style={styles.goalKindHeader}>
+      <UserPickedIconWell icon={resolvedIcon} size={44} wellGlyphWhite noBackground />
       <TextInput
         style={[styles.goalKindName, { color: colors.text }]}
         value={name}
@@ -492,7 +494,7 @@ function GoalKindHeader({
         placeholderTextColor={colors.textMuted}
         accessibilityLabel="Nom de l'objectif"
       />
-    </PlanFinanceContainer>
+    </View>
   );
 }
 
@@ -1007,7 +1009,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    padding: ONYX_CONTAINER.padding.row,
   },
   goalKindName: {
     flex: 1,

@@ -1,3 +1,7 @@
+/**
+ * Public env keys (EXPO_PUBLIC_*) are embedded in the JS bundle — dev-only for API keys.
+ * Production should use a server proxy; never commit .env or ship shared EAS secrets widely.
+ */
 import Constants from 'expo-constants';
 
 type ExpoExtra = {
@@ -34,4 +38,9 @@ export function isAnthropicApiKeyConfigured(): boolean {
 
 export function isGeminiApiKeyConfigured(): boolean {
   return Boolean(getGeminiApiKey());
+}
+
+/** Fyn chat — Gemini preferred, Anthropic fallback. */
+export function isFynChatApiKeyConfigured(): boolean {
+  return isGeminiApiKeyConfigured() || isAnthropicApiKeyConfigured();
 }

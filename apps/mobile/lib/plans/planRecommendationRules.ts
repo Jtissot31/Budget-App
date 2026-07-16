@@ -44,7 +44,8 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
     evaluate: (ctx) =>
       ctx.revenu_stable &&
       (ctx.tranche_imposition === 'moyenne' || ctx.tranche_imposition === 'haute') &&
-      ctx.droits_cotisation_reer_disponibles > 0,
+      ctx.droits_cotisation_reer_disponibles > 0 &&
+      !ctx.contexte_dette_lourde,
     buildRaisonHeuristique: (ctx) =>
       `Avec un revenu stable et environ ${ctx.droits_cotisation_reer_disponibles.toLocaleString('fr-CA')} $ de droits REER estimés, une cotisation structurée peut réduire ton impôt tout en épargnant.`,
   },
@@ -58,7 +59,9 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
     signal: 'celi:droits_disponibles_sans_objectif_court_terme',
     defaultMontantCible: null,
     evaluate: (ctx) =>
-      ctx.droits_cotisation_celi_disponibles > 0 && !ctx.objectif_court_terme_actif,
+      ctx.droits_cotisation_celi_disponibles > 0 &&
+      !ctx.objectif_court_terme_actif &&
+      !ctx.contexte_dette_lourde,
     buildRaisonHeuristique: (ctx) =>
       `Tu as de l'espace CELI estimé à ${ctx.droits_cotisation_celi_disponibles.toLocaleString('fr-CA')} $ sans objectif court terme en cours — bon moment pour automatiser une cotisation.`,
   },
@@ -75,7 +78,8 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
       !ctx.est_proprietaire &&
       ctx.age !== null &&
       ctx.age < 40 &&
-      ctx.epargne_recurrente_detectee,
+      ctx.epargne_recurrente_detectee &&
+      !ctx.contexte_dette_lourde,
     buildRaisonHeuristique: () =>
       'Tu épargnes déjà régulièrement sans être propriétaire — le CELIAPP peut accélérer une mise de fonds avec un avantage fiscal.',
   },
@@ -104,6 +108,60 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
     evaluate: (ctx) => ctx.nombre_dettes_actives >= 2,
     buildRaisonHeuristique: (ctx) =>
       `${ctx.nombre_dettes_actives} dettes actives — l'avalanche cible d'abord les taux les plus élevés pour payer moins d'intérêts au total.`,
+  },
+  {
+    id: 'rule-bombe-nucleaire',
+    subtype: 'bombe_nucleaire',
+    category: 'dette',
+    priority: 1,
+    titre: 'Bombe nucléaire',
+    description: 'Frapper une dette avec un paiement massif pour l’éliminer ou la réduire d’un coup.',
+    signal: 'bombe_nucleaire:liquidites_disponibles',
+    defaultMontantCible: null,
+    evaluate: (ctx) =>
+      ctx.nombre_dettes_actives >= 1 &&
+      ctx.liquidites_excedentaires >= Math.max(ctx.depenses_mensuelles * 0.25, 750),
+    buildRaisonHeuristique: (ctx) =>
+      `Tu as environ ${Math.round(ctx.liquidites_excedentaires).toLocaleString('fr-CA')} $ au-delà d'un mois de dépenses — un paiement massif sur ta dette la plus coûteuse peut couper nettement les intérêts.`,
+  },
+  {
+    id: 'rule-consolidation',
+    subtype: 'consolidation',
+    category: 'dette',
+    priority: 1,
+    titre: 'Consolidation de dettes',
+    description: 'Regrouper plusieurs dettes en un seul prêt pour simplifier et réduire le taux global.',
+    signal: 'consolidation:plusieurs_dettes_actives',
+    defaultMontantCible: null,
+    evaluate: (ctx) => ctx.nombre_dettes_actives >= 3,
+    buildRaisonHeuristique: (ctx) =>
+      `${ctx.nombre_dettes_actives} dettes actives — regrouper en un seul paiement simplifie la gestion et peut réduire le taux effectif.`,
+  },
+  {
+    id: 'rule-dette-individuelle',
+    subtype: 'dette_individuelle',
+    category: 'dette',
+    priority: 1,
+    titre: 'Dette individuelle',
+    description: 'Rembourser une dette précise avec un calendrier et des paiements accélérés.',
+    signal: 'dette_individuelle:dette_unique',
+    defaultMontantCible: null,
+    evaluate: (ctx) => ctx.nombre_dettes_actives === 1,
+    buildRaisonHeuristique: (ctx) =>
+      `Une seule dette de ${Math.round(ctx.dette_totale).toLocaleString('fr-CA')} $ — un plan ciblé avec paiements accélérés accélère la fin du remboursement.`,
+  },
+  {
+    id: 'rule-marge-credit',
+    subtype: 'marge_credit',
+    category: 'dette',
+    priority: 2,
+    titre: 'Marge de crédit',
+    description: 'Réduire l’utilisation de la marge de crédit sous un seuil sain.',
+    signal: 'marge_credit:marge_utilisee',
+    defaultMontantCible: null,
+    evaluate: (ctx) => ctx.a_marge_credit_active,
+    buildRaisonHeuristique: () =>
+      'Ta marge de crédit reste utilisée — la ramener sous un seuil sain réduit les intérêts variables et libère de la flexibilité.',
   },
   {
     id: 'rule-reserve-impots',
@@ -154,7 +212,8 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
     description: 'Passer en revue et couper les abonnements peu utilisés.',
     signal: 'reduction_abonnements:abonnements_nombreux',
     defaultMontantCible: null,
-    evaluate: (ctx) => ctx.nombre_abonnements_recurrents >= 5,
+    evaluate: (ctx) =>
+      ctx.nombre_abonnements_recurrents >= 5 && !ctx.contexte_dette_lourde,
     buildRaisonHeuristique: (ctx) =>
       `${ctx.nombre_abonnements_recurrents} abonnements détectés — une revue ciblée libère souvent 50–150 $/mois sans effort majeur.`,
   },

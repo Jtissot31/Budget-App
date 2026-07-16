@@ -23,13 +23,31 @@ export function formatCreditUtilTimelineLabel(utilizationPercent: number): strin
   return `${Math.round(utilizationPercent)} % utilisé`;
 }
 
+/** Seuil warning partagé : ≥50 % utilisé (aligné sur {@link utilizationPercentColor}). */
+export const CREDIT_LIMIT_UTILIZATION_WARNING_PCT = 50;
+
 /** Couleur texte « % utilisé » : <50% vert ; 50–79% orange ; ≥80% rouge. */
 export function utilizationPercentColor(
   percent: number,
   colors: Pick<AppColors, 'success' | 'warning' | 'danger'>,
 ): string {
   if (percent >= 80) return colors.danger;
-  if (percent >= 50) return colors.warning;
+  if (percent >= CREDIT_LIMIT_UTILIZATION_WARNING_PCT) return colors.warning;
+  return colors.success;
+}
+
+/**
+ * Couleur « Marge disponible » sur la ligne de temps alerte limite :
+ * dépassement → rouge ; ≥50 % utilisé → orange ; sinon vert.
+ * Le rouge est réservé au dépassement (marge négative), pas à la haute utilisation.
+ */
+export function creditLimitMarginHintColor(
+  utilizationPercent: number,
+  isOverLimit: boolean,
+  colors: Pick<AppColors, 'success' | 'warning' | 'danger'>,
+): string {
+  if (isOverLimit) return colors.danger;
+  if (utilizationPercent >= CREDIT_LIMIT_UTILIZATION_WARNING_PCT) return colors.warning;
   return colors.success;
 }
 

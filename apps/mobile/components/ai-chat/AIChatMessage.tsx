@@ -4,16 +4,20 @@ import { jakartaMediumText, jakartaRegularText, spacing } from '@/constants/them
 
 import { AIWidgetRenderer } from '@/components/chat/AIWidgetRenderer';
 
-import { stripCodeFromAssistantText } from '@/lib/ai/messageBlocks';
+import { stripCodeFromAssistantText, stripMarkdownForChatDisplay } from '@/lib/ai/messageBlocks';
 
 import type { MessageBlock } from '@/types/aiWidgets';
 
 import { AIChatActionCard } from './AIChatActionCard';
+import { AIChatPlanSuggestionsBubble } from './AIChatPlanSuggestionsBubble';
+import { AIChatPlanGoalChoiceBubble } from './AIChatPlanGoalChoiceBubble';
 
 import { WidgetContainer } from './WidgetContainer';
 
 import { useAIChatColors, type AIChatColors } from './theme';
 
+import type { PlanSuggere } from '@/lib/plans/Plan';
+import type { PlanGoal } from '@/lib/plans/planGoalClarification';
 import type { AIChatUiMessage } from './types';
 
 
@@ -25,6 +29,10 @@ type Props = {
   onConfirmAction?: (messageId: string, actionKey: string) => void;
 
   onCancelAction?: (messageId: string, actionKey: string) => void;
+
+  onConfirmPlanSuggestions?: (messageId: string, selectedPlans: PlanSuggere[]) => void;
+
+  onConfirmPlanGoal?: (messageId: string, goal: PlanGoal) => void;
 
   actionsDisabled?: boolean;
 
@@ -110,7 +118,7 @@ function renderMessageBlock(block: MessageBlock, index: number, palette: AIChatC
 
         <Text style={[styles.aiMessageText, { color: palette.text }, jakartaRegularText]}>
 
-          {block.content}
+          {stripMarkdownForChatDisplay(block.content)}
 
         </Text>
 
@@ -160,6 +168,10 @@ export function AIChatMessage({
 
   onCancelAction,
 
+  onConfirmPlanSuggestions,
+
+  onConfirmPlanGoal,
+
   actionsDisabled = false,
 
 }: Props) {
@@ -173,6 +185,10 @@ export function AIChatMessage({
   const hasBlocks = assistantBlocks.length > 0;
 
   const hasActions = Boolean(message.actions?.length);
+
+  const hasPlanSuggestions = Boolean(message.planSuggestions);
+
+  const hasPlanGoalChoice = Boolean(message.planGoalChoice);
 
 
 
@@ -250,6 +266,30 @@ export function AIChatMessage({
             ))
 
           : null}
+
+        {hasPlanGoalChoice ? (
+          <View style={hasBlocks || hasActions ? styles.trailingSpacing : styles.noTopSpacing}>
+            <AIChatPlanGoalChoiceBubble
+              state={message.planGoalChoice!}
+              onConfirm={(goal) => onConfirmPlanGoal?.(message.id, goal)}
+            />
+          </View>
+        ) : null}
+
+        {hasPlanSuggestions ? (
+          <View
+            style={
+              hasBlocks || hasActions || hasPlanGoalChoice
+                ? styles.trailingSpacing
+                : styles.noTopSpacing
+            }
+          >
+            <AIChatPlanSuggestionsBubble
+              state={message.planSuggestions!}
+              onConfirm={(selectedPlans) => onConfirmPlanSuggestions?.(message.id, selectedPlans)}
+            />
+          </View>
+        ) : null}
 
       </View>
 

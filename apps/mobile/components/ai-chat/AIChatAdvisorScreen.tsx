@@ -11,7 +11,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getFloatingTabBarOverlayInset,
@@ -25,18 +25,22 @@ import { tapHaptic } from '@/lib/haptics';
 import { useAIChatColors } from '@/components/ai-chat/theme';
 import {
   executeChatAction,
-  getChatQuotaState,
   loadChatHistory,
   saveChatHistory,
   sendChatMessage,
+  warmChatContext,
 } from '@/lib/ai/chatService';
 import {
   buildActionResultAlertCard,
   isTextConfirmation,
 } from '@/lib/ai/actionConfirmation';
 import { getActivityPhaseLabel, type ActivityPhase } from '@/lib/ai/activityPhases';
-import { isAnthropicApiKeyConfigured } from '@/lib/ai/env';
-import { readChatImageAttachment } from '@/lib/ai/imageAttachment';
+import { isGeminiApiKeyConfigured } from '@/lib/ai/env';
+import { buildStreamingAssistantDisplay } from '@/lib/ai/messageBlocks';
+import { buildPlanCreateParamsFromSuggestion } from '@/lib/plans/planCreateNavigation';
+import { consumePendingPlanChatConfirmation } from '@/lib/plans/pendingPlanChatConfirmation';
+import { buildPlansCreatedConfirmation } from '@/lib/plans/planRecommendationEngine';
+import type { PlanGoal } from '@/lib/plans/planGoalClarification';
 import { uiEvents } from '@/lib/events';
 import { captureReceiptPhoto, pickReceiptFromGallery } from '@/lib/receiptCapture';
 import { AIChatActivityIndicator } from './AIChatActivityIndicator';
@@ -53,7 +57,8 @@ import {
   findPendingActionMessage,
   updateMessageAction,
 } from './adapters';
-import { AI_QUICK_CHIPS, buildDemoMessages, type AIChatUiMessage } from './types';
+import type { PlanSuggere } from '@/lib/plans/Plan';
+import { AI_QUICK_CHIPS, type AIChatUiMessage } from './types';
 
 type ListItem =
   | { kind: 'message'; message: AIChatUiMessage }
@@ -100,11 +105,13 @@ export function AIChatAdvisorScreen({
   showBackButton?: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [inputOverlayHeight, setInputOverlayHeight] = useState(0);
   const palette = useAIChatColors();
   const listRef = useRef<FlatList<ListItem>>(null);
   const requestRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const pendingInstantBottomScrollRef = useRef(false);
   const layoutScrollPendingRef = useRef(false);
   const prevEstimatedOverlayHeightRef = useRef(0);
@@ -115,10 +122,7 @@ export function AIChatAdvisorScreen({
   const [input, setInput] = useState('');
   const [isResponding, setIsResponding] = useState(false);
   const [activityState, setActivityState] = useState<ActivityState | null>(null);
-  const [offlineMode, setOfflineMode] = useState(() => !isAnthropicApiKeyConfigured());
-  const [quotaWarning, setQuotaWarning] = useState<string | null>(null);
   const [historyLoaded, setHistoryLoaded] = useState(false);
-  const [usingDemoSeed, setUsingDemoSeed] = useState(false);
   const [hasUserSentMessage, setHasUserSentMessage] = useState(false);
   const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
   const [settingsVisible, setSettingsVisible] = useState(false);
@@ -157,23 +161,17 @@ export function AIChatAdvisorScreen({
     let cancelled = false;
 
     void (async () => {
-      const [history, quota] = await Promise.all([loadChatHistory(), getChatQuotaState()]);
+      const [history] = await Promise.all([loadChatHistory(), warmChatContext()]);
       if (cancelled) return;
 
       if (history.length > 0) {
         setMessages(history.map(aiMessageToUiMessage));
-        setUsingDemoSeed(false);
         setHasUserSentMessage(true);
       } else {
-        setMessages(buildDemoMessages());
-        setUsingDemoSeed(true);
+        setMessages([]);
         setHasUserSentMessage(false);
       }
 
-      setQuotaWarning(
-        quota.warningThresholdReached ? 'Tu approches ta limite mensuelle de conversations.' : null,
-      );
-      setOfflineMode(!isAnthropicApiKeyConfigured());
       setHistoryLoaded(true);
     })();
 
@@ -200,6 +198,35 @@ export function AIChatAdvisorScreen({
     scrollTargetRef.current = { kind: 'end' };
     setScrollRequestId((id) => id + 1);
   }, []);
+
+  const finalizeInterruptedMessages = useCallback((prev: AIChatUiMessage[]) => {
+    const withoutEmptyStreaming = prev
+      .map((message) => (message.streaming ? { ...message, streaming: false } : message))
+      .filter((message) => {
+        if (message.role !== 'assistant') return true;
+        const hasContent =
+          Boolean(message.text?.trim()) ||
+          Boolean(message.blocks?.length) ||
+          Boolean(message.actions?.length) ||
+          Boolean(message.planSuggestions) ||
+          Boolean(message.planGoalChoice);
+        return hasContent;
+      });
+    return withoutEmptyStreaming;
+  }, []);
+
+  const handleStopGeneration = useCallback(() => {
+    if (!isResponding) return;
+
+    tapHaptic();
+    requestRef.current += 1;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+
+    setMessages(finalizeInterruptedMessages);
+    setIsResponding(false);
+    setActivityState(null);
+  }, [finalizeInterruptedMessages, isResponding]);
 
   const handleScrollToIndexFailed = useCallback(
     (info: { index: number; averageItemLength: number }) => {
@@ -237,11 +264,7 @@ export function AIChatAdvisorScreen({
       setKeyboardVisible(false);
 
       const optimisticUser = createOptimisticUserMessage(text, imageUri ?? undefined);
-      setMessages((prev) => {
-        const base = usingDemoSeed ? [] : prev;
-        return [...base, optimisticUser];
-      });
-      setUsingDemoSeed(false);
+      setMessages((prev) => [...prev, optimisticUser]);
       setHasUserSentMessage(true);
       setIsResponding(true);
       setActivityState(INITIAL_ACTIVITY_STATE);
@@ -249,6 +272,24 @@ export function AIChatAdvisorScreen({
 
       const requestId = requestRef.current + 1;
       requestRef.current = requestId;
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+      const streamMessageId = `assistant-stream-${Date.now()}`;
+      const useStreaming = isGeminiApiKeyConfigured();
+
+      if (useStreaming) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: streamMessageId,
+            role: 'assistant',
+            text: '',
+            createdAt: Date.now(),
+            streaming: true,
+          },
+        ]);
+        queueScrollToEnd();
+      }
 
       const handleActivity = (phase: ActivityPhase) => {
         if (requestRef.current !== requestId) return;
@@ -307,10 +348,8 @@ export function AIChatAdvisorScreen({
             createdAt: now,
           };
 
-          if (!usingDemoSeed) {
-            const history = await loadChatHistory();
-            await saveChatHistory([...history, persistedUserMessage, persistedAssistantMessage]);
-          }
+          const history = await loadChatHistory();
+          await saveChatHistory([...history, persistedUserMessage, persistedAssistantMessage]);
 
           const assistantUiMessage = aiMessageToUiMessage(persistedAssistantMessage);
 
@@ -331,33 +370,33 @@ export function AIChatAdvisorScreen({
           return;
         }
 
-        let imageAttachment;
-        if (imageUri && isAnthropicApiKeyConfigured()) {
-          try {
-            imageAttachment = await readChatImageAttachment(imageUri);
-          } catch {
-            // Vision indisponible — le texte seul sera envoyé.
-          }
-        }
-
         const result = await sendChatMessage(text, {
-          image: imageAttachment,
           imageUri: imageUri ?? undefined,
           onActivity: handleActivity,
+          signal: abortController.signal,
+          onToken: useStreaming
+            ? (partial) => {
+                if (requestRef.current !== requestId) return;
+                const { text, blocks } = buildStreamingAssistantDisplay(partial);
+                setMessages((prev) =>
+                  prev.map((message) =>
+                    message.id === streamMessageId
+                      ? { ...message, text, blocks, streaming: true }
+                      : message,
+                  ),
+                );
+                queueScrollToEnd();
+              }
+            : undefined,
         });
         if (requestRef.current !== requestId) return;
-
-        setOfflineMode(result.offlineMode);
-        setQuotaWarning(
-          result.quota.warningThresholdReached
-            ? 'Tu approches ta limite mensuelle de conversations.'
-            : null,
-        );
 
         const assistantUiMessage = aiMessageToUiMessage(result.assistantMessage);
 
         setMessages((prev) => {
-          const withoutOptimistic = prev.filter((message) => message.id !== optimisticUser.id);
+          const withoutOptimistic = prev.filter(
+            (message) => message.id !== optimisticUser.id && message.id !== streamMessageId,
+          );
           return [
             ...withoutOptimistic,
             aiMessageToUiMessage(result.userMessage),
@@ -365,12 +404,16 @@ export function AIChatAdvisorScreen({
           ];
         });
         queueScrollToEnd();
-      } catch {
+      } catch (error) {
         if (requestRef.current !== requestId) return;
+        if (error instanceof DOMException && error.name === 'AbortError') return;
 
         const errorAssistantId = `assistant-error-${Date.now()}`;
         setMessages((prev) => [
-          ...prev.filter((message) => message.id !== optimisticUser.id),
+          ...prev.filter(
+            (message) =>
+              message.id !== optimisticUser.id && message.id !== streamMessageId,
+          ),
           optimisticUser,
           {
             id: errorAssistantId,
@@ -381,6 +424,9 @@ export function AIChatAdvisorScreen({
         ]);
         queueScrollToEnd();
       } finally {
+        if (abortControllerRef.current === abortController) {
+          abortControllerRef.current = null;
+        }
         if (requestRef.current === requestId) {
           setIsResponding(false);
           setActivityState(null);
@@ -393,7 +439,6 @@ export function AIChatAdvisorScreen({
       messages,
       pendingImageUri,
       queueScrollToEnd,
-      usingDemoSeed,
     ],
   );
 
@@ -435,6 +480,108 @@ export function AIChatAdvisorScreen({
     );
   }, []);
 
+  const handleConfirmPlanGoal = useCallback(
+    (messageId: string, goal: PlanGoal) => {
+      const targetMessage = messages.find((message) => message.id === messageId);
+      const option = targetMessage?.planGoalChoice?.options.find((entry) => entry.goal === goal);
+      if (!option || targetMessage?.planGoalChoice?.frozen) return;
+
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === messageId && message.planGoalChoice
+            ? {
+                ...message,
+                planGoalChoice: {
+                  ...message.planGoalChoice,
+                  frozen: true,
+                  confirmedGoal: goal,
+                },
+              }
+            : message,
+        ),
+      );
+
+      void sendMessage(option.chipMessage);
+    },
+    [messages, sendMessage],
+  );
+
+  const handleConfirmPlanSuggestions = useCallback(
+    (messageId: string, selectedPlans: PlanSuggere[]) => {
+      if (!selectedPlans.length) return;
+
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === messageId && message.planSuggestions
+            ? {
+                ...message,
+                planSuggestions: {
+                  ...message.planSuggestions,
+                  frozen: true,
+                  confirmedIds: selectedPlans.map((plan) => plan.id),
+                },
+              }
+            : message,
+        ),
+      );
+
+      const [first, ...rest] = selectedPlans;
+      const queueItems = rest.map((plan) => ({
+        id: plan.id,
+        category: plan.category,
+        subtype: plan.subtype,
+        titre: plan.titre,
+        description: plan.description,
+        montant_actuel: plan.montant_actuel,
+        montant_cible: plan.montant_cible,
+        raison_recommandation: plan.raison_recommandation,
+        signal_declencheur: plan.signal_declencheur,
+        etapes: plan.etapes,
+      }));
+
+      router.push({
+        pathname: '/plans/create',
+        params: {
+          messageId,
+          ...buildPlanCreateParamsFromSuggestion(first),
+          total: String(selectedPlans.length),
+          index: '1',
+          ...(queueItems.length > 0 ? { queue: JSON.stringify(queueItems) } : {}),
+        },
+      });
+    },
+    [router],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+
+      void (async () => {
+        const createdCount = await consumePendingPlanChatConfirmation();
+        if (cancelled || createdCount == null) return;
+
+        const confirmationText = buildPlansCreatedConfirmation(createdCount);
+        const now = new Date().toISOString();
+        const assistantMessage = {
+          id: `assistant-plan-confirm-${Date.now()}`,
+          role: 'assistant' as const,
+          content: confirmationText,
+          createdAt: now,
+        };
+
+        const history = await loadChatHistory();
+        await saveChatHistory([...history, assistantMessage]);
+        setMessages((prev) => [...prev, aiMessageToUiMessage(assistantMessage)]);
+        queueScrollToEnd();
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [queueScrollToEnd]),
+  );
+
   const handlePickImage = useCallback(async (source: 'gallery' | 'camera') => {
     try {
       const picked =
@@ -459,9 +606,7 @@ export function AIChatAdvisorScreen({
 
   const handleHistoryCleared = useCallback(() => {
     setMessages([]);
-    setUsingDemoSeed(false);
     setHasUserSentMessage(false);
-    setQuotaWarning(null);
   }, []);
 
   useEffect(() => {
@@ -472,7 +617,7 @@ export function AIChatAdvisorScreen({
   }, [tabBarVisible, sendMessage]);
 
   const listData = useMemo(() => toListItems(messages), [messages]);
-  const showQuickChips = !hasUserSentMessage && (messages.length === 0 || usingDemoSeed);
+  const showQuickChips = !hasUserSentMessage && messages.length === 0;
   const showInlineComposer = !tabBarVisible;
   const estimatedInputOverlayHeight =
     (showQuickChips ? CHAT_QUICK_CHIPS_ESTIMATED_HEIGHT : 0) +
@@ -510,7 +655,7 @@ export function AIChatAdvisorScreen({
   const headerStatusLabel = activityState?.currentPhase
     ? getActivityPhaseLabel(activityState.currentPhase)
     : isResponding
-      ? 'Réflexion…'
+      ? 'Connexion à Fyn…'
       : 'En ligne';
 
   useFocusEffect(
@@ -585,20 +730,6 @@ export function AIChatAdvisorScreen({
         onHistoryCleared={handleHistoryCleared}
       />
 
-      {offlineMode ? (
-        <View style={[styles.banner, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-          <Text style={[styles.bannerText, { color: palette.textMuted }, jakartaRegularText]}>
-            Mode démo — configure la clé API dans Réglages pour activer Fyn.
-          </Text>
-        </View>
-      ) : null}
-
-      {quotaWarning ? (
-        <View style={[styles.banner, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-          <Text style={[styles.bannerText, { color: palette.textMuted }, jakartaRegularText]}>{quotaWarning}</Text>
-        </View>
-      ) : null}
-
       {pendingImageUri ? (
         <View style={[styles.banner, { backgroundColor: palette.surface, borderColor: palette.border }]}>
           <Text style={[styles.bannerText, { color: palette.textMuted }, jakartaRegularText]}>
@@ -642,6 +773,8 @@ export function AIChatAdvisorScreen({
                   actionsDisabled={isResponding}
                   onConfirmAction={(messageId, actionKey) => void handleConfirmAction(messageId, actionKey)}
                   onCancelAction={handleCancelAction}
+                  onConfirmPlanSuggestions={handleConfirmPlanSuggestions}
+                  onConfirmPlanGoal={handleConfirmPlanGoal}
                 />
               );
             }}
@@ -682,7 +815,9 @@ export function AIChatAdvisorScreen({
                   onChipPress={handleChipPress}
                   onInputBlur={handleKeyboardDismiss}
                   chips={showQuickChips ? AI_QUICK_CHIPS : []}
-                  disabled={isResponding || !historyLoaded}
+                  disabled={!historyLoaded}
+                  isBusy={isResponding}
+                  onStop={handleStopGeneration}
                   bottomInset={chatInputBottomInset}
                 />
               ) : null}

@@ -1,23 +1,21 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import {
   interMediumText,
+  interRegularText,
   interSemiboldText,
   radius,
   spacing,
   typography,
 } from '@/constants/theme';
 import {
-  planSuggestionCategoryLabel,
-  planSuggestionSubtypeLabel,
-} from '@/lib/plans/planRecommendationEngine';
-import { formatPlanSuggestionReasonForCard } from '@/lib/plans/planSuggestionCopy';
-import type { PlanSuggere } from '@/lib/plans/Plan';
+  planGoalLabel,
+  type ChatPlanGoalChoice,
+  type PlanGoal,
+} from '@/lib/plans/planGoalClarification';
 import { tapHaptic } from '@/lib/haptics';
-import { interRegularText } from '@/constants/theme';
 import { useAIChatColors } from './theme';
 
 const PLAN_SURFACE = '#111111';
@@ -25,103 +23,66 @@ const PLAN_BORDER = 'rgba(255, 255, 255, 0.12)';
 const PLAN_SELECTED_BORDER = '#4ADE80';
 const CARD_RADIUS = 13;
 
-export type PlanSuggestionsBubbleState = {
-  suggestions: PlanSuggere[];
-  intro: string;
-  frozen: boolean;
-  confirmedIds: string[];
-};
+export type PlanGoalChoiceBubbleState = ChatPlanGoalChoice;
 
 type Props = {
-  state: PlanSuggestionsBubbleState;
-  onConfirm: (selectedPlans: PlanSuggere[]) => void;
+  state: PlanGoalChoiceBubbleState;
+  onConfirm: (goal: PlanGoal) => void;
 };
 
-function planIcon(subtype: PlanSuggere['subtype']): keyof typeof MaterialCommunityIcons.glyphMap {
-  switch (subtype) {
-    case 'fonds_urgence':
-      return 'shield-check-outline';
-    case 'snowball':
-    case 'avalanche':
-    case 'bombe_nucleaire':
-    case 'consolidation':
-    case 'dette_individuelle':
-    case 'marge_credit':
+function goalIcon(goal: PlanGoal): keyof typeof MaterialCommunityIcons.glyphMap {
+  switch (goal) {
+    case 'debt_repayment':
       return 'chart-line-variant';
-    case 'reer':
-    case 'celi':
-    case 'celiapp':
-      return 'piggy-bank-outline';
-    case 'enveloppe':
-      return 'wallet-outline';
-    case 'reduction_abonnements':
+    case 'reduce_bills':
       return 'tag-minus-outline';
-    case 'no_spend_challenge':
-      return 'calendar-remove-outline';
-    case 'reserve_impots_autonome':
-      return 'file-document-outline';
+    case 'emergency_fund':
+      return 'shield-check-outline';
+    case 'savings_investment':
+      return 'piggy-bank-outline';
     default:
       return 'clipboard-text-outline';
   }
 }
 
-export function AIChatPlanSuggestionsBubble({ state, onConfirm }: Props) {
+export function AIChatPlanGoalChoiceBubble({ state, onConfirm }: Props) {
   const palette = useAIChatColors();
-  const { suggestions, intro, frozen, confirmedIds } = state;
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const { suggested, options, frozen, confirmedGoal } = state;
+  const [selectedGoal, setSelectedGoal] = useState<PlanGoal | null>(null);
 
-  const effectiveSelected = frozen ? confirmedIds : selectedIds;
-  const selectedCount = effectiveSelected.length;
+  const effectiveSelection = frozen ? confirmedGoal ?? null : selectedGoal ?? suggested;
 
-  const toggleSelection = useCallback(
-    (planId: string) => {
+  const handleSelect = useCallback(
+    (goal: PlanGoal) => {
       if (frozen) return;
       tapHaptic();
-      setSelectedIds((current) =>
-        current.includes(planId) ? current.filter((id) => id !== planId) : [...current, planId],
-      );
+      setSelectedGoal(goal);
     },
     [frozen],
   );
 
-  const selectedPlans = useMemo(
-    () => suggestions.filter((plan) => effectiveSelected.includes(plan.id)),
-    [effectiveSelected, suggestions],
-  );
-
   const handleConfirm = useCallback(() => {
-    if (frozen || selectedPlans.length === 0) return;
+    if (frozen || !effectiveSelection) return;
     tapHaptic();
-    onConfirm(selectedPlans);
-  }, [frozen, onConfirm, selectedPlans]);
-
-  if (suggestions.length === 0) {
-    return (
-      <View style={styles.wrapper}>
-        <View style={[styles.bubble, { backgroundColor: palette.aiBubble, borderColor: palette.border }]}>
-          <Text style={[styles.intro, { color: palette.text }, interRegularText]}>{intro}</Text>
-        </View>
-      </View>
-    );
-  }
+    onConfirm(effectiveSelection);
+  }, [effectiveSelection, frozen, onConfirm]);
 
   return (
     <View style={styles.wrapper}>
       <View style={[styles.bubble, { backgroundColor: palette.aiBubble, borderColor: palette.border }]}>
-        <Text style={[styles.intro, { color: palette.text }, interRegularText]}>{intro}</Text>
-
         <View style={styles.cards}>
-          {suggestions.map((plan) => {
-            const selected = effectiveSelected.includes(plan.id);
+          {options.map((option) => {
+            const selected = effectiveSelection === option.goal;
+            const isSuggested = option.goal === suggested;
             const dimmed = frozen && !selected;
 
             return (
               <Pressable
-                key={plan.id}
+                key={option.goal}
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
                 disabled={frozen}
-                onPress={() => toggleSelection(plan.id)}
+                onPress={() => handleSelect(option.goal)}
                 style={({ pressed }) => [
                   styles.card,
                   {
@@ -131,15 +92,27 @@ export function AIChatPlanSuggestionsBubble({ state, onConfirm }: Props) {
                   },
                 ]}
               >
+                {isSuggested && !frozen ? (
+                  <View style={styles.recommendedBadge}>
+                    <Text style={[styles.recommendedLabel, interMediumText]}>Recommandé</Text>
+                  </View>
+                ) : null}
+
                 {selected ? (
                   <View style={styles.checkmark}>
-                    <AppIcon family="material-community" name="check-circle" size={18} color={PLAN_SELECTED_BORDER} />
+                    <AppIcon
+                      family="material-community"
+                      name="check-circle"
+                      size={18}
+                      color={PLAN_SELECTED_BORDER}
+                    />
                   </View>
                 ) : null}
 
                 <View style={styles.cardHeader}>
-                  <AppIcon family="material-community" 
-                    name={planIcon(plan.subtype)}
+                  <AppIcon
+                    family="material-community"
+                    name={goalIcon(option.goal)}
                     size={18}
                     color={dimmed ? palette.textMuted : palette.text}
                   />
@@ -148,10 +121,13 @@ export function AIChatPlanSuggestionsBubble({ state, onConfirm }: Props) {
                       style={[styles.cardTitle, { color: palette.text }, interSemiboldText]}
                       numberOfLines={1}
                     >
-                      {plan.titre}
+                      {option.title}
                     </Text>
-                    <Text style={[styles.cardCategory, { color: palette.textMuted }, interMediumText]} numberOfLines={1}>
-                      {planSuggestionCategoryLabel(plan)} · {planSuggestionSubtypeLabel(plan)}
+                    <Text
+                      style={[styles.cardCategory, { color: palette.textMuted }, interMediumText]}
+                      numberOfLines={1}
+                    >
+                      {planGoalLabel(option.goal)}
                     </Text>
                   </View>
                 </View>
@@ -161,10 +137,7 @@ export function AIChatPlanSuggestionsBubble({ state, onConfirm }: Props) {
                   numberOfLines={2}
                   ellipsizeMode="tail"
                 >
-                  {formatPlanSuggestionReasonForCard(
-                    plan.raison_recommandation,
-                    plan.description,
-                  )}
+                  {option.subtitle}
                 </Text>
               </Pressable>
             );
@@ -174,30 +147,31 @@ export function AIChatPlanSuggestionsBubble({ state, onConfirm }: Props) {
         {!frozen ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Créer ${selectedCount} plan${selectedCount > 1 ? 's' : ''} sélectionné${selectedCount > 1 ? 's' : ''}`}
-            disabled={selectedCount === 0}
+            accessibilityLabel="Continuer avec cet objectif"
+            disabled={!effectiveSelection}
             onPress={handleConfirm}
             style={({ pressed }) => [
               styles.cta,
               {
-                backgroundColor: selectedCount > 0 ? PLAN_SELECTED_BORDER : 'rgba(255, 255, 255, 0.08)',
+                backgroundColor: effectiveSelection ? PLAN_SELECTED_BORDER : 'rgba(255, 255, 255, 0.08)',
                 opacity: pressed ? 0.85 : 1,
               },
             ]}
           >
-            <AppIcon family="material" 
-              name="auto-awesome"
+            <AppIcon
+              family="material"
+              name="arrow-right-alt"
               size={16}
-              color={selectedCount > 0 ? '#0E0E10' : 'rgba(255, 255, 255, 0.35)'}
+              color={effectiveSelection ? '#0E0E10' : 'rgba(255, 255, 255, 0.35)'}
             />
             <Text
               style={[
                 styles.ctaLabel,
                 interSemiboldText,
-                { color: selectedCount > 0 ? '#0E0E10' : 'rgba(255, 255, 255, 0.35)' },
+                { color: effectiveSelection ? '#0E0E10' : 'rgba(255, 255, 255, 0.35)' },
               ]}
             >
-              Créer {selectedCount} plan{selectedCount > 1 ? 's' : ''} sélectionné{selectedCount > 1 ? 's' : ''}
+              Continuer
             </Text>
           </Pressable>
         ) : null}
@@ -219,10 +193,6 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.md,
   },
-  intro: {
-    fontSize: typography.body,
-    lineHeight: typography.body + 6,
-  },
   cards: {
     gap: spacing.sm,
   },
@@ -232,6 +202,20 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
     position: 'relative',
+  },
+  recommendedBadge: {
+    position: 'absolute',
+    top: spacing.sm,
+    left: spacing.sm,
+    zIndex: 1,
+    backgroundColor: 'rgba(74, 222, 128, 0.14)',
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+  },
+  recommendedLabel: {
+    fontSize: typography.micro,
+    color: PLAN_SELECTED_BORDER,
   },
   checkmark: {
     position: 'absolute',
@@ -244,6 +228,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingRight: spacing.lg,
+    marginTop: spacing.sm,
   },
   cardTitles: {
     flex: 1,

@@ -8,7 +8,7 @@ import {
 import { creditUsedFromBalance } from '@/lib/creditLimitUtilization';
 import { formatPersonDirectedPaymentLabel } from '@/lib/loanPresentation';
 import type { PaymentAlertSource } from '@/lib/alerts';
-import { ALERT_TITLES } from '@/lib/alertPresentation';
+import { buildCreditLimitAlertTitle, buildLowFundsAlertTitle } from '@/lib/alertPresentation';
 import type { RecurringPayment, RecurringPaymentKind, SimulatedAccount, Transaction } from '@/types';
 
 type UpcomingPayment = {
@@ -68,9 +68,6 @@ const UPCOMING_PAYMENTS: UpcomingPayment[] = [
     accountId: '1',
   },
 ];
-
-const PAYMENT_WARNING_TITLE_CHECKING = ALERT_TITLES.lowFunds;
-const PAYMENT_WARNING_TITLE_CREDIT_LIMIT = ALERT_TITLES.creditLimit;
 
 const MOCK_CREDIT_CARD_NAME = 'Visa · 4782';
 const MOCK_CREDIT_BALANCE_BEFORE = -4350;
@@ -385,7 +382,9 @@ export function buildPaymentAlertSources({
     sources.push({
       id: 'live',
       kind,
-      title: creditRiskActive ? PAYMENT_WARNING_TITLE_CREDIT_LIMIT : PAYMENT_WARNING_TITLE_CHECKING,
+      title: creditRiskActive
+        ? buildCreditLimitAlertTitle(nextPayment.name)
+        : buildLowFundsAlertTitle(nextPayment.name),
       body: forecastShortfallMessage,
       dateLabel: formatShortDate(nextPaymentDate),
       paymentDateRaw: nextPaymentDate,
@@ -399,7 +398,7 @@ export function buildPaymentAlertSources({
     sources.push({
       id: 'mock-credit',
       kind: 'credit_limit',
-      title: PAYMENT_WARNING_TITLE_CREDIT_LIMIT,
+      title: buildCreditLimitAlertTitle(MOCK_CREDIT_PAYMENT_NAME),
       body: 'Après ce paiement, environ 96 % de ta limite serait utilisée. Tu as plusieurs façons de garder de la marge.',
       dateLabel: formatShortDate(today),
       paymentDateRaw: today,

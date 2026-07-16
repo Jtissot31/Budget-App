@@ -21,7 +21,7 @@ import {
 } from '@/constants/theme';
 import { clearChatHistory, getChatQuotaState, getDataModeLabel } from '@/lib/ai/chatService';
 import type { ChatQuotaState } from '@/lib/ai/types';
-import { isAnthropicApiKeyConfigured } from '@/lib/ai/env';
+import { isFynChatApiKeyConfigured, isGeminiApiKeyConfigured } from '@/lib/ai/env';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 import { useAIChatColors } from './theme';
@@ -45,7 +45,6 @@ export function AIChatSettingsSheet({ visible, onClose, onHistoryCleared }: Prop
 
   const [dataModeLabel, setDataModeLabel] = useState('Manuel');
   const [quotaState, setQuotaState] = useState<ChatQuotaState | null>(null);
-  const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const [clearingHistory, setClearingHistory] = useState(false);
   const [confirmClearVisible, setConfirmClearVisible] = useState(false);
 
@@ -58,7 +57,6 @@ export function AIChatSettingsSheet({ visible, onClose, onHistoryCleared }: Prop
     const [modeLabel, quota] = await Promise.all([getDataModeLabel(), getChatQuotaState()]);
     setDataModeLabel(shortenDataModeLabel(modeLabel));
     setQuotaState(quota);
-    setApiKeyConfigured(isAnthropicApiKeyConfigured());
   }, []);
 
   useEffect(() => {
@@ -96,11 +94,14 @@ export function AIChatSettingsSheet({ visible, onClose, onHistoryCleared }: Prop
       ? Math.min(1, quotaState.messagesThisMonth / quotaState.monthlyLimit)
       : 0;
 
-  const quotaRemaining = quotaState
-    ? Math.max(0, quotaState.monthlyLimit - quotaState.messagesThisMonth)
-    : null;
+  const quotaRemaining =
+    quotaState && quotaState.monthlyLimit > 0
+      ? Math.max(0, quotaState.monthlyLimit - quotaState.messagesThisMonth)
+      : null;
 
   const quotaNearLimit = quotaState?.warningThresholdReached ?? false;
+  const geminiConfigured = isGeminiApiKeyConfigured();
+  const fynActive = isFynChatApiKeyConfigured();
 
   return (
     <>
@@ -139,21 +140,21 @@ export function AIChatSettingsSheet({ visible, onClose, onHistoryCleared }: Prop
                   <View
                     style={[
                       styles.statusDot,
-                      { backgroundColor: apiKeyConfigured ? palette.primary : palette.textMuted },
+                      { backgroundColor: fynActive ? palette.primary : palette.textMuted },
                     ]}
                   />
                   <Text style={[styles.statusTitle, { color: palette.text }, jakartaMediumText]}>
-                    {apiKeyConfigured ? 'Fyn actif' : 'Mode démo'}
+                    {fynActive ? (geminiConfigured ? 'Fyn actif (Gemini)' : 'Fyn actif (Anthropic)') : 'Fyn inactif'}
                   </Text>
                 </View>
 
-                {!apiKeyConfigured ? (
+                {!fynActive ? (
                   <Text style={[styles.statusHint, { color: palette.textMuted }, jakartaRegularText]}>
-                    La clé API se configure dans Réglages.
+                    Ajoute EXPO_PUBLIC_GEMINI_API_KEY dans .env, puis redémarre Expo (npx expo start -c).
                   </Text>
                 ) : null}
 
-                {quotaState ? (
+                {quotaState && quotaState.messagesThisMonth > 0 ? (
                   <View style={styles.quotaBlock}>
                     <View style={styles.quotaHeader}>
                       <Text style={[styles.quotaLabel, { color: palette.textMuted }, jakartaRegularText]}>
@@ -162,29 +163,33 @@ export function AIChatSettingsSheet({ visible, onClose, onHistoryCleared }: Prop
                       <Text
                         style={[
                           styles.quotaValue,
-                          { color: quotaNearLimit ? palette.primary : palette.text },
+                          { color: palette.text },
                           jakartaMediumText,
                         ]}
                       >
-                        {quotaState.messagesThisMonth} / {quotaState.monthlyLimit}
+                        {quotaState.messagesThisMonth}
                       </Text>
                     </View>
-                    <View style={[styles.quotaTrack, { backgroundColor: palette.border }]}>
-                      <View
-                        style={[
-                          styles.quotaFill,
-                          {
-                            backgroundColor: quotaNearLimit ? palette.primary : palette.primary,
-                            width: `${Math.max(quotaProgress * 100, quotaState.messagesThisMonth > 0 ? 4 : 0)}%`,
-                            opacity: quotaNearLimit ? 1 : 0.85,
-                          },
-                        ]}
-                      />
-                    </View>
-                    {quotaRemaining != null ? (
-                      <Text style={[styles.quotaFootnote, { color: palette.textMuted }, jakartaRegularText]}>
-                        {quotaRemaining} restant{quotaRemaining > 1 ? 's' : ''}
-                      </Text>
+                    {quotaState.monthlyLimit > 0 ? (
+                      <>
+                        <View style={[styles.quotaTrack, { backgroundColor: palette.border }]}>
+                          <View
+                            style={[
+                              styles.quotaFill,
+                              {
+                                backgroundColor: quotaNearLimit ? palette.primary : palette.primary,
+                                width: `${Math.max(quotaProgress * 100, quotaState.messagesThisMonth > 0 ? 4 : 0)}%`,
+                                opacity: quotaNearLimit ? 1 : 0.85,
+                              },
+                            ]}
+                          />
+                        </View>
+                        {quotaRemaining != null ? (
+                          <Text style={[styles.quotaFootnote, { color: palette.textMuted }, jakartaRegularText]}>
+                            {quotaRemaining} restant{quotaRemaining > 1 ? 's' : ''}
+                          </Text>
+                        ) : null}
+                      </>
                     ) : null}
                   </View>
                 ) : null}

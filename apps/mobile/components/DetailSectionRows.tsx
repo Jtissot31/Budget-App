@@ -33,6 +33,8 @@ export type DetailSectionRow = {
   valueContent?: ReactNode;
   /** Override the default `rowValue` typography for this row's value text. */
   valueStyle?: TextStyle;
+  /** Tighter single-line row — less padding, no value wrap to a second line. */
+  compact?: boolean;
 };
 
 export type DetailSection = {
@@ -181,6 +183,7 @@ export function DetailSingleLineRow({
       style={[
         detailSingleLineRowStyle(),
         row.valueLayout === 'amount' && styles.amountRow,
+        row.compact && styles.compactRow,
         rowPaddingVertical != null && { paddingVertical: rowPaddingVertical },
         !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
       ]}
@@ -230,6 +233,11 @@ const styles = StyleSheet.create({
   },
   amountRow: {
     alignItems: 'center',
+  },
+  compactRow: {
+    flexWrap: 'nowrap',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
   },
   rowIcon: {
     width: 18,
