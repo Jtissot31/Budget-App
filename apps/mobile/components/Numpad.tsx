@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius } from '@/constants/theme';
+import { colors, interNumericExtraBoldText, radius } from '@/constants/theme';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'] as const;
 
@@ -104,5 +104,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  keyText: { color: colors.text, fontSize: 22, fontWeight: '800' },
+  keyText: { ...interNumericExtraBoldText, color: colors.text, fontSize: 22 },
 });

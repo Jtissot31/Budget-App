@@ -468,7 +468,7 @@ export const typography = {
  * (`app/transaction-detail.tsx` — `TransactionReceiptCard`, itemized line amounts).
  *
  * Do **not** use DM Mono elsewhere. Labels → Plus Jakarta. Money amounts → {@link moneyAmountTypography}
- * ({@link MONEY_AMOUNT_FONT} / Onest 800 ExtraBold) or {@link transactionRowAmountTypography}.
+ * ({@link MONEY_AMOUNT_FONT} / Inter 800 ExtraBold) or {@link transactionRowAmountTypography}.
  *
  * Forbidden surfaces (use {@link moneyAmountTypography} instead):
  * - Dashboard / Accueil (`app/(tabs)/index.tsx`)
@@ -515,7 +515,7 @@ export function goalProgressTrackColor(isLight: boolean): string {
  *
  * ALL monetary / tabular dollar amounts MUST use {@link moneyAmountTypography} or
  * {@link transactionRowAmountTypography} — both render {@link MONEY_AMOUNT_FONT}
- * (Onest 800 ExtraBold), matching `TransactionAmountLabel` (−105,68$).
+ * (Inter 800 ExtraBold), matching `TransactionAmountLabel` (−105,68$).
  *
  * Tiers: `row` (14px list) · `card` (16px metrics) · `stat` (24px) · `hero` (28px)
  * · `detailHero` (36px transaction detail) · `netWorth` (42px portfolio headline).
@@ -525,7 +525,7 @@ export function goalProgressTrackColor(isLight: boolean): string {
  *
  * Exceptions: receipt ARTICLES ({@link articlesReceiptTypography}), dates, pure % labels.
  */
-export { MONEY_AMOUNT_FONT, TRANSACTION_ROW_AMOUNT_FONT } from './typographyKit';
+export { MONEY_AMOUNT_FONT, TRANSACTION_ROW_AMOUNT_FONT, interNumericExtraBoldText } from './interFonts';
 
 const moneyAmountFontBase = {
   fontFamily: MONEY_AMOUNT_FONT,
@@ -552,7 +552,7 @@ function moneyAmountPresetForTier(tier: MoneyAmountTier) {
 }
 
 /**
- * Canonical money typography — Onest 800 ExtraBold, tabular nums.
+ * Canonical money typography — Inter 800 ExtraBold, tabular nums.
  * Use everywhere a dollar amount appears (lists, cards, charts, detail stats).
  */
 export function moneyAmountTypography(options?: {
@@ -719,8 +719,8 @@ export function getFloatingTabBarBottomInset(safeBottom: number): number {
   return Math.max(safeBottom, spacing.sm);
 }
 
-/** Tab row height in `FloatingTabBar` (excludes safe-area padding on nav shell). */
-export const FLOATING_TAB_BAR_PILL_HEIGHT = Platform.OS === 'android' ? 9 + 50 + 7 : 11 + 50 + 11;
+/** Tab row height in `FloatingTabBar` — icon-only row (excludes safe-area padding on nav shell). */
+export const FLOATING_TAB_BAR_PILL_HEIGHT = Platform.OS === 'android' ? 7 + 44 + 7 : 9 + 44 + 9;
 
 /** Minimal gap between chat input and the Android system navigation bar at rest. */
 export const CHAT_INPUT_ABOVE_SYSTEM_NAV_GAP = spacing.xs;

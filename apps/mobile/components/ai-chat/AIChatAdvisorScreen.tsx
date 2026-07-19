@@ -22,6 +22,7 @@ import {
   typography,
 } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
+import { isAbortError } from '@/lib/abortError';
 import { useAIChatColors } from '@/components/ai-chat/theme';
 import {
   executeChatAction,
@@ -406,7 +407,7 @@ export function AIChatAdvisorScreen({
         queueScrollToEnd();
       } catch (error) {
         if (requestRef.current !== requestId) return;
-        if (error instanceof DOMException && error.name === 'AbortError') return;
+        if (isAbortError(error)) return;
 
         const errorAssistantId = `assistant-error-${Date.now()}`;
         setMessages((prev) => [

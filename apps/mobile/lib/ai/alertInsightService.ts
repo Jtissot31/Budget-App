@@ -6,6 +6,7 @@ import { isRecurringPaymentAlert } from '@/lib/alertPresentation';
 
 import { appendAIMemory, formatMemoryForPrompt, loadAIMemory } from './aiMemory';
 import { generateGeminiContent } from './geminiClient';
+import { buildFreshFynContextDigest } from './fynFinancialContext';
 
 export type AlertInsightContext = Pick<
   AlertCenterItem,
@@ -16,7 +17,11 @@ export type AlertInsightContext = Pick<
 
 async function buildAlertInsightPrompt(ctx: AlertInsightContext): Promise<string> {
   const recurring = isRecurringPaymentAlert(ctx);
-  const memory = formatMemoryForPrompt(await loadAIMemory());
+  const [memoryEntries, financialContext] = await Promise.all([
+    loadAIMemory(),
+    buildFreshFynContextDigest(`${ctx.title} ${ctx.paymentName ?? ''}`).catch(() => ''),
+  ]);
+  const memory = formatMemoryForPrompt(memoryEntries);
 
   return [
     'Tu es Fyn, conseiller financier bienveillant dans une app québécoise.',
@@ -24,6 +29,7 @@ async function buildAlertInsightPrompt(ctx: AlertInsightContext): Promise<string
     'Le conseil doit aider à ÉVITER que ce problème se reproduise — pas comment le régler maintenant.',
     'Ton calme, simple, non culpabilisant. Pas de listes, pas de markdown, pas de titres.',
     memory,
+    financialContext ? `Contexte financier frais : ${financialContext}` : '',
     'Contexte de l’alerte :',
     JSON.stringify({
       titre: ctx.title,

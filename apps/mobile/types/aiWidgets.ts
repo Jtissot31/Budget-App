@@ -81,12 +81,31 @@ export type BarChartItem = {
   value: number;
   /** Pre-formatted display value (e.g. "420 $"). Falls back to value.toString(). */
   value_label?: string;
+  /** Optional monthly budget limit — enables spent/limit row and utilization bar. */
+  limit?: number;
+  /** Pre-formatted limit (e.g. "700 $"). Falls back to limit when set. */
+  limit_label?: string;
 };
 
 export type BarChartData = {
   type: 'bar_chart';
   label: string;
   items: BarChartItem[];
+  caption?: string;
+  action?: WidgetAction;
+};
+
+export type CashflowComparisonData = {
+  type: 'cashflow_comparison';
+  label: string;
+  income: number;
+  expenses: number;
+  income_label?: string;
+  expenses_label?: string;
+  /** Net monthly surplus (income − expenses); negative = deficit. */
+  surplus: number;
+  surplus_label?: string;
+  period?: string;
   caption?: string;
 };
 
@@ -103,6 +122,18 @@ export type AllocationChartData = {
   caption?: string;
 };
 
+/** Hero balance card — Clean Financial Dashboard « Solde total » pattern. */
+export type BalanceSummaryCardData = {
+  type: 'balance_summary_card';
+  label: string;
+  value_label: string;
+  /** e.g. « +10 % par rapport au mois dernier » */
+  trend_label?: string;
+  /** Trend badge color; defaults from trend_label sign when omitted. */
+  positive?: boolean;
+  action?: WidgetAction;
+};
+
 export type AIWidgetData =
   | ProgressCardData
   | DebtTableData
@@ -110,7 +141,9 @@ export type AIWidgetData =
   | AlertCardData
   | LineChartData
   | BarChartData
-  | AllocationChartData;
+  | CashflowComparisonData
+  | AllocationChartData
+  | BalanceSummaryCardData;
 
 export type TextBlock = { type: 'text'; content: string };
 
@@ -123,7 +156,9 @@ export const AI_WIDGET_TYPES = [
   'alert_card',
   'line_chart',
   'bar_chart',
+  'cashflow_comparison',
   'allocation_chart',
+  'balance_summary_card',
 ] as const;
 
 export type AIWidgetType = (typeof AI_WIDGET_TYPES)[number];

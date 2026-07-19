@@ -2,13 +2,12 @@ import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { spacing } from '@/constants/theme';
 import type { AllocationChartData } from '@/types/aiWidgets';
-import { AI_WIDGET_RADIUS, aiWidgetFonts, useAIWidgetColors } from './theme';
+import { aiWidgetAmountTypography, aiWidgetFonts, aiWidgetTypography, fynChartSeriesColor, useAIWidgetColors } from './theme';
+import { WidgetCardShell } from './WidgetCardShell';
 
 type Props = {
   data: AllocationChartData;
 };
-
-const SEGMENT_COLORS = ['#3DDC97', '#5B8DEF', '#F5A623', '#E85D75', '#9B59B6', '#1ABC9C'];
 
 function resolvePercent(value: number, total: number, explicit?: number): number {
   if (explicit != null && Number.isFinite(explicit)) {
@@ -28,17 +27,20 @@ export function AllocationChartWidget({ data }: Props) {
       segments: data.segments.map((segment, index) => ({
         ...segment,
         percent: resolvePercent(segment.value, sum, segment.percent),
-        color: SEGMENT_COLORS[index % SEGMENT_COLORS.length],
+        color: fynChartSeriesColor(index),
       })),
     };
   }, [data.segments]);
 
   return (
-    <View style={[styles.card, { backgroundColor: palette.surface, padding: palette.padding }]}>
-      <Text style={[styles.label, { color: palette.textMuted, fontFamily: aiWidgetFonts.label }]}>
-        {data.label.toUpperCase()}
-      </Text>
-
+    <WidgetCardShell
+      label={data.label}
+      caption={
+        total <= 0
+          ? 'Données insuffisantes pour afficher la répartition.'
+          : data.caption
+      }
+    >
       <View style={[styles.stackBar, { backgroundColor: palette.track }]}>
         {segments.map((segment) =>
           segment.percent > 0 ? (
@@ -55,48 +57,36 @@ export function AllocationChartWidget({ data }: Props) {
           <View key={segment.label} style={styles.legendRow}>
             <View style={[styles.legendDot, { backgroundColor: segment.color }]} />
             <Text
-              style={[styles.legendLabel, { color: palette.text, fontFamily: aiWidgetFonts.labelRegular }]}
+              style={[
+                aiWidgetTypography.legend,
+                { color: palette.text, fontFamily: aiWidgetFonts.labelRegular },
+              ]}
               numberOfLines={1}
             >
               {segment.label}
             </Text>
-            <Text style={[styles.legendValue, { color: palette.textMuted, fontFamily: aiWidgetFonts.mono }]}>
+            <Text
+              style={[
+                aiWidgetTypography.legend,
+                styles.legendPercent,
+                aiWidgetAmountTypography('caption'),
+                { color: palette.textMuted },
+              ]}
+            >
               {Math.round(segment.percent)} %
             </Text>
           </View>
         ))}
       </View>
-
-      {data.caption ? (
-        <Text style={[styles.caption, { color: palette.textMuted, fontFamily: aiWidgetFonts.labelRegular }]}>
-          {data.caption}
-        </Text>
-      ) : null}
-
-      {total <= 0 ? (
-        <Text style={[styles.caption, { color: palette.textMuted, fontFamily: aiWidgetFonts.labelRegular }]}>
-          Données insuffisantes pour afficher la répartition.
-        </Text>
-      ) : null}
-    </View>
+    </WidgetCardShell>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    width: '100%',
-    borderRadius: AI_WIDGET_RADIUS,
-    gap: spacing.md,
-  },
-  label: {
-    fontSize: 11,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
   stackBar: {
     flexDirection: 'row',
     height: 10,
-    borderRadius: AI_WIDGET_RADIUS,
+    borderRadius: 6,
     overflow: 'hidden',
     width: '100%',
   },
@@ -114,18 +104,13 @@ const styles = StyleSheet.create({
   legendDot: {
     width: 8,
     height: 8,
-    borderRadius: AI_WIDGET_RADIUS,
+    borderRadius: 4,
+  },
+  legendPercent: {
+    fontVariant: ['tabular-nums'],
   },
   legendLabel: {
     flex: 1,
-    fontSize: 13,
     minWidth: 0,
-  },
-  legendValue: {
-    fontSize: 13,
-    fontVariant: ['tabular-nums'],
-  },
-  caption: {
-    fontSize: 12,
   },
 });

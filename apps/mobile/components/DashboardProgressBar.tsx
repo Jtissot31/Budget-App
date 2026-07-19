@@ -1,5 +1,5 @@
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import { spacing } from '@/constants/theme';
+import { radius, spacing } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
@@ -32,12 +32,12 @@ export function DashboardProgressBar({
 
 const styles = StyleSheet.create({
   track: {
-    borderRadius: 99,
+    borderRadius: radius.pill,
     overflow: 'hidden',
   },
   fill: {
     height: '100%',
-    borderRadius: 99,
+    borderRadius: radius.pill,
     overflow: 'hidden',
   },
 });

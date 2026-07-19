@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { useRouter } from 'expo-router';
 import {
   interMediumText,
   interSemiboldText,
@@ -14,7 +14,11 @@ import {
   planSuggestionCategoryLabel,
   planSuggestionSubtypeLabel,
 } from '@/lib/plans/planRecommendationEngine';
-import { formatPlanSuggestionReasonForCard } from '@/lib/plans/planSuggestionCopy';
+import {
+  formatPlanSuggestionReasonForCard,
+  resolvePlanSuggestionDetailReason,
+} from '@/lib/plans/planSuggestionCopy';
+import { buildTemplateDetailParams } from '@/lib/plans/planCreateNavigation';
 import type { PlanSuggere } from '@/lib/plans/Plan';
 import { tapHaptic } from '@/lib/haptics';
 import { interRegularText } from '@/constants/theme';
@@ -66,6 +70,7 @@ function planIcon(subtype: PlanSuggere['subtype']): keyof typeof MaterialCommuni
 }
 
 export function AIChatPlanSuggestionsBubble({ state, onConfirm }: Props) {
+  const router = useRouter();
   const palette = useAIChatColors();
   const { suggestions, intro, frozen, confirmedIds } = state;
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -84,6 +89,24 @@ export function AIChatPlanSuggestionsBubble({ state, onConfirm }: Props) {
     [frozen],
   );
 
+  const handleOpenDetail = useCallback(
+    (plan: PlanSuggere) => {
+      tapHaptic();
+      router.push({
+        pathname: '/plans/template/[subtype]',
+        params: buildTemplateDetailParams(plan.subtype, {
+          raison: resolvePlanSuggestionDetailReason(
+            plan.raison_recommandation,
+            plan.description,
+            plan.subtype,
+          ),
+          suggestedId: plan.id,
+        }),
+      });
+    },
+    [router],
+  );
+
   const selectedPlans = useMemo(
     () => suggestions.filter((plan) => effectiveSelected.includes(plan.id)),
     [effectiveSelected, suggestions],
@@ -96,19 +119,17 @@ export function AIChatPlanSuggestionsBubble({ state, onConfirm }: Props) {
   }, [frozen, onConfirm, selectedPlans]);
 
   if (suggestions.length === 0) {
-    return (
-      <View style={styles.wrapper}>
-        <View style={[styles.bubble, { backgroundColor: palette.aiBubble, borderColor: palette.border }]}>
-          <Text style={[styles.intro, { color: palette.text }, interRegularText]}>{intro}</Text>
-        </View>
-      </View>
-    );
+    return null;
   }
+
+  const introText = intro.trim();
 
   return (
     <View style={styles.wrapper}>
       <View style={[styles.bubble, { backgroundColor: palette.aiBubble, borderColor: palette.border }]}>
-        <Text style={[styles.intro, { color: palette.text }, interRegularText]}>{intro}</Text>
+        {introText ? (
+          <Text style={[styles.intro, { color: palette.text }, interRegularText]}>{introText}</Text>
+        ) : null}
 
         <View style={styles.cards}>
           {suggestions.map((plan) => {
@@ -116,57 +137,88 @@ export function AIChatPlanSuggestionsBubble({ state, onConfirm }: Props) {
             const dimmed = frozen && !selected;
 
             return (
-              <Pressable
+              <View
                 key={plan.id}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                disabled={frozen}
-                onPress={() => toggleSelection(plan.id)}
-                style={({ pressed }) => [
+                style={[
                   styles.card,
                   {
                     backgroundColor: PLAN_SURFACE,
                     borderColor: selected ? PLAN_SELECTED_BORDER : PLAN_BORDER,
-                    opacity: dimmed ? 0.45 : pressed ? 0.88 : 1,
+                    opacity: dimmed ? 0.45 : 1,
                   },
                 ]}
               >
-                {selected ? (
-                  <View style={styles.checkmark}>
-                    <AppIcon family="material-community" name="check-circle" size={18} color={PLAN_SELECTED_BORDER} />
+                {!frozen ? (
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: selected }}
+                    accessibilityLabel={
+                      selected ? `Désélectionner ${plan.titre}` : `Sélectionner ${plan.titre}`
+                    }
+                    hitSlop={8}
+                    onPress={() => toggleSelection(plan.id)}
+                    style={styles.selectControl}
+                  >
+                    <AppIcon
+                      family="material-community"
+                      name={selected ? 'check-circle' : 'circle-outline'}
+                      size={20}
+                      color={selected ? PLAN_SELECTED_BORDER : palette.textMuted}
+                    />
+                  </Pressable>
+                ) : selected ? (
+                  <View style={styles.selectControl}>
+                    <AppIcon
+                      family="material-community"
+                      name="check-circle"
+                      size={20}
+                      color={PLAN_SELECTED_BORDER}
+                    />
                   </View>
                 ) : null}
 
-                <View style={styles.cardHeader}>
-                  <AppIcon family="material-community" 
-                    name={planIcon(plan.subtype)}
-                    size={18}
-                    color={dimmed ? palette.textMuted : palette.text}
-                  />
-                  <View style={styles.cardTitles}>
-                    <Text
-                      style={[styles.cardTitle, { color: palette.text }, interSemiboldText]}
-                      numberOfLines={1}
-                    >
-                      {plan.titre}
-                    </Text>
-                    <Text style={[styles.cardCategory, { color: palette.textMuted }, interMediumText]} numberOfLines={1}>
-                      {planSuggestionCategoryLabel(plan)} · {planSuggestionSubtypeLabel(plan)}
-                    </Text>
-                  </View>
-                </View>
-
-                <Text
-                  style={[styles.cardReason, { color: palette.textMuted }, interRegularText]}
-                  numberOfLines={2}
-                  ellipsizeMode="tail"
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Voir les détails de ${plan.titre}`}
+                  onPress={() => handleOpenDetail(plan)}
+                  style={({ pressed }) => [styles.cardBody, pressed && styles.cardBodyPressed]}
                 >
-                  {formatPlanSuggestionReasonForCard(
-                    plan.raison_recommandation,
-                    plan.description,
-                  )}
-                </Text>
-              </Pressable>
+                  <View style={styles.cardHeader}>
+                    <AppIcon
+                      family="material-community"
+                      name={planIcon(plan.subtype)}
+                      size={18}
+                      color={dimmed ? palette.textMuted : palette.text}
+                    />
+                    <View style={styles.cardTitles}>
+                      <Text
+                        style={[styles.cardTitle, { color: palette.text }, interSemiboldText]}
+                        numberOfLines={1}
+                      >
+                        {plan.titre}
+                      </Text>
+                      <Text
+                        style={[styles.cardCategory, { color: palette.textMuted }, interMediumText]}
+                        numberOfLines={1}
+                      >
+                        {planSuggestionCategoryLabel(plan)} · {planSuggestionSubtypeLabel(plan)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text
+                    style={[styles.cardReason, { color: palette.textMuted }, interRegularText]}
+                    numberOfLines={2}
+                    ellipsizeMode="tail"
+                  >
+                    {formatPlanSuggestionReasonForCard(
+                      plan.raison_recommandation,
+                      plan.description,
+                      plan.subtype,
+                    )}
+                  </Text>
+                </Pressable>
+              </View>
             );
           })}
         </View>
@@ -229,15 +281,21 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: CARD_RADIUS,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: spacing.md,
-    gap: spacing.xs,
     position: 'relative',
   },
-  checkmark: {
+  selectControl: {
     position: 'absolute',
     top: spacing.sm,
     right: spacing.sm,
     zIndex: 1,
+  },
+  cardBody: {
+    padding: spacing.md,
+    gap: spacing.xs,
+    paddingRight: spacing.lg + spacing.sm,
+  },
+  cardBodyPressed: {
+    opacity: 0.88,
   },
   cardHeader: {
     flexDirection: 'row',

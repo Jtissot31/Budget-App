@@ -31,6 +31,7 @@ import {
   FLOATING_NAV_CONTENT_PADDING,
   PAGE_PADDING_HORIZONTAL,
   PAGE_TITLE_CONTENT_GAP,
+  radius,
   spacing,
   subtleDeleteButtonStyle,
   typography,
@@ -702,7 +703,7 @@ const createStyles = (colors: AppColors) =>
       lineHeight: typographyKit.metaMedium.fontSize + 6,
     },
     statusBadge: {
-      borderRadius: 999,
+      borderRadius: radius.pill,
       paddingHorizontal: spacing.sm,
       paddingVertical: 3,
     },

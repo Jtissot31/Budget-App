@@ -1,6 +1,6 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { typography } from '@/constants/theme';
+import { jakartaExtraBoldText, typography } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
 export const MODIFIER_ICON_NAME = 'create-outline' as const;
@@ -62,8 +62,8 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   label: {
+    ...jakartaExtraBoldText,
     fontSize: typography.meta,
-    fontWeight: '800',
   },
   pressed: { opacity: 0.78 },
   disabled: { opacity: 0.45 },

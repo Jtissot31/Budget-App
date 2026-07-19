@@ -2,6 +2,7 @@
  * Shared Gemini Flash client — EXPO_PUBLIC_GEMINI_API_KEY via lib/ai/env.ts.
  * Dev-only in bundle; production should use a server proxy.
  */
+import { createAbortError, isAbortError } from '@/lib/abortError';
 import { getGeminiApiKey } from './env';
 
 /** Tracks Google's latest Flash alias — avoids deprecated model IDs (e.g. gemini-2.5-flash). */
@@ -77,7 +78,7 @@ async function postGemini(
       signal: options?.signal,
     });
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (isAbortError(error)) {
       throw error;
     }
     const message = error instanceof Error ? error.message : 'réseau indisponible';
@@ -204,7 +205,7 @@ async function readGeminiSseStream(
   while (true) {
     if (signal?.aborted) {
       await reader.cancel();
-      throw new DOMException('Aborted', 'AbortError');
+      throw createAbortError();
     }
 
     const { done, value } = await reader.read();
@@ -262,7 +263,7 @@ async function postGeminiChat(
     }
     return await postGemini(apiKey, body, { throwOnFailure, signal: options?.signal });
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (isAbortError(error)) {
       throw error;
     }
 
@@ -302,7 +303,7 @@ async function postGeminiStream(
       signal,
     });
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (isAbortError(error)) {
       throw error;
     }
     const message = error instanceof Error ? error.message : 'réseau indisponible';

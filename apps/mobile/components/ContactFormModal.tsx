@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: 44,
     height: 4,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     marginBottom: 4,
   },
   header: {

@@ -55,7 +55,7 @@ export const singleLineLabelStyle: Pick<TextStyle, 'flexShrink' | 'minWidth'> = 
 };
 
 /**
- * Numeric & list layout helpers — money amounts use {@link moneyAmountTypography} (Onest 800).
+ * Numeric & list layout helpers — money amounts use {@link moneyAmountTypography} (Inter 800).
  */
 export const portfolioNumericText = moneyAmountTypography({ tier: 'row' });
 
@@ -159,7 +159,7 @@ export const listRowTitle = {
 } as const;
 
 /**
- * Standard list amount (14px Onest tabular).
+ * Standard list amount (14px Inter tabular).
  * Use with rowValueContainer + singleLineAmountProps on the Text.
  */
 export const rowValue = moneyAmountTypography({ tier: 'row' });

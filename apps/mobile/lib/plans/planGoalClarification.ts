@@ -1,11 +1,18 @@
 import type { FinancialSummaryAnonymous } from '@/lib/ai/types';
 import type { PlanSuggere } from './Plan';
 import { buildPlanRecommendationContext } from './buildPlanRecommendationContext';
-import { buildRFAInputFromAppData } from '@/lib/ai/sanitizeForAI';
+import { filterRfaDebtsEligibleForAcceleratedPlan } from './debtPlanEligibility';
+import { buildRFAInputFromAppData, type RfaInputBundle } from '@/lib/ai/sanitizeForAI';
 import { evaluatePlanRecommendations } from './planRecommendationEngine';
+import {
+  resolveSuggestedPlanGoal,
+} from './planGoalPriority';
 import { isInvestmentPlanSubtype, isDebtRepaymentPlanSubtype } from './planSuggestionCopy';
 
+export { buildNegativeCashflowBudgetReason, resolveSuggestedPlanGoal } from './planGoalPriority';
+
 export type PlanGoal =
+  | 'budget_rebalance'
   | 'debt_repayment'
   | 'reduce_bills'
   | 'emergency_fund'
@@ -32,6 +39,12 @@ export type ChatPlanGoalChoice = {
 };
 
 const PLAN_GOAL_OPTIONS: Record<PlanGoal, PlanGoalOption> = {
+  budget_rebalance: {
+    goal: 'budget_rebalance',
+    title: 'Rééquilibrer mon budget',
+    subtitle: 'Remettre dépenses et revenus en équilibre avant d’accélérer.',
+    chipMessage: 'Je veux d’abord rééquilibrer mon budget et mon cashflow.',
+  },
   debt_repayment: {
     goal: 'debt_repayment',
     title: 'Rembourser mes dettes',
@@ -59,6 +72,8 @@ const PLAN_GOAL_OPTIONS: Record<PlanGoal, PlanGoalOption> = {
 };
 
 const GOAL_KEYWORD_PATTERNS: Record<PlanGoal, RegExp> = {
+  budget_rebalance:
+    /\b(budget|cashflow|cash\s*flow|reequilibr|rebalancer|depenses?\s*>|trop\s*depenser|couper\s*les\s*depenses|marge\s*mensuelle)\b/,
   debt_repayment:
     /\b(dette|dettes|rembours|rembourser|desendett|desendetter|snowball|avalanche|bombe\s*nucl|nucl[eé]aire|credit\s*card|carte\s*de\s*credit)\b/,
   reduce_bills:
@@ -76,6 +91,13 @@ function normalizeUserText(text: string): string {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
+function formatSurplusFr(surplus: number): string {
+  const abs = Math.round(Math.abs(surplus)).toLocaleString('fr-CA');
+  if (surplus < 0) return `−${abs}`;
+  if (surplus > 0) return `+${abs}`;
+  return '0';
+}
+
 export function detectPlanGoal(userText: string): PlanGoal | null {
   const normalized = normalizeUserText(userText);
 
@@ -90,69 +112,56 @@ export function isVaguePlanRequest(userText: string): boolean {
   return detectPlanGoal(userText) === null;
 }
 
-export async function recommendPlanGoal(rfa: FinancialSummaryAnonymous): Promise<PlanGoalRecommendation> {
-  const input = await buildRFAInputFromAppData();
+export async function recommendPlanGoal(
+  rfa: FinancialSummaryAnonymous,
+  snapshotInput?: RfaInputBundle,
+): Promise<PlanGoalRecommendation> {
+  const input = snapshotInput ?? await buildRFAInputFromAppData();
   const ctx = buildPlanRecommendationContext(input, rfa);
+  const dettesAccelerables = filterRfaDebtsEligibleForAcceleratedPlan(rfa.dettes);
 
-  if (ctx.contexte_dette_lourde || rfa.dettes.length >= 2) {
-    const totalDebt = rfa.dettes.reduce((sum, debt) => sum + debt.solde, 0);
-    return {
-      suggested: 'debt_repayment',
-      reason: `tu as ${rfa.dettes.length} dettes actives (${Math.round(totalDebt).toLocaleString('fr-CA')} $ au total) — les rembourser en priorité libère du cashflow.`,
-    };
-  }
-
-  if (rfa.dettes.length === 1) {
-    const debt = rfa.dettes[0];
-    return {
-      suggested: 'debt_repayment',
-      reason: `${debt.institution} affiche encore ${Math.round(debt.solde).toLocaleString('fr-CA')} $ — un plan ciblé accélère le remboursement.`,
-    };
-  }
-
-  if (ctx.couverture_mois < 3) {
-    return {
-      suggested: 'emergency_fund',
-      reason: `tu as environ ${ctx.couverture_mois.toFixed(1).replace('.', ',')} mois de dépenses en liquidités — un coussin d'urgence te protège sans recourir au crédit.`,
-    };
-  }
-
-  if (ctx.nombre_abonnements_recurrents >= 5) {
-    return {
-      suggested: 'reduce_bills',
-      reason: `${ctx.nombre_abonnements_recurrents} abonnements détectés — une revue ciblée libère souvent du budget chaque mois.`,
-    };
-  }
-
-  if (ctx.droits_cotisation_celi_disponibles > 0 || ctx.droits_cotisation_reer_disponibles > 0) {
-    return {
-      suggested: 'savings_investment',
-      reason: "tu as de l'espace de cotisation disponible — structurer l'épargne t'aide à avancer plus vite.",
-    };
-  }
-
-  return {
-    suggested: 'emergency_fund',
-    reason: 'un fonds de secours te donne de la marge de manœuvre avant tout le reste.',
-  };
+  return resolveSuggestedPlanGoal({
+    cashflowViableForDebtExtra: ctx.cashflow_viable_pour_extra_dette,
+    surplusMensuel: ctx.surplus_mensuel,
+    dettesAccelerablesCount: dettesAccelerables.length,
+    detteTotale: dettesAccelerables.reduce((sum, debt) => sum + debt.solde, 0),
+    couvertureMois: ctx.couverture_mois,
+    nombreAbonnements: ctx.nombre_abonnements_recurrents,
+    droitsCeli: ctx.droits_cotisation_celi_disponibles,
+    droitsReer: ctx.droits_cotisation_reer_disponibles,
+    contexteDetteLourde: ctx.contexte_dette_lourde,
+    singleDebtLabel: dettesAccelerables[0]?.institution,
+  });
 }
 
 export async function buildAvailablePlanGoalOptions(
   rfa: FinancialSummaryAnonymous,
+  snapshotInput?: RfaInputBundle,
 ): Promise<PlanGoalOption[]> {
-  const input = await buildRFAInputFromAppData();
+  const input = snapshotInput ?? await buildRFAInputFromAppData();
   const ctx = buildPlanRecommendationContext(input, rfa);
   const options: PlanGoalOption[] = [];
+  const hasDebts = filterRfaDebtsEligibleForAcceleratedPlan(rfa.dettes).length > 0;
 
-  if (rfa.dettes.length > 0) {
-    options.push(PLAN_GOAL_OPTIONS.debt_repayment);
-  }
-
-  options.push(PLAN_GOAL_OPTIONS.emergency_fund);
-
-  if (!ctx.contexte_dette_lourde) {
+  if (!ctx.cashflow_viable_pour_extra_dette) {
+    options.push(PLAN_GOAL_OPTIONS.budget_rebalance);
+    if (hasDebts) {
+      options.push({
+        ...PLAN_GOAL_OPTIONS.debt_repayment,
+        subtitle: 'Après avoir rétabli un surplus mensuel — catalogue toujours accessible.',
+      });
+    }
     options.push(PLAN_GOAL_OPTIONS.reduce_bills);
-    options.push(PLAN_GOAL_OPTIONS.savings_investment);
+    options.push(PLAN_GOAL_OPTIONS.emergency_fund);
+  } else {
+    if (hasDebts) {
+      options.push(PLAN_GOAL_OPTIONS.debt_repayment);
+    }
+    options.push(PLAN_GOAL_OPTIONS.emergency_fund);
+    if (!ctx.contexte_dette_lourde) {
+      options.push(PLAN_GOAL_OPTIONS.reduce_bills);
+      options.push(PLAN_GOAL_OPTIONS.savings_investment);
+    }
   }
 
   const seen = new Set<PlanGoal>();
@@ -173,6 +182,8 @@ export function buildPlanGoalChoiceIntro(recommendation: PlanGoalRecommendation)
 
 export function planGoalLabel(goal: PlanGoal): string {
   switch (goal) {
+    case 'budget_rebalance':
+      return 'le rééquilibrage de ton budget';
     case 'debt_repayment':
       return 'le remboursement de tes dettes';
     case 'reduce_bills':
@@ -219,8 +230,18 @@ export function parsePlanGoalFromText(
   return null;
 }
 
+function isBudgetRebalanceSubtype(subtype: string): boolean {
+  return (
+    subtype === 'enveloppe' ||
+    subtype === 'no_spend_challenge' ||
+    subtype === 'reduction_abonnements'
+  );
+}
+
 function filterSuggestionsForGoal(suggestions: PlanSuggere[], goal: PlanGoal): PlanSuggere[] {
   switch (goal) {
+    case 'budget_rebalance':
+      return suggestions.filter((plan) => isBudgetRebalanceSubtype(plan.subtype));
     case 'debt_repayment':
       return suggestions.filter((plan) => isDebtRepaymentPlanSubtype(plan.subtype));
     case 'reduce_bills':
@@ -234,10 +255,25 @@ function filterSuggestionsForGoal(suggestions: PlanSuggere[], goal: PlanGoal): P
   }
 }
 
+export function buildDebtSummaryIntro(): string {
+  return 'Voici un résumé de tes dettes actives.';
+}
+
+export function buildDebtStrategiesIntro(): string {
+  return 'Voici les stratégies qui collent le mieux à ta situation :';
+}
+
+export function buildCashflowBlockedDebtIntro(surplusMensuel: number): string {
+  const surplusLabel = formatSurplusFr(surplusMensuel);
+  return `Tes dépenses dépassent ou serrent tes revenus (surplus d’environ ${surplusLabel} $/mois) — tu n’as pas de marge pour un extra sur tes dettes. Commençons par rééquilibrer le budget ; un plan snowball ou avalanche pourra suivre dès que le cashflow redevient positif.`;
+}
+
 export function buildPlanGoalConfirmedIntro(goal: PlanGoal): string {
   switch (goal) {
+    case 'budget_rebalance':
+      return 'Commençons par le budget — voici des pistes pour rétablir une marge mensuelle.';
     case 'debt_repayment':
-      return 'Parfait — voici des plans de remboursement adaptés à ta situation.';
+      return buildDebtSummaryIntro();
     case 'reduce_bills':
       return 'Bonne idée — voici un plan pour alléger tes dépenses récurrentes.';
     case 'emergency_fund':
@@ -252,6 +288,7 @@ export function buildPlanGoalConfirmedIntro(goal: PlanGoal): string {
 export async function buildPlanSuggestionsForGoal(
   rfa: FinancialSummaryAnonymous,
   goal: PlanGoal,
+  snapshotInput?: RfaInputBundle,
 ): Promise<PlanSuggere[]> {
   const debtHeavy = goal === 'debt_repayment';
 
@@ -259,6 +296,7 @@ export async function buildPlanSuggestionsForGoal(
     onDemand: true,
     debtHeavy,
     maxSuggestions: 4,
+    snapshot: snapshotInput ? { input: snapshotInput, rfa } : undefined,
   });
 
   const filtered = filterSuggestionsForGoal(suggestions, goal);
@@ -269,6 +307,7 @@ export async function buildPlanSuggestionsForGoal(
     onDemand: true,
     debtHeavy,
     maxSuggestions: 6,
+    snapshot: snapshotInput ? { input: snapshotInput, rfa } : undefined,
   });
 
   return filterSuggestionsForGoal(broader, goal);
@@ -276,9 +315,10 @@ export async function buildPlanSuggestionsForGoal(
 
 export async function buildPlanGoalChoiceState(
   rfa: FinancialSummaryAnonymous,
+  snapshotInput?: RfaInputBundle,
 ): Promise<ChatPlanGoalChoice> {
-  const recommendation = await recommendPlanGoal(rfa);
-  const options = await buildAvailablePlanGoalOptions(rfa);
+  const recommendation = await recommendPlanGoal(rfa, snapshotInput);
+  const options = await buildAvailablePlanGoalOptions(rfa, snapshotInput);
 
   return {
     suggested: recommendation.suggested,

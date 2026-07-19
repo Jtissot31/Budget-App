@@ -1,8 +1,8 @@
 /** French Canadian locale — space thousands, comma decimals. */
 export const FR_CA_NUMBER_LOCALE = 'fr-CA';
 
-/** Regex matching common grouping separators (space, NBSP, narrow NBSP). */
-const GROUPING_SEPARATORS = /[\s\u00a0\u202f]/g;
+/** Regex matching common grouping separators (ASCII + Unicode spaces from fr-CA locale). */
+const GROUPING_SEPARATORS = /[\s\u00a0\u202f\u2007\u2009\u205f\u3000]/g;
 
 /** Integer part gets grouping from 1 000+ (4+ digits). */
 const THOUSANDS_MIN_DIGITS = 4;

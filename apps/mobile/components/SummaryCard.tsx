@@ -1,6 +1,6 @@
 import { StyleSheet, Text } from 'react-native';
 import { SurfaceCard } from '@/components/SurfaceCard';
-import { radius, spacing, typography } from '@/constants/theme';
+import { jakartaBoldText, jakartaRegularText, radius, spacing, typography } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
@@ -26,14 +26,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   title: {
+    ...jakartaRegularText,
     fontSize: typography.micro,
     marginBottom: spacing.xs,
   },
   value: {
+    ...jakartaBoldText,
     fontSize: typography.dashboardGreeting,
-    fontWeight: '700',
   },
   subtitle: {
+    ...jakartaRegularText,
     fontSize: typography.micro,
     marginTop: spacing.xs,
   },

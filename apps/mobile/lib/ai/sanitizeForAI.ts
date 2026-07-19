@@ -7,8 +7,10 @@ import {
   getSavingsGoals,
   getSimulatedAccounts,
 } from '@/lib/db';
+import { filterRfaDebtsEligibleForAcceleratedPlan } from '@/lib/plans/debtPlanEligibility';
 import { getCloudAccountConnected, getDisplayLanguage } from '@/lib/settings';
 import type { AccountKind, Loan, LoanType, RecurringPayment, SimulatedAccount } from '@/types';
+import { sanitizeForAI } from './aiSanitization';
 
 import type {
   DataMode,
@@ -20,49 +22,7 @@ import type {
   RfaSubscription,
   SupportedAiLanguage,
 } from './types';
-
-export const FIELDS_TO_REMOVE = [
-  'userId',
-  'email',
-  'phone',
-  'sin',
-  'firstName',
-  'lastName',
-  'fullName',
-  'address',
-  'postalCode',
-  'dateOfBirth',
-  'accountNumber',
-  'routingNumber',
-  'deviceId',
-  'ipAddress',
-] as const;
-
-type Sanitizable = Record<string, unknown>;
-
-function isPlainObject(value: unknown): value is Sanitizable {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/** Strip personal identifiers before any AI API call. */
-export function sanitizeForAI<T>(payload: T): T {
-  if (Array.isArray(payload)) {
-    return payload.map((item) => sanitizeForAI(item)) as T;
-  }
-
-  if (!isPlainObject(payload)) {
-    return payload;
-  }
-
-  const sanitized: Sanitizable = {};
-  for (const [key, value] of Object.entries(payload)) {
-    if ((FIELDS_TO_REMOVE as readonly string[]).includes(key)) {
-      continue;
-    }
-    sanitized[key] = sanitizeForAI(value);
-  }
-  return sanitized as T;
-}
+export { FIELDS_TO_REMOVE, sanitizeForAI } from './aiSanitization';
 
 export async function resolveDataMode(): Promise<DataMode> {
   const connected = await getCloudAccountConnected();
@@ -277,7 +237,8 @@ export function buildHeuristicRFA(input: RfaInputBundle): FinancialSummaryAnonym
     .filter((budget) => getCategoryBudgetUsage(budget.limitAmount, budget.spent).isOverBudget)
     .map((budget) => budget.categoryName);
 
-  const totalDebt = dettes.reduce((sum, debt) => sum + debt.solde, 0);
+  const dettesAccelerables = filterRfaDebtsEligibleForAcceleratedPlan(dettes);
+  const totalDebtAccelerable = dettesAccelerables.reduce((sum, debt) => sum + debt.solde, 0);
   const totalCash = comptes
     .filter((account) => account.type !== 'credit')
     .reduce((sum, account) => sum + account.solde, 0);
@@ -290,9 +251,9 @@ export function buildHeuristicRFA(input: RfaInputBundle): FinancialSummaryAnonym
   const analyse = [
     `Situation ${profil.situationGlobale} avec un revenu mensuel net estimé à ${profil.revenuMensuelNet.toFixed(0)} $`,
     `et des dépenses moyennes de ${profil.depensesMensuellesMoyennes.toFixed(0)} $.`,
-    totalDebt > 0
-      ? `Dettes actives totalisant ${totalDebt.toFixed(0)} $ — prioriser les soldes à taux élevé.`
-      : 'Aucune dette enregistrée pour le moment.',
+    totalDebtAccelerable > 0
+      ? `Dettes actives totalisant ${totalDebtAccelerable.toFixed(0)} $ — prioriser les soldes à taux élevé.`
+      : 'Aucune dette accélérable enregistrée pour le moment.',
     totalCash > 0
       ? `Liquidités disponibles d’environ ${totalCash.toFixed(0)} $.`
       : 'Peu de liquidités enregistrées — vérifier le fonds d’urgence.',

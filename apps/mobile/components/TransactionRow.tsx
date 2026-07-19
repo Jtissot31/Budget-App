@@ -9,11 +9,13 @@ import type { MerchantOverride, SimulatedAccount, Transaction } from '@/types';
 import { getMerchantOverrideForLabel } from '@/lib/merchantLogo';
 import {
   ICON_WELL_SIZE,
+  jakartaMediumText,
+  jakartaSemiboldText,
+  moneyAmountTypography,
   spacing,
   transactionRowAmountTypography,
   typographyKit,
 } from '@/constants/theme';
-import { planFinanceContainerPressedStyle } from '@/constants/planFinanceKit';
 import { resolveContactPhotoUriForTransaction } from '@/lib/contactHistory';
 import { useContactPhotoMap } from '@/hooks/useContactPhotoMap';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
@@ -29,8 +31,9 @@ import { tapHaptic } from '@/lib/haptics';
 import { userPickedIconLogoSize } from '@/lib/userPickedIcon';
 import { useAppTheme } from '@/lib/themeContext';
 
-const EMBEDDED_ICON_WELL_SIZE = 30;
-const EMBEDDED_ROW_TITLE_SIZE = 16;
+const EMBEDDED_ICON_WELL_SIZE = 40;
+const EMBEDDED_ROW_TITLE_SIZE = 15.5;
+const EMBEDDED_ROW_META_SIZE = 12.5;
 
 type Props = {
   transaction: Transaction;
@@ -44,9 +47,8 @@ type Props = {
   onPress?: () => void;
   /** Stable list handler — preferred over inline `onPress` closures in virtualized lists. */
   onPressId?: (transactionId: string) => void;
-  /** Flat row inside a parent card — adds hairline dividers between rows. */
+  /** Flat row inside a parent card — matches agenda/history list layout. */
   embedded?: boolean;
-  isLast?: boolean;
 };
 
 function isUnresolvedHistorySubtitle(transaction: Transaction, label: string): boolean {
@@ -99,7 +101,6 @@ const TransactionRowBase = memo(function TransactionRowBase({
   onPress,
   onPressId,
   embedded = false,
-  isLast = false,
 }: TransactionRowBaseProps) {
   const { colors } = useAppTheme();
   const isTransfer = transaction.type === 'transfer';
@@ -131,10 +132,11 @@ const TransactionRowBase = memo(function TransactionRowBase({
 
   const pressable = onPress || onPressId;
   const avatarSize = embedded ? EMBEDDED_ICON_WELL_SIZE : ICON_WELL_SIZE;
-  // Amounts: Onest 800 ExtraBold (scoped exception — merchant name/subtitle stay Jakarta).
+  // Amounts: Inter 800 ExtraBold (scoped exception — merchant name/subtitle stay Jakarta).
   const amountTextStyle = embedded
     ? styles.embeddedAmount
     : transactionRowAmountTypography();
+  const embeddedAmountDirection = embedded ? 'neutral' : direction;
   const merchantOverride = merchantOverrideByLabel
     ? getMerchantOverrideForLabel(transaction.label, merchantOverrideByLabel)
     : undefined;
@@ -153,7 +155,7 @@ const TransactionRowBase = memo(function TransactionRowBase({
       style={({ pressed }) => [
         styles.row,
         embedded && styles.rowEmbedded,
-        pressed && (embedded ? planFinanceContainerPressedStyle() : styles.pressed),
+        pressed && styles.pressed,
       ]}
     >
       <View style={[styles.mainRow, embedded && styles.mainRowEmbedded]}>
@@ -169,18 +171,18 @@ const TransactionRowBase = memo(function TransactionRowBase({
           style={[
             styles.avatar,
             embedded && !framelessLogo && styles.avatarEmbedded,
-            embedded && !framelessLogo && { borderColor: colors.containerBorder },
+            embedded && !framelessLogo && { borderColor: colors.borderStrong, backgroundColor: colors.surfaceElevated },
           ]}
         />
 
         <View style={[styles.content, embedded && styles.contentEmbedded]}>
-          <View style={styles.titleRow}>
+          <View style={[styles.titleRow, embedded && styles.titleRowEmbedded]}>
             <View style={styles.nameCol}>
               <Text
                 style={[
                   styles.name,
-                  embedded ? styles.nameEmbedded : null,
-                  embedded ? typographyKit.bodyBold : typographyKit.captionSemibold,
+                  embedded && styles.nameEmbedded,
+                  embedded ? jakartaSemiboldText : typographyKit.captionSemibold,
                   { color: colors.text },
                 ]}
                 numberOfLines={1}
@@ -192,9 +194,10 @@ const TransactionRowBase = memo(function TransactionRowBase({
             <View style={styles.amountCol}>
               <TransactionAmountLabel
                 amount={formatDisplayMoneyAbsolute(Math.abs(transaction.amount))}
-                direction={direction}
+                direction={embeddedAmountDirection}
                 color={amountColor}
                 textStyle={amountTextStyle}
+                showDirectionIcon={false}
               />
             </View>
           </View>
@@ -204,7 +207,7 @@ const TransactionRowBase = memo(function TransactionRowBase({
               style={[
                 styles.meta,
                 embedded && styles.metaEmbedded,
-                embedded ? typographyKit.metaMedium : typographyKit.caption,
+                embedded ? jakartaMediumText : typographyKit.caption,
                 { color: colors.textMuted },
               ]}
               numberOfLines={1}
@@ -215,10 +218,6 @@ const TransactionRowBase = memo(function TransactionRowBase({
           ) : null}
         </View>
       </View>
-
-      {embedded && !isLast ? (
-        <View style={[styles.dividerEmbedded, { backgroundColor: colors.containerBorder }]} />
-      ) : null}
     </Pressable>
   );
 });
@@ -259,19 +258,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   rowEmbedded: {
-    gap: spacing.lg,
     paddingVertical: spacing.lg,
-    paddingHorizontal: 0,
-  },
-  mainRowEmbedded: {
-    alignItems: 'center',
     paddingHorizontal: spacing.lg,
   },
   contentEmbedded: {
-    gap: spacing.xs,
+    gap: 2,
   },
   avatarEmbedded: {
     borderWidth: 1,
+    borderRadius: 9,
+    flexShrink: 0,
   },
   pressed: {
     opacity: 0.88,
@@ -280,6 +276,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
+  },
+  mainRowEmbedded: {
+    alignItems: 'center',
   },
   avatar: {
     flexShrink: 0,
@@ -295,6 +294,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
+  titleRowEmbedded: {
+    alignItems: 'center',
+  },
   nameCol: {
     flex: 1,
     minWidth: 0,
@@ -304,10 +306,12 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   nameEmbedded: {
-    letterSpacing: -0.2,
+    fontSize: EMBEDDED_ROW_TITLE_SIZE,
+    lineHeight: 20,
+    letterSpacing: -0.1,
   },
   embeddedAmount: {
-    ...transactionRowAmountTypography({
+    ...moneyAmountTypography({
       fontSize: EMBEDDED_ROW_TITLE_SIZE,
       lineHeight: 20,
       letterSpacing: -0.2,
@@ -322,10 +326,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   metaEmbedded: {
-    letterSpacing: 0.2,
-  },
-  dividerEmbedded: {
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: spacing.lg,
+    fontSize: EMBEDDED_ROW_META_SIZE,
+    lineHeight: 16,
   },
 });

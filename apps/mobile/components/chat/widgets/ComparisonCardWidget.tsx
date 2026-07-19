@@ -1,7 +1,8 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { spacing } from '@/constants/theme';
 import type { ComparisonCardData } from '@/types/aiWidgets';
-import { AI_WIDGET_RADIUS, aiWidgetFonts, useAIWidgetColors } from './theme';
+import { aiWidgetAmountTypography, aiWidgetFonts, aiWidgetTypography, useAIWidgetColors } from './theme';
+import { WidgetCardShell } from './WidgetCardShell';
 
 type Props = {
   data: ComparisonCardData;
@@ -17,11 +18,7 @@ export function ComparisonCardWidget({ data }: Props) {
   const palette = useAIWidgetColors();
 
   return (
-    <View style={[styles.card, { backgroundColor: palette.surface, padding: palette.padding }]}>
-      <Text style={[styles.label, { color: palette.textMuted, fontFamily: aiWidgetFonts.label }]}>
-        {data.label.toUpperCase()}
-      </Text>
-
+    <WidgetCardShell label={data.label} caption={data.footer}>
       {data.items.map((item, index) => {
         const primary = isPrimaryItem(data, index, item);
         return (
@@ -30,13 +27,13 @@ export function ComparisonCardWidget({ data }: Props) {
             style={[
               styles.itemRow,
               primary
-                ? { backgroundColor: palette.background, borderLeftColor: palette.green }
+                ? { backgroundColor: palette.track, borderLeftColor: palette.green }
                 : { borderLeftColor: 'transparent' },
             ]}
           >
             <Text
               style={[
-                styles.itemLabel,
+                aiWidgetTypography.legend,
                 { color: primary ? palette.text : palette.textMuted, fontFamily: aiWidgetFonts.labelRegular },
               ]}
             >
@@ -44,11 +41,9 @@ export function ComparisonCardWidget({ data }: Props) {
             </Text>
             <Text
               style={[
+                aiWidgetAmountTypography('card'),
                 styles.itemValue,
-                {
-                  color: primary ? palette.green : palette.text,
-                  fontFamily: aiWidgetFonts.mono,
-                },
+                { color: primary ? palette.green : palette.text },
               ]}
             >
               {item.value}
@@ -56,27 +51,11 @@ export function ComparisonCardWidget({ data }: Props) {
           </View>
         );
       })}
-
-      {data.footer ? (
-        <Text style={[styles.footer, { color: palette.textMuted, fontFamily: aiWidgetFonts.labelRegular }]}>
-          {data.footer}
-        </Text>
-      ) : null}
-    </View>
+    </WidgetCardShell>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: AI_WIDGET_RADIUS,
-    gap: spacing.sm,
-  },
-  label: {
-    fontSize: 11,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: spacing.xs,
-  },
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -85,19 +64,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderLeftWidth: 3,
-    borderRadius: AI_WIDGET_RADIUS,
-  },
-  itemLabel: {
-    fontSize: 13,
-    flex: 1,
+    borderRadius: 8,
   },
   itemValue: {
-    fontSize: 16,
-    fontVariant: ['tabular-nums'],
     textAlign: 'right',
-  },
-  footer: {
-    fontSize: 12,
-    marginTop: spacing.xs,
   },
 });

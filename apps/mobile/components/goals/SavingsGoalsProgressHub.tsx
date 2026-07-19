@@ -10,6 +10,7 @@ import {
   PAGE_PADDING_HORIZONTAL,
   jakartaBoldText,
   jakartaExtraBoldText,
+  radius,
   spacing,
   typography,
 } from '@/constants/theme';
@@ -125,12 +126,12 @@ const styles = StyleSheet.create({
   },
   levelBarWrap: {
     height: 6,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     overflow: 'hidden',
   },
   levelBarFill: {
     height: '100%',
-    borderRadius: 999,
+    borderRadius: radius.pill,
   },
   levelHint: {
     ...jakartaBoldText,

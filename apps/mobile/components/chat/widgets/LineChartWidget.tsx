@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
-import { spacing } from '@/constants/theme';
 import { SparklineChart } from '@/components/chat/SparklineChart';
 import type { LineChartData } from '@/types/aiWidgets';
-import { AI_WIDGET_RADIUS, aiWidgetFonts, useAIWidgetColors } from './theme';
+import { aiWidgetTypography, useAIWidgetColors } from './theme';
+import { WidgetCardShell } from './WidgetCardShell';
 
 type Props = {
   data: LineChartData;
@@ -21,58 +21,38 @@ export function LineChartWidget({ data }: Props) {
   };
 
   return (
-    <View style={[styles.card, { backgroundColor: palette.surface, padding: palette.padding }]}>
-      <Text style={[styles.label, { color: palette.textMuted, fontFamily: aiWidgetFonts.label }]}>
-        {data.label.toUpperCase()}
-      </Text>
-
+    <WidgetCardShell label={data.label} caption={data.caption}>
       {data.value_label ? (
-        <Text style={[styles.valueLabel, { color: palette.text, fontFamily: aiWidgetFonts.mono }]}>
+        <Text
+          style={[
+            aiWidgetTypography.value,
+            { color: palette.text },
+          ]}
+        >
           {data.value_label}
         </Text>
       ) : null}
 
-      <View style={styles.chartWrap} onLayout={handleLayout}>
+      <View style={[styles.chartWrap, { backgroundColor: palette.track }]} onLayout={handleLayout}>
         {chartWidth > 0 ? (
           <SparklineChart
             data={data.data}
             width={chartWidth}
             height={72}
             positive={data.positive}
+            backgroundColor={palette.track}
           />
         ) : null}
       </View>
-
-      {data.caption ? (
-        <Text style={[styles.caption, { color: palette.textMuted, fontFamily: aiWidgetFonts.labelRegular }]}>
-          {data.caption}
-        </Text>
-      ) : null}
-    </View>
+    </WidgetCardShell>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    width: '100%',
-    borderRadius: AI_WIDGET_RADIUS,
-    gap: spacing.sm,
-  },
-  label: {
-    fontSize: 11,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  valueLabel: {
-    fontSize: 22,
-    fontVariant: ['tabular-nums'],
-  },
   chartWrap: {
     width: '100%',
     minHeight: 72,
-  },
-  caption: {
-    fontSize: 12,
-    marginTop: spacing.xs,
+    borderRadius: 8,
+    overflow: 'hidden',
   },
 });

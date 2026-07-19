@@ -82,6 +82,15 @@ export function formatDisplayMoneyAbsolute(absValue: number): string {
   return appendSeparatedDollar ? `${main}$` : main;
 }
 
+/**
+ * Full fr-CA amount with `$` — never compact K/M.
+ * Use for debt tables / chat widgets where values must round-trip through parsers.
+ */
+export function formatDisplayMoneyAbsoluteExact(absValue: number): string {
+  const abs = Math.abs(Number.isFinite(absValue) ? absValue : 0);
+  return `${formatFullFrCaAmount(abs)}$`;
+}
+
 export type FormatSignedDisplayMoneyOptions = {
   /** When true, prefixes strictly positive amounts with '+'. */
   leadingPlusWhenPositive?: boolean;

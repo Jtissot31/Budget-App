@@ -137,6 +137,66 @@ export type PlanEtape = {
   date?: string;
 };
 
+/** Source d'une dette sélectionnée dans l'assistant de remboursement. */
+export type PlanDebtSource = 'loan' | 'credit_card' | 'manual';
+
+/** Dette sélectionnée / ordonnée pour un plan snowball / avalanche. */
+export type PlanDebtSelection = {
+  id: string;
+  source: PlanDebtSource;
+  label: string;
+  solde: number;
+  /** Taux annuel en % (ex. 19.99). */
+  taux_interet: number;
+  /** Paiement minimum mensuel équivalent. */
+  paiement_minimum: number;
+  /** Ordre de remboursement à la création (1 = priorité). */
+  ordre: number;
+};
+
+export type PlanExtraCadence = 'week' | 'month';
+
+/** Instantané faisabilité budget au moment de la création. */
+export type PlanDebtFeasibilitySnapshot = {
+  realiste: boolean;
+  surplus_mensuel: number;
+  extra_mensuel: number;
+  message: string;
+  suggestions?: string[];
+};
+
+/**
+ * Paramètres spécifiques au type de plan, saisis dans le formulaire de création
+ * piloté par `planTypeFormConfig`. Tous optionnels — un plan sauvegardé avant
+ * l'introduction de ce champ reste valide (rétrocompatibilité).
+ */
+export type PlanParametres = {
+  /** Dette : solde de départ (sert de cible de remboursement). */
+  solde_initial?: number;
+  /** Dette : taux d'intérêt annuel en pourcentage (ex. 19.99). */
+  taux_interet?: number;
+  /** Dette / comportemental : paiement ou économie mensuelle. */
+  paiement_mensuel?: number;
+  /** Budget : enveloppe mensuelle cible (sert de cible de dépenses). */
+  budget_mensuel?: number;
+  /** Comportemental : durée d'un défi en jours (ex. no-spend 30 j). */
+  duree_jours?: number;
+  /** Fiscal : pourcentage de chaque entrée mis en réserve. */
+  pourcentage_reserve?: number;
+  /** Dettes sélectionnées (assistant snowball / avalanche). */
+  dettes?: PlanDebtSelection[];
+  /** Stratégie d'ordre utilisée pour la projection. */
+  strategie_dette?: 'snowball' | 'avalanche';
+  /** Montant supplémentaire au-delà des minimums. */
+  extra_paiement?: number;
+  /** Cadence de l'extra : semaine | mois. */
+  extra_cadence?: PlanExtraCadence;
+  /** Projection à la création : jours estimés jusqu'à dette zéro. */
+  projection_jours?: number;
+  /** Instantané faisabilité budget. */
+  faisabilite?: PlanDebtFeasibilitySnapshot;
+};
+
 /** Champs communs à tous les plans financiers. */
 export type PlanBase = {
   id: string;
@@ -152,6 +212,8 @@ export type PlanBase = {
   cadence?: string;
   date_debut?: string;
   date_cible?: string;
+  /** Paramètres spécifiques au type — optionnel (rétrocompatible). */
+  parametres?: PlanParametres;
   etapes: PlanEtape[];
   /**
    * Référence au signal RFA / règle qui a généré la suggestion.
@@ -200,10 +262,10 @@ export const PLAN_SUBTYPE_LABELS: Record<PlanSubtype, string> = {
   coussin_saisonnier: 'Coussin saisonnier',
   evenement_vie: 'Événement de vie',
   dette_individuelle: 'Dette individuelle',
-  snowball: 'Boule de neige',
-  avalanche: 'Avalanche',
+  snowball: 'Remboursement boule de neige',
+  avalanche: 'Remboursement avalanche',
   bombe_nucleaire: 'Bombe nucléaire',
-  consolidation: 'Consolidation',
+  consolidation: 'Consolidation de dettes',
   marge_credit: 'Marge de crédit',
   reer: 'REER',
   celi: 'CELI',

@@ -18,6 +18,17 @@ function monthsExpensesTarget(ctx: PlanRecommendationContext, months: number): n
   return Math.round(ctx.depenses_mensuelles * months);
 }
 
+function canRecommendAcceleratedDebtPlan(ctx: PlanRecommendationContext): boolean {
+  return ctx.cashflow_viable_pour_extra_dette;
+}
+
+function formatSurplusFr(surplus: number): string {
+  const abs = Math.round(Math.abs(surplus)).toLocaleString('fr-CA');
+  if (surplus < 0) return `−${abs}`;
+  if (surplus > 0) return `+${abs}`;
+  return '0';
+}
+
 export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
   {
     id: 'rule-fonds-urgence',
@@ -89,12 +100,13 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
     category: 'dette',
     priority: 1,
     titre: 'Remboursement boule de neige',
-    description: 'Éliminer les dettes en commençant par les plus petits soldes.',
+    description:
+      'Tu élimines les plus petits soldes en premier ; chaque dette réglée libère son paiement minimum pour la suivante. Moins optimal en intérêts, mais les victoires rapides aident quand la pile semble lourde.',
     signal: 'snowball:plusieurs_dettes_actives',
     defaultMontantCible: null,
-    evaluate: (ctx) => ctx.nombre_dettes_actives >= 2,
+    evaluate: (ctx) => canRecommendAcceleratedDebtPlan(ctx) && ctx.nombre_dettes_actives >= 2,
     buildRaisonHeuristique: (ctx) =>
-      `${ctx.nombre_dettes_actives} dettes actives — la méthode boule de neige libère rapidement des paiements minimums en éliminant les petits soldes en premier.`,
+      `${ctx.nombre_dettes_actives} dettes actives — la boule de neige règle les plus petits soldes en premier. Chaque dette éliminée libère son paiement minimum pour la suivante. Moins d'intérêts économisés qu'en avalanche, mais les victoires rapides gardent la motivation.`,
   },
   {
     id: 'rule-avalanche',
@@ -102,12 +114,13 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
     category: 'dette',
     priority: 1,
     titre: 'Remboursement avalanche',
-    description: 'Prioriser les dettes au taux d’intérêt le plus élevé.',
+    description:
+      "Tu envoies chaque surplus sur la dette au taux le plus élevé, minimums ailleurs. Tu paies moins d'intérêts au total — idéal si tu tiens sur la durée sans avoir besoin de petites victoires rapides.",
     signal: 'avalanche:plusieurs_dettes_actives',
     defaultMontantCible: null,
-    evaluate: (ctx) => ctx.nombre_dettes_actives >= 2,
+    evaluate: (ctx) => canRecommendAcceleratedDebtPlan(ctx) && ctx.nombre_dettes_actives >= 2,
     buildRaisonHeuristique: (ctx) =>
-      `${ctx.nombre_dettes_actives} dettes actives — l'avalanche cible d'abord les taux les plus élevés pour payer moins d'intérêts au total.`,
+      `${ctx.nombre_dettes_actives} dettes actives — l'avalanche attaque d'abord le taux le plus élevé. Chaque dollar en extra va là où il coûte le plus cher ; tu paies moins d'intérêts qu'avec la boule de neige. Parfait si tu veux optimiser le coût total sans compter sur des victoires rapides.`,
   },
   {
     id: 'rule-bombe-nucleaire',
@@ -115,14 +128,16 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
     category: 'dette',
     priority: 1,
     titre: 'Bombe nucléaire',
-    description: 'Frapper une dette avec un paiement massif pour l’éliminer ou la réduire d’un coup.',
+    description:
+      "Un gros paiement unique sur ta dette la plus chère — bonus, épargne ou vente. Tu coupes des mois d'intérêts d'un coup, à condition de garder une réserve d'urgence derrière.",
     signal: 'bombe_nucleaire:liquidites_disponibles',
     defaultMontantCible: null,
     evaluate: (ctx) =>
+      canRecommendAcceleratedDebtPlan(ctx) &&
       ctx.nombre_dettes_actives >= 1 &&
       ctx.liquidites_excedentaires >= Math.max(ctx.depenses_mensuelles * 0.25, 750),
     buildRaisonHeuristique: (ctx) =>
-      `Tu as environ ${Math.round(ctx.liquidites_excedentaires).toLocaleString('fr-CA')} $ au-delà d'un mois de dépenses — un paiement massif sur ta dette la plus coûteuse peut couper nettement les intérêts.`,
+      `Environ ${Math.round(ctx.liquidites_excedentaires).toLocaleString('fr-CA')} $ au-dessus d'un mois de sécurité — assez pour frapper fort. Tu envoies un gros paiement sur ta dette la plus chère et tu coupes des mois d'intérêts d'un coup. À envisager seulement si tu gardes une réserve d'urgence derrière.`,
   },
   {
     id: 'rule-consolidation',
@@ -130,12 +145,13 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
     category: 'dette',
     priority: 1,
     titre: 'Consolidation de dettes',
-    description: 'Regrouper plusieurs dettes en un seul prêt pour simplifier et réduire le taux global.',
+    description:
+      "Regrouper plusieurs dettes en un seul prêt à taux plus bas. Un paiement mensuel, moins de risque d'oubli — vérifie que les frais et le nouveau taux valent le coup.",
     signal: 'consolidation:plusieurs_dettes_actives',
     defaultMontantCible: null,
-    evaluate: (ctx) => ctx.nombre_dettes_actives >= 3,
+    evaluate: (ctx) => canRecommendAcceleratedDebtPlan(ctx) && ctx.nombre_dettes_actives >= 3,
     buildRaisonHeuristique: (ctx) =>
-      `${ctx.nombre_dettes_actives} dettes actives — regrouper en un seul paiement simplifie la gestion et peut réduire le taux effectif.`,
+      `${ctx.nombre_dettes_actives} paiements différents, c'est lourd à gérer. La consolidation regroupe tout en un prêt unique, souvent à taux plus bas. Un seul paiement mensuel, moins de risque d'oubli — vérifie que les frais et le nouveau taux valent vraiment le coup.`,
   },
   {
     id: 'rule-dette-individuelle',
@@ -143,12 +159,13 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
     category: 'dette',
     priority: 1,
     titre: 'Dette individuelle',
-    description: 'Rembourser une dette précise avec un calendrier et des paiements accélérés.',
+    description:
+      'Un seul prêt à rembourser — pas besoin de choisir entre stratégies. Tu fixes un surplus mensuel au-dessus du minimum et un échéancier clair vers la date de liberté.',
     signal: 'dette_individuelle:dette_unique',
     defaultMontantCible: null,
-    evaluate: (ctx) => ctx.nombre_dettes_actives === 1,
+    evaluate: (ctx) => canRecommendAcceleratedDebtPlan(ctx) && ctx.nombre_dettes_actives === 1,
     buildRaisonHeuristique: (ctx) =>
-      `Une seule dette de ${Math.round(ctx.dette_totale).toLocaleString('fr-CA')} $ — un plan ciblé avec paiements accélérés accélère la fin du remboursement.`,
+      `Une seule dette de ${Math.round(ctx.dette_totale).toLocaleString('fr-CA')} $ — pas besoin de choisir entre avalanche et boule de neige. Tu fixes un montant mensuel au-dessus du minimum et un échéancier clair. Chaque surplus accélère directement ta date de liberté.`,
   },
   {
     id: 'rule-marge-credit',
@@ -156,12 +173,13 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
     category: 'dette',
     priority: 2,
     titre: 'Marge de crédit',
-    description: 'Réduire l’utilisation de la marge de crédit sous un seuil sain.',
+    description:
+      'Ta marge utilisée coûte cher en intérêts variables. Tu la rembourses en priorité sous un seuil sain — ça libère de la flexibilité pour les vrais imprévus.',
     signal: 'marge_credit:marge_utilisee',
     defaultMontantCible: null,
-    evaluate: (ctx) => ctx.a_marge_credit_active,
+    evaluate: (ctx) => canRecommendAcceleratedDebtPlan(ctx) && ctx.a_marge_credit_active,
     buildRaisonHeuristique: () =>
-      'Ta marge de crédit reste utilisée — la ramener sous un seuil sain réduit les intérêts variables et libère de la flexibilité.',
+      "Ta marge de crédit reste utilisée — les intérêts variables grignotent ton cashflow. Tu la rembourses en priorité sous un seuil sain (ex. 30 %). Ça libère de la capacité d'emprunt pour les imprévus sans retomber sur le crédit.",
   },
   {
     id: 'rule-reserve-impots',
@@ -180,28 +198,34 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
     id: 'rule-enveloppe',
     subtype: 'enveloppe',
     category: 'budget',
-    priority: 2,
+    priority: 1,
     titre: 'Budget par enveloppes',
     description: 'Reprendre le contrôle des catégories qui dépassent.',
     signal: 'enveloppe:categories_depassees_consecutives',
     defaultMontantCible: null,
-    evaluate: (ctx) => ctx.categorie_depassee_mois_consecutifs >= 2,
+    evaluate: (ctx) =>
+      !ctx.cashflow_viable_pour_extra_dette || ctx.categorie_depassee_mois_consecutifs >= 2,
     buildRaisonHeuristique: (ctx) =>
-      `${ctx.categorie_depassee_mois_consecutifs} catégories dépassent leur limite — des enveloppes mensuelles clarifient où couper sans surprise.`,
+      !ctx.cashflow_viable_pour_extra_dette
+        ? `Tes dépenses (${Math.round(ctx.depenses_mensuelles).toLocaleString('fr-CA')} $/mois) dépassent ou serrent tes revenus (${Math.round(ctx.revenu_mensuel_net).toLocaleString('fr-CA')} $/mois) — surplus d’environ ${formatSurplusFr(ctx.surplus_mensuel)} $/mois. Des enveloppes aident à couper là où ça compte avant d’accélérer les dettes.`
+        : `${ctx.categorie_depassee_mois_consecutifs} catégories dépassent leur limite — des enveloppes mensuelles clarifient où couper sans surprise.`,
   },
   {
     id: 'rule-no-spend',
     subtype: 'no_spend_challenge',
     category: 'comportemental',
-    priority: 3,
+    priority: 2,
     titre: 'Défi no-spend',
     description: 'Réduire les dépenses discrétionnaires sur une période ciblée.',
     signal: 'no_spend_challenge:depenses_discretionnaires_hausse',
     defaultMontantCible: null,
     evaluate: (ctx) =>
-      ctx.depense_discretionnaire_tendance === 'hausse' && ctx.mois_consecutifs_depense_hausse >= 3,
-    buildRaisonHeuristique: () =>
-      'Tes dépenses discrétionnaires augmentent depuis plusieurs mois — un défi no-spend de 30 jours peut casser la tendance.',
+      !ctx.cashflow_viable_pour_extra_dette ||
+      (ctx.depense_discretionnaire_tendance === 'hausse' && ctx.mois_consecutifs_depense_hausse >= 3),
+    buildRaisonHeuristique: (ctx) =>
+      !ctx.cashflow_viable_pour_extra_dette
+        ? `Sans marge mensuelle (surplus ~${formatSurplusFr(ctx.surplus_mensuel)} $/mois), un défi no-spend de 30 jours peut libérer de l’oxygène avant tout plan de remboursement accéléré.`
+        : 'Tes dépenses discrétionnaires augmentent depuis plusieurs mois — un défi no-spend de 30 jours peut casser la tendance.',
   },
   {
     id: 'rule-abonnements',
@@ -213,9 +237,13 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
     signal: 'reduction_abonnements:abonnements_nombreux',
     defaultMontantCible: null,
     evaluate: (ctx) =>
-      ctx.nombre_abonnements_recurrents >= 5 && !ctx.contexte_dette_lourde,
+      ctx.nombre_abonnements_recurrents >= 3 &&
+      (!ctx.cashflow_viable_pour_extra_dette ||
+        (ctx.nombre_abonnements_recurrents >= 5 && !ctx.contexte_dette_lourde)),
     buildRaisonHeuristique: (ctx) =>
-      `${ctx.nombre_abonnements_recurrents} abonnements détectés — une revue ciblée libère souvent 50–150 $/mois sans effort majeur.`,
+      !ctx.cashflow_viable_pour_extra_dette
+        ? `${ctx.nombre_abonnements_recurrents} abonnements détectés — les couper peut rétablir un surplus avant d’accélérer le remboursement des dettes.`
+        : `${ctx.nombre_abonnements_recurrents} abonnements détectés — une revue ciblée libère souvent 50–150 $/mois sans effort majeur.`,
   },
 ] as const;
 

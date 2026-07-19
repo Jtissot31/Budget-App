@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PageTransition } from '@/components/PageTransition';
 import { ExploreMorePlansRow } from '@/components/plans/ExploreMorePlansRow';
 import { FynChatEntryCard } from '@/components/plans/FynChatEntryCard';
+import { WidgetGalleryShortcutRow } from '@/components/plans/WidgetGalleryShortcutRow';
 import { HubLoansSection } from '@/components/plans/HubLoansSection';
 import { HubSavingsGoalsSection } from '@/components/plans/HubSavingsGoalsSection';
 import { HubSectionHeader } from '@/components/plans/HubSectionHeader';
@@ -160,6 +161,10 @@ export function PlanFinancierHub() {
     router.push('/plans/explore');
   }, [router]);
 
+  const handleOpenWidgetGallery = useCallback(() => {
+    router.push('/widgets');
+  }, [router]);
+
   const showCarouselSpinner =
     carouselPlans.length === 0 && (plansLoading || suggestionsLoading);
   const isEmpty = !plansLoading && !suggestionsLoading && carouselPlans.length === 0;
@@ -213,6 +218,8 @@ export function PlanFinancierHub() {
           <HubLoansSection />
 
           <FynChatEntryCard />
+
+          <WidgetGalleryShortcutRow onPress={handleOpenWidgetGallery} />
         </ScrollView>
       </View>
     </PageTransition>

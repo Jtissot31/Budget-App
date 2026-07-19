@@ -10,6 +10,7 @@ import {
   type PlanSuggere,
 } from './Plan';
 import { planSubtypeIcon } from './planCardPresentation';
+import { buildPlanTypeProgressView } from './planTypeFormConfig';
 
 const runtimePlanDetails = new Map<string, DashboardPlanDetail>();
 
@@ -55,6 +56,7 @@ export function planToDashboardDetail(plan: PlanActifOuTermine): DashboardPlanDe
   const progress = planProgressionPourcent(plan);
   const progressPositive = planProgressionPositive(plan);
   const activeStep = plan.etapes.find((etape) => etape.statut !== 'complete');
+  const progressView = buildPlanTypeProgressView(plan);
 
   return {
     id: plan.id,
@@ -67,6 +69,8 @@ export function planToDashboardDetail(plan: PlanActifOuTermine): DashboardPlanDe
     icon: planSubtypeIcon(plan.category),
     currentAmount: plan.montant_actuel ?? 0,
     targetAmount: plan.montant_cible ?? 0,
+    heroPrimary: progressView.heroPrimary,
+    heroSecondary: progressView.heroSecondary,
     summary: plan.description,
     strategy: {
       name: plan.titre,
@@ -81,7 +85,7 @@ export function planToDashboardDetail(plan: PlanActifOuTermine): DashboardPlanDe
       title: activeStep?.titre ?? 'Continuer le plan',
       description: activeStep?.description ?? plan.description,
     },
-    metrics: [],
+    metrics: progressView.metrics,
     rationale: plan.description,
     impactBullets: [],
     steps: plan.etapes.map((etape) => ({

@@ -4,12 +4,13 @@ import {
   AppState,
   BackHandler,
   Dimensions,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useFocusEffect } from '@react-navigation/native';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +19,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { usePathname, useRouter } from 'expo-router';
 import {
+  SHOW_TRANSACTIONS_TAB_FABS,
   TRANSACTIONS_FAB_ICON_COLOR_ORIGINAL,
   TRANSACTIONS_FAB_STYLE_ORIGINAL,
 } from '@/constants/fabStyles';
@@ -27,6 +29,7 @@ import {
 } from '@/constants/floatingGlassButton';
 import {
   getFloatingTabBarBottomInset,
+  radius,
   spacing,
   typographyKit,
 } from '@/constants/theme';
@@ -40,8 +43,8 @@ import { useAppTheme } from '@/lib/themeContext';
 const PILL_BORDER_RADIUS = 999;
 
 const TAB_ICON_SIZE = 21;
-/** Expands icon-only tab target to 44×44 without a sized pressable background. */
-const TAB_HIT_SLOP = { top: 11, bottom: 11, left: 11, right: 11 } as const;
+/** Orion-style dark glass bar blur strength. */
+const ORION_NAV_BLUR_INTENSITY = Platform.OS === 'ios' ? 32 : 22;
 
 /** Material Community Icons — outline only (icon-only tabs, no filled circles). */
 const ROUTE_ICONS: Record<
@@ -64,7 +67,7 @@ const ROUTE_LABELS: Record<string, string> = {
   settings: 'Réglages',
 };
 
-const HIDDEN_ROUTES = new Set(['settings']);
+const HIDDEN_ROUTES = new Set(['settings', 'widgets']);
 
 /** `Plus` from src/icons — React Native SVG. */
 function PlusFabIcon({ size, color }: { size: number; color: string }) {
@@ -187,9 +190,11 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const isTransactionsAgendaView = transactionsView === 'agenda';
   const isTransactionsMerchantsView = transactionsView === 'merchants';
   const showAddButton =
+    SHOW_TRANSACTIONS_TAB_FABS &&
     activeRouteName !== 'accounts' &&
     activeRouteName !== 'goals' &&
     activeRouteName !== 'budgets' &&
+    activeRouteName !== 'widgets' &&
     activeRouteName !== 'settings' &&
     !isDashboard &&
     !isTransactionsMerchantsView;
@@ -282,7 +287,10 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     router.push('/add-transaction');
   };
 
-  const tabBarBorderColor = isLight ? colors.border : 'rgba(255, 255, 255, 0.12)';
+  const tabBarBorderColor = isLight ? colors.border : 'rgba(255, 255, 255, 0.10)';
+  const navGlassTint = isLight ? 'rgba(255, 255, 255, 0.72)' : 'rgba(17, 17, 17, 0.68)';
+  const navActiveColor = isLight ? '#111111' : '#FFFFFF';
+  const navInactiveColor = '#6B6B6B';
 
   return (
     <View style={styles.wrap} pointerEvents="box-none">
@@ -499,76 +507,86 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
         </Pressable>
       ) : null}
 
-      <View
-        pointerEvents="box-none"
-        collapsable={false}
-        style={[styles.fixedNavShell, { paddingBottom: bottom }]}
-      >
+      <View pointerEvents="box-none" style={[styles.floatingNavOuter, { marginBottom: bottom }]}>
         <View
-          pointerEvents="none"
+          pointerEvents="box-none"
           style={[
-            styles.fixedNavBackground,
+            styles.floatingNavPill,
             {
-              backgroundColor: colors.background,
-              borderTopColor: tabBarBorderColor,
+              marginHorizontal: spacing.lg,
+              borderColor: tabBarBorderColor,
+              shadowColor: isLight ? '#000000' : '#000000',
             },
           ]}
-        />
-        <View style={styles.navContent} pointerEvents="box-none">
-          {state.routes.map((route, index) => {
-            if (HIDDEN_ROUTES.has(route.name)) return null;
-            const focused = state.index === index;
-            const icons = ROUTE_ICONS[route.name] ?? {
-              outline: 'circle-outline',
-              filled: 'circle',
-            };
-            const iconName = icons.outline;
-            const tabLabel = ROUTE_LABELS[route.name] ?? route.name;
-            const iconColor = focused ? colors.text : colors.textMuted;
+        >
+          <BlurView
+            pointerEvents="none"
+            intensity={ORION_NAV_BLUR_INTENSITY}
+            tint={isLight ? 'light' : 'dark'}
+            experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFillObject, { backgroundColor: navGlassTint }]}
+          />
+          <View style={styles.navContent} pointerEvents="box-none">
+            {state.routes.map((route, index) => {
+              if (HIDDEN_ROUTES.has(route.name)) return null;
+              const focused = state.index === index;
+              const icons = ROUTE_ICONS[route.name] ?? {
+                outline: 'circle-outline',
+                filled: 'circle',
+              };
+              const iconName = focused ? icons.filled : icons.outline;
+              const tabLabel = ROUTE_LABELS[route.name] ?? route.name;
+              const iconColor = focused ? navActiveColor : navInactiveColor;
 
-            const onPress = () => {
-              collapseSpeedDials();
+              const onPress = () => {
+                collapseSpeedDials();
 
-              const event = navigation.emit({
-                type: 'tabPress',
-                target: route.key,
-                canPreventDefault: true,
-              });
-              if (event.defaultPrevented) return;
+                const event = navigation.emit({
+                  type: 'tabPress',
+                  target: route.key,
+                  canPreventDefault: true,
+                });
+                if (event.defaultPrevented) return;
 
-              if (route.name === 'transactions') {
-                const subView = (route.params as { view?: string } | undefined)?.view;
-                if (!focused || (subView && subView !== 'history')) {
-                  navigation.navigate('transactions', { view: 'history' });
+                if (route.name === 'transactions') {
+                  const subView = (route.params as { view?: string } | undefined)?.view;
+                  if (!focused || (subView && subView !== 'history')) {
+                    navigation.navigate('transactions', { view: 'history' });
+                  }
+                  return;
                 }
-                return;
-              }
 
-              if (!focused) {
-                navigation.navigate(route.name, route.params);
-              }
-            };
+                if (!focused) {
+                  navigation.navigate(route.name, route.params);
+                }
+              };
 
-            return (
-              <TouchableWithoutFeedback
-                key={route.key}
-                onPress={onPress}
-                hitSlop={TAB_HIT_SLOP}
-                accessibilityRole="tab"
-                accessibilityLabel={tabLabel}
-                accessibilityState={{ selected: focused }}
-              >
-                <View style={styles.tab}>
-                  <AppIcon
-                    family="material-community"
-                    name={iconName}
-                    size={TAB_ICON_SIZE}
-                    color={iconColor}
-                  />
-                </View>
-              </TouchableWithoutFeedback>
-            );
-          })}
+              return (
+                <Pressable
+                  key={route.key}
+                  onPress={onPress}
+                  style={({ pressed }) => [styles.tabSlot, pressed && styles.pressed]}
+                  accessibilityRole="tab"
+                  accessibilityLabel={tabLabel}
+                  accessibilityState={{ selected: focused }}
+                >
+                  <View style={styles.tabInner}>
+                    <AppIcon
+                      family="material-community"
+                      name={iconName}
+                      size={focused ? TAB_ICON_SIZE + 1 : TAB_ICON_SIZE}
+                      color={iconColor}
+                      focused={focused}
+                    />
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
       </View>
     </View>
@@ -584,21 +602,25 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     backgroundColor: 'transparent',
   },
-  fixedNavShell: {
+  floatingNavOuter: {
     width: '100%',
     backgroundColor: 'transparent',
   },
-  fixedNavBackground: {
-    ...StyleSheet.absoluteFillObject,
-    borderTopWidth: 1,
+  floatingNavPill: {
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderRadius: radius.pill,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.28,
+    shadowRadius: 20,
+    elevation: 14,
   },
   navContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingVertical: 13,
-    paddingHorizontal: 20,
-    backgroundColor: 'transparent',
+    justifyContent: 'space-between',
+    paddingVertical: Platform.OS === 'android' ? 7 : 9,
+    paddingHorizontal: spacing.sm,
     zIndex: 1,
   },
   historyFabBackdrop: {
@@ -646,16 +668,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 1,
   },
-  tab: {
-    minWidth: 44,
-    minHeight: 44,
+  tabSlot: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
-    borderRadius: 0,
-    elevation: 0,
-    shadowOpacity: 0,
-    overflow: 'visible',
+    minHeight: 44,
   },
-  pressed: { opacity: 0.75 },
+  tabInner: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    minWidth: 44,
+    minHeight: 44,
+    borderRadius: radius.lg,
+  },
+  pressed: { opacity: 0.78 },
 });

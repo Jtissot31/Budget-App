@@ -6,12 +6,42 @@ const { getDefaultConfig } = require('expo/metro-config');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
+// Stale export/verify artifact dirs (`.expo-bundle-test`, etc.) slow Metro's file
+// crawl and watcher on Windows — exclude them from resolution and watching.
+const existingBlockList = config.resolver.blockList;
+config.resolver.blockList = [
+  ...(Array.isArray(existingBlockList)
+    ? existingBlockList
+    : existingBlockList
+      ? [existingBlockList]
+      : []),
+  /\.expo-[^/\\]+[\\/].*/,
+];
+
 // expo-sqlite web: bundle the wa-sqlite WASM module.
 config.resolver.assetExts.push('wasm');
 // lucide-react-native ships ESM icon modules as .mjs
 if (!config.resolver.sourceExts.includes('mjs')) {
   config.resolver.sourceExts.push('mjs');
 }
+
+// expo-font web: FontFaceObserver defaults to 6000ms — too short for dev web preview.
+const expoFontLoaderWebPatch = path.resolve(__dirname, 'lib/expoFontLoaderWebPatch.js');
+const defaultResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (
+    platform === 'web' &&
+    typeof moduleName === 'string' &&
+    moduleName.includes('expo-font') &&
+    moduleName.includes('ExpoFontLoader.web')
+  ) {
+    return { type: 'sourceFile', filePath: expoFontLoaderWebPatch };
+  }
+  if (defaultResolveRequest) {
+    return defaultResolveRequest(context, moduleName, platform);
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
 
 
 // Dev server headers required for SharedArrayBuffer / OPFS on web.

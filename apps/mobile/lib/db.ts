@@ -163,6 +163,66 @@ function isWebSqliteRecoverableError(error: unknown): boolean {
   );
 }
 
+const WEB_SQLITE_ERROR_GUARD_KEY = '__budgetTrackerSqliteErrorGuard__';
+
+function isExpoSqliteWorkerError(reason: unknown): boolean {
+  if (!(reason instanceof Error)) return false;
+  const stack = typeof reason.stack === 'string' ? reason.stack : '';
+  if (
+    stack.includes('expo-sqlite') ||
+    stack.includes('WorkerChannel') ||
+    stack.includes('SQLiteModule')
+  ) {
+    return true;
+  }
+  return isWebSqliteRecoverableError(reason);
+}
+
+/**
+ * expo-sqlite's web worker rejects orphaned request deferreds — e.g. in-flight ops that
+ * settle after the DB layer already recovered via the in-memory fallback / closeAsync.
+ * Those land as unhandled rejections with opaque "Unknown" messages and trip the Expo dev
+ * error overlay. Registering at module load (before the overlay's own listener mounts) lets
+ * us stop propagation for SQLite-only failures; genuine data errors are still surfaced by the
+ * awaited call sites. Native (iOS/Android) never installs this.
+ */
+function installWebSqliteErrorGuard(): void {
+  if (Platform.OS !== 'web') return;
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+  const globalState = globalThis as typeof globalThis & {
+    [WEB_SQLITE_ERROR_GUARD_KEY]?: boolean;
+  };
+  if (globalState[WEB_SQLITE_ERROR_GUARD_KEY]) return;
+  globalState[WEB_SQLITE_ERROR_GUARD_KEY] = true;
+
+  window.addEventListener(
+    'unhandledrejection',
+    (event: PromiseRejectionEvent) => {
+      if (!isExpoSqliteWorkerError(event.reason)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      console.warn(
+        '[db] Suppressed orphaned expo-sqlite web worker rejection',
+        sqliteErrorMessage(event.reason),
+      );
+    },
+    true,
+  );
+
+  window.addEventListener(
+    'error',
+    (event: ErrorEvent) => {
+      if (!isExpoSqliteWorkerError(event.error)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      console.warn('[db] Suppressed expo-sqlite web worker error', sqliteErrorMessage(event.error));
+    },
+    true,
+  );
+}
+
+installWebSqliteErrorGuard();
+
 async function reopenWebDatabaseInMemory(): Promise<{
   raw: SQLite.SQLiteDatabase;
   wrapped: SQLite.SQLiteDatabase;

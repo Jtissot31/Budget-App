@@ -3,25 +3,23 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import {
   TransactionAmountLabel,
-  recurringPaymentAmountDirection,
 } from '@/components/TransactionAmountLabel';
 import {
   jakartaMediumText,
   jakartaSemiboldText,
+  moneyAmountTypography,
   spacing,
-  transactionRowAmountTypography,
 } from '@/constants/theme';
 import { formatDisplayMoneyAbsolute, formatRecurringPaymentAmount } from '@/lib/formatDisplayMoney';
-import { daysUntilPayment, formatDaysUntilMeta } from '@/lib/paymentStatusBadge';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 import type { Loan, AgendaBill } from '@/types';
 import { resolveAgendaBillDisplayIcon } from '@/lib/recurringPaymentPresentation';
 import { getMerchantLogoUrl, getMerchantLogoUrls } from '@/lib/merchantLogo';
 
-const EMBEDDED_ICON_WELL_SIZE = 30;
-const EMBEDDED_ROW_TITLE_SIZE = 15.5;
-const EMBEDDED_ROW_META_SIZE = 12.5;
+const LOGO_SIZE = 40;
+const ROW_TITLE_SIZE = 15.5;
+const ROW_META_SIZE = 12.5;
 
 type Props = {
   bill: AgendaBill;
@@ -31,7 +29,9 @@ type Props = {
   loanByRecurringPaymentId: Map<string, Loan>;
   onPress: () => void;
   embedded?: boolean;
-  isLast?: boolean;
+  displayName?: string;
+  subtitle?: string | null;
+  estimatedIncome?: boolean;
 };
 
 function isPayBill(bill: AgendaBill) {
@@ -42,10 +42,6 @@ function isPayBill(bill: AgendaBill) {
   );
 }
 
-function isRecurringExpenseBill(bill: AgendaBill) {
-  return Boolean(bill.recurring) && (bill.kind ?? 'payment') === 'payment';
-}
-
 function resolveBillDisplayLogo(bill: AgendaBill) {
   const storedLogo = bill.logoUrl?.trim();
   if (storedLogo) return storedLogo;
@@ -53,37 +49,17 @@ function resolveBillDisplayLogo(bill: AgendaBill) {
   return null;
 }
 
-function formatAgendaStatusMeta(statusLabel: string, dateKey: string, todayKey: string): string | null {
-  if (dateKey > todayKey) {
-    const days = daysUntilPayment(dateKey, new Date(`${todayKey}T12:00:00`));
-    return formatDaysUntilMeta(days);
-  }
-  if (statusLabel === 'REÇU') return 'reçu';
-  if (statusLabel === 'PAYÉ') return 'payé';
-  if (statusLabel === 'EN ATTENTE') return 'en attente';
-  if (statusLabel === 'ESTIMÉ') return 'estimé';
-  if (statusLabel === "AUJOURD'HUI") return "aujourd'hui";
-  if (statusLabel === 'DEMAIN') return 'demain';
-  if (statusLabel.startsWith('DANS ')) {
-    const days = Number.parseInt(statusLabel.replace('DANS ', '').replace(' J', ''), 10);
-    if (!Number.isNaN(days)) return formatDaysUntilMeta(days);
-  }
-  return null;
-}
-
-function buildAgendaPaymentMeta(statusLabel: string, dateKey: string, todayKey: string) {
-  return formatAgendaStatusMeta(statusLabel, dateKey, todayKey);
-}
-
 export const AgendaPaymentRow = memo(function AgendaPaymentRow({
   bill,
-  dateKey,
-  todayKey,
-  statusLabel,
+  dateKey: _dateKey,
+  todayKey: _todayKey,
+  statusLabel: _statusLabel,
   loanByRecurringPaymentId,
   onPress,
   embedded = false,
-  isLast = false,
+  displayName,
+  subtitle,
+  estimatedIncome = false,
 }: Props) {
   const { colors } = useAppTheme();
   const isIncome = isPayBill(bill) || bill.kind === 'income';
@@ -96,9 +72,17 @@ export const AgendaPaymentRow = memo(function AgendaPaymentRow({
     isPayBill: (item) => isPayBill(item as AgendaBill),
   });
   const displayTint = bill.color ?? (isIncome ? colors.success : colors.warning);
-  const meta = buildAgendaPaymentMeta(statusLabel, dateKey, todayKey);
+  const title = displayName ?? bill.name;
 
-  const amountColor = isIncome ? colors.success : colors.text;
+  const amountColor = estimatedIncome
+    ? 'rgba(74, 222, 128, 0.65)'
+    : isIncome
+      ? colors.success
+      : colors.text;
+
+  const formattedAmount = bill.recurring
+    ? formatRecurringPaymentAmount(bill.amount, bill.kind ?? 'payment')
+    : formatDisplayMoneyAbsolute(bill.amount);
 
   const handlePress = () => {
     tapHaptic();
@@ -119,7 +103,7 @@ export const AgendaPaymentRow = memo(function AgendaPaymentRow({
         <UserPickedIconWell
           icon={displayIcon}
           color={displayTint}
-          size={EMBEDDED_ICON_WELL_SIZE}
+          size={LOGO_SIZE}
           logoUrl={displayLogoUrl}
           merchantLabel={merchantLabel}
           wellGlyphWhite={Boolean(bill.recurring) && !isIncome}
@@ -127,106 +111,85 @@ export const AgendaPaymentRow = memo(function AgendaPaymentRow({
           style={[
             styles.avatar,
             embedded && !hasRemoteLogo && styles.avatarEmbedded,
-            embedded && !hasRemoteLogo && { borderColor: colors.borderSubtle },
+            embedded && !hasRemoteLogo && { borderColor: colors.borderStrong, backgroundColor: colors.surfaceElevated },
           ]}
         />
 
-        <View style={[styles.content, embedded && styles.contentEmbedded]}>
+        <View style={styles.content}>
           <View style={styles.titleRow}>
             <View style={styles.nameCol}>
               <Text
-                style={[
-                  styles.name,
-                  embedded && styles.nameEmbedded,
-                  jakartaSemiboldText,
-                  { color: colors.text },
-                ]}
+                style={[styles.name, jakartaSemiboldText, { color: colors.text }]}
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {bill.name}
+                {title}
               </Text>
             </View>
             <View style={styles.amountCol}>
-              <TransactionAmountLabel
-                amount={
-                  bill.recurring
-                    ? formatRecurringPaymentAmount(bill.amount, bill.kind ?? 'payment')
-                    : formatDisplayMoneyAbsolute(bill.amount)
-                }
-                direction={
-                  isIncome
-                    ? 'income'
-                    : bill.recurring || isRecurringExpenseBill(bill)
-                      ? recurringPaymentAmountDirection(bill.kind ?? 'payment')
-                      : 'neutral'
-                }
-                color={amountColor}
-                textStyle={styles.embeddedAmount}
-              />
+              {estimatedIncome ? (
+                <Text style={[styles.amount, { color: amountColor }]} numberOfLines={1}>
+                  {`≈ +${formattedAmount}`}
+                </Text>
+              ) : (
+                <TransactionAmountLabel
+                  amount={formattedAmount}
+                  direction="neutral"
+                  color={amountColor}
+                  textStyle={styles.amount}
+                  showDirectionIcon={false}
+                />
+              )}
             </View>
           </View>
 
-          {meta ? (
+          {subtitle ? (
             <Text
-              style={[
-                styles.meta,
-                styles.metaEmbedded,
-                jakartaMediumText,
-                { color: colors.textMuted },
-              ]}
+              style={[styles.meta, jakartaMediumText, { color: colors.textMuted }]}
               numberOfLines={1}
               ellipsizeMode="tail"
             >
-              {meta}
+              {subtitle}
             </Text>
           ) : null}
         </View>
       </View>
-
-      {embedded && !isLast ? (
-        <View style={[styles.dividerEmbedded, { backgroundColor: colors.borderSubtle }]} />
-      ) : null}
     </Pressable>
   );
 });
 
 const styles = StyleSheet.create({
   row: {
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
+    paddingVertical: 13,
   },
   rowEmbedded: {
-    gap: spacing.lg,
     paddingVertical: spacing.lg,
-  },
-  contentEmbedded: {
-    gap: spacing.xs,
-  },
-  avatarEmbedded: {
-    borderWidth: 1,
-    flexShrink: 0,
+    paddingHorizontal: spacing.lg,
   },
   pressed: {
     opacity: 0.88,
   },
   mainRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: spacing.md,
   },
   avatar: {
     flexShrink: 0,
   },
+  avatarEmbedded: {
+    borderWidth: 1,
+    borderRadius: 9,
+    flexShrink: 0,
+  },
   content: {
     flex: 1,
     minWidth: 0,
-    gap: 5,
+    gap: 2,
   },
   titleRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
@@ -235,19 +198,15 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   name: {
-    fontSize: 14,
-    lineHeight: 18,
-  },
-  nameEmbedded: {
-    fontSize: EMBEDDED_ROW_TITLE_SIZE,
+    fontSize: ROW_TITLE_SIZE,
     lineHeight: 20,
     letterSpacing: -0.1,
   },
-  embeddedAmount: {
-    ...transactionRowAmountTypography({
-      fontSize: EMBEDDED_ROW_TITLE_SIZE,
+  amount: {
+    ...moneyAmountTypography({
+      fontSize: ROW_TITLE_SIZE,
       lineHeight: 20,
-      letterSpacing: -0.1,
+      letterSpacing: -0.2,
     }),
   },
   amountCol: {
@@ -255,15 +214,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   meta: {
-    fontSize: 12,
+    fontSize: ROW_META_SIZE,
     lineHeight: 16,
-  },
-  metaEmbedded: {
-    fontSize: EMBEDDED_ROW_META_SIZE,
-    lineHeight: 16,
-  },
-  dividerEmbedded: {
-    height: 1,
-    marginHorizontal: spacing.lg,
   },
 });

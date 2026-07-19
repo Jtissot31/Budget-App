@@ -1,3 +1,4 @@
+import { createAbortError, isAbortError } from '@/lib/abortError';
 import { executeChatAction, isExecutableChatAction } from './actionExecutor';
 
 import {
@@ -17,10 +18,16 @@ import {
   buildPlanSuggestionsIntro,
 } from '@/lib/plans/planRecommendationEngine';
 
+import { filterRfaDebtsEligibleForAcceleratedPlan } from '@/lib/plans/debtPlanEligibility';
+
+import { buildPlanRecommendationContext } from '@/lib/plans/buildPlanRecommendationContext';
 import {
+  buildCashflowBlockedDebtIntro,
   buildPlanGoalChoiceIntro,
   buildPlanGoalChoiceState,
   buildPlanGoalConfirmedIntro,
+  buildDebtStrategiesIntro,
+  buildDebtSummaryIntro,
   buildPlanSuggestionsForGoal,
   detectPlanGoal,
   isPlanGoalFollowUpMessage,
@@ -38,25 +45,29 @@ import { getAnthropicApiKey, getGeminiApiKey, isFynChatApiKeyConfigured } from '
 
 import { GeminiApiError, generateGeminiChat } from './geminiClient';
 
-import { loadRFA, regenerateRFA, saveRFA } from './rfaService';
+import { saveRFA } from './rfaService';
 
 import {
-  buildHeuristicRFA,
-  buildRFAInputFromAppData,
   resolveDataMode,
   sanitizeForAI,
 } from './sanitizeForAI';
+import {
+  buildFreshFynFinancialSnapshot,
+  serializeFynFinancialContext,
+} from './fynFinancialContext';
+import { enrichAssistantBlocksWithContextWidgets } from './fynChartWidgets';
+import type { FynFinancialContext } from './fynFinancialContextCore';
+import type { RfaInputBundle } from './sanitizeForAI';
 
 import {
   getChatSessionContext,
   invalidateChatSessionCache,
-  isChatSessionContextCached,
   setChatSessionContext,
 } from './chatSession';
 
 import { readChatImageAttachment } from './imageAttachment';
 
-import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { formatDisplayMoneyAbsoluteExact } from '@/lib/formatDisplayMoney';
 
 import type {
 
@@ -154,7 +165,7 @@ function createMessageId(role: ChatMessage['role']): string {
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError');
+    throw createAbortError();
   }
 }
 
@@ -166,6 +177,7 @@ function buildWidgetCapabilitiesSection(): string {
     '{"type":"debt_table","label":"Dettes actives","rows":[{"name":"Visa Desjardins","balance":"4 200 $","rate":"19,9 %","payment":"125 $"},{"name":"Prêt auto","balance":"8 500 $","rate":"6,5 %","payment":"320 $"}],"total":{"label":"Total","balance":"12 700 $","payment":"445 $"}}',
     '{"type":"comparison_card","label":"Scénarios de remboursement","items":[{"label":"Avalanche (intérêts)","value":"−1 240 $","highlight":true},{"label":"Boule de neige","value":"−980 $"}],"footer":"Économie d\'intérêts sur 12 mois"}',
     '{"type":"line_chart","label":"Valeur nette (6 mois)","data":[14200,14550,14100,14800,15120,15480],"value_label":"15 480 $","caption":"Tendance haussière malgré le creux de mars"}',
+    '{"type":"cashflow_comparison","label":"Revenus vs dépenses (moyenne mensuelle)","income":2037,"expenses":2049,"surplus":-12,"caption":"Déficit moyen de 12,00 $ par mois","period":"moyenne 3 mois"}',
     '{"type":"bar_chart","label":"Dépenses par catégorie","items":[{"label":"Logement","value":1450,"value_label":"1 450 $"},{"label":"Épicerie","value":620,"value_label":"620 $"},{"label":"Transport","value":280,"value_label":"280 $"}],"caption":"Mois en cours"}',
     '{"type":"allocation_chart","label":"Répartition du budget","segments":[{"label":"Essentiels","value":55,"percent":55},{"label":"Loisirs","value":20,"percent":20},{"label":"Épargne","value":25,"percent":25}],"caption":"Part du revenu net mensuel"}',
     '{"type":"alert_card","severity":"warning","title":"Budget restaurants dépassé","message":"Tu as utilisé 112 % de ton enveloppe ce mois-ci.","action":{"label":"Voir le budget"}}',
@@ -174,17 +186,20 @@ function buildWidgetCapabilitiesSection(): string {
   return [
     'WIDGETS STRUCTURÉS (UI génératif) :',
     'Pour montants, pourcentages, tableaux de dettes, comparaisons, projections et graphiques, produis un bloc JSON widget AU LIEU de tableaux markdown.',
-    'Types disponibles : progress_card, debt_table, comparison_card, alert_card, line_chart, bar_chart, allocation_chart.',
+    'Types disponibles : progress_card, debt_table, comparison_card, alert_card, line_chart, bar_chart, cashflow_comparison, allocation_chart.',
     'Place chaque widget dans son propre bloc JSON (objet standalone ou ```json```) — JAMAIS dans la prose, JAMAIS tronqué, JAMAIS visible pour l\'utilisateur.',
     'Le texte conversationnel reste en prose courte ; les widgets sont des blocs JSON séparés parsés par l\'app.',
     'Les widgets peuvent coexister avec le bloc action JSON (champ "action") — ne pas mélanger les formats.',
     '',
     'Quand utiliser un graphique :',
     '- line_chart : évolution dans le temps (valeur nette, épargne, dette, dépenses sur plusieurs mois). data = nombres bruts (min 2 points).',
-    '- bar_chart : comparer des catégories ou montants discrets (dépenses par catégorie, revenus vs dépenses). items[].value = nombre brut.',
-    '- allocation_chart : répartition en parts (budget, actifs, dettes par type). segments[].value = part numérique (souvent % ou montant).',
+    '- bar_chart : comparer des catégories ou montants discrets (dépenses par catégorie, magasins). items[].value = nombre brut.',
+    '- cashflow_comparison : revenus vs dépenses mensuels (moyenne ou période) — revenus en vert, dépenses en rouge, surplus/déficit mis en évidence.',
+    '- allocation_chart : répartition en parts (budget, abonnements, dettes par type). segments[].value = part numérique.',
     '- comparison_card : 2–4 scénarios textuels sans série temporelle ni barres.',
     '- progress_card : un seul objectif avec barre de progression (%).',
+    '- Utilise les agrégats du contexte Fyn (dépenses par catégorie, cashflow, budgets, abonnements) — ne réinvente pas les chiffres.',
+    '- Les graphiques s\'affichent en style sombre premium unifié ; privilégie-les pour les réponses chiffrées.',
     '',
     'Schémas :',
     '- progress_card : label, value_label, percent (0-100), percent_label, status_line?, actions?[{label}]',
@@ -192,6 +207,7 @@ function buildWidgetCapabilitiesSection(): string {
     '- comparison_card : label, items[{label,value,highlight?}], primary_index?, footer?',
     '- line_chart : label, data[number] (min 2), value_label?, caption?, positive?',
     '- bar_chart : label, items[{label,value,value_label?}], caption?',
+    '- cashflow_comparison : label, income, expenses, surplus (income − expenses), income_label?, expenses_label?, caption?, period?',
     '- allocation_chart : label, segments[{label,value,percent?}], caption?',
     '- alert_card : severity (info|warning|danger|success), title, message, action?{label}',
     '',
@@ -224,6 +240,7 @@ function buildPlanFinancierGuidanceSection(): string {
     'DEMANDES « PLAN FINANCIER » / « GENERATE A PLAN » :',
     '- Réponse = 1 phrase courte d\'intro + widgets (debt_table, progress_card, comparison_card) si pertinent + bloc action JSON si modification.',
     '- Ne jamais rédiger un plan multiparagraphe dans le texte — l\'app affiche des cartes de plan et widgets structurés.',
+    '- Pour remboursement accéléré / « dettes actives » / cashflow / debt_table : exclure les dettes type « hypotheque » du compte et du total (même règle que les plans accélérés). Les hypothèques restent visibles seulement pour le patrimoine.',
     '- Exemple bon : « Voici un plan priorisé pour tes dettes. » + debt_table JSON + éventuellement action modifier_priorite_dette.',
     '- Exemple mauvais : 3 paragraphes d\'analyse + `{ "type": "debt_table", ...` visible dans le texte.',
   ].join('\n');
@@ -351,7 +368,11 @@ const STATIC_FYN_SYSTEM_PREFIX = [
 
 
 
-function buildSystemPrompt(rfa: FinancialSummaryAnonymous, dataMode: 'plaid' | 'manual'): string {
+function buildSystemPrompt(
+  rfa: FinancialSummaryAnonymous,
+  dataMode: 'plaid' | 'manual',
+  financialContext: FynFinancialContext,
+): string {
 
   const manualRule =
 
@@ -374,12 +395,18 @@ function buildSystemPrompt(rfa: FinancialSummaryAnonymous, dataMode: 'plaid' | '
     '- Si une question dépasse tes capacités (légal, fiscal complexe), recommander un professionnel',
 
     '- Ne jamais inclure de JSON, code ou blocs techniques dans le texte visible. Les actions passent uniquement via le bloc JSON interne parsé par l\'app.',
+    '- Le contexte structuré ci-dessous est la source de vérité de ce tour. Ne jamais inventer une donnée absente; dire clairement qu’elle n’est pas disponible.',
+    '- Respecter les périodes et règles de calcul indiquées. Les transferts ne sont ni revenus ni dépenses; ne pas additionner les récurrents aux transactions comptabilisées.',
+    '- Les hypothèques appartiennent au patrimoine, mais sont exclues des dettes accélérables et de leurs totaux.',
 
     '',
 
     'PROFIL FINANCIER ANONYME DE L\'UTILISATEUR :',
 
     JSON.stringify(sanitizeForAI(rfa)),
+    '',
+    `CONTEXTE FINANCIER FYN FRAIS (instantané ${financialContext.snapshotAt}) :`,
+    serializeFynFinancialContext(financialContext),
 
   ].join('\n');
 
@@ -574,78 +601,48 @@ export async function clearChatHistory(): Promise<void> {
 
 
 
-async function resolveRfaForChat(): Promise<FinancialSummaryAnonymous> {
-
-  const existing = await loadRFA();
-
-  if (existing) return existing;
-
-
-
-  const input = await buildRFAInputFromAppData();
-
-  const heuristic = buildHeuristicRFA(input);
-
-  await saveRFA(heuristic);
-
-
-
-  void regenerateRFA({ reason: 'initial_setup' }).then(() => {
-
-    invalidateChatSessionCache();
-
-  });
-
-
-
-  return heuristic;
-
-}
-
-
-
-async function getChatContext(): Promise<{
-
+async function getChatContext(options?: { forceRefresh?: boolean; question?: string }): Promise<{
   systemPrompt: string;
-
   rfa: FinancialSummaryAnonymous;
-
   dataMode: 'plaid' | 'manual';
-
+  financialContext: FynFinancialContext;
+  rfaInput: RfaInputBundle;
 }> {
+  const forceRefresh = options?.forceRefresh === true;
 
-  const cached = getChatSessionContext();
+  if (!forceRefresh) {
+    const cached = getChatSessionContext();
+    if (cached?.financialContext && cached.rfaInput) {
+      return {
+        ...cached,
+        financialContext: cached.financialContext,
+        rfaInput: cached.rfaInput,
+      };
+    }
+  } else {
+    invalidateChatSessionCache();
+  }
 
-  if (cached) return cached;
-
-
-
-  const [rfa, dataMode] = await Promise.all([resolveRfaForChat(), resolveDataMode()]);
+  const snapshot = await buildFreshFynFinancialSnapshot(options?.question);
+  const { rfa, rfaInput, context: financialContext } = snapshot;
+  const dataMode = rfa.dataMode;
+  await saveRFA(rfa);
 
   const context = {
-
-    systemPrompt: buildSystemPrompt(rfa, dataMode),
-
+    systemPrompt: buildSystemPrompt(rfa, dataMode, financialContext),
     rfa,
-
     dataMode,
-
+    financialContext,
+    rfaInput,
   };
 
   setChatSessionContext(context);
-
   return context;
-
 }
 
-
-
 /** Pre-warm RFA + system prompt so the first send skips cold-start DB work. */
-
 export async function warmChatContext(): Promise<void> {
-
-  await getChatContext();
-
+  await getChatContext({ forceRefresh: true });
 }
 
 
@@ -782,6 +779,8 @@ function buildLocalFallbackReply(
 
   dataMode: 'plaid' | 'manual',
 
+  financialContext: FynFinancialContext,
+
 ): string {
 
   const prefix =
@@ -796,26 +795,56 @@ function buildLocalFallbackReply(
 
   const normalized = userText.toLowerCase();
 
+  if (normalized.includes('abonnement') || normalized.includes('récurrent')) {
+    const items = financialContext.recurringPayments.subscriptionCandidates;
+    if (items.length === 0) {
+      return `${prefix}je ne vois aucun abonnement ou paiement récurrent actif enregistré.`;
+    }
+    return `${prefix}je vois ${items.length} paiement${items.length > 1 ? 's' : ''} récurrent${items.length > 1 ? 's' : ''} : ${items.slice(0, 6).map((item) => `${item.name} (${item.amount.toFixed(2)} $/${item.frequency})`).join(', ')}.`;
+  }
+
+  if (normalized.includes('agenda') || normalized.includes('échéance') || normalized.includes('prochain')) {
+    const next = financialContext.agenda[0];
+    return next
+      ? `${prefix}la prochaine échéance enregistrée est ${next.name}, le ${next.date}, pour ${next.amount.toFixed(2)} $.`
+      : `${prefix}je ne vois aucune échéance future enregistrée.`;
+  }
+
+  if (/\b(combien|total).*\bchez\b/.test(normalized)) {
+    const matches = financialContext.transactions.relevantToQuestion.filter(
+      (transaction) => transaction.type === 'expense',
+    );
+    if (matches.length > 0) {
+      const total = matches.reduce((sum, transaction) => sum + transaction.amount, 0);
+      return `${prefix}les ${matches.length} dépenses correspondantes totalisent ${total.toFixed(2)} $.`;
+    }
+  }
+
 
 
   if (normalized.includes('dette') || normalized.includes('rembours')) {
 
-    const topDebt = rfa.dettes[0];
+    const dettesAccelerables = filterRfaDebtsEligibleForAcceleratedPlan(rfa.dettes);
+    const topDebt = dettesAccelerables[0];
 
     const widget = topDebt
       ? {
           type: 'debt_table' as const,
           label: 'Dettes prioritaires',
-          rows: rfa.dettes.slice(0, 3).map((debt) => ({
+          rows: dettesAccelerables.slice(0, 3).map((debt) => ({
             name: debt.institution,
-            balance: `${debt.solde.toFixed(0)} $`,
+            balance: formatDisplayMoneyAbsoluteExact(debt.solde),
             rate: `${debt.tauxInteret.toFixed(1)} %`,
-            payment: `${debt.paiementMinimum.toFixed(0)} $`,
+            payment: formatDisplayMoneyAbsoluteExact(debt.paiementMinimum),
           })),
           total: {
             label: 'Total',
-            balance: `${rfa.dettes.reduce((sum, debt) => sum + debt.solde, 0).toFixed(0)} $`,
-            payment: `${rfa.dettes.reduce((sum, debt) => sum + debt.paiementMinimum, 0).toFixed(0)} $`,
+            balance: formatDisplayMoneyAbsoluteExact(
+              dettesAccelerables.reduce((sum, debt) => sum + debt.solde, 0),
+            ),
+            payment: formatDisplayMoneyAbsoluteExact(
+              dettesAccelerables.reduce((sum, debt) => sum + debt.paiementMinimum, 0),
+            ),
           },
         }
       : null;
@@ -879,22 +908,25 @@ function isFinancialPlanRequest(userText: string): boolean {
 }
 
 function buildDebtTableWidget(rfa: FinancialSummaryAnonymous): import('@/types/aiWidgets').AIWidgetData | null {
-  if (!rfa.dettes.length) return null;
+  const dettesAccelerables = filterRfaDebtsEligibleForAcceleratedPlan(rfa.dettes);
+  if (!dettesAccelerables.length) return null;
 
   return {
     type: 'debt_table',
     label: 'Dettes actives',
-    rows: rfa.dettes.slice(0, 4).map((debt) => ({
+    rows: dettesAccelerables.slice(0, 4).map((debt) => ({
       name: debt.institution,
-      balance: formatDisplayMoneyAbsolute(debt.solde),
+      balance: formatDisplayMoneyAbsoluteExact(debt.solde),
       rate: `${debt.tauxInteret.toFixed(1)} %`,
-      payment: formatDisplayMoneyAbsolute(debt.paiementMinimum),
+      payment: formatDisplayMoneyAbsoluteExact(debt.paiementMinimum),
     })),
     total: {
       label: 'Total',
-      balance: formatDisplayMoneyAbsolute(rfa.dettes.reduce((sum, debt) => sum + debt.solde, 0)),
-      payment: formatDisplayMoneyAbsolute(
-        rfa.dettes.reduce((sum, debt) => sum + debt.paiementMinimum, 0),
+      balance: formatDisplayMoneyAbsoluteExact(
+        dettesAccelerables.reduce((sum, debt) => sum + debt.solde, 0),
+      ),
+      payment: formatDisplayMoneyAbsoluteExact(
+        dettesAccelerables.reduce((sum, debt) => sum + debt.paiementMinimum, 0),
       ),
     },
   };
@@ -904,6 +936,7 @@ async function buildPlanFinancierChatReply(
   rfa: FinancialSummaryAnonymous,
   userText: string,
   goalOverride?: PlanGoal,
+  rfaInput?: RfaInputBundle,
 ): Promise<{
   content: string;
   blocks: import('@/types/aiWidgets').MessageBlock[];
@@ -914,7 +947,7 @@ async function buildPlanFinancierChatReply(
   const vagueRequest = isVaguePlanRequest(userText) && !goalOverride;
 
   if (vagueRequest && !explicitGoal) {
-    const goalChoice = await buildPlanGoalChoiceState(rfa);
+    const goalChoice = await buildPlanGoalChoiceState(rfa, rfaInput);
     const intro = buildPlanGoalChoiceIntro({
       suggested: goalChoice.suggested,
       reason: goalChoice.reason,
@@ -928,31 +961,82 @@ async function buildPlanFinancierChatReply(
   }
 
   const goal = explicitGoal ?? 'debt_repayment';
-  const summary = buildPlanGoalConfirmedIntro(goal);
-  const suggestions = await buildPlanSuggestionsForGoal(rfa, goal);
-  const intro =
-    suggestions.length > 0
-      ? summary
-      : buildPlanSuggestionsIntro(0);
-
-  const blocks: import('@/types/aiWidgets').MessageBlock[] = [{ type: 'text', content: intro }];
 
   if (goal === 'debt_repayment') {
+    const input = rfaInput;
+    if (!input) {
+      throw new Error('Instantané financier manquant pour la génération du plan');
+    }
+    const ctx = buildPlanRecommendationContext(input, rfa);
+
+    // Cashflow serré / négatif : d’abord le budget, pas snowball/avalanche.
+    if (!ctx.cashflow_viable_pour_extra_dette) {
+      const budgetSuggestions = await buildPlanSuggestionsForGoal(rfa, 'budget_rebalance', input);
+      const intro = buildCashflowBlockedDebtIntro(ctx.surplus_mensuel);
+      const blocks: import('@/types/aiWidgets').MessageBlock[] = [{ type: 'text', content: intro }];
+      const debtWidget = buildDebtTableWidget(rfa);
+      if (debtWidget) {
+        blocks.push(debtWidget);
+      }
+
+      return {
+        content: intro,
+        blocks,
+        planSuggestions:
+          budgetSuggestions.length > 0
+            ? {
+                suggestions: budgetSuggestions,
+                intro: 'Voici des plans pour rétablir une marge avant d’accélérer le remboursement :',
+                frozen: false,
+                confirmedIds: [],
+              }
+            : undefined,
+      };
+    }
+
+    const suggestions = await buildPlanSuggestionsForGoal(rfa, goal, input);
+    const intro =
+      suggestions.length > 0 ? buildDebtSummaryIntro() : buildPlanSuggestionsIntro(0);
+    const blocks: import('@/types/aiWidgets').MessageBlock[] = [{ type: 'text', content: intro }];
     const debtWidget = buildDebtTableWidget(rfa);
     if (debtWidget) {
       blocks.push(debtWidget);
     }
+
+    return {
+      content: intro,
+      blocks,
+      planSuggestions:
+        suggestions.length > 0
+          ? {
+              suggestions,
+              intro: buildDebtStrategiesIntro(),
+              frozen: false,
+              confirmedIds: [],
+            }
+          : undefined,
+    };
   }
+
+  const suggestions = await buildPlanSuggestionsForGoal(rfa, goal, rfaInput);
+
+  const summary = buildPlanGoalConfirmedIntro(goal);
+  const intro =
+    suggestions.length > 0 ? summary : buildPlanSuggestionsIntro(0);
+  const blocks: import('@/types/aiWidgets').MessageBlock[] = [{ type: 'text', content: intro }];
 
   return {
     content: intro,
     blocks,
-    planSuggestions: {
-      suggestions,
-      intro,
-      frozen: false,
-      confirmedIds: [],
-    },
+    planSuggestions:
+      suggestions.length > 0
+        ? {
+            suggestions,
+            intro: '',
+            frozen: false,
+            confirmedIds: [],
+          }
+        : undefined,
   };
 }
 
@@ -972,6 +1056,7 @@ async function executePlanGoalFollowUp(
   history: ChatMessage[],
   pendingMessage: ChatMessage,
   rfa: FinancialSummaryAnonymous,
+  rfaInput: RfaInputBundle,
   completedPhases: ActivityPhase[],
 ): Promise<SendChatMessageResult> {
   const pendingChoice = pendingMessage.planGoalChoice!;
@@ -988,7 +1073,7 @@ async function executePlanGoalFollowUp(
     createdAt: new Date().toISOString(),
   };
 
-  const planReply = await buildPlanFinancierChatReply(rfa, trimmed, goal);
+  const planReply = await buildPlanFinancierChatReply(rfa, trimmed, goal, rfaInput);
 
   const assistantMessage: ChatMessage = {
     id: createMessageId('assistant'),
@@ -1273,13 +1358,7 @@ export async function sendChatMessage(
 
   const completedPhases: ActivityPhase[] = [];
 
-  const coldContext = !isChatSessionContextCached();
-
-  if (coldContext) {
-
-    emitActivity('analyse_finances');
-
-  }
+  emitActivity('analyse_finances');
 
 
 
@@ -1297,7 +1376,7 @@ export async function sendChatMessage(
 
     loadChatHistory(),
 
-    getChatContext(),
+    getChatContext({ forceRefresh: true, question: trimmed }),
 
     imageReadPromise,
 
@@ -1317,13 +1396,9 @@ export async function sendChatMessage(
 
 
 
-  if (coldContext) {
+  completedPhases.push('analyse_finances');
 
-    completedPhases.push('analyse_finances');
-
-  }
-
-  const { systemPrompt, rfa, dataMode } = context;
+  const { systemPrompt, rfa, dataMode, rfaInput } = context;
 
 
 
@@ -1354,12 +1429,19 @@ export async function sendChatMessage(
     throwIfAborted(signal);
     completedPhases.push('reflexion');
     emitActivity('analyse');
-    return executePlanGoalFollowUp(trimmed, history, pendingPlanGoal, rfa, completedPhases);
+    return executePlanGoalFollowUp(
+      trimmed,
+      history,
+      pendingPlanGoal,
+      rfa,
+      rfaInput,
+      completedPhases,
+    );
   }
 
   if (isFinancialPlanRequest(trimmed)) {
     throwIfAborted(signal);
-    const planReply = await buildPlanFinancierChatReply(rfa, trimmed);
+    const planReply = await buildPlanFinancierChatReply(rfa, trimmed, undefined, rfaInput);
     completedPhases.push('reflexion');
     emitActivity('analyse');
 
@@ -1390,7 +1472,7 @@ export async function sendChatMessage(
     throwIfAborted(signal);
     const goal = detectPlanGoal(trimmed);
     if (goal) {
-      const planReply = await buildPlanFinancierChatReply(rfa, trimmed, goal);
+      const planReply = await buildPlanFinancierChatReply(rfa, trimmed, goal, rfaInput);
       completedPhases.push('reflexion');
       emitActivity('analyse');
 
@@ -1439,7 +1521,7 @@ export async function sendChatMessage(
 
     } catch (error) {
 
-      if (error instanceof DOMException && error.name === 'AbortError') {
+      if (isAbortError(error)) {
         throw error;
       }
 
@@ -1457,7 +1539,7 @@ export async function sendChatMessage(
 
     } else {
 
-      assistantRaw = buildLocalFallbackReply(trimmed, rfa, dataMode);
+      assistantRaw = buildLocalFallbackReply(trimmed, rfa, dataMode, context.financialContext);
 
       usedLocalFallback = true;
 
@@ -1465,7 +1547,7 @@ export async function sendChatMessage(
 
   } else {
 
-    assistantRaw = buildLocalFallbackReply(trimmed, rfa, dataMode);
+    assistantRaw = buildLocalFallbackReply(trimmed, rfa, dataMode, context.financialContext);
 
     usedLocalFallback = true;
 
@@ -1475,9 +1557,16 @@ export async function sendChatMessage(
 
 
 
-  const { cleanText, actions, blocks } = parseActionsFromResponse(assistantRaw);
+  const { cleanText, actions, blocks: parsedBlocks } = parseActionsFromResponse(assistantRaw);
 
-  const hasWidgets = blocks.some((block) => block.type !== 'text');
+  const enrichedBlocks = enrichAssistantBlocksWithContextWidgets(
+    parsedBlocks,
+    trimmed,
+    context.financialContext,
+    rfa,
+  );
+
+  const hasWidgets = enrichedBlocks.some((block) => block.type !== 'text');
 
 
 
@@ -1489,8 +1578,8 @@ export async function sendChatMessage(
 
     content: cleanText || (actions.length > 0 ? '' : 'Je n\'ai pas pu formuler de réponse.'),
 
-    blocks: hasWidgets || (actions.length > 0 && blocks.some((block) => block.type === 'text'))
-      ? blocks
+    blocks: hasWidgets || (actions.length > 0 && enrichedBlocks.some((block) => block.type === 'text'))
+      ? enrichedBlocks
       : undefined,
 
     createdAt: new Date().toISOString(),

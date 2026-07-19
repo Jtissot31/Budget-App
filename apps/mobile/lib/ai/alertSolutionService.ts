@@ -6,6 +6,7 @@ import type { AlertSolution } from '@/lib/alertPresentation';
 
 import { appendAIMemory, formatMemoryForPrompt, loadAIMemory } from './aiMemory';
 import { generateGeminiContent } from './geminiClient';
+import { buildFreshFynContextDigest } from './fynFinancialContext';
 
 export type AlertSolutionContext = Pick<
   AlertCenterItem,
@@ -16,7 +17,11 @@ async function buildSolutionPrompt(
   ctx: AlertSolutionContext,
   staticSolutions: AlertSolution[],
 ): Promise<string> {
-  const memory = formatMemoryForPrompt(await loadAIMemory());
+  const [memoryEntries, financialContext] = await Promise.all([
+    loadAIMemory(),
+    buildFreshFynContextDigest(`${ctx.title} ${ctx.paymentName ?? ''}`).catch(() => ''),
+  ]);
+  const memory = formatMemoryForPrompt(memoryEntries);
 
   return [
     'Tu es Fyn, conseiller financier dans une app québécoise.',
@@ -24,6 +29,7 @@ async function buildSolutionPrompt(
     'Garde les mêmes id, title, ctaLabel, href et params — modifie uniquement description.',
     'Réponds UNIQUEMENT avec un tableau JSON valide, sans markdown.',
     memory,
+    financialContext ? `Contexte financier frais : ${financialContext}` : '',
     'Contexte alerte :',
     JSON.stringify({
       type: ctx.kind,

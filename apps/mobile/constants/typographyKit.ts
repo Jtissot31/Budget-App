@@ -15,6 +15,7 @@
  * - *Amount / *Hero — tabular size tokens for money (font via theme kit)
  * - rowTitle / listPrimary / rowMeta — list & card copy
  */
+import { interNumericExtraBoldText } from '@/constants/interFonts';
 import {
   jakartaBoldText,
   jakartaExtraBoldText,
@@ -41,11 +42,7 @@ const labelText = {
 
 const tabular = { fontVariant: ['tabular-nums'] as const };
 
-/** Canonical money font — matches `TransactionAmountLabel` (−105,68$). */
-export const MONEY_AMOUNT_FONT = 'Onest_800ExtraBold';
-
-/** @deprecated Import {@link MONEY_AMOUNT_FONT} */
-export const TRANSACTION_ROW_AMOUNT_FONT = MONEY_AMOUNT_FONT;
+export { MONEY_AMOUNT_FONT, TRANSACTION_ROW_AMOUNT_FONT } from '@/constants/interFonts';
 
 export const typographyKit = {
   /** Portefeuille tab title, Transactions, Budgets… */
@@ -162,7 +159,7 @@ export const typographyKit = {
 
   /** Valeur nette headline */
   netWorthHero: {
-    ...jakartaExtraBoldText,
+    ...interNumericExtraBoldText,
     ...tabular,
     fontSize: 42,
     letterSpacing: -1.6,
@@ -170,7 +167,7 @@ export const typographyKit = {
 
   /** Wealth card main value (Patrimoine carousel) */
   statHero: {
-    ...jakartaExtraBoldText,
+    ...interNumericExtraBoldText,
     ...tabular,
     fontSize: 28,
     letterSpacing: -0.8,
@@ -179,7 +176,7 @@ export const typographyKit = {
 
   /** Budget disponible, medium hero stats */
   heroStat: {
-    ...jakartaExtraBoldText,
+    ...interNumericExtraBoldText,
     ...tabular,
     fontSize: sizes.heroStat,
     letterSpacing: -0.5,
@@ -188,7 +185,7 @@ export const typographyKit = {
 
   /** Prochain paiement / agenda card amount */
   paymentAmount: {
-    ...jakartaExtraBoldText,
+    ...interNumericExtraBoldText,
     ...tabular,
     fontSize: sizes.dashboardGreeting,
     letterSpacing: -0.45,
@@ -196,7 +193,7 @@ export const typographyKit = {
 
   /** Chart Actifs / Dettes pills */
   cardMetric: {
-    ...jakartaExtraBoldText,
+    ...interNumericExtraBoldText,
     ...tabular,
     fontSize: 16,
     letterSpacing: -0.3,
@@ -204,7 +201,7 @@ export const typographyKit = {
 
   /** Standard list amount column */
   rowAmount: {
-    ...jakartaExtraBoldText,
+    ...interNumericExtraBoldText,
     ...tabular,
     fontSize: sizes.caption,
     lineHeight: sizes.caption + 4,
@@ -213,7 +210,7 @@ export const typographyKit = {
 
   /** Detail sheet hero amount */
   detailHero: {
-    ...jakartaExtraBoldText,
+    ...interNumericExtraBoldText,
     ...tabular,
     fontSize: 36,
     letterSpacing: -0.5,
@@ -222,7 +219,7 @@ export const typographyKit = {
 
   /** Budget ring % */
   percent: {
-    ...jakartaExtraBoldText,
+    ...interNumericExtraBoldText,
     ...tabular,
     fontSize: sizes.dashboardGreeting,
     lineHeight: sizes.dashboardGreeting + 2,
@@ -231,7 +228,7 @@ export const typographyKit = {
 
   /** Date badge day numeral */
   dateBadgeDay: {
-    ...jakartaExtraBoldText,
+    ...interNumericExtraBoldText,
     ...tabular,
     fontSize: sizes.dashboardGreeting,
     lineHeight: sizes.dashboardGreeting,

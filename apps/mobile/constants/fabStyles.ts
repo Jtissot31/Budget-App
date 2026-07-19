@@ -1,5 +1,8 @@
 import type { ViewStyle } from 'react-native';
 
+/** Green + button and speed-dial menus on Transactions (Historique / Agenda). Ask to re-enable. */
+export const SHOW_TRANSACTIONS_TAB_FABS = false;
+
 /** Transactions Historique FAB — solid green style before blur experiment. */
 // Revert: use TRANSACTIONS_FAB_STYLE_ORIGINAL + TRANSACTIONS_FAB_GLOW_ORIGINAL on the Pressable;
 // set backgroundColor and shadowColor to colors.primary at the call site.

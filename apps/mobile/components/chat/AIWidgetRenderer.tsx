@@ -1,10 +1,13 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { jakartaRegularText } from '@/constants/theme';
 import type { AIWidgetData } from '@/types/aiWidgets';
-import { useAIChatColors } from '@/components/ai-chat/theme';
+import { normalizeBarChartToCashflowComparison, normalizeCashflowComparisonData } from './widgets/cashflowWidgetUtils';
+import { useAIWidgetColors } from './widgets/theme';
 import { AlertCardWidget } from './widgets/AlertCardWidget';
 import { AllocationChartWidget } from './widgets/AllocationChartWidget';
+import { BalanceSummaryWidget } from './widgets/BalanceSummaryWidget';
 import { BarChartWidget } from './widgets/BarChartWidget';
+import { CashflowComparisonWidget } from './widgets/CashflowComparisonWidget';
 import { ComparisonCardWidget } from './widgets/ComparisonCardWidget';
 import { DebtTableWidget } from './widgets/DebtTableWidget';
 import { LineChartWidget } from './widgets/LineChartWidget';
@@ -15,7 +18,7 @@ type Props = {
 };
 
 function UnknownWidgetFallback({ type }: { type: string }) {
-  const palette = useAIChatColors();
+  const palette = useAIWidgetColors();
   return (
     <View style={[styles.fallback, { backgroundColor: palette.surface, borderColor: palette.border }]}>
       <Text style={[styles.fallbackText, { color: palette.textMuted }, jakartaRegularText]}>
@@ -43,11 +46,29 @@ export function AIWidgetRenderer({ data }: Props) {
     case 'line_chart':
       content = <LineChartWidget data={data} />;
       break;
-    case 'bar_chart':
-      content = <BarChartWidget data={data} />;
+    case 'bar_chart': {
+      const cashflow = normalizeBarChartToCashflowComparison(data);
+      content = cashflow ? (
+        <CashflowComparisonWidget data={cashflow} />
+      ) : (
+        <BarChartWidget data={data} />
+      );
       break;
+    }
+    case 'cashflow_comparison': {
+      const normalized = normalizeCashflowComparisonData(data);
+      content = normalized ? (
+        <CashflowComparisonWidget data={normalized} />
+      ) : (
+        <UnknownWidgetFallback type="cashflow_comparison" />
+      );
+      break;
+    }
     case 'allocation_chart':
       content = <AllocationChartWidget data={data} />;
+      break;
+    case 'balance_summary_card':
+      content = <BalanceSummaryWidget data={data} />;
       break;
     default: {
       const unknownType = (data as { type?: string }).type ?? 'inconnu';

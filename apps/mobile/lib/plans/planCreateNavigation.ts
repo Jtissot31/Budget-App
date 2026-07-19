@@ -1,4 +1,4 @@
-import type { PlanSuggere } from './Plan';
+import { PLAN_SUBTYPE_LABELS, type PlanSuggere, type PlanSubtype } from './Plan';
 import { suggestedPlanToCreateParams } from './planDashboardAdapter';
 
 /** Entrée création manuelle depuis le hub (Phase 2 remplacera par flow complet). */
@@ -28,9 +28,11 @@ export function buildPrefilledSubtypeEntryParams(
   subtype: string,
   category?: string,
 ): Record<string, string> {
+  const titre = PLAN_SUBTYPE_LABELS[subtype as PlanSubtype];
   return {
     subtype,
     ...(category ? { category } : {}),
+    ...(titre ? { titre } : {}),
     total: '1',
     index: '1',
   };

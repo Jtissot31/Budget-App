@@ -5,6 +5,7 @@ import type { AlertCenterItem } from '@/lib/alerts';
 
 import { appendAIMemory, formatMemoryForPrompt, loadAIMemory } from './aiMemory';
 import { generateGeminiContent } from './geminiClient';
+import { buildFreshFynContextDigest } from './fynFinancialContext';
 
 export type HomeInsightContext = Pick<
   AlertCenterItem,
@@ -12,13 +13,18 @@ export type HomeInsightContext = Pick<
 >;
 
 async function buildHomeInsightPrompt(ctx: HomeInsightContext): Promise<string> {
-  const memory = formatMemoryForPrompt(await loadAIMemory(), 5);
+  const [memoryEntries, financialContext] = await Promise.all([
+    loadAIMemory(),
+    buildFreshFynContextDigest(`${ctx.title} ${ctx.paymentName ?? ''}`).catch(() => ''),
+  ]);
+  const memory = formatMemoryForPrompt(memoryEntries, 5);
 
   return [
     'Tu es Fyn, conseiller financier bienveillant dans une app québécoise.',
     'Reformule ce message d’alerte en 1 phrase courte (max 25 mots), français calme et concret.',
     'Pas de markdown, pas de titre. Garde le sens — sois plus direct si possible.',
     memory,
+    financialContext ? `Contexte financier frais : ${financialContext}` : '',
     JSON.stringify({
       titre: ctx.title,
       message: ctx.message,

@@ -1,6 +1,6 @@
 import { loadEncryptedJson, saveEncryptedJson } from '@/lib/ai/encryptedStorage';
 import { dataEvents } from '@/lib/events';
-import type { PlanActifOuTermine, PlanSuggere } from './Plan';
+import type { PlanActifOuTermine, PlanParametres, PlanSuggere } from './Plan';
 import { registerPlanDetailForNavigation } from './planDashboardAdapter';
 
 const PLANS_STORAGE_KEY = 'bt_financial_plans_v1';
@@ -37,6 +37,8 @@ export function activateSuggestedPlan(
     cadence?: string;
     date_cible?: string;
     montant_cible?: number | null;
+    montant_actuel?: number;
+    parametres?: PlanParametres;
   },
 ): PlanActifOuTermine {
   return {
@@ -46,12 +48,13 @@ export function activateSuggestedPlan(
     titre: suggestion.titre,
     description: suggestion.description,
     statut: 'actif',
-    montant_actuel: suggestion.montant_actuel ?? 0,
+    montant_actuel: fields.montant_actuel ?? suggestion.montant_actuel ?? 0,
     montant_cible: fields.montant_cible ?? suggestion.montant_cible,
     compte_lie: fields.compte_lie,
     cadence: fields.cadence,
     date_debut: new Date().toISOString().slice(0, 10),
     date_cible: fields.date_cible,
+    parametres: fields.parametres,
     etapes: suggestion.etapes,
     signal_declencheur: suggestion.signal_declencheur,
   };

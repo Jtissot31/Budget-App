@@ -4,7 +4,8 @@ import type { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { spacing } from '@/constants/theme';
 import type { ProgressCardData } from '@/types/aiWidgets';
-import { AI_WIDGET_RADIUS, aiWidgetFonts, useAIWidgetColors } from './theme';
+import { AI_WIDGET_RADIUS, aiWidgetAmountTypography, aiWidgetFonts, aiWidgetTypography, useAIWidgetColors } from './theme';
+import { WidgetCardShell } from './WidgetCardShell';
 
 type Props = {
   data: ProgressCardData;
@@ -17,7 +18,6 @@ function resolveWidgetIcon(icon?: string): MaterialIconName | null {
   return icon as MaterialIconName;
 }
 
-/** Keep currency amounts on one line (e.g. "12\u00A0600,00\u00A0$"). */
 function formatValueLabel(value: string): string {
   return value.replace(/ /g, '\u00A0');
 }
@@ -28,11 +28,8 @@ export function ProgressCardWidget({ data }: Props) {
   const iconName = resolveWidgetIcon(data.icon);
 
   return (
-    <View style={[styles.card, { backgroundColor: palette.surface, padding: palette.padding }]}>
+    <WidgetCardShell label={data.label}>
       <View style={styles.labelRow}>
-        <Text style={[styles.label, { color: palette.textMuted, fontFamily: aiWidgetFonts.label }]}>
-          {data.label.toUpperCase()}
-        </Text>
         {iconName ? (
           <AppIcon family="material-community" name={iconName} size={16} color={palette.green} />
         ) : null}
@@ -40,24 +37,19 @@ export function ProgressCardWidget({ data }: Props) {
 
       <View style={styles.valueRow}>
         <Text
-          style={[styles.value, { color: palette.text, fontFamily: aiWidgetFonts.mono }]}
+          style={[aiWidgetTypography.value, { color: palette.text }]}
           numberOfLines={1}
           adjustsFontSizeToFit
         >
           {formatValueLabel(data.value_label)}
         </Text>
-        <Text style={[styles.percentLabel, { color: palette.green, fontFamily: aiWidgetFonts.label }]}>
+        <Text style={[styles.percentLabel, aiWidgetAmountTypography('badge'), { color: palette.green }]}>
           {data.percent_label}
         </Text>
       </View>
 
       <View style={[styles.track, { backgroundColor: palette.track }]}>
-        <View
-          style={[
-            styles.fill,
-            { backgroundColor: palette.green, width: `${percent}%` },
-          ]}
-        />
+        <View style={[styles.fill, { backgroundColor: palette.green, width: `${percent}%` }]} />
       </View>
 
       {data.status_line ? (
@@ -74,10 +66,7 @@ export function ProgressCardWidget({ data }: Props) {
       {data.actions?.length ? (
         <View style={styles.actionsRow}>
           {data.actions.map((action) => (
-            <View
-              key={action.label}
-              style={[styles.actionPill, { backgroundColor: palette.background }]}
-            >
+            <View key={action.label} style={[styles.actionPill, { backgroundColor: palette.track }]}>
               <Text style={[styles.actionText, { color: palette.text, fontFamily: aiWidgetFonts.label }]}>
                 {action.label}
               </Text>
@@ -85,29 +74,15 @@ export function ProgressCardWidget({ data }: Props) {
           ))}
         </View>
       ) : null}
-    </View>
+    </WidgetCardShell>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    width: '100%',
-    borderRadius: AI_WIDGET_RADIUS,
-    gap: spacing.md,
-  },
   labelRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
+    justifyContent: 'flex-end',
     width: '100%',
-  },
-  label: {
-    fontSize: 11,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    flex: 1,
-    minWidth: 0,
   },
   valueRow: {
     flexDirection: 'row',
@@ -115,12 +90,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
     width: '100%',
-  },
-  value: {
-    fontSize: 24,
-    fontVariant: ['tabular-nums'],
-    flex: 1,
-    minWidth: 0,
   },
   percentLabel: {
     fontSize: 13,
@@ -150,7 +119,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   actionPill: {
-    borderRadius: AI_WIDGET_RADIUS,
+    borderRadius: 8,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },

@@ -122,6 +122,7 @@ export default function TabLayout() {
             <Tabs.Screen name="goals" options={{ title: 'Plan financier' }} />
             <Tabs.Screen name="accounts" options={{ title: 'Portefeuille' }} />
             <Tabs.Screen name="budgets" />
+            <Tabs.Screen name="widgets" options={{ title: 'Galerie widgets', href: null }} />
             <Tabs.Screen name="settings" />
           </Tabs>
         </Animated.View>

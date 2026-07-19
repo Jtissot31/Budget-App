@@ -6,12 +6,20 @@ import type { PlanSuggere } from '@/lib/plans/Plan';
 import { appendAIMemory, formatMemoryForPrompt, loadAIMemory } from './aiMemory';
 import { generateGeminiContent } from './geminiClient';
 import { sanitizePlanSuggestionReason } from '@/lib/plans/planSuggestionCopy';
+import type { PlanSubtype } from '@/lib/plans/Plan';
+import { buildFreshFynContextDigest } from './fynFinancialContext';
 
 export async function enrichPlanSuggestionReason(
   plan: PlanSuggere,
   financialSnapshot?: string,
 ): Promise<string> {
-  const memory = formatMemoryForPrompt(await loadAIMemory(), 6);
+  const [memoryEntries, freshSnapshot] = await Promise.all([
+    loadAIMemory(),
+    financialSnapshot
+      ? Promise.resolve(financialSnapshot)
+      : buildFreshFynContextDigest(plan.titre).catch(() => ''),
+  ]);
+  const memory = formatMemoryForPrompt(memoryEntries, 6);
   const fallback = plan.raison_recommandation;
 
   const prompt = [
@@ -19,7 +27,7 @@ export async function enrichPlanSuggestionReason(
     'Adapte la raison de recommandation ci-dessous en 1–2 phrases courtes, concrètes, en français.',
     'Réponds UNIQUEMENT avec le texte final — pas de markdown, pas de listes, pas de guillemets, pas de préambule.',
     memory,
-    financialSnapshot ? `Contexte financier : ${financialSnapshot}` : '',
+    freshSnapshot ? `Contexte financier : ${freshSnapshot}` : '',
     JSON.stringify({
       plan: plan.titre,
       sousType: plan.subtype,
@@ -38,7 +46,7 @@ export async function enrichPlanSuggestionReason(
 
   if (!refined) return fallback;
 
-  const cleaned = sanitizePlanSuggestionReason(refined, fallback);
+  const cleaned = sanitizePlanSuggestionReason(refined, fallback, plan.subtype);
   if (cleaned === fallback) return fallback;
 
   void appendAIMemory({
@@ -67,12 +75,15 @@ export async function enrichPlanSuggestions(
   financialSnapshot?: string,
 ): Promise<PlanSuggere[]> {
   if (plans.length === 0) return plans;
+  const sharedSnapshot =
+    financialSnapshot ??
+    await buildFreshFynContextDigest(plans.map((plan) => plan.titre).join(' ')).catch(() => '');
 
   const enriched = await Promise.all(
     plans.map(async (plan) => {
       try {
         const raison_recommandation = await withTimeout(
-          enrichPlanSuggestionReason(plan, financialSnapshot),
+          enrichPlanSuggestionReason(plan, sharedSnapshot),
           PLAN_SUGGESTION_ENRICHMENT_TIMEOUT_MS,
           plan.raison_recommandation,
         );
@@ -93,13 +104,18 @@ export async function enrichPlanTemplateWhy(
   titre: string,
   staticDescription: string,
 ): Promise<string> {
-  const memory = formatMemoryForPrompt(await loadAIMemory(), 5);
+  const [memoryEntries, financialContext] = await Promise.all([
+    loadAIMemory(),
+    buildFreshFynContextDigest(`${titre} ${subtype}`).catch(() => ''),
+  ]);
+  const memory = formatMemoryForPrompt(memoryEntries, 5);
 
   const prompt = [
     'Tu es Fyn, conseiller financier québécois.',
     'Adapte la description ci-dessous en 1–2 phrases courtes, concrètes, en français.',
     'Réponds UNIQUEMENT avec le texte final — pas de markdown, pas de listes, pas de guillemets, pas de préambule.',
     memory,
+    financialContext ? `Contexte financier frais : ${financialContext}` : '',
     JSON.stringify({ plan: titre, sousType: subtype, descriptionActuelle: staticDescription }),
   ]
     .filter(Boolean)
@@ -113,7 +129,7 @@ export async function enrichPlanTemplateWhy(
 
   if (!refined) return staticDescription;
 
-  const cleaned = sanitizePlanSuggestionReason(refined, staticDescription);
+  const cleaned = sanitizePlanSuggestionReason(refined, staticDescription, subtype as PlanSubtype);
   if (cleaned === staticDescription) return staticDescription;
 
   void appendAIMemory({

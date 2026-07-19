@@ -3,8 +3,13 @@ export type {
   PlanActifOuTermine,
   PlanBase,
   PlanCategory,
+  PlanDebtFeasibilitySnapshot,
+  PlanDebtSelection,
+  PlanDebtSource,
   PlanEtape,
   PlanEtapeStatut,
+  PlanExtraCadence,
+  PlanParametres,
   PlanSignalDeclencheur,
   PlanStatut,
   PlanSubtype,
@@ -39,3 +44,35 @@ export {
   planProgressionPourcent,
   planSubtypeSansMontantCible,
 } from './Plan';
+
+export {
+  extraToMonthly,
+  formatDebtFreeDuration,
+  orderDebtsForStrategy,
+  projectDebtPayoff,
+} from './debtPayoffMath';
+export type { DebtPayoffInput, DebtPayoffProjection, DebtPayoffStrategy, OrderedDebt } from './debtPayoffMath';
+
+export {
+  candidateFromLoan,
+  candidateFromCreditAccount,
+  excludeMortgagesFromDebtSelections,
+  filterEligibleDebtPlanCandidates,
+  filterRfaDebtsEligibleForAcceleratedPlan,
+  isDebtPlanCandidateEligibleForAcceleratedPlan,
+  isLoanEligibleForAcceleratedDebtPlan,
+  isRfaDebtEligibleForAcceleratedDebtPlan,
+  loadDebtPlanCandidates,
+  RFA_MORTGAGE_DEBT_TYPE,
+  sanitizeDebtParametresForAcceleratedPlan,
+  strategyForDebtSubtype,
+  usesDebtPayoffWizard,
+} from './debtPlanCandidates';
+export type { DebtPlanCandidate } from './debtPlanCandidates';
+
+export {
+  assessDebtExtraFeasibility,
+  isCashflowViableForAcceleratedDebtPlan,
+  MIN_SURPLUS_FOR_ACCELERATED_DEBT_PLAN,
+  monthlySurplusFromCashflow,
+} from './debtPlanFeasibility';

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { ProgressBar } from '@/components/ProgressBar';
-import { spacing, typography } from '@/constants/theme';
+import { jakartaBoldText, jakartaExtraBoldText, spacing, typography } from '@/constants/theme';
 import {
   categoryBudgetBarColor,
   categoryBudgetBarTrackColor,
@@ -79,15 +79,15 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   title: {
+    ...jakartaBoldText,
     flex: 1,
     minWidth: 0,
     fontSize: typography.meta,
-    fontWeight: '700',
   },
   status: {
+    ...jakartaExtraBoldText,
     flexShrink: 0,
     fontSize: typography.meta,
-    fontWeight: '800',
   },
   meta: {
     ...portfolioNumericText,

@@ -22,7 +22,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
-import { DASHBOARD_VALUE_GREEN, jakartaMediumText, moneyAmountTypography } from '@/constants/theme';
+import { DASHBOARD_VALUE_GREEN, jakartaMediumText, moneyAmountTypography, radius } from '@/constants/theme';
 import { ThemeSegmentedControl } from '@/components/ThemeSegmentedControl';
 import { formatDisplayMoney } from '@/lib/formatDisplayMoney';
 import { useAppTheme } from '@/lib/themeContext';
@@ -1452,7 +1452,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     paddingHorizontal: POINT_LABEL_PAD_H,
     paddingVertical: POINT_LABEL_PAD_V,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     borderWidth: 1,
   },
   selectionAmountText: {

@@ -96,6 +96,20 @@ function parseWidgetJson(json: string): AIWidgetData | null {
         }
         return parsed as unknown as AIWidgetData;
 
+      case 'cashflow_comparison':
+        if (
+          typeof parsed.label !== 'string' ||
+          typeof parsed.income !== 'number' ||
+          !Number.isFinite(parsed.income) ||
+          typeof parsed.expenses !== 'number' ||
+          !Number.isFinite(parsed.expenses) ||
+          typeof parsed.surplus !== 'number' ||
+          !Number.isFinite(parsed.surplus)
+        ) {
+          return null;
+        }
+        return parsed as unknown as AIWidgetData;
+
       case 'allocation_chart':
         if (
           typeof parsed.label !== 'string' ||
@@ -110,6 +124,12 @@ function parseWidgetJson(json: string): AIWidgetData | null {
               Number.isFinite((segment as Record<string, unknown>).value as number),
           )
         ) {
+          return null;
+        }
+        return parsed as unknown as AIWidgetData;
+
+      case 'balance_summary_card':
+        if (typeof parsed.label !== 'string' || typeof parsed.value_label !== 'string') {
           return null;
         }
         return parsed as unknown as AIWidgetData;

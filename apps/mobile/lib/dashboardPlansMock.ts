@@ -31,6 +31,10 @@ export type DashboardPlanDetail = {
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
   currentAmount: number;
   targetAmount: number;
+  /** Ligne hero spécifique au type — remplace le format montant générique si présent. */
+  heroPrimary?: string;
+  /** Ligne secondaire hero spécifique au type. */
+  heroSecondary?: string;
   /** Résumé en une phrase — visible sur liste et détail */
   summary: string;
   strategy: {

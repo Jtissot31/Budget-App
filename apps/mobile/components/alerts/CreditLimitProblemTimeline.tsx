@@ -12,6 +12,7 @@ import {
 import {
   moneyAmountTypography,
   PROGRESS_BAR_TRACK_HEIGHT,
+  radius,
   spacing,
   typographyKit,
 } from '@/constants/theme';
@@ -306,13 +307,13 @@ const styles = StyleSheet.create({
   utilTrack: {
     flex: 1,
     height: PROGRESS_BAR_TRACK_HEIGHT,
-    borderRadius: 99,
+    borderRadius: radius.pill,
     overflow: 'hidden',
     flexDirection: 'row',
   },
   utilFill: {
     height: '100%',
-    borderRadius: 99,
+    borderRadius: radius.pill,
   },
   utilLabel: {
     minWidth: 36,

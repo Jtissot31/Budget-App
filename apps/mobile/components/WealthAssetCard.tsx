@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
 
   typeBadge: {
 
-    borderRadius: 999,
+    borderRadius: radius.pill,
 
     borderWidth: StyleSheet.hairlineWidth,
 

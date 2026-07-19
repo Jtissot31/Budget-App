@@ -1,6 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PageTransition } from '@/components/PageTransition';
@@ -10,7 +9,7 @@ import { PLAN_DETAIL, planDetailCardStyle, planDetailFonts } from '@/components/
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { interExtraBoldText, interMediumText, interSemiboldText, spacing } from '@/constants/theme';
 import { planHeroAmountLine, planHeroSecondaryLine } from '@/lib/dashboardPlanPresentation';
-import { getDashboardPlanById } from '@/lib/dashboardPlansMock';
+import { resolveDashboardPlanById } from '@/lib/plans/planDashboardAdapter';
 import { tapHaptic } from '@/lib/haptics';
 
 type Props = {
@@ -20,7 +19,7 @@ type Props = {
 export function PlanDetailScreen({ planId }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const plan = getDashboardPlanById(planId);
+  const plan = resolveDashboardPlanById(planId);
 
   const handleBack = () => {
     tapHaptic();
@@ -98,7 +97,7 @@ export function PlanDetailScreen({ planId }: Props) {
             {/* 2 — Hero progression (seule source de vérité chiffrée) */}
             <View style={planDetailCardStyle.card}>
               <Text style={[planDetailFonts.heroAmount, { color: PLAN_DETAIL.text }]}>
-                {planHeroAmountLine(plan)}
+                {plan.heroPrimary ?? planHeroAmountLine(plan)}
               </Text>
               <View style={[styles.progressTrack, { backgroundColor: PLAN_DETAIL.border }]}>
                 <View
@@ -112,11 +111,30 @@ export function PlanDetailScreen({ planId }: Props) {
                 />
               </View>
               <Text style={[planDetailFonts.heroMeta, { color: PLAN_DETAIL.textMuted }]}>
-                {planHeroSecondaryLine(plan)}
+                {plan.heroSecondary ?? planHeroSecondaryLine(plan)}
               </Text>
             </View>
 
-            {/* 3 — Étapes (timeline + prochaine action fusionnée) */}
+            {/* 3 — Métriques spécifiques au type de plan */}
+            {plan.metrics.length ? (
+              <View style={styles.metricsGrid}>
+                {plan.metrics.map((metric) => (
+                  <View key={metric.id} style={[planDetailCardStyle.card, styles.metricCard]}>
+                    <Text style={[planDetailFonts.detailLabel, { color: PLAN_DETAIL.textMuted }]}>
+                      {metric.label}
+                    </Text>
+                    <Text style={[planDetailFonts.stepLabel, { color: metricToneColor(metric.tone) }]}>
+                      {metric.value}
+                    </Text>
+                    {metric.hint ? (
+                      <Text style={[planDetailFonts.stepMeta, { color: PLAN_DETAIL.textMuted }]}>{metric.hint}</Text>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {/* 4 — Étapes (timeline + prochaine action fusionnée) */}
             <PlanStepsTimeline plan={plan} />
 
             {/* 4 — Pourquoi ce plan */}
@@ -144,8 +162,31 @@ export function PlanDetailScreen({ planId }: Props) {
   );
 }
 
+function metricToneColor(tone?: 'default' | 'positive' | 'warning' | 'danger'): string {
+  switch (tone) {
+    case 'positive':
+      return PLAN_DETAIL.accent;
+    case 'warning':
+      return '#E6A000';
+    case 'danger':
+      return '#F87171';
+    default:
+      return PLAN_DETAIL.text;
+  }
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  metricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  metricCard: {
+    flexGrow: 1,
+    flexBasis: '47%',
+    gap: spacing.xs,
+  },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',

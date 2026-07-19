@@ -1,5 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { spacing, typography } from '@/constants/theme';
+import { jakartaBoldText, jakartaExtraBoldText, radius, spacing, typography } from '@/constants/theme';
 import type { ProfileType } from '@/lib/profile';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -46,17 +46,17 @@ export function ProfileSelector({ selected, onChange }: Props) {
 
 const styles = StyleSheet.create({
   wrap: { gap: spacing.sm },
-  heading: { fontSize: typography.caption, fontWeight: '700', letterSpacing: 0.5 },
+  heading: { ...jakartaBoldText, fontSize: typography.caption, letterSpacing: 0.5 },
   row: { gap: spacing.sm, paddingVertical: 2 },
   chip: {
     minHeight: 44,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     borderWidth: 1,
     backgroundColor: 'transparent',
     justifyContent: 'center',
   },
-  chipText: { fontSize: typography.caption, fontWeight: '700' },
-  chipTextActive: { fontWeight: '800' },
+  chipText: { ...jakartaBoldText, fontSize: typography.caption },
+  chipTextActive: { ...jakartaExtraBoldText },
 });

@@ -1284,7 +1284,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: 44,
     height: 4,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     marginBottom: 4,
   },
   sheetHeader: {
@@ -1408,10 +1408,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   impactValue: {
-    ...jakartaExtraBoldText,
-    fontSize: 24,
-    letterSpacing: -0.5,
-    fontVariant: ['tabular-nums'],
+    ...moneyAmountTypography({ tier: 'stat', letterSpacing: -0.5 }),
   },
   impactHint: {
     ...jakartaMediumText,

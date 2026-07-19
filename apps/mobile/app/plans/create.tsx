@@ -9,11 +9,17 @@ import {
   Text,
   TextInput,
   View,
+  type TextStyle,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { DatePickerField } from '@/components/MinimalDatePicker';
+import {
+  DebtPlanWizard,
+  debtWizardStepCount,
+  type DebtWizardAssembled,
+} from '@/components/plans/DebtPlanWizard';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { SettingsPickerSheet } from '@/components/SettingsPickerSheet';
 import {
@@ -32,12 +38,23 @@ import {
 import { interMediumText, interSemiboldText, spacing } from '@/constants/theme';
 import { appendUserPlan, activateSuggestedPlan } from '@/lib/plans/plansStore';
 import {
-  planSubtypeSansMontantCible,
+  PLAN_SUBTYPE_LABELS,
   type PlanCategory,
   type PlanSuggere,
   type PlanSubtype,
 } from '@/lib/plans/Plan';
-import { getSimulatedAccounts } from '@/lib/db';
+import { PLAN_SUBTYPE_DESCRIPTIONS } from '@/lib/plans/planCatalogData';
+import {
+  assemblePlanCreationFields,
+  getPlanTypeFormConfig,
+  usesDebtPayoffWizard,
+  validatePlanCreation,
+  type PlanCadenceOption,
+  type PlanFieldKey,
+  type PlanFormField,
+} from '@/lib/plans/planTypeFormConfig';
+import { sanitizeDebtParametresForAcceleratedPlan } from '@/lib/plans/debtPlanCandidates';
+import { getLoans, getSimulatedAccounts } from '@/lib/db';
 import { tapHaptic } from '@/lib/haptics';
 import { setPendingPlanChatConfirmation } from '@/lib/plans/pendingPlanChatConfirmation';
 
@@ -45,15 +62,6 @@ type QueueItem = Pick<
   PlanSuggere,
   'id' | 'category' | 'subtype' | 'titre' | 'description' | 'montant_actuel' | 'montant_cible' | 'raison_recommandation' | 'signal_declencheur' | 'etapes'
 >;
-
-type CadenceFrequency = 'week' | 'month';
-
-function parsePlanAmountInput(value: string): number | null {
-  const normalized = value.trim().replace(/\s/g, '').replace(',', '.');
-  if (!normalized) return null;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
 
 type Params = {
   messageId?: string;
@@ -68,28 +76,56 @@ type Params = {
   index?: string;
 };
 
+const FALLBACK_CADENCE_OPTIONS: readonly PlanCadenceOption[] = [
+  { id: 'week', label: 'Semaine', suffix: 'semaine' },
+  { id: 'month', label: 'Mois', suffix: 'mois' },
+];
+
+/** Coque d'input partagée — `planFinanceInputStyle` renvoie un `ViewStyle` compatible `TextInput`. */
+const inputShellStyle = planFinanceInputStyle() as TextStyle;
+
 export default function PlanCreateScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<Params>();
   const pf = planFinanceKit.colors;
 
+  const subtype = (params.subtype ?? 'fonds_urgence') as PlanSubtype;
+  const subtypeLabel = PLAN_SUBTYPE_LABELS[subtype];
+  /** Titre hero = nom du template / stratégie (catalogue), pas le générique « Nouveau plan ». */
+  const screenTitle = params.titre?.trim() || subtypeLabel || 'Nouveau plan';
+  const screenLead = PLAN_SUBTYPE_DESCRIPTIONS[subtype];
+  const isDebtWizard = usesDebtPayoffWizard(subtype);
+  const config = useMemo(() => getPlanTypeFormConfig(subtype), [subtype]);
+  const cadenceField = useMemo(() => config.fields.find((f) => f.kind === 'cadence'), [config]);
+  const cadenceOptions = cadenceField?.cadenceOptions ?? FALLBACK_CADENCE_OPTIONS;
+  const hasAccountField = useMemo(() => config.fields.some((f) => f.kind === 'account'), [config]);
+
   const [accounts, setAccounts] = useState<AccountOption[]>(manualAccountOptions());
   const [accountPickerOpen, setAccountPickerOpen] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState('');
-  const [cadenceAmount, setCadenceAmount] = useState('150');
-  const [cadenceFrequency, setCadenceFrequency] = useState<CadenceFrequency>('week');
-  const [dateCible, setDateCible] = useState('');
-  const [montantCible, setMontantCible] = useState(params.montantCible ?? '');
+  const [cadenceAmount, setCadenceAmount] = useState(cadenceField?.defaultAmount ?? '150');
+  const [cadenceFrequency, setCadenceFrequency] = useState<string>(
+    cadenceField?.defaultCadenceId ?? cadenceOptions[0]?.id ?? 'week',
+  );
+  const [textValues, setTextValues] = useState<Partial<Record<PlanFieldKey, string>>>(() => ({
+    montant_cible: params.montantCible ?? '',
+  }));
   const [saving, setSaving] = useState(false);
 
+  const [wizardStep, setWizardStep] = useState(0);
+  const [wizardAssembled, setWizardAssembled] = useState<DebtWizardAssembled | null>(null);
+  const [wizardValid, setWizardValid] = useState(false);
+  const [wizardError, setWizardError] = useState<{ title: string; message: string } | undefined>();
+
   useEffect(() => {
+    if (!hasAccountField || isDebtWizard) return;
     void (async () => {
       const stored = await getSimulatedAccounts();
       const options = stored.length ? toAccountOptions(stored) : manualAccountOptions();
       setAccounts(options);
       setSelectedAccountId((current) => current || options[0]?.id || '');
     })();
-  }, []);
+  }, [hasAccountField, isDebtWizard]);
 
   const queue = useMemo<QueueItem[]>(() => {
     if (!params.queue) return [];
@@ -107,61 +143,51 @@ export default function PlanCreateScreen() {
     () => ({
       id: `draft-${params.subtype ?? 'plan'}`,
       category: (params.category ?? 'epargne') as PlanCategory,
-      subtype: (params.subtype ?? 'fonds_urgence') as PlanSubtype,
-      titre: params.titre ?? 'Nouveau plan',
-      description: params.raison ?? '',
+      subtype,
+      titre: screenTitle,
+      description: params.raison ?? screenLead ?? '',
       statut: 'suggere',
       montant_actuel: 0,
       montant_cible: params.montantCible ? Number(params.montantCible) : null,
       etapes: [],
-      raison_recommandation: params.raison ?? '',
+      raison_recommandation: params.raison ?? screenLead ?? '',
       signal_declencheur: (params.signal ?? 'fonds_urgence:couverture_moins_3_mois') as PlanSuggere['signal_declencheur'],
     }),
-    [params],
+    [params, screenLead, screenTitle, subtype],
   );
 
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
+  const cadenceSuffix = useMemo(
+    () => cadenceOptions.find((o) => o.id === cadenceFrequency)?.suffix ?? 'semaine',
+    [cadenceOptions, cadenceFrequency],
+  );
   const cadenceLabel = useMemo(() => {
     const amount = cadenceAmount.trim() || '0';
-    return `${amount} $ / ${cadenceFrequency === 'week' ? 'semaine' : 'mois'}`;
-  }, [cadenceAmount, cadenceFrequency]);
+    return `${amount} $ / ${cadenceSuffix}`;
+  }, [cadenceAmount, cadenceSuffix]);
 
-  const handleSave = useCallback(async () => {
-    if (saving) return;
+  const setTextValue = useCallback((key: PlanFieldKey, value: string) => {
+    setTextValues((prev) => ({ ...prev, [key]: value }));
+  }, []);
 
-    const parsedTarget = parsePlanAmountInput(montantCible);
-    const requiresTarget = !planSubtypeSansMontantCible(suggestion.subtype);
-    if (requiresTarget && (parsedTarget == null || parsedTarget <= 0)) {
-      Alert.alert(
-        'Montant requis',
-        'Indiquez un montant cible supérieur à 0 pour créer ce plan.',
-      );
-      return;
-    }
+  const handleWizardValidity = useCallback(
+    (valid: boolean, error?: { title: string; message: string }) => {
+      setWizardValid(valid);
+      setWizardError(error);
+    },
+    [],
+  );
 
-    const parsedCadence = parsePlanAmountInput(cadenceAmount);
-    if (parsedCadence == null || parsedCadence <= 0) {
-      Alert.alert(
-        'Cadence invalide',
-        'Indiquez un montant de cadence supérieur à 0.',
-      );
-      return;
-    }
-
-    if (!selectedAccount?.label) {
-      Alert.alert('Compte requis', 'Choisissez un compte lié pour ce plan.');
-      return;
-    }
-
-    setSaving(true);
-    tapHaptic();
-    try {
-      const plan = activateSuggestedPlan(suggestion, {
-        compte_lie: selectedAccount.label,
-        cadence: cadenceLabel,
-        date_cible: dateCible.trim() || undefined,
-        montant_cible: parsedTarget ?? suggestion.montant_cible,
-      });
+  const persistPlan = useCallback(
+    async (fields: {
+      compte_lie?: string;
+      cadence?: string;
+      date_cible?: string;
+      montant_cible?: number | null;
+      montant_actuel?: number;
+      parametres?: DebtWizardAssembled['parametres'];
+    }) => {
+      const plan = activateSuggestedPlan(suggestion, fields);
       await appendUserPlan(plan);
 
       const [next, ...rest] = queue;
@@ -186,25 +212,196 @@ export default function PlanCreateScreen() {
 
       await setPendingPlanChatConfirmation(total);
       router.back();
+    },
+    [index, params.messageId, queue, router, suggestion, total],
+  );
+
+  const handleSave = useCallback(async () => {
+    if (saving) return;
+
+    if (isDebtWizard) {
+      if (wizardStep < debtWizardStepCount() - 1) {
+        if (!wizardValid) {
+          Alert.alert(wizardError?.title ?? 'Étape incomplète', wizardError?.message ?? 'Complète cette étape.');
+          return;
+        }
+        tapHaptic();
+        setWizardStep((s) => s + 1);
+        return;
+      }
+
+      if (!wizardValid || !wizardAssembled) {
+        Alert.alert(wizardError?.title ?? 'Plan incomplet', wizardError?.message ?? 'Complète l’assistant.');
+        return;
+      }
+
+      setSaving(true);
+      tapHaptic();
+      try {
+        const loans = await getLoans();
+        const parametres = wizardAssembled.parametres
+          ? sanitizeDebtParametresForAcceleratedPlan(wizardAssembled.parametres, loans)
+          : undefined;
+        const dettes = parametres?.dettes ?? [];
+        const montantCible =
+          dettes.length > 0
+            ? dettes.reduce((sum, d) => sum + d.solde, 0)
+            : wizardAssembled.montant_cible;
+        await persistPlan({
+          cadence: wizardAssembled.cadence,
+          date_cible: wizardAssembled.date_cible,
+          montant_cible: montantCible,
+          montant_actuel: wizardAssembled.montant_actuel,
+          parametres,
+        });
+      } catch {
+        Alert.alert('Erreur', "Impossible d'enregistrer le plan. Réessayez.");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    const input = {
+      subtype,
+      values: textValues,
+      accountLabel: hasAccountField ? selectedAccount?.label : undefined,
+      cadenceLabel: cadenceField ? cadenceLabel : undefined,
+    };
+
+    const error = validatePlanCreation(input);
+    if (error) {
+      Alert.alert(error.title, error.message);
+      return;
+    }
+
+    setSaving(true);
+    tapHaptic();
+    try {
+      const assembled = assemblePlanCreationFields(input);
+      await persistPlan({
+        compte_lie: assembled.compte_lie,
+        cadence: assembled.cadence,
+        date_cible: assembled.date_cible,
+        montant_cible: assembled.montant_cible ?? suggestion.montant_cible,
+        montant_actuel: assembled.montant_actuel,
+        parametres: assembled.parametres,
+      });
     } catch {
       Alert.alert('Erreur', "Impossible d'enregistrer le plan. Réessayez.");
     } finally {
       setSaving(false);
     }
   }, [
-    cadenceAmount,
+    cadenceField,
     cadenceLabel,
-    dateCible,
-    index,
-    montantCible,
-    params.messageId,
-    queue,
-    router,
+    hasAccountField,
+    isDebtWizard,
+    persistPlan,
     saving,
     selectedAccount?.label,
-    suggestion,
-    total,
+    subtype,
+    suggestion.montant_cible,
+    textValues,
+    wizardAssembled,
+    wizardError,
+    wizardStep,
+    wizardValid,
   ]);
+
+  const handleSecondary = useCallback(() => {
+    if (isDebtWizard && wizardStep > 0) {
+      tapHaptic();
+      setWizardStep((s) => s - 1);
+      return;
+    }
+    router.back();
+  }, [isDebtWizard, router, wizardStep]);
+
+  const primaryLabel = useMemo(() => {
+    if (isDebtWizard) {
+      if (wizardStep < debtWizardStepCount() - 1) return 'Continuer';
+      return index < total ? 'Créer et continuer' : 'Créer le plan';
+    }
+    return index < total ? 'Créer et continuer' : 'Créer le plan';
+  }, [index, isDebtWizard, total, wizardStep]);
+
+  const secondaryLabel = isDebtWizard && wizardStep > 0 ? 'Retour' : 'Annuler';
+
+  const renderField = (field: PlanFormField) => {
+    switch (field.kind) {
+      case 'account':
+        return (
+          <Field key={field.key} label={field.label}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                tapHaptic();
+                setAccountPickerOpen(true);
+              }}
+              style={({ pressed }) => [planFinanceInputStyle(), styles.selectRow, pressed && styles.pressed]}
+            >
+              <Text style={[styles.inputText, { color: selectedAccount ? pf.text : pf.textMuted }]}>
+                {selectedAccount?.label ?? 'Choisir un compte'}
+              </Text>
+            </Pressable>
+          </Field>
+        );
+
+      case 'cadence':
+        return (
+          <Field key={field.key} label={field.label}>
+            <View style={styles.cadenceRow}>
+              <TextInput
+                value={cadenceAmount}
+                onChangeText={setCadenceAmount}
+                placeholder={field.defaultAmount ?? '150'}
+                placeholderTextColor={pf.textMuted}
+                keyboardType="numeric"
+                style={[inputShellStyle, styles.cadenceAmount, styles.inputText, { color: pf.text }]}
+              />
+              <View style={styles.cadenceTabs}>
+                <SegmentedTabs
+                  tabs={cadenceOptions.map((o) => ({ id: o.id, label: o.label }))}
+                  active={cadenceFrequency}
+                  onChange={setCadenceFrequency}
+                  showDivider={false}
+                  size="sm"
+                />
+              </View>
+            </View>
+          </Field>
+        );
+
+      case 'date':
+        return (
+          <View key={field.key} style={styles.dateField}>
+            <DatePickerField
+              label={field.label}
+              value={textValues.date_cible ?? ''}
+              placeholder="Choisir une date"
+              onChangeDate={(value) => setTextValue('date_cible', value)}
+              labelStyle={planFinanceEyebrowStyle()}
+            />
+          </View>
+        );
+
+      default: {
+        return (
+          <Field key={field.key} label={field.label}>
+            <TextInput
+              value={textValues[field.key] ?? ''}
+              onChangeText={(value) => setTextValue(field.key, value)}
+              placeholder={field.placeholder}
+              placeholderTextColor={pf.textMuted}
+              keyboardType="numeric"
+              style={[inputShellStyle, styles.inputText, { color: pf.text }]}
+            />
+          </Field>
+        );
+      }
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: pf.background }]} edges={['top', 'bottom']}>
@@ -217,106 +414,63 @@ export default function PlanCreateScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={[styles.progress, planFinanceEyebrowStyle()]}>{`PLAN ${index} DE ${total}`}</Text>
-          <Text style={[styles.title, planFinanceFonts.heroTitle]}>{suggestion.titre}</Text>
+          {total > 1 || !isDebtWizard ? (
+            <Text style={[styles.progress, planFinanceEyebrowStyle()]}>{`PLAN ${index} DE ${total}`}</Text>
+          ) : null}
+          <Text style={[styles.title, planFinanceFonts.heroTitle]}>{screenTitle}</Text>
+          {screenLead ? (
+            <Text style={[styles.wizardLead, interMediumText, { color: pf.textMuted }]} numberOfLines={2}>
+              {screenLead}
+            </Text>
+          ) : null}
 
-          <View style={styles.form}>
-            <Field label="MONTANT CIBLE">
-              <TextInput
-                value={montantCible}
-                onChangeText={setMontantCible}
-                placeholder="Ex. 10 000"
-                placeholderTextColor={pf.textMuted}
-                keyboardType="numeric"
-                style={[planFinanceInputStyle(), styles.inputText, { color: pf.text }]}
-              />
-            </Field>
+          {isDebtWizard ? (
+            <DebtPlanWizard
+              subtype={subtype}
+              step={wizardStep}
+              onAssembledChange={setWizardAssembled}
+              onValidityChange={handleWizardValidity}
+            />
+          ) : (
+            <View style={styles.form}>{config.fields.map(renderField)}</View>
+          )}
 
-            <Field label="COMPTE LIÉ">
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  tapHaptic();
-                  setAccountPickerOpen(true);
-                }}
-                style={({ pressed }) => [planFinanceInputStyle(), styles.selectRow, pressed && styles.pressed]}
-              >
-                <Text style={[styles.inputText, { color: selectedAccount ? pf.text : pf.textMuted }]}>
-                  {selectedAccount?.label ?? 'Choisir un compte'}
-                </Text>
-              </Pressable>
-            </Field>
-
-            <Field label="CADENCE">
-              <View style={styles.cadenceRow}>
-                <TextInput
-                  value={cadenceAmount}
-                  onChangeText={setCadenceAmount}
-                  placeholder="150"
-                  placeholderTextColor={pf.textMuted}
-                  keyboardType="numeric"
-                  style={[planFinanceInputStyle(), styles.cadenceAmount, styles.inputText, { color: pf.text }]}
-                />
-                <View style={styles.cadenceTabs}>
-                  <SegmentedTabs
-                    tabs={[
-                      { id: 'week' as const, label: 'Semaine' },
-                      { id: 'month' as const, label: 'Mois' },
-                    ]}
-                    active={cadenceFrequency}
-                    onChange={setCadenceFrequency}
-                    showDivider={false}
-                    size="sm"
-                  />
-                </View>
-              </View>
-            </Field>
-
-            <View style={styles.dateField}>
-              <DatePickerField
-                label="DATE CIBLE"
-                value={dateCible}
-                placeholder="Choisir une date"
-                onChangeDate={setDateCible}
-                labelStyle={planFinanceEyebrowStyle()}
-              />
-            </View>
+          <View style={styles.footer}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={handleSecondary}
+              style={({ pressed }) => [planFinanceSecondaryButtonStyle(), pressed && styles.pressed]}
+            >
+              <Text style={[styles.secondaryLabel, interMediumText, { color: pf.text }]}>{secondaryLabel}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => void handleSave()}
+              disabled={saving}
+              style={({ pressed }) => [
+                planFinancePrimaryButtonStyle(),
+                pressed && styles.pressed,
+                saving && styles.disabled,
+              ]}
+            >
+              <Text style={[styles.primaryLabel, interSemiboldText, { color: pf.textOnAccent }]}>
+                {primaryLabel}
+              </Text>
+            </Pressable>
           </View>
         </ScrollView>
-
-        <View style={styles.footer}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.back()}
-            style={({ pressed }) => [planFinanceSecondaryButtonStyle(), pressed && styles.pressed]}
-          >
-            <Text style={[styles.secondaryLabel, interMediumText, { color: pf.text }]}>Annuler</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => void handleSave()}
-            disabled={saving}
-            style={({ pressed }) => [
-              planFinancePrimaryButtonStyle(),
-              pressed && styles.pressed,
-              saving && styles.disabled,
-            ]}
-          >
-            <Text style={[styles.primaryLabel, interSemiboldText, { color: pf.textOnAccent }]}>
-              {index < total ? 'Créer et continuer' : 'Créer le plan'}
-            </Text>
-          </Pressable>
-        </View>
       </KeyboardAvoidingView>
 
-      <SettingsPickerSheet
-        visible={accountPickerOpen}
-        title="Compte lié"
-        options={accounts.map((account) => ({ id: account.id, label: account.label }))}
-        selectedId={selectedAccountId || accounts[0]?.id || ''}
-        onClose={() => setAccountPickerOpen(false)}
-        onSelect={setSelectedAccountId}
-      />
+      {hasAccountField && !isDebtWizard ? (
+        <SettingsPickerSheet
+          visible={accountPickerOpen}
+          title="Compte lié"
+          options={accounts.map((account) => ({ id: account.id, label: account.label }))}
+          selectedId={selectedAccountId || accounts[0]?.id || ''}
+          onClose={() => setAccountPickerOpen(false)}
+          onSelect={setSelectedAccountId}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -347,6 +501,11 @@ const styles = StyleSheet.create({
   },
   title: {
     marginBottom: spacing.sm,
+  },
+  wizardLead: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: spacing.xs,
   },
   form: {
     gap: planFinanceKit.layout.fieldGap,
@@ -379,11 +538,8 @@ const styles = StyleSheet.create({
   },
   footer: {
     gap: spacing.md,
-    paddingHorizontal: spacing.lg,
+    marginTop: spacing.md,
     paddingBottom: spacing.lg,
-    paddingTop: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: planFinanceKit.colors.border,
   },
   secondaryLabel: {
     fontSize: 15,

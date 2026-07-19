@@ -12,6 +12,7 @@ import {
   jakartaExtraBoldText,
   jakartaMediumText,
   jakartaSemiboldText,
+  moneyAmountTypography,
   spacing,
   typography,
 } from '@/constants/theme';
@@ -239,7 +240,7 @@ export function PaycheckAllocationScreen() {
             ]}
           >
             <DashboardSectionLabel>Paie reçue aujourd&apos;hui</DashboardSectionLabel>
-            <Text style={[styles.heroAmount, { color: colors.text }, jakartaBoldText]}>
+            <Text style={[styles.heroAmount, moneyAmountTypography({ tier: 'hero', fontSize: 34, lineHeight: 40, letterSpacing: -0.5 }), { color: colors.text }]}>
               {formatDisplayMoneyAbsolute(PAYCHECK_MOCK_AMOUNT)}
             </Text>
             <Text style={[styles.heroSource, { color: colors.textMuted }, jakartaMediumText]}>
@@ -380,12 +381,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.xs,
   },
-  heroAmount: {
-    fontSize: 34,
-    lineHeight: 40,
-    letterSpacing: -0.5,
-    fontVariant: ['tabular-nums'],
-  },
+  heroAmount: {},
   heroSource: {
     fontSize: typography.micro,
     lineHeight: typography.micro + 4,

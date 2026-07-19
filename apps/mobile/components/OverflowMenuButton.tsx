@@ -11,7 +11,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { MODIFIER_ICON_NAME, MODIFIER_ICON_SIZE } from '@/components/ModifierButton';
-import { destructiveTextActionStyle, jakartaMediumText, radius, spacing, typography } from '@/constants/theme';
+import { destructiveTextActionStyle, jakartaBoldText, radius, spacing, typography } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -162,9 +162,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   menuLabel: {
-    ...jakartaMediumText,
+    ...jakartaBoldText,
     fontSize: typography.body,
-    fontWeight: '700',
   },
   cancelRow: {
     minHeight: 52,
@@ -174,9 +173,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
   },
   cancelLabel: {
-    ...jakartaMediumText,
+    ...jakartaBoldText,
     fontSize: typography.body,
-    fontWeight: '700',
   },
   pressed: {
     opacity: 0.76,

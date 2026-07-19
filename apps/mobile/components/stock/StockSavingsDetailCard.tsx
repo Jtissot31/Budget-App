@@ -40,7 +40,7 @@ function DetailRow({
   label: string;
   value: string;
   valueColor?: string;
-  /** Money / tabular metrics use Onest; plain copy stays Jakarta. */
+  /** Money / tabular metrics use Inter; plain copy stays Jakarta. */
   valueKind?: 'money' | 'text';
   isLast?: boolean;
 }) {

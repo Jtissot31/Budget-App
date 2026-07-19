@@ -15,9 +15,15 @@ import { AgendaView, type AgendaViewRef } from '@/components/AgendaView';
 import { ContactFormModal } from '@/components/ContactFormModal';
 import { MerchantDirectory } from '@/components/MerchantDirectory';
 import { MerchantEditModal, type MerchantEditTarget } from '@/components/MerchantEditModal';
-import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
+import { DashboardCard } from '@/components/DashboardCard';
 import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
 import { type FormFeedback } from '@/lib/formFeedback';
+import {
+  formatHistoryDaySectionHeader,
+  formatListSectionTotal,
+  sumHistoryDayTotals,
+  todayDayKey,
+} from '@/lib/transactionListSectionFormat';
 import {
   createNewRecurringPaymentForm,
   RecurringPaymentFormModal,
@@ -39,6 +45,8 @@ import {
   colors,
   FLOATING_NAV_CONTENT_PADDING,
   ICON_WELL_SIZE,
+  jakartaBoldText,
+  jakartaSemiboldText,
   PAGE_PADDING_HORIZONTAL,
   radius,
   screenHorizontalGutter,
@@ -61,7 +69,6 @@ import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import {
   UNIFORM_ACTION_BUTTON_MIN_HEIGHT,
-  UNIFORM_SECTION_HEADER_MIN_HEIGHT,
 } from '@/lib/uniformGroupStyles';
 import { useContactPhotoMap } from '@/hooks/useContactPhotoMap';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
@@ -117,15 +124,29 @@ const HistoryDayGroup = memo(function HistoryDayGroup({
   horizontalGutter,
   onPressTransaction,
 }: HistoryDayGroupProps) {
+  const { colors } = useAppTheme();
+  const todayKey = useMemo(() => todayDayKey(), []);
+  const sectionHeader = useMemo(() => formatHistoryDaySectionHeader(date, todayKey), [date, todayKey]);
+  const sectionTotal = useMemo(() => {
+    const totals = sumHistoryDayTotals(txs);
+    return formatListSectionTotal(totals.expenseTotal, totals.incomeTotal);
+  }, [txs]);
+  const textFaint = colors.textMuted;
+  const textMutedSoft = colors.textSecondary;
+
   return (
     <View style={[styles.group, { paddingHorizontal: horizontalGutter }]}>
-      <View style={styles.groupHeaderRow}>
-        <DashboardSectionLabel>
-          {new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
-        </DashboardSectionLabel>
+      <View style={styles.dateHeader}>
+        <Text style={[styles.dateHeaderLabel, { color: textFaint }]}>
+          <Text style={[styles.dateHeaderBold, { color: textMutedSoft }]}>{sectionHeader.titleBold}</Text>
+          {sectionHeader.titleSuffix}
+        </Text>
+        {sectionTotal ? (
+          <Text style={[styles.dateHeaderTotal, { color: textFaint }]}>{sectionTotal}</Text>
+        ) : null}
       </View>
-      <PlanFinanceContainer style={styles.groupCard}>
-        {txs.map((tx, index) => (
+      <DashboardCard padding={0} innerStyle={styles.groupCard}>
+        {txs.map((tx) => (
           <TransactionRow
             key={tx.id}
             transaction={tx}
@@ -135,10 +156,9 @@ const HistoryDayGroup = memo(function HistoryDayGroup({
             merchantOverrideByLabel={merchantOverrideByLabel}
             onPressId={onPressTransaction}
             embedded
-            isLast={index === txs.length - 1}
           />
         ))}
-      </PlanFinanceContainer>
+      </DashboardCard>
     </View>
   );
 });
@@ -507,7 +527,7 @@ export default function TransactionsScreen() {
             ListHeaderComponent={historyListHeader}
             contentContainerStyle={[
               styles.listWithHeader,
-              { backgroundColor: contentCanvas, paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING },
+              { backgroundColor: contentCanvas, paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING, paddingTop: spacing.xl },
             ]}
             refreshControl={
               <RefreshControl
@@ -707,13 +727,29 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
     gap: spacing.md,
   },
-  groupHeaderRow: {
+  dateHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
-    gap: spacing.sm,
-    minHeight: UNIFORM_SECTION_HEADER_MIN_HEIGHT,
-    paddingHorizontal: spacing.xs,
+    paddingTop: 6,
+    paddingBottom: spacing.sm,
+  },
+  dateHeaderLabel: {
+    ...jakartaBoldText,
+    fontSize: 11.5,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    flex: 1,
+    minWidth: 0,
+    paddingRight: spacing.sm,
+  },
+  dateHeaderBold: {
+    ...jakartaBoldText,
+  },
+  dateHeaderTotal: {
+    ...jakartaSemiboldText,
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
   },
   groupCard: {
     overflow: 'hidden',
@@ -742,7 +778,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: 44,
     height: 5,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     backgroundColor: 'rgba(255,255,255,0.16)',
     marginBottom: spacing.md,
   },

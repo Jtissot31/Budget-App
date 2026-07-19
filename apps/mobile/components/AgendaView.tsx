@@ -1,44 +1,50 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { Platform, Pressable, StyleSheet, Text, View, ScrollView, type TextStyle, type ViewStyle } from 'react-native';
-import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { frequencyLabel } from '@/lib/recurringPaymentsForm';
-import { MonthSelector } from '@/components/MonthSelector';
-import { DashboardCard } from '@/components/DashboardCard';
-import { DashboardDateBadge } from '@/components/DashboardDateBadge';
 import { PaymentDetailSheet, type PaymentDetailPayload } from '@/components/PaymentDetailSheet';
 import { AgendaPaymentRow } from '@/components/AgendaPaymentRow';
+import { AgendaCashHeroCard } from '@/components/AgendaCashHeroCard';
+import { DashboardCard } from '@/components/DashboardCard';
 import {
-  CONTROL_HAIRLINE_BORDER_WIDTH,
   FLOATING_NAV_CONTENT_PADDING,
+  jakartaBoldText,
+  jakartaExtraBoldText,
   jakartaMediumText,
   jakartaSemiboldText,
+  moneyAmountTypography,
   screenHorizontalGutter,
   spacing,
-  typography,
   type AppColors,
 } from '@/constants/theme';
-import { typographyKit } from '@/constants/typographyKit';
-import { UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
+import { computeAvailableCashToday } from '@/lib/availableCashToday';
 import { dataEvents } from '@/lib/events';
-import { getEarliestExpenseMonthStart, getLoans, getRecentIncomeTransactions, getRecurringPayments } from '@/lib/db';
+import {
+  getEarliestExpenseMonthStart,
+  getLoans,
+  getRecentIncomeTransactions,
+  getRecurringPayments,
+  getSimulatedAccounts,
+} from '@/lib/db';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import {
   ESTIMATED_PAYCHECK_LABEL,
   inferAllEstimatedPaychecksForRange,
   PAYCHECK_TRANSACTION_LOOKBACK_LIMIT,
+  resolveNextPaycheckForAccount,
 } from '@/lib/estimatedPaycheck';
 import { tapHaptic } from '@/lib/haptics';
 import { isMonthAfter, startOfMonth } from '@/lib/budgetMonth';
 import { useAppTheme } from '@/lib/themeContext';
 import { getMerchantLogoUrl } from '@/lib/merchantLogo';
-import { resolvePaymentStatusBadge } from '@/lib/paymentStatusBadge';
+import { daysUntilPayment, formatDaysUntilMeta, resolvePaymentStatusBadge } from '@/lib/paymentStatusBadge';
 import {
   buildLoanByRecurringPaymentId,
   resolveAgendaBillDisplayIcon,
 } from '@/lib/recurringPaymentPresentation';
-import type { Loan, RecurringPayment, Transaction } from '@/types';
+import type { Loan, RecurringPayment, SimulatedAccount, Transaction } from '@/types';
 
 type AgendaViewProps = {
   headerComponent?: ReactNode;
@@ -64,13 +70,18 @@ export type AgendaViewRef = {
   resetToTop: () => void;
 };
 
-const DAYS = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
-const CALENDAR_DAY_SIZE = 36;
-/** Frameless merchant logos under day numbers — match Historique row `noBackground` sizing. */
-const CALENDAR_LOGO_SIZE = 16;
-const MAX_CALENDAR_LOGOS = 3;
-
+const DAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 const PAY_LABEL = ESTIMATED_PAYCHECK_LABEL;
+const PAY_DISPLAY_LABEL = 'Paie estimée';
+type AgendaViewMode = 'list' | 'calendar';
+
+type AgendaUpcomingSection = {
+  titleBold: string;
+  titleSuffix?: string;
+  items: Array<{ bill: AgendaBill; dateKey: string }>;
+  expenseTotal: number;
+  incomeTotal: number;
+};
 
 /** Exemple d’échéances — à remplacer par des données API plus tard */
 const BILLS_BY_DATE: Record<string, AgendaBill[]> = {
@@ -303,12 +314,9 @@ function isPayBill(bill: AgendaBill) {
   return isActualPayBill(bill) || isEstimatedPayBill(bill);
 }
 
-function formatAgendaUpcomingDate(dateKey: string) {
-  return new Date(`${dateKey}T12:00:00`).toLocaleDateString('fr-FR', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'long',
-  });
+function capitalizeFirst(value: string) {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function resolveBillDisplayLogo(bill: AgendaBill) {
@@ -316,6 +324,153 @@ function resolveBillDisplayLogo(bill: AgendaBill) {
   if (storedLogo) return storedLogo;
   if (bill.recurring || bill.sourceId) return getMerchantLogoUrl(bill.name);
   return null;
+}
+
+function formatAgendaShortDate(dateKey: string) {
+  const date = parseIsoDay(dateKey);
+  if (!date) return dateKey;
+  const weekday = date
+    .toLocaleDateString('fr-FR', { weekday: 'short' })
+    .replace(/\.$/, '')
+    .toLowerCase();
+  const day = date.getDate();
+  const month = date.toLocaleDateString('fr-FR', { month: 'short' }).replace(/\.$/, '');
+  const dayLabel = day === 1 ? '1er' : String(day);
+  return `${capitalizeFirst(weekday)}. ${dayLabel} ${month}`;
+}
+
+function formatAgendaSectionSuffix(dateKey: string) {
+  return ` · ${formatAgendaShortDate(dateKey).toLowerCase()}`;
+}
+
+function endOfWeek(date: Date) {
+  const day = date.getDay();
+  const daysUntilSunday = day === 0 ? 0 : 7 - day;
+  return addDays(date, daysUntilSunday);
+}
+
+function sumSectionTotals(items: Array<{ bill: AgendaBill }>) {
+  let expenseTotal = 0;
+  let incomeTotal = 0;
+  items.forEach(({ bill }) => {
+    if ((bill.kind ?? 'payment') === 'income' || isPayBill(bill)) {
+      incomeTotal += bill.amount;
+    } else {
+      expenseTotal += bill.amount;
+    }
+  });
+  return { expenseTotal, incomeTotal };
+}
+
+function formatSectionTotal(expenseTotal: number, incomeTotal: number) {
+  const parts: string[] = [];
+  if (expenseTotal > 0) parts.push(`−${formatDisplayMoneyAbsolute(expenseTotal)}`);
+  if (incomeTotal > 0) parts.push(`+${formatDisplayMoneyAbsolute(incomeTotal)}`);
+  return parts.join(' · ');
+}
+
+function groupUpcomingIntoSections(
+  upcoming: Array<[string, AgendaBill[]]>,
+  todayKey: string,
+): AgendaUpcomingSection[] {
+  const today = parseIsoDay(todayKey);
+  if (!today || upcoming.length === 0) return [];
+
+  const tomorrow = addDays(today, 1);
+  const tomorrowKey = dateKeyFromDate(tomorrow);
+  const weekEnd = endOfWeek(today);
+  const nextWeekStart = addDays(weekEnd, 1);
+  const nextWeekEnd = addDays(nextWeekStart, 6);
+
+  const tomorrowItems: AgendaUpcomingSection['items'] = [];
+  const thisWeekItems: AgendaUpcomingSection['items'] = [];
+  const nextWeekItems: AgendaUpcomingSection['items'] = [];
+  const laterBuckets = new Map<string, AgendaUpcomingSection['items']>();
+
+  upcoming.forEach(([dateKey, bills]) => {
+    const date = parseIsoDay(dateKey);
+    if (!date) return;
+    const entries = bills.map((bill) => ({ bill, dateKey }));
+
+    if (dateKey === tomorrowKey) {
+      tomorrowItems.push(...entries);
+      return;
+    }
+    if (date > tomorrow && date <= weekEnd) {
+      thisWeekItems.push(...entries);
+      return;
+    }
+    if (date >= nextWeekStart && date <= nextWeekEnd) {
+      nextWeekItems.push(...entries);
+      return;
+    }
+
+    const inNewMonth = date.getMonth() !== today.getMonth() || date.getFullYear() !== today.getFullYear();
+    const label =
+      inNewMonth && date.getDate() <= 7
+        ? `Début ${date.toLocaleDateString('fr-FR', { month: 'long' })}`
+        : 'Plus tard';
+    const bucket = laterBuckets.get(label) ?? [];
+    bucket.push(...entries);
+    laterBuckets.set(label, bucket);
+  });
+
+  const sections: AgendaUpcomingSection[] = [];
+  if (tomorrowItems.length) {
+    const totals = sumSectionTotals(tomorrowItems);
+    sections.push({
+      titleBold: 'Demain',
+      titleSuffix: formatAgendaSectionSuffix(tomorrowKey),
+      items: tomorrowItems,
+      ...totals,
+    });
+  }
+  if (thisWeekItems.length) {
+    sections.push({
+      titleBold: 'Cette semaine',
+      items: thisWeekItems,
+      ...sumSectionTotals(thisWeekItems),
+    });
+  }
+  if (nextWeekItems.length) {
+    sections.push({
+      titleBold: 'Semaine prochaine',
+      items: nextWeekItems,
+      ...sumSectionTotals(nextWeekItems),
+    });
+  }
+  laterBuckets.forEach((items, titleBold) => {
+    sections.push({
+      titleBold,
+      items,
+      ...sumSectionTotals(items),
+    });
+  });
+
+  return sections;
+}
+
+function buildAgendaRowSubtitle(
+  bill: AgendaBill,
+  dateKey: string,
+  todayKey: string,
+  recurringPayments: RecurringPayment[],
+) {
+  const recurring = bill.sourceId ? recurringPayments.find((payment) => payment.id === bill.sourceId) : undefined;
+  if (recurring && bill.recurring) {
+    return `${frequencyLabel(recurring.frequency)} · ${bill.account}`;
+  }
+
+  const days = daysUntilPayment(dateKey, new Date(`${todayKey}T12:00:00`));
+  const shortDate = formatAgendaShortDate(dateKey);
+  if (days > 0 && days <= 14) {
+    return `${shortDate} · ${formatDaysUntilMeta(days)}`;
+  }
+  return shortDate;
+}
+
+function resolveBillDisplayName(bill: AgendaBill) {
+  return isEstimatedPayBill(bill) ? PAY_DISPLAY_LABEL : bill.name;
 }
 
 function resolveBillDisplayIcon(
@@ -456,78 +611,41 @@ function filterEstimatedPayFromAgenda(
   return next;
 }
 
-/** Liste « À venir » : pas de dépôts de paie estimés — revenus/paiements récurrents uniquement. */
-function excludeEstimatedPayFromBillsByDate(billsByDate: Record<string, AgendaBill[]>) {
-  const next: Record<string, AgendaBill[]> = {};
-  Object.entries(billsByDate).forEach(([key, bills]) => {
-    const filtered = bills.filter((bill) => !isEstimatedPayBill(bill));
-    if (filtered.length) next[key] = filtered;
-  });
-  return next;
-}
-
 /**
- * Marqueurs du calendrier, indépendants, pour distinguer dépôts réels et estimés :
- * - `hasConfirmedPay` : un vrai dépôt de paie enregistré ce jour (revenu réel, non estimé) → signe `$` en haut à droite.
- * - `hasEstimatedPay` : un dépôt de paie estimé non encore reçu → ligne verte sous le chiffre (masquée si déjà confirmé).
- * - `hasPayment` : un ou plusieurs paiements (dépense) ce jour → une seule ligne orange (sous la verte).
- * Les deux lignes peuvent coexister : un paiement saisi un jour de paie n'est jamais masqué.
+ * Marqueurs du calendrier — points sous le jour (paiement / revenu).
  */
 function calendarDayMarkers(dateKey: string, billsByDate: Record<string, AgendaBill[]>) {
   const items = billsByDate[dateKey];
   if (!items?.length) {
-    return { hasConfirmedPay: false, hasEstimatedPay: false, hasPayment: false };
+    return { hasPayment: false, hasIncome: false };
   }
 
-  const hasConfirmedPay = items.some(
+  const hasIncome = items.some(
     (item) => (item.kind === 'income' || isPayBill(item)) && !isEstimatedPayBill(item),
-  );
-  const hasEstimatedPay = items.some(isEstimatedPayBill);
-  const hasPayment = items.some((item) => (item.kind ?? 'payment') !== 'income');
-  return { hasConfirmedPay, hasEstimatedPay, hasPayment };
+  ) || items.some(isEstimatedPayBill);
+  const hasPayment = items.some((item) => (item.kind ?? 'payment') !== 'income' && !isEstimatedPayBill(item));
+  return { hasPayment, hasIncome };
 }
 
-function getCalendarLogoBills(bills: AgendaBill[]) {
-  return bills
-    .filter((bill) => !isEstimatedPayBill(bill) && (bill.kind ?? 'payment') !== 'income')
-    .slice(0, MAX_CALENDAR_LOGOS)
-    .filter((bill) => Boolean(resolveBillDisplayLogo(bill)?.trim()));
-}
-
-function CalendarDayEventMarks({
-  bills,
-  showEstimatedDot,
+function CalendarDayDots({
+  hasPayment,
+  hasIncome,
   styles,
   colors,
-  loanByRecurringPaymentId,
 }: {
-  bills: AgendaBill[];
-  showEstimatedDot: boolean;
+  hasPayment: boolean;
+  hasIncome: boolean;
   styles: AgendaViewStyles;
   colors: AppColors;
-  loanByRecurringPaymentId: Map<string, Loan>;
 }) {
-  const logoBills = getCalendarLogoBills(bills);
-  if (!showEstimatedDot && logoBills.length === 0) {
-    return <View style={styles.eventMarkSpacer} />;
+  if (!hasPayment && !hasIncome) {
+    return <View style={styles.dotSpacer} />;
   }
 
   return (
-    <View style={styles.eventMarksRow}>
-      {showEstimatedDot ? (
-        <View style={[styles.eventDot, { backgroundColor: colors.accentGreen }]} />
-      ) : null}
-      {logoBills.map((bill, index) => (
-        <UserPickedIconWell
-          key={`${bill.sourceId ?? bill.name}-${index}`}
-          icon={resolveBillDisplayIcon(bill, loanByRecurringPaymentId)}
-          color={bill.color}
-          size={CALENDAR_LOGO_SIZE}
-          logoUrl={resolveBillDisplayLogo(bill)}
-          merchantLabel={bill.name}
-          noBackground
-        />
-      ))}
+    <View style={styles.dotsRow}>
+      {hasPayment ? <View style={[styles.eventDot, { backgroundColor: colors.textMuted }]} /> : null}
+      {hasIncome ? <View style={[styles.eventDot, styles.eventDotIncome, { backgroundColor: colors.accentGreen }]} /> : null}
     </View>
   );
 }
@@ -541,7 +659,9 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
   const scrollRef = useRef<ScrollView>(null);
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
+  const [viewMode, setViewMode] = useState<AgendaViewMode>('list');
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
+  const [simulatedAccounts, setSimulatedAccounts] = useState<SimulatedAccount[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [recentIncomeTransactions, setRecentIncomeTransactions] = useState<Transaction[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -555,14 +675,16 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
   const canGoAgendaNext = true;
 
   const loadRecurringPayments = useCallback(async () => {
-    const [payments, incomeTransactions, loadedLoans] = await Promise.all([
+    const [payments, incomeTransactions, loadedLoans, accounts] = await Promise.all([
       getRecurringPayments(),
       getRecentIncomeTransactions(INCOME_TRANSACTION_LOOKBACK_LIMIT),
       getLoans(),
+      getSimulatedAccounts(),
     ]);
     setRecurringPayments(payments);
     setRecentIncomeTransactions(incomeTransactions);
     setLoans(loadedLoans);
+    setSimulatedAccounts(accounts);
   }, []);
 
   const loanByRecurringPaymentId = useMemo(
@@ -593,6 +715,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
   const resetToTop = useCallback(() => {
     setYear(today.getFullYear());
     setMonth(today.getMonth());
+    setViewMode('list');
     setSelectedKey(null);
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [today]);
@@ -687,14 +810,48 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
       today,
       rangeEnd,
     );
-    const upcomingBillsByDate = excludeEstimatedPayFromBillsByDate(
-      mergeBillsByDate(baseBillsByDate, actualPayByDate),
+    const billsWithActualPay = mergeBillsByDate(baseBillsByDate, actualPayByDate);
+    const allEstimates = inferAllEstimatedPaychecksForRange(
+      recentIncomeTransactions,
+      recurringPayments,
+      today,
+      rangeEnd,
+      today,
+    );
+    const upcomingBillsByDate = filterEstimatedPayFromAgenda(
+      mergeBillsByDate(
+        billsWithActualPay,
+        buildAllEstimatedPaysByDate(allEstimates, billsWithActualPay),
+      ),
+      recentIncomeTransactions,
+      today,
     );
 
     return Object.entries(upcomingBillsByDate)
       .filter(([k]) => k >= todayKey && k <= rangeEndKey)
       .sort(([a], [b]) => a.localeCompare(b));
   }, [recentIncomeTransactions, recurringPayments, today, todayKey]);
+
+  const upcomingSections = useMemo(
+    () => groupUpcomingIntoSections(upcoming, todayKey),
+    [todayKey, upcoming],
+  );
+
+  const heroSnapshot = useMemo(() => {
+    const cash = computeAvailableCashToday({
+      simulatedAccounts,
+      recurringPayments,
+      incomeTransactions: recentIncomeTransactions,
+      today,
+    });
+    const nextPaycheck = resolveNextPaycheckForAccount(
+      undefined,
+      recurringPayments,
+      recentIncomeTransactions,
+      today,
+    );
+    return { cash, nextPaycheck };
+  }, [recentIncomeTransactions, recurringPayments, simulatedAccounts, today]);
 
   const upcomingCount = useMemo(
     () => upcoming.reduce((acc, [, bills]) => acc + bills.length, 0),
@@ -730,23 +887,47 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
     openBillDetail(b, dateKey);
   };
 
-  const renderAgendaPaymentGroup = (dateKey: string, bills: AgendaBill[]) => (
-    <DashboardCard padding={0} innerStyle={styles.agendaGroupCardInner}>
-      {bills.map((b, index) => (
-        <AgendaPaymentRow
-          key={`${dateKey}-${index}-${b.sourceId ?? b.name}`}
-          bill={b}
-          dateKey={dateKey}
-          statusLabel={resolveAgendaBillStatusLabel(dateKey, todayKey, b, recentIncomeTransactions)}
-          todayKey={todayKey}
-          onPress={() => onBillRowPress(b, dateKey)}
-          loanByRecurringPaymentId={loanByRecurringPaymentId}
-          embedded
-          isLast={index === bills.length - 1}
-        />
-      ))}
-    </DashboardCard>
-  );
+  const renderFlatBillRows = (items: Array<{ bill: AgendaBill; dateKey: string }>) =>
+    items.map(({ bill, dateKey: billDateKey }, index) => (
+      <AgendaPaymentRow
+        key={`${billDateKey}-${index}-${bill.sourceId ?? bill.name}`}
+        bill={bill}
+        dateKey={billDateKey}
+        statusLabel={resolveAgendaBillStatusLabel(billDateKey, todayKey, bill, recentIncomeTransactions)}
+        todayKey={todayKey}
+        onPress={() => onBillRowPress(bill, billDateKey)}
+        loanByRecurringPaymentId={loanByRecurringPaymentId}
+        embedded
+        displayName={resolveBillDisplayName(bill)}
+        subtitle={buildAgendaRowSubtitle(bill, billDateKey, todayKey, recurringPayments)}
+        estimatedIncome={isEstimatedPayBill(bill)}
+      />
+    ));
+
+  const monthTitle = viewMonth.toLocaleDateString('fr-FR', { month: 'long' });
+  const monthYear = String(viewMonth.getFullYear());
+  const textFaint = colors.textMuted;
+  const textMutedSoft = colors.textSecondary;
+  const surfaceSoft = colors.surfaceElevated;
+  const heroPaycheck = heroSnapshot.nextPaycheck;
+  const selectedDayTotals = selBills ? sumSectionTotals(selBills.map((bill) => ({ bill }))) : null;
+  const selectedDayTotal = selectedDayTotals
+    ? formatSectionTotal(selectedDayTotals.expenseTotal, selectedDayTotals.incomeTotal)
+    : '';
+  const selectedDaySuffix =
+    selectedKey === dateKeyFromDate(addDays(today, 1))
+      ? 'demain'
+      : selectedKey === todayKey
+        ? "aujourd'hui"
+        : null;
+
+  const setAgendaViewMode = (mode: AgendaViewMode) => {
+    tapHaptic();
+    setViewMode(mode);
+    if (mode === 'calendar' && !selectedKey) {
+      setSelectedKey(dateKeyFromDate(addDays(today, 1)));
+    }
+  };
 
   const scrollBottomPadding = insets.bottom + FLOATING_NAV_CONTENT_PADDING;
 
@@ -758,167 +939,214 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
-        contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPadding }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPadding, paddingHorizontal: contentGutter }]}
       >
         {headerComponent}
-        <View style={styles.agendaContentAfterHeader}>
-          <DashboardCard
-            padding={0}
-            style={styles.calendarCard}
-            innerStyle={styles.calendarCardInner}
-          >
-            <MonthSelector
-              month={viewMonth}
-              onPrevious={prevMonth}
-              onNext={nextMonth}
-              canGoPrevious={canGoAgendaPrevious}
-              canGoNext={canGoAgendaNext}
-              appearance="calendar"
-            />
-            <View style={styles.dowRow}>
-              {DAYS.map((d, i) => (
-                <Text key={i} style={styles.dow}>
-                  {d}
+
+        <View style={styles.contextBar}>
+          <View style={styles.ctxLeft}>
+            {viewMode === 'list' ? (
+              <Text style={[styles.ctxTitle, { color: colors.text }]}>À venir</Text>
+            ) : (
+              <View style={styles.ctxMonthRow}>
+                <Text style={[styles.ctxTitle, { color: colors.text }]}>
+                  {capitalizeFirst(monthTitle)}{' '}
+                  <Text style={[styles.ctxTitleMuted, { color: textFaint }]}>{monthYear}</Text>
                 </Text>
-              ))}
-            </View>
-            <View style={styles.grid}>
-              {cells.map((cell, i) => {
-                if (!cell) {
-                  return <View key={i} style={styles.cell} />;
-                }
-                const key = dateKey(year, month, cell.day);
-                const dayBills = billsByDate[key] ?? [];
-                const { hasConfirmedPay, hasEstimatedPay } = calendarDayMarkers(key, billsByDate);
-                const showEstimatedDot = hasEstimatedPay && !hasConfirmedPay;
-                const isToday = key === todayKey;
-                const isSel = key === selectedKey;
-                const past = key < todayKey;
-                return (
+                <View style={styles.calNav}>
                   <Pressable
-                    key={i}
-                    style={styles.cell}
-                    onPress={() => setSelectedKey(isSel ? null : key)}
                     accessibilityRole="button"
-                    accessibilityState={{ selected: isSel }}
+                    accessibilityLabel="Mois précédent"
+                    disabled={!canGoAgendaPrevious}
+                    onPress={prevMonth}
+                    style={({ pressed }) => [styles.calNavBtn, pressed && styles.pressed, !canGoAgendaPrevious && styles.calNavBtnDisabled]}
                   >
-                    <View style={styles.dayCellShell}>
+                    <AppIcon family="ionicons" name="chevron-back" size={14} color={textFaint} />
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Mois suivant"
+                    disabled={!canGoAgendaNext}
+                    onPress={nextMonth}
+                    style={({ pressed }) => [styles.calNavBtn, pressed && styles.pressed, !canGoAgendaNext && styles.calNavBtnDisabled]}
+                  >
+                    <AppIcon family="ionicons" name="chevron-forward" size={14} color={textFaint} />
+                  </Pressable>
+                </View>
+              </View>
+            )}
+          </View>
+
+          <View style={[styles.viewSwitch, { backgroundColor: surfaceSoft, borderColor: colors.borderSubtle }]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Vue liste"
+              accessibilityState={{ selected: viewMode === 'list' }}
+              onPress={() => setAgendaViewMode('list')}
+              style={[
+                styles.viewSwitchBtn,
+                viewMode === 'list' && [styles.viewSwitchBtnActive, { backgroundColor: colors.toggleTrackOff }],
+              ]}
+            >
+              <AppIcon
+                family="ionicons"
+                name="list-outline"
+                size={16}
+                color={viewMode === 'list' ? colors.text : textFaint}
+              />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Vue calendrier"
+              accessibilityState={{ selected: viewMode === 'calendar' }}
+              onPress={() => setAgendaViewMode('calendar')}
+              style={[
+                styles.viewSwitchBtn,
+                viewMode === 'calendar' && [styles.viewSwitchBtnActive, { backgroundColor: colors.toggleTrackOff }],
+              ]}
+            >
+              <AppIcon
+                family="ionicons"
+                name="calendar-outline"
+                size={16}
+                color={viewMode === 'calendar' ? colors.text : textFaint}
+              />
+            </Pressable>
+          </View>
+        </View>
+
+        {viewMode === 'list' ? (
+          <>
+            <View style={styles.hero}>
+              <AgendaCashHeroCard
+                availableToday={heroSnapshot.cash.availableToday}
+                checkingBalanceTotal={heroSnapshot.cash.checkingBalanceTotal}
+                upcomingBillsBeforePaycheck={heroSnapshot.cash.upcomingBillsBeforePaycheck}
+                gaugePercent={heroSnapshot.cash.gaugePercent}
+                billCount={heroSnapshot.cash.billCount}
+                paycheck={
+                  heroPaycheck
+                    ? { amount: heroPaycheck.amount, dateKey: heroPaycheck.dateKey }
+                    : null
+                }
+              />
+            </View>
+
+            {upcomingCount > 0 ? (
+              upcomingSections.map((section) => (
+                <View key={`${section.titleBold}${section.titleSuffix ?? ''}`} style={styles.section}>
+                  <View style={styles.dateHeader}>
+                    <Text style={[styles.dateHeaderLabel, { color: textFaint }]}>
+                      <Text style={[styles.dateHeaderBold, { color: textMutedSoft }]}>{section.titleBold}</Text>
+                      {section.titleSuffix ?? ''}
+                    </Text>
+                    <Text style={[styles.dateHeaderTotal, { color: textFaint }]}>
+                      {formatSectionTotal(section.expenseTotal, section.incomeTotal)}
+                    </Text>
+                  </View>
+                  <DashboardCard padding={0} innerStyle={styles.groupCard}>
+                    {renderFlatBillRows(section.items)}
+                  </DashboardCard>
+                </View>
+              ))
+            ) : (
+              <View style={styles.emptyState}>
+                <View style={[styles.emptyIcon, { backgroundColor: surfaceSoft, borderColor: colors.borderSubtle }]}>
+                  <AppIcon family="ionicons" name="checkmark-circle-outline" size={22} color={textMutedSoft} />
+                </View>
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>Rien de prévu</Text>
+                <Text style={[styles.emptyHint, { color: textMutedSoft }]}>
+                  Les prochains 30 jours apparaîtront ici.
+                </Text>
+              </View>
+            )}
+          </>
+        ) : (
+          <>
+            <View style={styles.calView}>
+              <View style={styles.dowRow}>
+                {DAYS.map((d, i) => (
+                  <Text key={`${d}-${i}`} style={[styles.dow, { color: textFaint }]}>
+                    {d}
+                  </Text>
+                ))}
+              </View>
+              <View style={styles.grid}>
+                {cells.map((cell, i) => {
+                  if (!cell) {
+                    return <View key={i} style={styles.cell} />;
+                  }
+                  const key = dateKey(year, month, cell.day);
+                  const { hasPayment, hasIncome } = calendarDayMarkers(key, billsByDate);
+                  const isToday = key === todayKey;
+                  const isSel = key === selectedKey;
+                  const past = key < todayKey;
+                  return (
+                    <Pressable
+                      key={i}
+                      style={styles.cell}
+                      onPress={() => {
+                        tapHaptic();
+                        setSelectedKey(isSel ? null : key);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSel }}
+                    >
                       <View
                         style={[
-                          styles.dayInner,
-                          isSel && styles.dayInnerSelected,
-                          isToday && !isSel && styles.dayInnerToday,
-                          isToday && isSel && styles.dayInnerTodaySelected,
+                          styles.calCell,
+                          isSel && [styles.calCellSelected, { backgroundColor: surfaceSoft, borderColor: colors.borderStrong }],
                         ]}
                       >
-                        {hasConfirmedPay ? (
-                          <Text style={[styles.confirmedPayMark, { color: colors.accentGreen }]}>$</Text>
-                        ) : null}
                         <Text
                           style={[
                             styles.dayNum,
-                            past && !isSel && styles.dayPast,
-                            isToday && !isSel && styles.dayNumToday,
-                            isSel && styles.dayNumSelected,
-                            isToday && isSel && styles.dayNumTodaySelected,
+                            past && !isSel && { color: textFaint },
+                            isToday && { color: colors.accentGreen, ...jakartaExtraBoldText },
+                            !past && !isToday && !isSel && { color: colors.text },
+                            isSel && !isToday && { color: colors.text },
                           ]}
                         >
                           {cell.day}
                         </Text>
+                        <CalendarDayDots
+                          hasPayment={hasPayment}
+                          hasIncome={hasIncome}
+                          styles={styles}
+                          colors={colors}
+                        />
                       </View>
-                      <CalendarDayEventMarks
-                        bills={dayBills}
-                        showEstimatedDot={showEstimatedDot}
-                        styles={styles}
-                        colors={colors}
-                        loanByRecurringPaymentId={loanByRecurringPaymentId}
-                      />
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <View style={[styles.calendarLegendDivider, { backgroundColor: colors.borderSubtle }]} />
-            <View style={styles.calendarLegend}>
-              <View style={styles.calendarLegendItem}>
-                <View style={styles.calendarLegendMarkerSlot}>
-                  <View style={[styles.eventDot, styles.calendarLegendDot, { backgroundColor: colors.warning }]} />
-                </View>
-                <Text style={styles.calendarLegendLabel}>Paiement</Text>
-              </View>
-              <View style={styles.calendarLegendItem}>
-                <View style={[styles.eventDot, styles.calendarLegendDot, { backgroundColor: colors.accentGreen }]} />
-                <Text style={styles.calendarLegendLabel}>Paie estimée</Text>
-              </View>
-              <View style={styles.calendarLegendItem}>
-                <Text style={[styles.calendarLegendPayMark, { color: colors.accentGreen }]}>$</Text>
-                <Text style={styles.calendarLegendLabel}>Revenu confirmé</Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
-          </DashboardCard>
-        </View>
 
-        {selBills && selBills.length > 0 ? (
-          <View style={[styles.section, { paddingHorizontal: contentGutter }]}>
-            <View style={styles.sectionHeaderBlock}>
-              <View style={styles.sectionLabelRow}>
-                <DashboardDateBadge dateKey={selectedKey!} />
-                <Text style={styles.sectionTitle} numberOfLines={2} ellipsizeMode="tail">
-                  {new Date(selectedKey! + 'T12:00:00').toLocaleDateString('fr-FR', {
-                    weekday: 'long',
-                    day: 'numeric',
-                    month: 'long',
-                  })}
-                </Text>
-              </View>
-            </View>
-            {renderAgendaPaymentGroup(selectedKey!, selBills)}
-          </View>
-        ) : selectedKey ? (
-          <View style={[styles.section, { paddingHorizontal: contentGutter }]}>
-            <View style={styles.sectionHeaderBlock}>
-              <View style={styles.sectionLabelRow}>
-                <DashboardDateBadge dateKey={selectedKey} />
-                <Text style={styles.sectionTitle} numberOfLines={2} ellipsizeMode="tail">
-                  {new Date(selectedKey + 'T12:00:00').toLocaleDateString('fr-FR', {
-                    weekday: 'long',
-                    day: 'numeric',
-                    month: 'long',
-                  })}
-                </Text>
-              </View>
-            </View>
-            <DashboardCard padding={spacing.lg} innerStyle={styles.emptyCardInner}>
-              <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceElevated }]}>
-                <AppIcon family="ionicons" name="calendar-outline" size={22} color={colors.textMuted} />
-              </View>
-              <Text style={styles.emptyTitle}>Aucun paiement ce jour.</Text>
-            </DashboardCard>
-          </View>
-        ) : (
-          <View style={[styles.section, { paddingHorizontal: contentGutter }]}>
-            <Text style={styles.upcomingSectionTitle}>À venir</Text>
-            {upcomingCount > 0 ? (
-              <View style={styles.upcomingGroupsList}>
-                {upcoming.map(([key, bills]) => (
-                  <View key={key} style={styles.upcomingGroup}>
-                    <Text style={styles.upcomingGroupDate}>
-                      {formatAgendaUpcomingDate(key)}
-                    </Text>
-                    {renderAgendaPaymentGroup(key, bills)}
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <DashboardCard padding={spacing.lg} innerStyle={styles.emptyCardInner}>
-                <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceElevated }]}>
-                  <AppIcon family="ionicons" name="checkmark-circle-outline" size={22} color={colors.textMuted} />
+            {selectedKey ? (
+              <View style={styles.dayPanel}>
+                <View style={styles.dayPanelHead}>
+                  <Text style={[styles.dayPanelTitle, { color: colors.text }]}>
+                    {capitalizeFirst(formatAgendaShortDate(selectedKey).replace(/\./g, ''))}
+                    {selectedDaySuffix ? (
+                      <Text style={[styles.dayPanelSuffix, { color: textFaint }]}> {selectedDaySuffix}</Text>
+                    ) : null}
+                  </Text>
+                  {selBills && selBills.length > 0 ? (
+                    <Text style={[styles.dayPanelSum, { color: textMutedSoft }]}>{selectedDayTotal}</Text>
+                  ) : null}
                 </View>
-                <Text style={styles.emptyTitle}>Rien de prévu</Text>
-                <Text style={styles.emptyHint}>Les prochains 30 jours apparaîtront ici.</Text>
-              </DashboardCard>
-            )}
-          </View>
+                {selBills && selBills.length > 0 ? (
+                  <DashboardCard padding={0} innerStyle={styles.groupCard}>
+                    {renderFlatBillRows(selBills.map((bill) => ({ bill, dateKey: selectedKey })))}
+                  </DashboardCard>
+                ) : (
+                  <View style={styles.emptyStateCompact}>
+                    <Text style={[styles.emptyHint, { color: textMutedSoft }]}>Aucun paiement ce jour.</Text>
+                  </View>
+                )}
+              </View>
+            ) : null}
+          </>
         )}
 
       </ScrollView>
@@ -937,47 +1165,47 @@ type AgendaViewStyles = {
   root: ViewStyle;
   scrollView: ViewStyle;
   scroll: ViewStyle;
-  agendaContentAfterHeader: ViewStyle;
-  calendarCard: ViewStyle;
-  calendarCardInner: ViewStyle;
+  contextBar: ViewStyle;
+  ctxLeft: ViewStyle;
+  ctxMonthRow: ViewStyle;
+  ctxTitle: TextStyle;
+  ctxTitleMuted: TextStyle;
+  calNav: ViewStyle;
+  calNavBtn: ViewStyle;
+  calNavBtnDisabled: ViewStyle;
+  viewSwitch: ViewStyle;
+  viewSwitchBtn: ViewStyle;
+  viewSwitchBtnActive: ViewStyle;
+  hero: ViewStyle;
+  section: ViewStyle;
+  groupCard: ViewStyle;
+  dateHeader: ViewStyle;
+  dateHeaderLabel: TextStyle;
+  dateHeaderBold: TextStyle;
+  dateHeaderTotal: TextStyle;
+  calView: ViewStyle;
   dowRow: ViewStyle;
   dow: TextStyle;
   grid: ViewStyle;
   cell: ViewStyle;
-  dayCellShell: ViewStyle;
-  dayInner: ViewStyle;
-  dayInnerSelected: ViewStyle;
-  dayInnerToday: ViewStyle;
-  dayInnerTodaySelected: ViewStyle;
+  calCell: ViewStyle;
+  calCellSelected: ViewStyle;
   dayNum: TextStyle;
-  dayNumToday: TextStyle;
-  dayNumSelected: TextStyle;
-  dayNumTodaySelected: TextStyle;
-  dayPast: TextStyle;
-  confirmedPayMark: TextStyle;
-  eventMarksRow: ViewStyle;
-  eventMarkSpacer: ViewStyle;
+  dotsRow: ViewStyle;
+  dotSpacer: ViewStyle;
   eventDot: ViewStyle;
-  calendarLegendMarkerSlot: ViewStyle;
-  calendarLegendDivider: ViewStyle;
-  calendarLegend: ViewStyle;
-  calendarLegendItem: ViewStyle;
-  calendarLegendDot: ViewStyle;
-  calendarLegendLabel: TextStyle;
-  calendarLegendPayMark: TextStyle;
-  section: ViewStyle;
-  sectionHeaderBlock: ViewStyle;
-  sectionLabelRow: ViewStyle;
-  sectionTitle: TextStyle;
-  upcomingSectionTitle: TextStyle;
-  agendaGroupCardInner: ViewStyle;
-  upcomingGroupsList: ViewStyle;
-  upcomingGroup: ViewStyle;
-  upcomingGroupDate: TextStyle;
-  emptyCardInner: ViewStyle;
+  eventDotIncome: ViewStyle;
+  dayPanel: ViewStyle;
+  dayPanelHead: ViewStyle;
+  dayPanelTitle: TextStyle;
+  dayPanelSuffix: TextStyle;
+  dayPanelSum: TextStyle;
+  emptyState: ViewStyle;
+  emptyStateCompact: ViewStyle;
   emptyIcon: ViewStyle;
   emptyTitle: TextStyle;
   emptyHint: TextStyle;
+  pressed: ViewStyle;
 };
 
 function createStyles(colors: AppColors): AgendaViewStyles {
@@ -992,219 +1220,213 @@ function createStyles(colors: AppColors): AgendaViewStyles {
   },
   scroll: {
     paddingBottom: spacing.md,
-    paddingHorizontal: 0,
     backgroundColor: colors.background,
   },
-  agendaContentAfterHeader: {
+  contextBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.xl,
+  },
+  ctxLeft: {
+    flex: 1,
+    minWidth: 0,
+  },
+  ctxMonthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flexWrap: 'wrap',
+  },
+  ctxTitle: {
+    ...jakartaBoldText,
+    fontSize: 18,
+    letterSpacing: -0.2,
+  },
+  ctxTitleMuted: {
+    ...jakartaSemiboldText,
+  },
+  calNav: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  calNavBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calNavBtnDisabled: {
+    opacity: 0.35,
+  },
+  viewSwitch: {
+    flexDirection: 'row',
+    gap: 2,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 3,
+    marginLeft: spacing.md,
+  },
+  viewSwitchBtn: {
+    width: 34,
+    height: 30,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewSwitchBtnActive: {},
+  hero: {
     marginTop: spacing.lg,
   },
-  calendarCard: {
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
+  section: {
+    marginTop: spacing.xl,
+    gap: spacing.md,
   },
-  calendarCardInner: {
-    gap: spacing.sm,
+  groupCard: {
     overflow: 'hidden',
+  },
+  dateHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingTop: 6,
+    paddingBottom: spacing.sm,
+  },
+  dateHeaderLabel: {
+    ...jakartaBoldText,
+    fontSize: 11.5,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    flex: 1,
+    minWidth: 0,
+    paddingRight: spacing.sm,
+  },
+  dateHeaderBold: {
+    ...jakartaBoldText,
+  },
+  dateHeaderTotal: {
+    ...jakartaSemiboldText,
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
+  },
+  calView: {
+    marginTop: spacing.sm,
   },
   dowRow: {
     flexDirection: 'row',
-    marginBottom: spacing.xs,
-    paddingHorizontal: spacing.xs,
+    marginBottom: spacing.md,
   },
   dow: {
     flex: 1,
     textAlign: 'center',
-    ...jakartaMediumText,
-    color: colors.textMuted,
-    fontSize: 11,
-    letterSpacing: 0.4,
+    ...jakartaBoldText,
+    fontSize: 10,
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
-    includeFontPadding: false,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    rowGap: spacing.xs,
+    rowGap: 4,
   },
   cell: {
     width: '14.28%',
     alignItems: 'center',
-    paddingVertical: spacing.xs,
   },
-  dayCellShell: {
+  calCell: {
+    width: '100%',
+    height: 48,
+    borderRadius: 12,
     alignItems: 'center',
-    minHeight: 56,
-    gap: spacing.xs,
+    justifyContent: 'flex-start',
+    paddingTop: 7,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-  dayInner: {
-    width: CALENDAR_DAY_SIZE,
-    height: CALENDAR_DAY_SIZE,
-    borderRadius: CALENDAR_DAY_SIZE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dayInnerSelected: {
-    backgroundColor: colors.scopeActive,
-  },
-  dayInnerToday: {
-    borderWidth: CONTROL_HAIRLINE_BORDER_WIDTH * 2,
-    borderColor: colors.accentGreen,
-  },
-  dayInnerTodaySelected: {
-    backgroundColor: colors.successMuted,
-    borderWidth: CONTROL_HAIRLINE_BORDER_WIDTH * 2,
-    borderColor: colors.accentGreen,
+  calCellSelected: {
+    borderWidth: 1,
   },
   dayNum: {
     ...jakartaSemiboldText,
-    color: colors.text,
-    fontSize: typography.meta,
-    lineHeight: typography.meta + 2,
-    includeFontPadding: false,
+    fontSize: 14,
+    lineHeight: 14,
+    fontVariant: ['tabular-nums'],
   },
-  dayNumToday: {
-    color: colors.accentGreen,
-  },
-  dayNumSelected: {
-    color: colors.text,
-  },
-  dayNumTodaySelected: {
-    color: colors.accentGreen,
-  },
-  dayPast: {
-    color: colors.textMuted,
-    opacity: 0.55,
-  },
-  confirmedPayMark: {
-    ...jakartaSemiboldText,
-    position: 'absolute',
-    top: 1,
-    right: 2,
-    fontSize: 9,
-    lineHeight: 10,
-    includeFontPadding: false,
-  },
-  eventMarksRow: {
+  dotsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
     gap: 3,
-    minHeight: CALENDAR_LOGO_SIZE,
+    minHeight: 4,
   },
-  eventMarkSpacer: {
-    height: CALENDAR_LOGO_SIZE,
+  dotSpacer: {
+    height: 4,
   },
   eventDot: {
     width: 4,
     height: 4,
     borderRadius: 2,
   },
-  calendarLegendMarkerSlot: {
-    width: CALENDAR_LOGO_SIZE,
-    height: CALENDAR_LOGO_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
+  eventDotIncome: {},
+  dayPanel: {
+    marginTop: 14,
   },
-  calendarLegendDivider: {
-    height: StyleSheet.hairlineWidth,
-    marginTop: spacing.sm,
-  },
-  calendarLegend: {
+  dayPanelHead: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    columnGap: spacing.lg,
-    rowGap: spacing.sm,
-    paddingTop: spacing.sm,
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingTop: 14,
+    paddingBottom: 6,
   },
-  calendarLegendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  calendarLegendDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-  },
-  calendarLegendLabel: {
-    ...typographyKit.microMedium,
-    color: colors.textMuted,
-    fontSize: 11,
-  },
-  calendarLegendPayMark: {
-    ...jakartaSemiboldText,
-    width: 14,
-    textAlign: 'center',
-    fontSize: 10,
-    lineHeight: 11,
-    includeFontPadding: false,
-  },
-  section: {
-    gap: spacing.md,
-    marginTop: spacing.xl,
-  },
-  sectionHeaderBlock: {
-    minHeight: UNIFORM_SECTION_HEADER_MIN_HEIGHT,
-  },
-  sectionLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minWidth: 0,
-  },
-  sectionTitle: {
-    ...typographyKit.sectionTitle,
+  dayPanelTitle: {
+    ...jakartaBoldText,
+    fontSize: 15,
+    letterSpacing: -0.1,
     flex: 1,
     minWidth: 0,
-    color: colors.text,
-    textTransform: 'capitalize',
+    paddingRight: spacing.sm,
   },
-  upcomingSectionTitle: {
-    ...typographyKit.sectionTitle,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  agendaGroupCardInner: {
-    overflow: 'hidden',
-  },
-  upcomingGroupsList: {
-    gap: spacing.xl,
-  },
-  upcomingGroup: {
-    gap: spacing.sm,
-  },
-  upcomingGroupDate: {
+  dayPanelSuffix: {
     ...jakartaMediumText,
-    color: colors.textMuted,
-    fontSize: typography.meta,
-    lineHeight: typography.meta + 4,
-    textTransform: 'capitalize',
-    letterSpacing: -0.1,
+    fontSize: 12.5,
   },
-  emptyCardInner: {
+  dayPanelSum: {
+    ...jakartaBoldText,
+    fontSize: 15,
+    fontVariant: ['tabular-nums'],
+  },
+  emptyState: {
     alignItems: 'center',
+    marginTop: spacing.xxl,
     gap: spacing.sm,
+    paddingVertical: spacing.xl,
+  },
+  emptyStateCompact: {
     paddingVertical: spacing.lg,
+    alignItems: 'center',
   },
   emptyIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,
   },
   emptyTitle: {
-    ...typographyKit.bodyBold,
-    color: colors.text,
+    ...jakartaBoldText,
+    fontSize: 16,
     textAlign: 'center',
   },
   emptyHint: {
-    color: colors.textMuted,
-    fontSize: typography.caption,
-    lineHeight: typography.caption + 6,
+    ...jakartaMediumText,
+    fontSize: 12.5,
+    lineHeight: 18,
     textAlign: 'center',
+  },
+  pressed: {
+    opacity: 0.78,
   },
   }) as AgendaViewStyles;
 }

@@ -4,6 +4,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import type { GhostTokens } from '@/constants/ghostUi';
 import {
   containerSurfaceStyle,
+  interNumericExtraBoldText,
   radius,
   spacing,
   typography,
@@ -456,12 +457,13 @@ function createStyles(colors: AppColors, ghost: GhostTokens) {
     inputText: {
       flex: 1,
       color: colors.text,
+      ...interNumericExtraBoldText,
       fontSize: typography.body,
-      fontWeight: '700',
       fontVariant: ['tabular-nums'],
     },
     sheetInputText: {
       ...typographyKit.bodyMedium,
+      ...interNumericExtraBoldText,
       fontVariant: ['tabular-nums'],
     },
     placeholder: { color: colors.textMuted },
@@ -552,8 +554,8 @@ function createStyles(colors: AppColors, ghost: GhostTokens) {
     },
     yearText: {
       color: ghost.text,
+      ...interNumericExtraBoldText,
       fontSize: typography.caption,
-      fontWeight: '800',
       fontVariant: ['tabular-nums'],
     },
     dayCell: {
@@ -575,8 +577,8 @@ function createStyles(colors: AppColors, ghost: GhostTokens) {
     },
     dayText: {
       color: ghost.text,
+      ...interNumericExtraBoldText,
       fontSize: typography.caption,
-      fontWeight: '800',
       fontVariant: ['tabular-nums'],
     },
     selectedDayText: { color: ghost.void },

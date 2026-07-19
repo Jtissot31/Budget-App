@@ -1,4 +1,5 @@
 import { stripMarkdownForChatDisplay } from '@/lib/ai/messageBlocks';
+import { getCatalogEntry } from './planCatalogData';
 import type { PlanSubtype } from './Plan';
 
 const PROMPT_LEAKAGE_PATTERN =
@@ -22,8 +23,27 @@ export const DEBT_REPAYMENT_PLAN_SUBTYPES = new Set<PlanSubtype>([
   'marge_credit',
 ]);
 
-/** Card detail — ~2 lines at meta size. */
+/** Card teaser — ~2 lines at meta size (non-debt). */
 const CARD_REASON_MAX_CHARS = 130;
+
+/** Debt strategy cards — ~1–2 lines; full comparison lives in the detail screen. */
+const DEBT_CARD_REASON_MAX_CHARS = 110;
+
+function cardReasonMaxChars(subtype?: PlanSubtype): number {
+  if (subtype && DEBT_REPAYMENT_PLAN_SUBTYPES.has(subtype)) {
+    return DEBT_CARD_REASON_MAX_CHARS;
+  }
+  return CARD_REASON_MAX_CHARS;
+}
+
+/** Short catalog blurb for debt cards; generic description elsewhere. */
+function cardFallbackForSubtype(subtype: PlanSubtype | undefined, description: string): string {
+  if (subtype && DEBT_REPAYMENT_PLAN_SUBTYPES.has(subtype)) {
+    const catalog = getCatalogEntry(subtype);
+    if (catalog?.description) return catalog.description;
+  }
+  return description;
+}
 
 function collapseWhitespace(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
@@ -52,8 +72,16 @@ function looksLikeBrokenReason(text: string): boolean {
 }
 
 /** Strip markdown / prompt leftovers; fall back to heuristic copy when Gemini output is unusable. */
-export function sanitizePlanSuggestionReason(raw: string, fallback: string): string {
-  const heuristic = collapseWhitespace(fallback);
+export function sanitizePlanSuggestionReason(
+  raw: string,
+  fallback: string,
+  subtype?: PlanSubtype,
+): string {
+  const maxChars = cardReasonMaxChars(subtype);
+  const heuristic = truncateAtWordBoundary(
+    collapseWhitespace(cardFallbackForSubtype(subtype, fallback)),
+    maxChars,
+  );
   if (!raw?.trim()) return heuristic;
 
   let text = collapseWhitespace(stripMarkdownForChatDisplay(raw));
@@ -61,12 +89,33 @@ export function sanitizePlanSuggestionReason(raw: string, fallback: string): str
   text = text.replace(/\s*[-•*]\s+/g, ' ').trim();
 
   if (looksLikeBrokenReason(text)) return heuristic;
-  return truncateAtWordBoundary(text, CARD_REASON_MAX_CHARS);
+  return truncateAtWordBoundary(text, maxChars);
 }
 
-/** Safe one-line detail for plan suggestion cards. */
-export function formatPlanSuggestionReasonForCard(reason: string, fallback: string): string {
-  return sanitizePlanSuggestionReason(reason, fallback);
+/** Safe card teaser — debt strategies stay brief; detail screen holds the full story. */
+export function formatPlanSuggestionReasonForCard(
+  reason: string,
+  fallback: string,
+  subtype?: PlanSubtype,
+): string {
+  return sanitizePlanSuggestionReason(reason, fallback, subtype);
+}
+
+/** Full personalized reason for plan template detail — sanitized, not truncated. */
+export function resolvePlanSuggestionDetailReason(
+  reason: string,
+  fallback: string,
+  subtype?: PlanSubtype,
+): string {
+  const heuristic = collapseWhitespace(cardFallbackForSubtype(subtype, fallback));
+  if (!reason?.trim()) return heuristic;
+
+  let text = collapseWhitespace(stripMarkdownForChatDisplay(reason));
+  text = text.replace(/^["'«»]+|["'«»]+$/g, '').trim();
+  text = text.replace(/\s*[-•*]\s+/g, ' ').trim();
+
+  if (looksLikeBrokenReason(text)) return heuristic;
+  return text;
 }
 
 export function isInvestmentPlanSubtype(subtype: string): boolean {

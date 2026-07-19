@@ -1,5 +1,10 @@
 import type { RfaInputBundle } from '@/lib/ai/sanitizeForAI';
 import type { FinancialSummaryAnonymous } from '@/lib/ai/types';
+import { filterRfaDebtsEligibleForAcceleratedPlan } from './debtPlanEligibility';
+import {
+  isCashflowViableForAcceleratedDebtPlan,
+  monthlySurplusFromCashflow,
+} from './debtPlanFeasibility';
 import type { PlanSubtype } from './Plan';
 
 /** Agrégats dérivés du RFA pour évaluer les règles de recommandation. */
@@ -14,12 +19,14 @@ export type PlanRecommendationContext = {
   est_proprietaire: boolean;
   age: number | null;
   epargne_recurrente_detectee: boolean;
+  /** Dettes accélérables (hors hypothèques) — aligné sur debtPlanEligibility. */
   nombre_dettes_actives: number;
   revenu_travailleur_autonome_detecte: boolean;
   categorie_depassee_mois_consecutifs: number;
   depense_discretionnaire_tendance: 'hausse' | 'stable' | 'baisse';
   mois_consecutifs_depense_hausse: number;
   nombre_abonnements_recurrents: number;
+  /** Solde total des dettes accélérables (hors hypothèques). */
   dette_totale: number;
   /** Liquidités au-delà d'environ 1 mois de dépenses — candidat bombe nucléaire. */
   liquidites_excedentaires: number;
@@ -27,6 +34,13 @@ export type PlanRecommendationContext = {
   a_marge_credit_active: boolean;
   /** Dettes dominent — prioriser remboursement / cashflow, pas l'investissement. */
   contexte_dette_lourde: boolean;
+  /**
+   * Revenu − dépenses (même base RFA / dashboard que le wizard Extra).
+   * Négatif ou trop faible → ne pas pousser snowball/avalanche en proactif.
+   */
+  surplus_mensuel: number;
+  /** Assez de marge pour un petit extra au-dessus des minimums. */
+  cashflow_viable_pour_extra_dette: boolean;
   activePlanSubtypes: ReadonlySet<PlanSubtype>;
   revenu_mensuel_net: number;
   depenses_mensuelles: number;
@@ -97,17 +111,24 @@ export function buildPlanRecommendationContext(
   });
 
   const revenu = rfa.profil.revenuMensuelNet;
+  const depensesMensuelles = rfa.profil.depensesMensuellesMoyennes;
+  const surplusMensuel = monthlySurplusFromCashflow({
+    monthlyIncome: revenu,
+    monthlyExpenses: depensesMensuelles,
+  });
+  const cashflowViablePourExtraDette = isCashflowViableForAcceleratedDebtPlan(surplusMensuel);
   const celiRoom = Math.max(0, Math.round(revenu * 12 * 0.18));
   const reerRoom = Math.max(0, Math.round(revenu * 12 * 0.18));
 
   const discretionaryTrend: PlanRecommendationContext['depense_discretionnaire_tendance'] =
     savingsRate < 0 ? 'hausse' : savingsRate < 5 ? 'hausse' : 'stable';
 
-  const detteTotale = rfa.dettes.reduce((sum, debt) => sum + debt.solde, 0);
+  const dettesAccelerables = filterRfaDebtsEligibleForAcceleratedPlan(rfa.dettes);
+  const detteTotale = dettesAccelerables.reduce((sum, debt) => sum + debt.solde, 0);
   const situationStressante =
     rfa.profil.situationGlobale === 'critique' || rfa.profil.situationGlobale === 'tendue';
   const contexteDetteLourde =
-    rfa.dettes.length >= 1 &&
+    dettesAccelerables.length >= 1 &&
     (situationStressante ||
       detteTotale >= Math.max(revenu * 3, 3_000) ||
       (liquidites > 0 && detteTotale > liquidites * 1.5));
@@ -123,7 +144,7 @@ export function buildPlanRecommendationContext(
     est_proprietaire: inferOwner(rfa.profil.typeDetecte, input.loans),
     age: inferAge(rfa.profil.typeDetecte),
     epargne_recurrente_detectee: epargneRecurrente,
-    nombre_dettes_actives: rfa.dettes.length,
+    nombre_dettes_actives: dettesAccelerables.length,
     revenu_travailleur_autonome_detecte: inferFreelance(rfa.profil.typeDetecte, revenu),
     categorie_depassee_mois_consecutifs: overBudgetCount >= 2 ? overBudgetCount : overBudgetCount >= 1 ? 1 : 0,
     depense_discretionnaire_tendance: discretionaryTrend,
@@ -131,11 +152,13 @@ export function buildPlanRecommendationContext(
     nombre_abonnements_recurrents: rfa.abonnementsDetectes.length,
     dette_totale: detteTotale,
     liquidites_excedentaires: Math.max(0, liquidites - depenses),
-    a_marge_credit_active: rfa.dettes.some((debt) => debt.type === 'marge'),
+    a_marge_credit_active: dettesAccelerables.some((debt) => debt.type === 'marge'),
     contexte_dette_lourde: contexteDetteLourde,
+    surplus_mensuel: surplusMensuel,
+    cashflow_viable_pour_extra_dette: cashflowViablePourExtraDette,
     activePlanSubtypes: activeSubtypes,
     revenu_mensuel_net: revenu,
-    depenses_mensuelles: rfa.profil.depensesMensuellesMoyennes,
+    depenses_mensuelles: depensesMensuelles,
     liquidites_totales: liquidites,
   };
 }

@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { jakartaExtraBoldText, radius } from '@/constants/theme';
+import { interNumericExtraBoldText, radius } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'] as const;
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   keyText: {
-    ...jakartaExtraBoldText,
+    ...interNumericExtraBoldText,
     fontSize: 23,
   },
 });

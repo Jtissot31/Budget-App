@@ -1,14 +1,132 @@
 import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { fontFamilies } from '@/constants/plusJakartaFonts';
+import { planFinanceSecondaryButtonStyle } from '@/constants/planFinanceKit';
 import { spacing } from '@/constants/theme';
-import type { BarChartData } from '@/types/aiWidgets';
-import { AI_WIDGET_RADIUS, aiWidgetFonts, useAIWidgetColors } from './theme';
+import { formatDisplayMoneyAbsoluteExact } from '@/lib/formatDisplayMoney';
+import type { BarChartData, BarChartItem } from '@/types/aiWidgets';
+import { aiWidgetAmountTypography, aiWidgetFonts, useAIWidgetColors } from './theme';
+import { WidgetCardShell } from './WidgetCardShell';
 
 type Props = {
   data: BarChartData;
 };
 
-const CHART_HEIGHT = 120;
+/** Maquette « Dépenses par catégorie » — barres horizontales spent/limit. */
+const MOCK = {
+  secondary: '#8A8A8A',
+  limitMuted: '#5A5A5A',
+  warning: '#E6A000',
+  warningLimit: '#8A7A55',
+  divider: '#1C1C1C',
+  barGreen: '#00E664',
+  track: '#1C1C1C',
+  barHeight: 8,
+  listMaxHeight: 280,
+} as const;
+
+const titleStyle = {
+  fontFamily: fontFamilies.bold,
+  fontSize: 14,
+  lineHeight: 18,
+  letterSpacing: 0.6,
+  textTransform: 'uppercase' as const,
+};
+
+const categoryNameStyle = {
+  fontFamily: fontFamilies.semibold,
+  fontSize: 14,
+  lineHeight: 18,
+  includeFontPadding: false,
+};
+
+const amountStyle = {
+  ...aiWidgetAmountTypography('row'),
+  fontSize: 13,
+  lineHeight: 18,
+  includeFontPadding: false,
+};
+
+const captionStyle = {
+  fontFamily: aiWidgetFonts.labelRegular,
+  fontSize: 13,
+  lineHeight: 18,
+};
+
+function resolveSpentLabel(item: BarChartItem): string {
+  return item.value_label ?? formatDisplayMoneyAbsoluteExact(item.value);
+}
+
+function resolveLimitLabel(item: BarChartItem): string | null {
+  if (item.limit == null || !Number.isFinite(item.limit) || item.limit <= 0) return null;
+  return item.limit_label ?? formatDisplayMoneyAbsoluteExact(item.limit);
+}
+
+function resolveBarFraction(item: BarChartItem, maxValue: number): number {
+  const limit = item.limit;
+  if (limit != null && Number.isFinite(limit) && limit > 0) {
+    const fraction = item.value / limit;
+    return Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0;
+  }
+
+  if (maxValue <= 0) return 0;
+  const fraction = item.value / maxValue;
+  return Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0;
+}
+
+function isOverBudget(item: BarChartItem): boolean {
+  const limit = item.limit;
+  return limit != null && Number.isFinite(limit) && limit > 0 && item.value > limit;
+}
+
+type CategoryRowProps = {
+  item: BarChartItem;
+  maxValue: number;
+  textColor: string;
+};
+
+function CategoryRow({ item, maxValue, textColor }: CategoryRowProps) {
+  const limitLabel = resolveLimitLabel(item);
+  const spentLabel = resolveSpentLabel(item);
+  const overBudget = isOverBudget(item);
+  const barFraction = resolveBarFraction(item, maxValue);
+  const barFillFlex = barFraction > 0 ? Math.max(barFraction, 0.01) : 0;
+  const barEmptyFlex = Math.max(1 - barFillFlex, 0.01);
+  const barColor = overBudget ? MOCK.warning : MOCK.barGreen;
+  const spentColor = overBudget ? MOCK.warning : MOCK.secondary;
+  const limitColor = overBudget ? MOCK.warningLimit : MOCK.limitMuted;
+
+  return (
+    <View style={styles.row}>
+      <View style={styles.rowHeader}>
+        <Text style={[styles.categoryName, categoryNameStyle, { color: textColor }]} numberOfLines={1}>
+          {item.label}
+        </Text>
+        <Text style={[styles.amount, amountStyle, { color: spentColor }]} numberOfLines={1}>
+          {spentLabel}
+          {limitLabel ? (
+            <Text style={{ color: limitColor }}>{` / ${limitLabel}`}</Text>
+          ) : null}
+        </Text>
+      </View>
+
+      <View style={[styles.barTrack, { backgroundColor: MOCK.track }]}>
+        {barFillFlex > 0 ? (
+          <View
+            style={[
+              styles.barFill,
+              {
+                flex: barFillFlex,
+                backgroundColor: barColor,
+              },
+            ]}
+          />
+        ) : null}
+        <View style={{ flex: barEmptyFlex }} />
+      </View>
+    </View>
+  );
+}
 
 export function BarChartWidget({ data }: Props) {
   const palette = useAIWidgetColors();
@@ -18,98 +136,103 @@ export function BarChartWidget({ data }: Props) {
     [data.items],
   );
 
+  const shellLabel = data.label ?? 'Dépenses par catégorie';
+  const rowItems = data.items.map((item) => (
+    <CategoryRow
+      key={`${item.label}-${item.value}-${item.limit ?? 'nolimit'}`}
+      item={item}
+      maxValue={maxValue}
+      textColor={palette.text}
+    />
+  ));
+
   return (
-    <View style={[styles.card, { backgroundColor: palette.surface, padding: palette.padding }]}>
-      <Text style={[styles.label, { color: palette.textMuted, fontFamily: aiWidgetFonts.label }]}>
-        {data.label.toUpperCase()}
-      </Text>
+    <WidgetCardShell style={styles.shell}>
+      <Text style={[styles.title, titleStyle, { color: palette.text }]}>{shellLabel.toUpperCase()}</Text>
 
-      <View style={styles.chartArea}>
-        {data.items.map((item) => {
-          const barHeight = Math.max(6, (item.value / maxValue) * CHART_HEIGHT);
-          const displayValue = item.value_label ?? String(item.value);
-
-          return (
-            <View key={`${item.label}-${item.value}`} style={styles.barColumn}>
-              <Text
-                style={[styles.barValue, { color: palette.text, fontFamily: aiWidgetFonts.mono }]}
-                numberOfLines={1}
-              >
-                {displayValue}
-              </Text>
-              <View style={[styles.barTrack, { backgroundColor: palette.track, height: CHART_HEIGHT }]}>
-                <View
-                  style={[
-                    styles.barFill,
-                    { backgroundColor: palette.green, height: barHeight },
-                  ]}
-                />
-              </View>
-              <Text
-                style={[styles.barLabel, { color: palette.textMuted, fontFamily: aiWidgetFonts.labelRegular }]}
-                numberOfLines={2}
-              >
-                {item.label}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
+      {data.items.length > 4 ? (
+        <ScrollView style={styles.listScroll} contentContainerStyle={styles.list} nestedScrollEnabled>
+          {rowItems}
+        </ScrollView>
+      ) : (
+        <View style={styles.list}>{rowItems}</View>
+      )}
 
       {data.caption ? (
-        <Text style={[styles.caption, { color: palette.textMuted, fontFamily: aiWidgetFonts.labelRegular }]}>
-          {data.caption}
-        </Text>
+        <Text style={[styles.caption, captionStyle, { color: MOCK.secondary }]}>{data.caption}</Text>
       ) : null}
-    </View>
+
+      {data.action ? (
+        <>
+          <View style={[styles.divider, { backgroundColor: MOCK.divider }]} />
+          <View
+            style={[styles.actionButton, planFinanceSecondaryButtonStyle(), { borderColor: palette.border }]}
+            accessibilityRole="button"
+            accessibilityLabel={data.action.label}
+          >
+            <Text style={[styles.actionText, { color: palette.text, fontFamily: aiWidgetFonts.label }]}>
+              {data.action.label}
+            </Text>
+          </View>
+        </>
+      ) : null}
+    </WidgetCardShell>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    width: '100%',
-    borderRadius: AI_WIDGET_RADIUS,
+  shell: {
     gap: spacing.md,
   },
-  label: {
-    fontSize: 11,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
+  title: {
+    marginBottom: spacing.xs,
   },
-  chartArea: {
+  listScroll: {
+    maxHeight: MOCK.listMaxHeight,
+  },
+  list: {
+    gap: spacing.md,
+  },
+  row: {
+    gap: 6,
+  },
+  rowHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  barColumn: {
+  categoryName: {
     flex: 1,
-    alignItems: 'center',
-    gap: spacing.xs,
     minWidth: 0,
   },
-  barValue: {
-    fontSize: 11,
-    fontVariant: ['tabular-nums'],
-    textAlign: 'center',
+  amount: {
+    flexShrink: 0,
+    textAlign: 'right',
   },
   barTrack: {
     width: '100%',
-    maxWidth: 48,
-    borderRadius: AI_WIDGET_RADIUS,
-    justifyContent: 'flex-end',
+    height: MOCK.barHeight,
+    borderRadius: 999,
     overflow: 'hidden',
+    flexDirection: 'row',
   },
   barFill: {
-    width: '100%',
-    borderRadius: AI_WIDGET_RADIUS,
-  },
-  barLabel: {
-    fontSize: 10,
-    textAlign: 'center',
-    width: '100%',
+    height: '100%',
+    borderRadius: 999,
   },
   caption: {
-    fontSize: 12,
+    marginTop: 0,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    minHeight: 1,
+  },
+  actionButton: {
+    paddingHorizontal: spacing.md,
+  },
+  actionText: {
+    fontSize: 13,
+    letterSpacing: 0.2,
   },
 });

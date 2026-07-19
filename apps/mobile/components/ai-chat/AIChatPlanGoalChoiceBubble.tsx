@@ -32,6 +32,8 @@ type Props = {
 
 function goalIcon(goal: PlanGoal): keyof typeof MaterialCommunityIcons.glyphMap {
   switch (goal) {
+    case 'budget_rebalance':
+      return 'scale-balance';
     case 'debt_repayment':
       return 'chart-line-variant';
     case 'reduce_bills':

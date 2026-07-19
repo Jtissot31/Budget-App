@@ -13,6 +13,7 @@ import { SurfaceCard } from '@/components/SurfaceCard';
 import {
   detailCarouselPageMinHeight,
   moneyAmountTypography,
+  radius,
   spacing,
   typographyKit,
 } from '@/constants/theme';
@@ -498,7 +499,7 @@ const styles = StyleSheet.create({
   dot: {
     width: 6,
     height: 6,
-    borderRadius: 99,
+    borderRadius: radius.pill,
   },
   dotActive: {
     width: 18,

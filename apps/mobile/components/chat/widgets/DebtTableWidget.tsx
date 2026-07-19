@@ -1,228 +1,340 @@
-import { StyleSheet, Text, View } from 'react-native';
-import {
-  jakartaBoldText,
-  jakartaSemiboldText,
-  moneyAmountTypography,
-  radius,
-  spacing,
-  typographyKit,
-} from '@/constants/theme';
-import { formatNumberDisplay, parseFormattedNumber } from '@/lib/formatNumber';
-import { useAppTheme } from '@/lib/themeContext';
+import { Fragment } from 'react';
+import { Platform, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { dashboardPalette, spacing } from '@/constants/theme';
+import { fontFamilies } from '@/constants/plusJakartaFonts';
+import { formatDisplayMoneyAbsoluteExact } from '@/lib/formatDisplayMoney';
+import { parseFormattedNumber } from '@/lib/formatNumber';
 import type { DebtTableData } from '@/types/aiWidgets';
-import { useAIWidgetColors } from './theme';
+import {
+  aiWidgetAmountTypography,
+  aiWidgetFonts,
+  useAIWidgetColors,
+} from './theme';
+import { WidgetCardShell } from './WidgetCardShell';
 
 type Props = {
   data: DebtTableData;
 };
 
-const CARD_RADIUS = radius.md;
+/** Maquette « Dettes Actives » — colonnes fixes + gris secondaire #8A8A8A. */
+const MOCK = {
+  secondary: '#8A8A8A',
+  divider: '#1C1C1C',
+  totalBg: dashboardPalette.iconBox,
+  colBalance: 78,
+  colRate: 44,
+  colPayment: 84,
+  gridGap: 4,
+} as const;
 
-/** Reformat raw AI / legacy money strings (`20000 $`) with fr-CA grouping + attached `$`. */
-function formatWidgetMoney(raw: string | number | undefined): string {
-  if (raw == null) return '—';
-  const trimmed = typeof raw === 'number' ? (Number.isFinite(raw) ? String(raw) : '') : raw.trim();
-  if (!trimmed || trimmed === '—') return '—';
-  const n = parseFormattedNumber(trimmed);
-  if (!Number.isFinite(n)) return typeof raw === 'string' ? trimmed : '—';
-  const abs = Math.abs(n);
-  const hasCents = Math.abs(abs - Math.round(abs)) > 1e-9;
-  const main = formatNumberDisplay(abs, {
-    minimumFractionDigits: hasCents ? 2 : 0,
-    maximumFractionDigits: hasCents ? 2 : 0,
-  });
-  return `${main}$`;
+function parseWidgetMoneyAmount(raw: string | number | undefined): number | null {
+  if (raw == null) return null;
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === '—') return null;
+
+  const compactMatch = trimmed.match(
+    /^(-?[\d\s\u00a0\u202f\u2007\u2009\u205f.,]+)\s*([KkMm])(?:\s*\$)?$/,
+  );
+  if (compactMatch) {
+    const base = parseFormattedNumber(compactMatch[1]);
+    if (!Number.isFinite(base)) return null;
+    const mult = compactMatch[2].toUpperCase() === 'M' ? 1_000_000 : 1_000;
+    return base * mult;
+  }
+
+  const parsed = parseFormattedNumber(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-const headerTextStyle = {
-  ...jakartaSemiboldText,
-  fontSize: 10,
-  letterSpacing: 0.4,
+/** Reformat raw AI / legacy money strings (`20 000 $`) with fr-CA grouping + attached `$`. */
+function formatWidgetMoney(raw: string | number | undefined): string {
+  const n = parseWidgetMoneyAmount(raw);
+  if (n == null) {
+    return typeof raw === 'string' && raw.trim() && raw.trim() !== '—' ? raw.trim() : '—';
+  }
+
+  return formatDisplayMoneyAbsoluteExact(Math.abs(n));
+}
+
+/** Prevent `$` from wrapping alone in narrow fixed columns (Samsung / Android line breaks). */
+function bindMoneyNoWrap(formatted: string): string {
+  if (!formatted || formatted === '—') return formatted;
+  return formatted
+    .replace(/ /g, '\u00A0')
+    .replace(/(\d)\$/g, '$1\u00A0$');
+}
+
+function formatWidgetMoneyNoWrap(raw: string | number | undefined): string {
+  return bindMoneyNoWrap(formatWidgetMoney(raw));
+}
+
+function sumRowMoney(rows: DebtTableData['rows'], key: 'balance' | 'payment'): number {
+  return rows.reduce((sum, row) => {
+    const amount = parseWidgetMoneyAmount(row[key]);
+    return amount == null ? sum : sum + amount;
+  }, 0);
+}
+
+/** Total payment cell — mockup appends « /mois » when absent. */
+function formatTotalPayment(raw: string | number | undefined, computed: number | null): string {
+  if (raw != null && typeof raw === 'string' && raw.trim() && raw.trim() !== '—') {
+    const trimmed = raw.trim();
+    return trimmed.includes('/mois') ? trimmed : `${trimmed}/mois`;
+  }
+  if (computed == null) return '—';
+  return `${formatWidgetMoney(computed)}/mois`;
+}
+
+function formatTotalPaymentNoWrap(
+  raw: string | number | undefined,
+  computed: number | null,
+): string {
+  return bindMoneyNoWrap(formatTotalPayment(raw, computed));
+}
+
+const titleStyle = {
+  fontFamily: fontFamilies.bold,
+  fontSize: 14,
+  lineHeight: 18,
+  letterSpacing: 0.6,
   textTransform: 'uppercase' as const,
 };
 
-const rowNameStyle = {
-  ...jakartaSemiboldText,
-  fontSize: 13,
-  lineHeight: 17,
+const headerTextStyle = {
+  fontFamily: fontFamilies.bold,
+  fontSize: 10,
+  lineHeight: 12,
+  letterSpacing: 0.3,
+  textTransform: 'uppercase' as const,
+  includeFontPadding: false,
 };
 
-const amountStyle = moneyAmountTypography({ tier: 'row', textAlign: 'right', fontSize: 13, lineHeight: 17 });
+/** Shorter payment header on narrow grids — « PAIE. MIN. » → « MIN. ». */
+function compactPaymentHeader(label: string): string {
+  return /^paie\.?\s*min\.?$/i.test(label.trim()) ? 'Min.' : label;
+}
 
-const compactAmountStyle = moneyAmountTypography({ tier: 'row', textAlign: 'right', fontSize: 12, lineHeight: 16 });
+const debtNameStyle = {
+  fontFamily: fontFamilies.bold,
+  fontSize: 15,
+  lineHeight: 20,
+  includeFontPadding: false,
+};
 
-const rateTextStyle = {
-  ...jakartaSemiboldText,
-  fontSize: 12,
-  lineHeight: 16,
+/** Multi-word names wrap on word boundaries; single tokens ellipsis instead of mid-word break. */
+function debtNameLineCount(name: string): 1 | 2 {
+  return /\s/.test(name.trim()) ? 2 : 1;
+}
+
+const debtNameWrapStyle: TextStyle | undefined = Platform.select({
+  web: {
+    wordBreak: 'normal',
+    overflowWrap: 'break-word',
+  } as TextStyle,
+  default: undefined,
+});
+
+const rowBalanceStyle = aiWidgetAmountTypography('row');
+
+const moneyCellStyle: TextStyle = {
+  flexShrink: 0,
+};
+
+const compactTextStyle = {
+  ...aiWidgetAmountTypography('caption'),
   textAlign: 'right' as const,
 };
 
+const totalLabelStyle = {
+  fontFamily: fontFamilies.bold,
+  fontSize: 12,
+  lineHeight: 16,
+  letterSpacing: 0.5,
+  textTransform: 'uppercase' as const,
+};
+
+const totalBalanceStyle = aiWidgetAmountTypography('row');
+
+const totalRateStyle = {
+  ...aiWidgetAmountTypography('row'),
+  fontSize: 14,
+  lineHeight: 18,
+  textAlign: 'right' as const,
+};
+
+const totalPaymentStyle = aiWidgetAmountTypography('caption');
+
 export function DebtTableWidget({ data }: Props) {
-  const { colors } = useAppTheme();
   const palette = useAIWidgetColors();
   const columns = {
-    name: data.columns?.name ?? 'DETTE',
-    balance: data.columns?.balance ?? 'SOLDE',
-    rate: data.columns?.rate ?? 'TAUX',
-    payment: data.columns?.payment ?? 'PAIEMENT',
+    name: data.columns?.name ?? 'Dette',
+    balance: data.columns?.balance ?? 'Solde',
+    rate: data.columns?.rate ?? 'Taux',
+    payment: compactPaymentHeader(data.columns?.payment ?? 'Min.'),
   };
 
   const showRate = data.rows.some((row) => row.rate) || data.total.rate;
   const showPayment = data.rows.some((row) => row.payment) || data.total.payment;
+  const totalBalance = sumRowMoney(data.rows, 'balance');
+  const totalPayment = showPayment ? sumRowMoney(data.rows, 'payment') : null;
+  const shellLabel = data.label ?? 'Dettes actives';
 
   return (
-    <View
-      style={[
-        styles.card,
-        {
-          backgroundColor: colors.containerBackground,
-          borderColor: colors.containerBorder,
-          padding: palette.padding,
-        },
-      ]}
-    >
-      {data.label ? (
-        <Text style={[styles.title, typographyKit.eyebrow, { color: colors.text }]}>
-          {data.label.toUpperCase()}
-        </Text>
-      ) : null}
+    <WidgetCardShell style={styles.shell}>
+      <Text style={[styles.title, titleStyle, { color: palette.text }]}>{shellLabel.toUpperCase()}</Text>
 
       <View style={styles.headerRow}>
-        <Text style={[styles.headerCell, styles.nameCol, headerTextStyle, { color: colors.textSecondary }]}>
+        <Text style={[styles.nameCol, headerTextStyle, { color: MOCK.secondary }]} numberOfLines={1}>
           {columns.name}
         </Text>
-        <Text style={[styles.headerCell, styles.amountCol, headerTextStyle, { color: colors.textSecondary }]}>
+        <Text style={[styles.balanceCol, headerTextStyle, { color: MOCK.secondary }]} numberOfLines={1}>
           {columns.balance}
         </Text>
         {showRate ? (
-          <Text style={[styles.headerCell, styles.rateCol, headerTextStyle, { color: colors.textSecondary }]}>
+          <Text style={[styles.rateCol, headerTextStyle, { color: MOCK.secondary }]} numberOfLines={1}>
             {columns.rate}
           </Text>
         ) : null}
         {showPayment ? (
-          <Text
-            style={[styles.headerCell, styles.paymentCol, headerTextStyle, { color: colors.textSecondary }]}
-            numberOfLines={1}
-          >
+          <Text style={[styles.paymentCol, headerTextStyle, { color: MOCK.secondary }]} numberOfLines={1}>
             {columns.payment}
           </Text>
         ) : null}
       </View>
 
-      {data.rows.map((row) => (
-        <View key={`${row.name}-${row.balance}`} style={[styles.row, { borderTopColor: colors.border }]}>
-          <Text style={[styles.cell, styles.nameCol, rowNameStyle, { color: colors.text }]} numberOfLines={2}>
-            {row.name}
-          </Text>
-          <Text style={[styles.cell, styles.amountCol, amountStyle, { color: colors.text }]}>
-            {formatWidgetMoney(row.balance)}
-          </Text>
-          {showRate ? (
-            <Text style={[styles.cell, styles.rateCol, rateTextStyle, { color: colors.textSecondary }]}>
-              {row.rate ?? '—'}
+      <View style={[styles.headerDivider, { backgroundColor: MOCK.divider }]} />
+
+      {data.rows.map((row, index) => (
+        <Fragment key={`${row.name}-${row.balance}-${index}`}>
+          <View style={styles.dataRow}>
+            <View style={styles.nameCol}>
+              <Text
+                style={[debtNameStyle, debtNameWrapStyle, { color: palette.text }]}
+                numberOfLines={debtNameLineCount(row.name)}
+                ellipsizeMode="tail"
+              >
+                {row.name}
+              </Text>
+            </View>
+            <Text
+              style={[styles.balanceCol, rowBalanceStyle, moneyCellStyle, { color: MOCK.secondary }]}
+              numberOfLines={1}
+            >
+              {formatWidgetMoneyNoWrap(row.balance)}
             </Text>
+            {showRate ? (
+              <Text style={[styles.rateCol, compactTextStyle, { color: MOCK.secondary }]}>
+                {row.rate ?? '—'}
+              </Text>
+            ) : null}
+            {showPayment ? (
+              <Text
+                style={[styles.paymentCol, compactTextStyle, moneyCellStyle, { color: MOCK.secondary }]}
+                numberOfLines={1}
+              >
+                {formatWidgetMoneyNoWrap(row.payment)}
+              </Text>
+            ) : null}
+          </View>
+          {index < data.rows.length - 1 ? (
+            <View style={[styles.divider, { backgroundColor: MOCK.divider }]} />
           ) : null}
-          {showPayment ? (
-            <Text style={[styles.cell, styles.paymentCol, compactAmountStyle, { color: colors.textSecondary }]}>
-              {formatWidgetMoney(row.payment)}
-            </Text>
-          ) : null}
-        </View>
+        </Fragment>
       ))}
 
       <View
         style={[
           styles.totalRow,
           {
-            backgroundColor: colors.surfaceElevated,
-            borderTopColor: colors.border,
+            backgroundColor: MOCK.totalBg,
           },
         ]}
       >
-        <Text style={[styles.totalLabel, styles.nameCol, { color: colors.text }, jakartaBoldText]}>
+        <Text style={[styles.nameCol, totalLabelStyle, { color: palette.text }]}>
           {data.total.label.toUpperCase()}
         </Text>
-        <Text style={[styles.totalValue, styles.amountCol, amountStyle, { color: palette.green }]}>
-          {formatWidgetMoney(data.total.balance)}
+        <Text
+          style={[styles.balanceCol, totalBalanceStyle, moneyCellStyle, { color: palette.text }]}
+          numberOfLines={1}
+        >
+          {formatWidgetMoneyNoWrap(totalBalance)}
         </Text>
         {showRate ? (
-          <Text style={[styles.cell, styles.rateCol, rateTextStyle, { color: colors.textSecondary }]}>
+          <Text style={[styles.rateCol, totalRateStyle, { color: MOCK.secondary }]}>
             {data.total.rate ?? '—'}
           </Text>
         ) : null}
         {showPayment ? (
-          <Text style={[styles.cell, styles.paymentCol, compactAmountStyle, { color: colors.textSecondary }]}>
-            {formatWidgetMoney(data.total.payment)}
+          <Text
+            style={[styles.paymentCol, totalPaymentStyle, moneyCellStyle, { color: palette.text }]}
+            numberOfLines={1}
+          >
+            {formatTotalPaymentNoWrap(data.total.payment, totalPayment)}
           </Text>
         ) : null}
       </View>
-    </View>
+    </WidgetCardShell>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: CARD_RADIUS,
-    borderWidth: StyleSheet.hairlineWidth,
+  shell: {
     gap: spacing.sm,
   },
   title: {
-    fontSize: 11,
-    letterSpacing: 0.8,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
   },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.xs,
-    paddingBottom: spacing.xs,
+    alignItems: 'center',
+    gap: MOCK.gridGap,
+    paddingBottom: 2,
   },
-  headerCell: {
-    flexShrink: 0,
+  headerDivider: {
+    height: StyleSheet.hairlineWidth,
+    minHeight: 1,
   },
-  row: {
+  dataRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: MOCK.gridGap,
     paddingVertical: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    minHeight: 1,
   },
   totalRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    marginTop: spacing.xs,
-    borderRadius: CARD_RADIUS - 2,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  cell: {
-    flexShrink: 0,
-  },
-  totalLabel: {
-    fontSize: 11,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
-  totalValue: {
-    fontSize: 14,
+    gap: MOCK.gridGap,
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: spacing.md,
   },
   nameCol: {
-    flex: 1.35,
+    flex: 1,
+    flexShrink: 1,
     minWidth: 0,
   },
-  amountCol: {
-    flex: 1.05,
+  balanceCol: {
+    width: MOCK.colBalance,
+    minWidth: MOCK.colBalance,
+    flexShrink: 0,
     textAlign: 'right',
   },
   rateCol: {
-    width: 44,
+    width: MOCK.colRate,
+    flexShrink: 0,
     textAlign: 'right',
   },
   paymentCol: {
-    width: 72,
+    width: MOCK.colPayment,
+    minWidth: MOCK.colPayment,
+    flexShrink: 0,
     textAlign: 'right',
   },
 });

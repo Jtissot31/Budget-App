@@ -570,7 +570,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: 44,
     height: 5,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     backgroundColor: 'rgba(255,255,255,0.16)',
     marginBottom: spacing.md,
   },

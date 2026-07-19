@@ -7,17 +7,18 @@ import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DMMono_400Regular, DMMono_500Medium } from '@expo-google-fonts/dm-mono';
-import { Onest_800ExtraBold } from '@expo-google-fonts/onest';
+import { Inter_800ExtraBold } from '@expo-google-fonts/inter';
 import {
   PlusJakartaSans_400Regular,
   PlusJakartaSans_500Medium,
   PlusJakartaSans_600SemiBold,
   PlusJakartaSans_700Bold,
   PlusJakartaSans_800ExtraBold,
-  useFonts,
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { AppBackgroundGradient } from '@/components/AppBackgroundGradient';
 import { ensureDbReady } from '@/lib/init';
+import { preloadVectorIconFonts } from '@/lib/preloadVectorIconFonts';
+import { useAppFonts } from '@/lib/useAppFonts';
 import { ThemeProvider, useAppTheme } from '@/lib/themeContext';
 import { configureSystemTypographyDefaults, configureTypographyDefaults } from '@/lib/typographyDefaults';
 import { fontFamilies } from '@/constants/theme';
@@ -51,18 +52,19 @@ function ThemedRootShell() {
 function RootLayoutContent() {
   const { colors, statusBarStyle } = useAppTheme();
   const [ready, setReady] = useState(true);
-  const [fontsLoaded, fontError] = useFonts({
+  const [fontsLoaded, fontError] = useAppFonts({
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
     PlusJakartaSans_800ExtraBold,
-    Onest_800ExtraBold,
+    Inter_800ExtraBold,
     DMMono_400Regular,
     DMMono_500Medium,
   });
 
   useEffect(() => {
+    preloadVectorIconFonts();
     console.log('[Boot] layout mount — Stack visible immediately');
     SplashScreen.hideAsync().catch(() => {});
     void (async () => {

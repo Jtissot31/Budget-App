@@ -1,3 +1,4 @@
+import { dataEvents } from '@/lib/events';
 import { generateGeminiContent } from './geminiClient';
 import {
   buildHeuristicRFA,
@@ -16,6 +17,12 @@ const REGENERATION_THROTTLE_MS = 24 * 60 * 60 * 1000;
 const BALANCE_DELTA_THRESHOLD = 500;
 
 let cachedRfa: FinancialSummaryAnonymous | null = null;
+
+/** Drop in-memory RFA + chat session when loans/accounts/budgets change. */
+dataEvents.subscribe(() => {
+  cachedRfa = null;
+  invalidateChatSessionCache();
+});
 
 async function getLastGeneratedAt(): Promise<number | null> {
   const raw = await loadEncryptedJson<{ generatedAt: string }>(RFA_LAST_GENERATED_KEY);
@@ -39,8 +46,35 @@ export async function saveRFA(rfa: FinancialSummaryAnonymous): Promise<void> {
 
 export async function clearRFA(): Promise<void> {
   cachedRfa = null;
+  invalidateChatSessionCache();
   await removeEncryptedItem(RFA_STORAGE_KEY);
   await removeEncryptedItem(RFA_LAST_GENERATED_KEY);
+}
+
+/**
+ * Rebuild RFA structured fields (dettes, comptes, profil, analyse) from live SQLite.
+ * Fast heuristic path — used before chat / plan suggestions so rates & balances stay current.
+ * Preserves Gemini-enriched plans/alerts from the previous snapshot when present.
+ */
+export async function refreshRfaSnapshotFromAppData(): Promise<FinancialSummaryAnonymous> {
+  const input = await buildRFAInputFromAppData();
+  const fresh = buildHeuristicRFA(input);
+  const existing = cachedRfa ?? (await loadEncryptedJson<FinancialSummaryAnonymous>(RFA_STORAGE_KEY));
+
+  const rfa: FinancialSummaryAnonymous = existing
+    ? {
+        ...fresh,
+        plansFinanciersActifs: existing.plansFinanciersActifs?.length
+          ? existing.plansFinanciersActifs
+          : fresh.plansFinanciersActifs,
+        alertesActives: existing.alertesActives?.length
+          ? existing.alertesActives
+          : fresh.alertesActives,
+      }
+    : fresh;
+
+  await saveRFA(rfa);
+  return rfa;
 }
 
 function buildGeminiPrompt(input: Awaited<ReturnType<typeof buildRFAInputFromAppData>>): string {
