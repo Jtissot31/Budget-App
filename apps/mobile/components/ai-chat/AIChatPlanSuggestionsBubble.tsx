@@ -21,12 +21,12 @@ import {
 import { buildTemplateDetailParams } from '@/lib/plans/planCreateNavigation';
 import type { PlanSuggere } from '@/lib/plans/Plan';
 import { tapHaptic } from '@/lib/haptics';
-import { interRegularText } from '@/constants/theme';
+import { CONTAINER_SURFACE, DASHBOARD_VALUE_GREEN, interRegularText } from '@/constants/theme';
 import { useAIChatColors } from './theme';
 
-const PLAN_SURFACE = '#111111';
+const PLAN_SURFACE = CONTAINER_SURFACE;
 const PLAN_BORDER = 'rgba(255, 255, 255, 0.12)';
-const PLAN_SELECTED_BORDER = '#4ADE80';
+const PLAN_SELECTED_BORDER = DASHBOARD_VALUE_GREEN;
 const CARD_RADIUS = 13;
 
 export type PlanSuggestionsBubbleState = {
@@ -101,7 +101,7 @@ export function AIChatPlanSuggestionsBubble({ state, onConfirm }: Props) {
             plan.subtype,
           ),
           suggestedId: plan.id,
-        }),
+        }) as { subtype: string | number },
       });
     },
     [router],

@@ -182,7 +182,7 @@ export function AIChatMultimodalInput({
                     disabled && styles.sendDisabled,
                   ]}
                 >
-                  <AppIcon family="material-community" name="send" size={20} color={palette.userBubbleText} />
+                  <AppIcon family="material-community" name="send" size={20} color={palette.onAccent} />
                 </Pressable>
               ) : (
                 <Pressable

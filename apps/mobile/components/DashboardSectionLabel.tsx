@@ -1,11 +1,11 @@
 import { ReactNode } from 'react';
-import { StyleSheet, Text, type TextStyle } from 'react-native';
+import { StyleSheet, Text, type StyleProp, type TextStyle } from 'react-native';
 import { typographyKit } from '@/constants/typographyKit';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
   children: ReactNode;
-  style?: TextStyle;
+  style?: StyleProp<TextStyle>;
   numberOfLines?: number;
 };
 

@@ -41,7 +41,7 @@ export function CategoryBudgetProgress({ budget, compactOverspendOnly = false }:
     colors,
   );
   const barTrackColor = categoryBudgetBarTrackColor(budget.spent, budget.limitAmount);
-  const labelColor = usage.isOverBudget ? barColor : colors.textMuted;
+  const labelColor = barColor;
 
   return (
     <View style={styles.wrap}>

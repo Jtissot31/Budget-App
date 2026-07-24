@@ -160,7 +160,7 @@ export function ExpenseCategoryDonut({
   const thickness = chartSize * 0.078;
   const outerRadius = innerRadius + thickness;
   const gap = SEGMENT_GAP;
-  const trackColor = isLight ? colors.border : '#181818';
+  const trackColor = isLight ? colors.border : colors.surfaceElevated;
   const hubSize = innerRadius * 1.9;
 
   const segments = useMemo(
@@ -296,7 +296,7 @@ export function ExpenseCategoryDonut({
                   styles.hubDetail,
                   typographyKit.caption,
                   {
-                    color: colors.accentGreen,
+                    color: colors.textMuted,
                     ...hubMetrics.detail,
                     marginTop: hubMetrics.selectedDetailMarginTop,
                   },

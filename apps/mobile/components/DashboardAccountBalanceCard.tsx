@@ -1,5 +1,4 @@
-import { memo } from 'react';
-import { AppIcon } from '@/components/icons/AppIcon';
+import { memo, useEffect, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -8,7 +7,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { Image } from 'expo-image';
+import { RemoteLogoImage } from '@/components/IconFrame';
 import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
 import {
   planFinanceContainerCompactTilePaddingStyle,
@@ -21,16 +20,12 @@ import {
 } from '@/constants/theme';
 import {
   accountBalanceRowTitle,
-  accountBalanceIconForKind,
-  accountBalanceIconTone,
-  accountBalanceSubtitle,
   accountBalanceValueColor,
   accountKindTypeLabel,
   type AccountBalanceDisplayAccount,
 } from '@/lib/accountBalancePresentation';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
 import { useAppTheme } from '@/lib/themeContext';
-import { remoteLogoImageStyle, userPickedIconLogoSize } from '@/lib/userPickedIcon';
 
 type Props = {
   account: AccountBalanceDisplayAccount;
@@ -40,19 +35,11 @@ type Props = {
   accessibilityLabel?: string;
 };
 
-/** Matches StockHoldingTile logo / compact tile proportions. */
-const AVATAR_SIZE = 28;
-const CARD_MIN_HEIGHT = 148;
-const CARD_BODY_MIN_HEIGHT = 52;
-const FALLBACK_ACCOUNT_ICON_SIZE = userPickedIconLogoSize(AVATAR_SIZE);
-
-function normalizeLabel(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .trim();
-}
+/** Compact 2-column account tile — shorter than StockHoldingTile. */
+const CARD_MIN_HEIGHT = 118;
+const CARD_BODY_MIN_HEIGHT = 36;
+/** Compact institution mark — matches StockHoldingTile avatar scale. */
+const LOGO_SIZE = 28;
 
 export const DashboardAccountBalanceCard = memo(function DashboardAccountBalanceCard({
   account,
@@ -62,75 +49,60 @@ export const DashboardAccountBalanceCard = memo(function DashboardAccountBalance
   accessibilityLabel,
 }: Props) {
   const { colors } = useAppTheme();
-  const muted = colors.textMuted;
   const balanceColor = accountBalanceValueColor(account, colors.text);
-  const logoTone = accountBalanceIconTone(account.kind, colors);
   const typeLabel = accountKindTypeLabel(account.kind);
   const primary = accountBalanceRowTitle(account);
-  const subtitle = accountBalanceSubtitle(account);
-  const secondary =
-    subtitle && normalizeLabel(subtitle) !== normalizeLabel(primary) ? subtitle : null;
+  const resolvedLogo = logoUrl?.trim() || null;
+  const [logoFailed, setLogoFailed] = useState(false);
+
+  useEffect(() => {
+    setLogoFailed(false);
+  }, [resolvedLogo]);
+
+  const showLogo = Boolean(resolvedLogo) && !logoFailed;
 
   const card = (
     <PlanFinanceContainer style={[styles.card, style]}>
       <View style={styles.headerArea}>
-        <View style={styles.typeRow}>
-          <Text style={[styles.typeLabel, typographyKit.metaSemibold, { color: muted }]} numberOfLines={1}>
+        <View style={styles.typeLabelRow}>
+          <Text
+            style={[typographyKit.microUpper, styles.typeLabel, { color: colors.primary }]}
+            numberOfLines={1}
+          >
             {typeLabel}
           </Text>
+          {showLogo && resolvedLogo ? (
+            <View style={styles.logoSlot} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+              <RemoteLogoImage
+                uri={resolvedLogo}
+                size={LOGO_SIZE}
+                fullSize
+                onError={() => setLogoFailed(true)}
+              />
+            </View>
+          ) : null}
         </View>
         <View style={styles.identityRow}>
-          <View style={logoUrl ? styles.logoSlot : styles.iconSlot}>
-            {logoUrl ? (
-              <Image
-                source={{ uri: logoUrl }}
-                style={styles.logoImage}
-                contentFit="contain"
-                contentPosition="center"
-                transition={150}
-                cachePolicy="memory-disk"
-                recyclingKey={logoUrl}
-              />
-            ) : (
-              <AppIcon
-                family="ionicons"
-                name={accountBalanceIconForKind(account.kind)}
-                size={FALLBACK_ACCOUNT_ICON_SIZE}
-                color={logoTone}
-              />
-            )}
-          </View>
-          <View style={styles.identityTextCol}>
-            <Text
-              style={[styles.primary, typographyKit.captionSemibold, { color: colors.text }]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {primary}
-            </Text>
-            {secondary ? (
-              <Text
-                style={[styles.secondary, typographyKit.microMedium, { color: muted }]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {secondary}
-              </Text>
-            ) : null}
-          </View>
+          <Text
+            style={[styles.primary, typographyKit.listPrimary, { color: colors.text }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {primary}
+          </Text>
         </View>
       </View>
 
       <View style={styles.cardValueRow}>
         <Text
           style={[
-            moneyAmountTypography({ fontSize: 17, lineHeight: 21 }),
+            moneyAmountTypography({ tier: 'stat' }),
             styles.value,
             { color: balanceColor },
           ]}
           numberOfLines={1}
           adjustsFontSizeToFit
-          minimumFontScale={0.8}
+          minimumFontScale={0.6}
         >
           {formatCompactCurrency(account.balance, {
             leadingPlusWhenPositive: account.kind === 'credit' && account.balance > 0,
@@ -161,67 +133,50 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     ...planFinanceContainerCompactTilePaddingStyle(),
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
     minHeight: CARD_MIN_HEIGHT,
   },
   headerArea: {
     minWidth: 0,
   },
-  typeRow: {
+  typeLabelRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
     alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
     minWidth: 0,
   },
   typeLabel: {
-    letterSpacing: 0.2,
-    textAlign: 'right',
+    flex: 1,
+    minWidth: 0,
+    marginBottom: 2,
+  },
+  /** Transparent — logo sits on the PlanFinanceContainer card, no well fill. */
+  logoSlot: {
+    width: LOGO_SIZE,
+    height: LOGO_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    overflow: 'visible',
   },
   identityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.xs,
     minWidth: 0,
   },
-  identityTextCol: {
-    flex: 1,
-    minWidth: 0,
-    gap: 1,
-    justifyContent: 'center',
-  },
-  iconSlot: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    backgroundColor: 'transparent',
-  },
-  logoSlot: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    backgroundColor: 'transparent',
-    overflow: 'visible',
-  },
-  logoImage: remoteLogoImageStyle(AVATAR_SIZE),
   primary: {
+    flex: 1,
     flexShrink: 1,
-    fontSize: 14,
-    lineHeight: 18,
-    letterSpacing: 0.1,
     includeFontPadding: false,
-  },
-  secondary: {
-    letterSpacing: 0.05,
   },
   cardValueRow: {
     flex: 1,
     minHeight: CARD_BODY_MIN_HEIGHT,
     justifyContent: 'flex-end',
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
   },
   value: {
     alignSelf: 'stretch',

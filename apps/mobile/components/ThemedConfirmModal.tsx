@@ -36,9 +36,9 @@ const CONFIRM_BUTTON_BY_VARIANT: Record<
   ThemedConfirmVariant,
   (colors: AppColors, isLight: boolean) => ConfirmButtonStyle
 > = {
-  success: (colors, isLight) => ({
+  success: (colors) => ({
     backgroundColor: colors.primary,
-    textColor: isLight ? '#FFFFFF' : '#0a0a0a',
+    textColor: colors.background,
   }),
   error: (colors) => NEUTRAL_DISMISS_BUTTON(colors),
   warning: (colors) => NEUTRAL_DISMISS_BUTTON(colors),

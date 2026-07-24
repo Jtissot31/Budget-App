@@ -35,19 +35,28 @@ export function userPickedIconCornerRadius(size: number): number {
   return Math.min(radius.lg, size / 2);
 }
 
-export function userPickedIconLogoSize(containerSize: number): number {
-  return Math.round(containerSize * USER_PICKED_ICON_LOGO_INSET_RATIO);
+export function userPickedIconLogoSize(
+  containerSize: number,
+  insetRatio: number = USER_PICKED_ICON_LOGO_INSET_RATIO,
+): number {
+  return Math.round(containerSize * insetRatio);
 }
 
 /** Integer inset so remote logos sit centered without fractional stretch. */
-export function userPickedIconLogoInset(containerSize: number): number {
-  return Math.round((containerSize - userPickedIconLogoSize(containerSize)) / 2);
+export function userPickedIconLogoInset(
+  containerSize: number,
+  insetRatio: number = USER_PICKED_ICON_LOGO_INSET_RATIO,
+): number {
+  return Math.round((containerSize - userPickedIconLogoSize(containerSize, insetRatio)) / 2);
 }
 
 /** Absolute layout for favicons inside a sized, overflow-hidden well. */
-export function remoteLogoImageStyle(containerSize: number): ImageStyle {
-  const inset = userPickedIconLogoInset(containerSize);
-  const logoSide = userPickedIconLogoSize(containerSize);
+export function remoteLogoImageStyle(
+  containerSize: number,
+  insetRatio: number = USER_PICKED_ICON_LOGO_INSET_RATIO,
+): ImageStyle {
+  const inset = userPickedIconLogoInset(containerSize, insetRatio);
+  const logoSide = userPickedIconLogoSize(containerSize, insetRatio);
   return {
     position: 'absolute',
     top: inset,

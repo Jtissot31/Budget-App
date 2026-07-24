@@ -1,8 +1,12 @@
 {
   "expo": {
-    "name": "Budget Tracker",
+    "name": "Fyn",
     "slug": "budget-tracker",
-    "platforms": ["ios", "android", "web"],
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "version": "1.0.1-BOOT",
     "orientation": "portrait",
     "scheme": "budgettracker",
@@ -10,15 +14,21 @@
     "backgroundColor": "#0A0A0A",
     "newArchEnabled": true,
     "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
       "backgroundColor": "#0A0A0A"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.budgettracker.app"
+      "bundleIdentifier": "com.budgettracker.app",
+      "infoPlist": {
+        "CFBundleDisplayName": "Fyn"
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0D9488"
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#000000"
       },
       "package": "com.budgettracker.app"
     },
@@ -53,10 +63,20 @@
         }
       ],
       "expo-document-picker",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0A0A0A"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "icon": "./assets/images/icon.png"
   }
 }

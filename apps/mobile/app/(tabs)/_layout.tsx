@@ -12,6 +12,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { FloatingTabBar } from '@/components/FloatingTabBar';
+import { AppGuidedTour } from '@/components/onboarding/AppGuidedTour';
 import { useAppTheme } from '@/lib/themeContext';
 
 const MAIN_TAB_PATHS = ['/', '/transactions', '/goals', '/accounts', '/budgets'] as const;
@@ -126,6 +127,7 @@ export default function TabLayout() {
             <Tabs.Screen name="settings" />
           </Tabs>
         </Animated.View>
+        <AppGuidedTour />
       </View>
     </GestureDetector>
   );

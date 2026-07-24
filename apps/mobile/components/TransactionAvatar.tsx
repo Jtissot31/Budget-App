@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { type ViewStyle } from 'react-native';
 import { getCategoryIconName, isIconName, type IconName } from '@/constants/categoryOptions';
 import { EXPENSE_DEFAULT_ICON, isExpenseDefaultIcon, resolveExpenseFallbackIcon } from '@/lib/expenseIcon';
-import { getMerchantLogoUrls, resolveTransactionMerchantLogo } from '@/lib/merchantLogo';
+import { resolveTransactionMerchantLogo } from '@/lib/merchantLogo';
+import { merchantLabelHasResolvableLogo } from '@/lib/merchantLogoMemory';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import {
   isContactTransferTx,
@@ -87,7 +88,7 @@ export function TransactionAvatar({
     const resolved = resolveTransactionMerchantLogo(transaction.label, merchantOverride);
     const hasRemoteLogo =
       Boolean(resolved.logoUrl) ||
-      hasMerchantLogoCandidate(transaction.label) ||
+      hasMerchantLogoCandidate(transaction.label, merchantOverride) ||
       Boolean(merchantOverride?.logoUrl?.trim());
 
     if (transaction.type === 'income' && !hasRemoteLogo) {
@@ -152,8 +153,11 @@ export function TransactionAvatar({
   );
 }
 
-export function hasMerchantLogoCandidate(label: string): boolean {
-  return getMerchantLogoUrls(label).length > 0;
+export function hasMerchantLogoCandidate(
+  label: string,
+  override?: Pick<MerchantOverride, 'logoUrl' | 'icon' | 'useAutoLogo'> | null,
+): boolean {
+  return merchantLabelHasResolvableLogo(label, override);
 }
 
 function getFallbackIcon(transaction: Transaction): IconName | typeof EXPENSE_DEFAULT_ICON {

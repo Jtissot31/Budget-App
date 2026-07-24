@@ -1,5 +1,10 @@
 import { createAbortError, isAbortError } from '@/lib/abortError';
-import { executeChatAction, isExecutableChatAction } from './actionExecutor';
+import { Platform } from 'react-native';
+import {
+  executeChatAction,
+  isExecutableChatAction,
+  listExecutableChatActions,
+} from './actionExecutor';
 
 import {
   buildActionResultAlertCard,
@@ -47,6 +52,8 @@ import { GeminiApiError, generateGeminiChat } from './geminiClient';
 
 import { saveRFA } from './rfaService';
 
+import { ensureUserApiKeysHydrated } from './userApiKeys';
+
 import {
   resolveDataMode,
   sanitizeForAI,
@@ -73,8 +80,6 @@ import type {
 
   ChatAction,
 
-  ChatActionType,
-
   ChatImageAttachment,
 
   ChatMessage,
@@ -98,7 +103,7 @@ const MAX_HISTORY_MESSAGES = 50;
 /** Recent turns sent to the model — full history stays persisted locally. */
 const MAX_API_HISTORY_MESSAGES = 12;
 
-// Prompt revision 3 — short FR replies + plain text; clear warm cache on module reload.
+// Prompt revision 4 — widgets vs action CTA JSON + no fake confirmations; clear warm cache.
 invalidateChatSessionCache();
 
 
@@ -106,54 +111,6 @@ invalidateChatSessionCache();
 const ANTHROPIC_MODEL = 'claude-sonnet-4-5-20250929';
 
 const ANTHROPIC_ENDPOINT = 'https://api.anthropic.com/v1/messages';
-
-
-
-const ALL_ACTION_TYPES: ChatActionType[] = [
-
-  'creer_objectif',
-
-  'modifier_objectif',
-
-  'creer_categorie_budget',
-
-  'modifier_categorie_budget',
-
-  'creer_compte',
-
-  'modifier_compte',
-
-  'creer_marchand',
-
-  'modifier_marchand',
-
-  'creer_patrimoine',
-
-  'modifier_patrimoine',
-
-  'creer_pret',
-
-  'modifier_pret',
-
-  'creer_transaction',
-
-  'modifier_transaction',
-
-  'creer_paiement_recurrent',
-
-  'modifier_paiement_recurrent',
-
-  'creer_alerte',
-
-  'modifier_plan',
-
-  'pause_plan',
-
-  'modifier_priorite_dette',
-
-  'adapter_dashboard',
-
-];
 
 
 
@@ -181,12 +138,14 @@ function buildWidgetCapabilitiesSection(): string {
     '{"type":"bar_chart","label":"Dépenses par catégorie","items":[{"label":"Logement","value":1450,"value_label":"1 450 $"},{"label":"Épicerie","value":620,"value_label":"620 $"},{"label":"Transport","value":280,"value_label":"280 $"}],"caption":"Mois en cours"}',
     '{"type":"allocation_chart","label":"Répartition du budget","segments":[{"label":"Essentiels","value":55,"percent":55},{"label":"Loisirs","value":20,"percent":20},{"label":"Épargne","value":25,"percent":25}],"caption":"Part du revenu net mensuel"}',
     '{"type":"alert_card","severity":"warning","title":"Budget restaurants dépassé","message":"Tu as utilisé 112 % de ton enveloppe ce mois-ci.","action":{"label":"Voir le budget"}}',
+    '{"type":"balance_summary_card","variant":"total","label":"Solde total","value_label":"5 240,00 $","trend_label":"+10 % par rapport au mois dernier","positive":true,"action":{"label":"Voir les comptes"}}',
+    '{"type":"balance_summary_card","variant":"account","label":"Solde","account_name":"Tangerine Chèque","account_institution":"Tangerine","account_last4":"4521","account_kind":"cheque","value_label":"3 412,50 $","trend_label":"+4 % par rapport au mois dernier","positive":true,"action":{"label":"Voir le compte"}}',
   ];
 
   return [
     'WIDGETS STRUCTURÉS (UI génératif) :',
     'Pour montants, pourcentages, tableaux de dettes, comparaisons, projections et graphiques, produis un bloc JSON widget AU LIEU de tableaux markdown.',
-    'Types disponibles : progress_card, debt_table, comparison_card, alert_card, line_chart, bar_chart, cashflow_comparison, allocation_chart.',
+    'Types disponibles : progress_card, debt_table, comparison_card, alert_card, line_chart, bar_chart, cashflow_comparison, allocation_chart, balance_summary_card.',
     'Place chaque widget dans son propre bloc JSON (objet standalone ou ```json```) — JAMAIS dans la prose, JAMAIS tronqué, JAMAIS visible pour l\'utilisateur.',
     'Le texte conversationnel reste en prose courte ; les widgets sont des blocs JSON séparés parsés par l\'app.',
     'Les widgets peuvent coexister avec le bloc action JSON (champ "action") — ne pas mélanger les formats.',
@@ -198,8 +157,16 @@ function buildWidgetCapabilitiesSection(): string {
     '- allocation_chart : répartition en parts (budget, abonnements, dettes par type). segments[].value = part numérique.',
     '- comparison_card : 2–4 scénarios textuels sans série temporelle ni barres.',
     '- progress_card : un seul objectif avec barre de progression (%).',
+    '- balance_summary_card : solde — variante total (patrimoine / liquidités) OU compte précis quand l\'utilisateur demande le solde d\'un de ses comptes.',
     '- Utilise les agrégats du contexte Fyn (dépenses par catégorie, cashflow, budgets, abonnements) — ne réinvente pas les chiffres.',
     '- Les graphiques s\'affichent en style sombre premium unifié ; privilégie-les pour les réponses chiffrées.',
+    '',
+    'Solde / balance_summary_card :',
+    '- Demande « mes soldes », « montre mes soldes », « my balances », liquidités → OBLIGATOIRE : au moins un balance_summary_card variant:"total" (label:"Solde total") + éventuellement des cartes account pour les comptes liquides. Ne réponds JAMAIS en prose seule.',
+    '- Demande de solde d\'UN compte (« solde de mon compte Tangerine », « combien j\'ai sur mon chèque ») → variant:"account" + account_name (obligatoire) + value_label = solde de CE compte. Ajoute account_institution (ex. « Tangerine » — sert au logo), account_last4, account_kind si connus. account_id / account_logo_url si disponibles. trend_label seulement si pertinent pour ce compte, sinon omets-le. action.label = « Voir le compte ».',
+    '- Demande de solde global / liquidités totales → variant:"total" + label:"Solde total" + value_label agrégé. Ne mets PAS account_name.',
+    '- N\'utilise JAMAIS « Solde total » ni un total agrégé pour répondre à une question sur un compte précis.',
+    '- Le champ widget "action":{"label":"..."} est un CTA UI — ce n\'est PAS un bloc action chat (pas de confirmation / pas d\'exécution).',
     '',
     'Schémas :',
     '- progress_card : label, value_label, percent (0-100), percent_label, status_line?, actions?[{label}]',
@@ -210,6 +177,7 @@ function buildWidgetCapabilitiesSection(): string {
     '- cashflow_comparison : label, income, expenses, surplus (income − expenses), income_label?, expenses_label?, caption?, period?',
     '- allocation_chart : label, segments[{label,value,percent?}], caption?',
     '- alert_card : severity (info|warning|danger|success), title, message, action?{label}',
+    '- balance_summary_card : label, value_label, variant? (total|account), account_id?, account_name?, account_institution?, account_last4?, account_kind?, account_logo_url?, trend_label?, positive?, action?{label}',
     '',
     'Après exécution réussie d\'une action (confirmation bouton ou texte « oui » / « ok » / « confirme »), réponds UNIQUEMENT avec un bloc alert_card JSON (severity: success) — jamais de prose seule pour le résultat final.',
     'Exemple succès : {"type":"alert_card","severity":"success","title":"C\'est fait","message":"La catégorie Restaurants est maintenant dans ton budget à 400 $/mois."}',
@@ -278,15 +246,17 @@ function buildActionCapabilitiesSection(): string {
 
 
 
+  const executableActions = listExecutableChatActions();
+
   return [
 
     'CAPACITÉS D\'ACTION :',
 
-    'Tu peux déclencher UNE action par demande explicite de création/modification.',
+    'Tu peux proposer UNE action par demande explicite de création/modification.',
 
-    'Actions disponibles :',
+    'Actions exécutables (UNIQUEMENT celles-ci) :',
 
-    ...ALL_ACTION_TYPES.map((action) => `- ${action}`),
+    ...executableActions.map((action) => `- ${action}`),
 
     '',
 
@@ -309,6 +279,10 @@ function buildActionCapabilitiesSection(): string {
     '- Exemple bon : prose « Bonne idée pour sécuriser tes dépenses. » + action JSON confirmation « Créer l\'objectif Fonds d\'urgence (10 000 $)? »',
 
     '- Exemple mauvais : prose « Veux-tu que je crée l\'objectif Fonds d\'urgence de 10 000 $? » + la même question dans confirmation.',
+
+    '- INTERDIT : prétendre qu\'une action est faite (« c\'est confirmé », « c\'est fait », « j\'ai créé… », alert_card success) SANS bloc action JSON. L\'app exécute seulement après confirmation utilisateur (bouton ou « oui »).',
+
+    '- INTERDIT : inventer des actions hors liste (modifier_plan, pause_plan, adapter_dashboard, etc.). Pour les plans financiers, guide vers les cartes de suggestion — ne prétends pas les avoir créés.',
 
     '- Pour modifier_* : inclure id OU nom/libellé/nom_original pour identifier l\'entité.',
 
@@ -454,6 +428,8 @@ export function parseActionsFromResponse(text: string): {
 
           confirmation: parsed.confirmation,
 
+          status: 'pending',
+
         });
 
       }
@@ -481,6 +457,10 @@ export function parseActionsFromResponse(text: string): {
 
 
 
+function isActionStillPending(action: ChatAction): boolean {
+  return !action.status || action.status === 'pending';
+}
+
 function findPendingActionInHistory(history: ChatMessage[]): ChatAction | null {
 
   for (let index = history.length - 1; index >= 0; index -= 1) {
@@ -489,7 +469,14 @@ function findPendingActionInHistory(history: ChatMessage[]): ChatAction | null {
 
     if (message.role === 'assistant' && message.actions?.length) {
 
-      return message.actions[message.actions.length - 1] ?? null;
+      for (let actionIndex = message.actions.length - 1; actionIndex >= 0; actionIndex -= 1) {
+        const action = message.actions[actionIndex];
+        if (action && isActionStillPending(action)) {
+          return action;
+        }
+      }
+
+      return null;
 
     }
 
@@ -501,7 +488,46 @@ function findPendingActionInHistory(history: ChatMessage[]): ChatAction | null {
 
 }
 
+function markPendingActionStatus(
+  history: ChatMessage[],
+  pendingAction: ChatAction,
+  status: 'success' | 'error',
+): ChatMessage[] {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const message = history[index];
+    if (message.role !== 'assistant' || !message.actions?.length) continue;
 
+    const actionIndex = message.actions.findIndex(
+      (action) =>
+        isActionStillPending(action) &&
+        action.action === pendingAction.action &&
+        action.confirmation === pendingAction.confirmation,
+    );
+    if (actionIndex === -1) continue;
+
+    const actions = message.actions.map((action, idx) =>
+      idx === actionIndex ? { ...action, status } : action,
+    );
+    const next = [...history];
+    next[index] = { ...message, actions };
+    return next;
+  }
+
+  return history;
+}
+
+function buildNothingToConfirmReply(): string {
+  return "Je n'ai aucune action en attente à confirmer. Demande-moi de créer ou modifier quelque chose, puis confirme via la carte ou en répondant « oui ».";
+}
+
+/** Drop model-invented success alerts — only the executor path may claim success. */
+function stripUnsolicitedSuccessAlerts(
+  blocks: import('@/types/aiWidgets').MessageBlock[],
+): import('@/types/aiWidgets').MessageBlock[] {
+  return blocks.filter(
+    (block) => !(block.type === 'alert_card' && block.severity === 'success'),
+  );
+}
 
 async function executeTextConfirmation(
 
@@ -528,6 +554,9 @@ async function executeTextConfirmation(
 
 
   const result = await executeChatAction(pendingAction);
+  if (result.ok) {
+    invalidateChatSessionCache();
+  }
 
   const alertCard = buildActionResultAlertCard(result, pendingAction);
 
@@ -547,7 +576,12 @@ async function executeTextConfirmation(
 
 
 
-  const nextHistory = [...history, userMessage, assistantMessage];
+  const historyWithStatus = markPendingActionStatus(
+    history,
+    pendingAction,
+    result.ok ? 'success' : 'error',
+  );
+  const nextHistory = [...historyWithStatus, userMessage, assistantMessage];
 
   await saveChatHistory(nextHistory);
 
@@ -642,7 +676,8 @@ async function getChatContext(options?: { forceRefresh?: boolean; question?: str
 
 /** Pre-warm RFA + system prompt so the first send skips cold-start DB work. */
 export async function warmChatContext(): Promise<void> {
-  await getChatContext({ forceRefresh: true });
+  // Reuse session cache when still valid (invalidated via dataEvents on writes).
+  await getChatContext();
 }
 
 
@@ -801,6 +836,19 @@ function buildLocalFallbackReply(
       return `${prefix}je ne vois aucun abonnement ou paiement récurrent actif enregistré.`;
     }
     return `${prefix}je vois ${items.length} paiement${items.length > 1 ? 's' : ''} récurrent${items.length > 1 ? 's' : ''} : ${items.slice(0, 6).map((item) => `${item.name} (${item.amount.toFixed(2)} $/${item.frequency})`).join(', ')}.`;
+  }
+
+  if (
+    /\b(mes soldes|mon solde|soldes?|balances?|liquidit|account balance|my balance|combien j'ai|combien j ai)\b/.test(
+      normalized,
+    )
+  ) {
+    const liquid = financialContext.accounts.filter((account) => account.type !== 'credit');
+    if (liquid.length === 0) {
+      return `${prefix}je ne vois aucun compte liquide enregistré. Ajoute un compte pour afficher tes soldes.`;
+    }
+    const total = liquid.reduce((sum, account) => sum + account.balance, 0);
+    return `${prefix}voici tes soldes — total liquides environ ${total.toFixed(0)} $ sur ${liquid.length} compte${liquid.length > 1 ? 's' : ''}.`;
   }
 
   if (normalized.includes('agenda') || normalized.includes('échéance') || normalized.includes('prochain')) {
@@ -1258,6 +1306,14 @@ async function callClaude(
 
       'anthropic-version': '2023-06-01',
 
+      // Required for browser BYOK; Anthropic otherwise blocks CORS from web.
+
+      ...(Platform.OS === 'web'
+
+        ? { 'anthropic-dangerous-direct-browser-access': 'true' }
+
+        : {}),
+
     },
 
     body: JSON.stringify({
@@ -1336,6 +1392,8 @@ export async function sendChatMessage(
 
 ): Promise<SendChatMessageResult> {
 
+  await ensureUserApiKeysHydrated();
+
   const trimmed = userText.trim();
 
   if (!trimmed) {
@@ -1376,7 +1434,8 @@ export async function sendChatMessage(
 
     loadChatHistory(),
 
-    getChatContext({ forceRefresh: true, question: trimmed }),
+    // Prefer warmed session cache; rebuild only after dataEvents invalidation.
+    getChatContext({ question: trimmed }),
 
     imageReadPromise,
 
@@ -1386,12 +1445,38 @@ export async function sendChatMessage(
 
 
 
-  const pendingAction = isTextConfirmation(trimmed) ? findPendingActionInHistory(history) : null;
+  if (isTextConfirmation(trimmed)) {
+    const pendingAction = findPendingActionInHistory(history);
+    if (pendingAction) {
+      return executeTextConfirmation(trimmed, history, pendingAction);
+    }
 
-  if (pendingAction) {
-
-    return executeTextConfirmation(trimmed, history, pendingAction);
-
+    // Avoid LLM hallucinating « confirmé » when nothing is pending.
+    completedPhases.push('analyse_finances', 'reflexion');
+    emitActivity('analyse');
+    const userMessage: ChatMessage = {
+      id: createMessageId('user'),
+      role: 'user',
+      content: trimmed,
+      createdAt: new Date().toISOString(),
+      imageUri: options?.imageUri,
+    };
+    const assistantMessage: ChatMessage = {
+      id: createMessageId('assistant'),
+      role: 'assistant',
+      content: buildNothingToConfirmReply(),
+      createdAt: new Date().toISOString(),
+      activityPhases: completedPhases,
+    };
+    const nextHistory = [...history, userMessage, assistantMessage];
+    await saveChatHistory(nextHistory);
+    const quota = await incrementQuota(trimmed, assistantMessage.content);
+    return {
+      userMessage,
+      assistantMessage,
+      quota,
+      offlineMode: false,
+    };
   }
 
 
@@ -1559,14 +1644,19 @@ export async function sendChatMessage(
 
   const { cleanText, actions, blocks: parsedBlocks } = parseActionsFromResponse(assistantRaw);
 
+  const blocksWithoutFakeSuccess = stripUnsolicitedSuccessAlerts(parsedBlocks);
+
   const enrichedBlocks = enrichAssistantBlocksWithContextWidgets(
-    parsedBlocks,
+    blocksWithoutFakeSuccess,
     trimmed,
     context.financialContext,
     rfa,
   );
 
   const hasWidgets = enrichedBlocks.some((block) => block.type !== 'text');
+  const plainText = messageBlocksToPlainText(
+    enrichedBlocks.filter((block) => block.type === 'text'),
+  );
 
 
 
@@ -1576,7 +1666,10 @@ export async function sendChatMessage(
 
     role: 'assistant',
 
-    content: cleanText || (actions.length > 0 ? '' : 'Je n\'ai pas pu formuler de réponse.'),
+    content:
+      plainText ||
+      cleanText ||
+      (actions.length > 0 ? '' : 'Je n\'ai pas pu formuler de réponse.'),
 
     blocks: hasWidgets || (actions.length > 0 && enrichedBlocks.some((block) => block.type === 'text'))
       ? enrichedBlocks

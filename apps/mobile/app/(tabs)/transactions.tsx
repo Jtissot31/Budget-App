@@ -13,14 +13,15 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AgendaView, type AgendaViewRef } from '@/components/AgendaView';
 import { ContactFormModal } from '@/components/ContactFormModal';
-import { MerchantDirectory } from '@/components/MerchantDirectory';
+import { MerchantDirectory, type MerchantDirectoryRow } from '@/components/MerchantDirectory';
+import type { ContactDirectoryRow } from '@/components/ContactDirectory';
 import { MerchantEditModal, type MerchantEditTarget } from '@/components/MerchantEditModal';
 import { DashboardCard } from '@/components/DashboardCard';
 import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
 import { type FormFeedback } from '@/lib/formFeedback';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import {
   formatHistoryDaySectionHeader,
-  formatListSectionTotal,
   sumHistoryDayTotals,
   todayDayKey,
 } from '@/lib/transactionListSectionFormat';
@@ -45,8 +46,6 @@ import {
   colors,
   FLOATING_NAV_CONTENT_PADDING,
   ICON_WELL_SIZE,
-  jakartaBoldText,
-  jakartaSemiboldText,
   PAGE_PADDING_HORIZONTAL,
   radius,
   screenHorizontalGutter,
@@ -56,7 +55,7 @@ import {
 } from '@/constants/theme';
 import { getContacts, getMerchantOverrides, getTransactions, sortTransactionsNewestFirst, getCategories, getCategoryBudgets, getSimulatedAccounts } from '@/lib/db';
 import { ensureDbReady } from '@/lib/init';
-import { isContactTransferTx } from '@/lib/accountTransactionFlow';
+import { isContactTransferTx, parseAccountIdFromNote } from '@/lib/accountTransactionFlow';
 import { buildContactDirectoryRows } from '@/lib/contactHistory';
 import {
   buildMerchantOverrideByNormalizedName,
@@ -77,17 +76,6 @@ import { useAppTheme } from '@/lib/themeContext';
 import type { Category, CategoryBudget, Contact, MerchantOverride, RecurringPayment, SimulatedAccount, Transaction } from '@/types';
 
 type ViewTab = TransactionsViewTab;
-
-type MerchantRow = {
-  originalName: string;
-  name: string;
-  logoUrl?: string | null;
-  icon?: string | null;
-  useAutoLogo?: boolean;
-  count: number;
-  total: number;
-  lastVisit: string | null;
-};
 
 function getLocalDayKey(isoDate: string) {
   const date = new Date(isoDate);
@@ -127,9 +115,15 @@ const HistoryDayGroup = memo(function HistoryDayGroup({
   const { colors } = useAppTheme();
   const todayKey = useMemo(() => todayDayKey(), []);
   const sectionHeader = useMemo(() => formatHistoryDaySectionHeader(date, todayKey), [date, todayKey]);
-  const sectionTotal = useMemo(() => {
-    const totals = sumHistoryDayTotals(txs);
-    return formatListSectionTotal(totals.expenseTotal, totals.incomeTotal);
+  const dayTotals = useMemo(() => sumHistoryDayTotals(txs), [txs]);
+  const showDayTotals = dayTotals.expenseTotal > 0 || dayTotals.incomeTotal > 0;
+  const showAccountSubtitle = useMemo(() => {
+    const accountIds = new Set(
+      txs
+        .map((tx) => parseAccountIdFromNote(tx.note))
+        .filter((id): id is string => Boolean(id)),
+    );
+    return accountIds.size > 1;
   }, [txs]);
   const textFaint = colors.textMuted;
   const textMutedSoft = colors.textSecondary;
@@ -141,12 +135,23 @@ const HistoryDayGroup = memo(function HistoryDayGroup({
           <Text style={[styles.dateHeaderBold, { color: textMutedSoft }]}>{sectionHeader.titleBold}</Text>
           {sectionHeader.titleSuffix}
         </Text>
-        {sectionTotal ? (
-          <Text style={[styles.dateHeaderTotal, { color: textFaint }]}>{sectionTotal}</Text>
+        {showDayTotals ? (
+          <View style={styles.dateHeaderTotals}>
+            {dayTotals.expenseTotal > 0 ? (
+              <Text style={[styles.dateHeaderAmount, { color: colors.text }]}>
+                −{formatDisplayMoneyAbsolute(dayTotals.expenseTotal)}
+              </Text>
+            ) : null}
+            {dayTotals.incomeTotal > 0 ? (
+              <Text style={[styles.dateHeaderAmount, { color: colors.success }]}>
+                +{formatDisplayMoneyAbsolute(dayTotals.incomeTotal)}
+              </Text>
+            ) : null}
+          </View>
         ) : null}
       </View>
       <DashboardCard padding={0} innerStyle={styles.groupCard}>
-        {txs.map((tx) => (
+        {txs.map((tx, index) => (
           <TransactionRow
             key={tx.id}
             transaction={tx}
@@ -156,6 +161,8 @@ const HistoryDayGroup = memo(function HistoryDayGroup({
             merchantOverrideByLabel={merchantOverrideByLabel}
             onPressId={onPressTransaction}
             embedded
+            isLast={index === txs.length - 1}
+            showAccountSubtitle={showAccountSubtitle}
           />
         ))}
       </DashboardCard>
@@ -171,7 +178,7 @@ export default function TransactionsScreen() {
   const contentGutter = Platform.OS === 'web' ? 0 : screenHorizontalGutter(insets);
   const contentCanvas = colors.background;
   const historyListRef = useRef<FlatList<[string, Transaction[]]>>(null);
-  const merchantsListRef = useRef<FlatList<MerchantRow>>(null);
+  const merchantsListRef = useRef<FlatList<MerchantDirectoryRow | ContactDirectoryRow>>(null);
   const agendaRef = useRef<AgendaViewRef>(null);
   const hasBlurredRef = useRef(false);
   const [items, setItems] = useState<Transaction[]>([]);
@@ -183,7 +190,9 @@ export default function TransactionsScreen() {
   const [historyTypeFilter, setHistoryTypeFilter] = useState<HistoryTypeFilter>('all');
   const [historyFiltersExpanded, setHistoryFiltersExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeView, setActiveView] = useState<ViewTab>(params.view === 'agenda' ? 'agenda' : params.view === 'merchants' ? 'merchants' : 'history');
+  const initialView: ViewTab =
+    params.view === 'agenda' ? 'agenda' : params.view === 'merchants' ? 'merchants' : 'history';
+  const [activeView, setActiveView] = useState<ViewTab>(initialView);
   const [editingMerchant, setEditingMerchant] = useState<MerchantEditTarget | null>(null);
   const [showContactForm, setShowContactForm] = useState(false);
   const [recurringForm, setRecurringForm] = useState<PaymentForm | null>(null);
@@ -196,9 +205,17 @@ export default function TransactionsScreen() {
   const savingsGoals = useSavingsGoals();
   const contactPhotoByKey = useContactPhotoMap();
 
+  // Lazy-mount Agenda / Merchants so hidden tabs do not load DB or subscribe on first paint.
+  const [mountedViews, setMountedViews] = useState<Record<ViewTab, boolean>>(() => ({
+    history: true,
+    agenda: initialView === 'agenda',
+    merchants: initialView === 'merchants',
+  }));
+
   const setCurrentView = useCallback(
     (view: ViewTab) => {
       setActiveView(view);
+      setMountedViews((prev) => (prev[view] ? prev : { ...prev, [view]: true }));
       router.setParams({ view });
     },
     [router],
@@ -303,10 +320,13 @@ export default function TransactionsScreen() {
     successHaptic();
   };
 
-  useRefreshOnFocus(load);
+  useRefreshOnFocus(load, { minIntervalMs: 5_000 });
   useEffect(() => {
     if (requestedView) {
       setActiveView(requestedView);
+      setMountedViews((prev) =>
+        prev[requestedView] ? prev : { ...prev, [requestedView]: true },
+      );
     }
   }, [requestedView]);
 
@@ -315,6 +335,7 @@ export default function TransactionsScreen() {
       if (hasBlurredRef.current) {
         const nextView = requestedView ?? 'history';
         setActiveView(nextView);
+        setMountedViews((prev) => (prev[nextView] ? prev : { ...prev, [nextView]: true }));
         router.setParams({ view: nextView });
         scrollViewToTop(nextView);
       }
@@ -368,7 +389,7 @@ export default function TransactionsScreen() {
       map.set(tx.label, cur);
     });
     const fromTransactions = [...map.values()]
-      .flatMap((m): MerchantRow[] => {
+      .flatMap((m): MerchantDirectoryRow[] => {
         const override = getMerchantOverrideForLabel(m.name, merchantOverrideMap);
         if (override?.hidden) return [];
         return [{
@@ -389,7 +410,7 @@ export default function TransactionsScreen() {
         (override) =>
           !override.hidden && !transactionLabelKeys.has(normalizeMerchantKey(override.originalName)),
       )
-      .map((override): MerchantRow => ({
+      .map((override): MerchantDirectoryRow => ({
         originalName: override.originalName,
         name: override.displayName?.trim() || override.originalName,
         logoUrl: override.logoUrl ?? null,
@@ -475,10 +496,8 @@ export default function TransactionsScreen() {
       <TransactionsViewHeader
         topInset={insets.top}
         titleColor={colors.text}
-        mutedColor={colors.textMuted}
         activeView={activeView}
         onChangeView={setCurrentView}
-        onPressScan={() => router.push('/scan')}
         showHistoryToolbar={showHistoryToolbar}
         search={search}
         onSearchChange={setSearch}
@@ -491,11 +510,9 @@ export default function TransactionsScreen() {
     [
       activeView,
       colors.text,
-      colors.textMuted,
       historyFiltersExpanded,
       historyTypeFilter,
       insets.top,
-      router,
       search,
       setCurrentView,
     ],
@@ -580,26 +597,29 @@ export default function TransactionsScreen() {
           />
       </View>
 
-      <View
-        style={[
-          styles.agendaWrap,
-          { backgroundColor: contentCanvas, display: activeView === 'agenda' ? 'flex' : 'none' },
-        ]}
-      >
+      {mountedViews.agenda ? (
+        <View
+          style={[
+            styles.agendaWrap,
+            { backgroundColor: contentCanvas, display: activeView === 'agenda' ? 'flex' : 'none' },
+          ]}
+        >
           <AgendaView
             ref={agendaRef}
             headerComponent={agendaMerchantsListHeader}
             onEditRecurring={(payment) => void openEditRecurringPayment(payment)}
           />
-      </View>
+        </View>
+      ) : null}
 
-      <View
-        style={[
-          styles.flex,
-          { backgroundColor: contentCanvas, display: activeView === 'merchants' ? 'flex' : 'none' },
-        ]}
-        collapsable={false}
-      >
+      {mountedViews.merchants ? (
+        <View
+          style={[
+            styles.flex,
+            { backgroundColor: contentCanvas, display: activeView === 'merchants' ? 'flex' : 'none' },
+          ]}
+          collapsable={false}
+        >
           <MerchantDirectory
             listRef={merchantsListRef}
             headerComponent={agendaMerchantsListHeader}
@@ -626,7 +646,8 @@ export default function TransactionsScreen() {
             }}
             onAddContact={() => setShowContactForm(true)}
           />
-      </View>
+        </View>
+      ) : null}
 
       <MerchantEditModal
         visible={Boolean(editingMerchant)}
@@ -724,31 +745,25 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   group: {
-    marginBottom: spacing.xl,
-    gap: spacing.md,
+    marginBottom: spacing.sm,
   },
   dateHeader: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    paddingTop: 6,
-    paddingBottom: spacing.sm,
+    paddingVertical: spacing.sm,
+    gap: 2,
   },
   dateHeaderLabel: {
-    ...jakartaBoldText,
-    fontSize: 11.5,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    flex: 1,
-    minWidth: 0,
-    paddingRight: spacing.sm,
+    ...typographyKit.microUpper,
   },
   dateHeaderBold: {
-    ...jakartaBoldText,
+    ...typographyKit.microUpper,
   },
-  dateHeaderTotal: {
-    ...jakartaSemiboldText,
-    fontSize: 12,
+  dateHeaderTotals: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.md,
+  },
+  dateHeaderAmount: {
+    ...typographyKit.metaMedium,
     fontVariant: ['tabular-nums'],
   },
   groupCard: {

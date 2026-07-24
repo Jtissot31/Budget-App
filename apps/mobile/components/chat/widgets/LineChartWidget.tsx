@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 import { SparklineChart } from '@/components/chat/SparklineChart';
 import type { LineChartData } from '@/types/aiWidgets';
-import { aiWidgetTypography, useAIWidgetColors } from './theme';
+import { aiWidgetHeroAmountTextProps, aiWidgetTypography, useAIWidgetColors } from './theme';
 import { WidgetCardShell } from './WidgetCardShell';
 
 type Props = {
@@ -26,8 +26,10 @@ export function LineChartWidget({ data }: Props) {
         <Text
           style={[
             aiWidgetTypography.value,
+            styles.valueLabel,
             { color: palette.text },
           ]}
+          {...aiWidgetHeroAmountTextProps}
         >
           {data.value_label}
         </Text>
@@ -49,6 +51,10 @@ export function LineChartWidget({ data }: Props) {
 }
 
 const styles = StyleSheet.create({
+  valueLabel: {
+    minWidth: 0,
+    width: '100%',
+  },
   chartWrap: {
     width: '100%',
     minHeight: 72,

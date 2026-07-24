@@ -1,28 +1,26 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { OnyxContainer } from '@/components/OnyxContainer';
 import {
-  planFinanceContainerPressedStyle,
-  planFinanceKit,
+  ONYX_CONTAINER,
+  onyxContainerPressedStyle,
+  onyxContainerRowLayoutStyle,
 } from '@/constants/planFinanceKit';
-import { interSemiboldText, spacing } from '@/constants/theme';
+import { spacing, typographyKit } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
+import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
   onPress: () => void;
+  /** Kept for call-site compat — empty state uses the same premium row. */
   prominent?: boolean;
 };
 
 const LABEL = 'Explorer plus de plans';
 
-/** Accent outline — stronger than ghost hairline, aligned with plan detail accent borders. */
-const EXPLORE_ACCENT_BORDER = 'rgba(74, 222, 128, 0.36)';
-/** Subtle green tint — empty-state prominence without a full primary fill. */
-const EXPLORE_ACCENT_MUTED = 'rgba(74, 222, 128, 0.12)';
-const EXPLORE_CHEVRON_WELL = 'rgba(74, 222, 128, 0.18)';
-const EXPLORE_CHEVRON_WELL_PROMINENT = 'rgba(74, 222, 128, 0.24)';
-
-export function ExploreMorePlansRow({ onPress, prominent = false }: Props) {
-  const { colors: pf } = planFinanceKit;
+/** Onyx row CTA — soft accent glyph only (well stays neutral). */
+export function ExploreMorePlansRow({ onPress, prominent: _prominent = false }: Props) {
+  const { colors } = useAppTheme();
 
   return (
     <Pressable
@@ -32,76 +30,47 @@ export function ExploreMorePlansRow({ onPress, prominent = false }: Props) {
         tapHaptic();
         onPress();
       }}
-      style={({ pressed }) => [
-        styles.pressable,
-        prominent && styles.pressableProminent,
-        pressed && planFinanceContainerPressedStyle(),
-      ]}
+      style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
     >
-      <View
-        style={[
-          styles.button,
-          prominent ? styles.buttonProminent : styles.buttonDefault,
-          {
-            backgroundColor: prominent ? EXPLORE_ACCENT_MUTED : pf.surface,
-            borderColor: EXPLORE_ACCENT_BORDER,
-          },
-        ]}
-      >
+      <OnyxContainer style={styles.row}>
+        <View style={[styles.iconWell, { backgroundColor: colors.input }]}>
+          <AppIcon
+            family="material-community"
+            name="compass-outline"
+            size={18}
+            color={colors.accentGreen || colors.primary}
+          />
+        </View>
         <Text
-          style={[styles.label, interSemiboldText, { color: pf.text }]}
+          style={[styles.label, typographyKit.rowTitle, { color: colors.text }]}
           numberOfLines={1}
+          ellipsizeMode="tail"
         >
           {LABEL}
         </Text>
-        <View
-          style={[
-            styles.chevronWell,
-            { backgroundColor: prominent ? EXPLORE_CHEVRON_WELL_PROMINENT : EXPLORE_CHEVRON_WELL },
-          ]}
-        >
-          <AppIcon family="ionicons" name="chevron-forward" size={14} color={pf.accent} />
-        </View>
-      </View>
+        <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
+      </OnyxContainer>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  pressable: {
-    alignSelf: 'stretch',
+  row: {
+    ...onyxContainerRowLayoutStyle(),
+    minHeight: 56,
+    paddingVertical: spacing.md,
+    paddingHorizontal: ONYX_CONTAINER.padding.row,
   },
-  pressableProminent: {
-    marginTop: spacing.xs,
-  },
-  button: {
-    flexDirection: 'row',
+  iconWell: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'stretch',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: planFinanceKit.radius.button,
-    borderWidth: 1,
-  },
-  buttonDefault: {
-    paddingVertical: 11,
-    minHeight: 46,
-  },
-  buttonProminent: {
-    paddingVertical: 12,
-    minHeight: 48,
+    flexShrink: 0,
   },
   label: {
-    fontSize: 15,
-    lineHeight: 20,
-    letterSpacing: -0.15,
-  },
-  chevronWell: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
+    flex: 1,
+    minWidth: 0,
   },
 });

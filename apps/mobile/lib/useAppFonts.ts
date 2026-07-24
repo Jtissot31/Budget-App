@@ -11,12 +11,19 @@ async function fontsAppearReady(fontNames: string[]): Promise<boolean> {
   return fontNames.every((name) => loaded.has(name));
 }
 
+function isFontTimeoutError(error: Error | null): boolean {
+  if (!error) return false;
+  return /\d+ms timeout exceeded/i.test(error.message ?? '');
+}
+
 /**
  * Web-safe font hook — recovers from FontFaceObserver timeouts when fonts did load.
+ * Timeout errors never block Accueil; CSS @font-face is already injected.
  */
 export function useAppFonts(map: Record<string, FontSource>): [boolean, Error | null] {
   const [loaded, error] = useExpoFonts(map);
   const [webRecovered, setWebRecovered] = useState(false);
+  const timeoutOnly = isFontTimeoutError(error);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || loaded || webRecovered) return;
@@ -28,14 +35,20 @@ export function useAppFonts(map: Record<string, FontSource>): [boolean, Error | 
       if (!cancelled && ready) setWebRecovered(true);
     });
 
+    // FontFaceObserver timed out — continue without blocking the shell.
+    if (timeoutOnly) {
+      setWebRecovered(true);
+    }
+
     return () => {
       cancelled = true;
     };
-  }, [loaded, map, webRecovered]);
+  }, [loaded, map, timeoutOnly, webRecovered]);
 
   if (Platform.OS !== 'web') {
     return [loaded, error];
   }
 
-  return [loaded || webRecovered, webRecovered ? null : error];
+  const recovered = webRecovered || timeoutOnly;
+  return [loaded || recovered, recovered ? null : error];
 }

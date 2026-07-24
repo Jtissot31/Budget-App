@@ -71,6 +71,9 @@ export async function generateAlertSolutions(
   ctx: AlertSolutionContext,
   staticSolutions: AlertSolution[],
 ): Promise<AlertSolution[]> {
+  // Keep accept/dismiss local actions intact — do not rewrite plan adaptation CTAs.
+  if (ctx.kind === 'plan_adaptation') return staticSolutions;
+
   const prompt = await buildSolutionPrompt(ctx, staticSolutions);
   const text = await generateGeminiContent({
     prompt,

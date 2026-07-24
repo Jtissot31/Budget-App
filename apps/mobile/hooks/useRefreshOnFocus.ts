@@ -5,6 +5,11 @@ import { useFocusEffect } from 'expo-router';
 type RefreshOnFocusOptions = {
   /** Skip the focus callback on first mount (useEffect already loaded). */
   skipInitial?: boolean;
+  /**
+   * Minimum time between focus-driven refreshes (ms).
+   * Avoids reloading Accueil/etc. when quickly switching tabs.
+   */
+  minIntervalMs?: number;
 };
 
 export function useRefreshOnFocus(
@@ -15,15 +20,30 @@ export function useRefreshOnFocus(
   refreshRef.current = refresh;
   const skipInitialRef = useRef(options?.skipInitial ?? false);
   skipInitialRef.current = options?.skipInitial ?? false;
+  const minIntervalMsRef = useRef(options?.minIntervalMs ?? 0);
+  minIntervalMsRef.current = options?.minIntervalMs ?? 0;
   const isFirstFocusRef = useRef(true);
+  const lastRefreshAtRef = useRef(0);
 
   useFocusEffect(
     useCallback(() => {
       if (skipInitialRef.current && isFirstFocusRef.current) {
         isFirstFocusRef.current = false;
+        // Treat mount load as the last refresh so quick tab hops don't reload.
+        lastRefreshAtRef.current = Date.now();
         return;
       }
       isFirstFocusRef.current = false;
+
+      const minIntervalMs = minIntervalMsRef.current;
+      if (minIntervalMs > 0) {
+        const now = Date.now();
+        if (now - lastRefreshAtRef.current < minIntervalMs) {
+          return;
+        }
+        lastRefreshAtRef.current = now;
+      }
+
       void refreshRef.current();
     }, []),
   );

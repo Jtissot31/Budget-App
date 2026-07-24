@@ -53,7 +53,7 @@ export default function WidgetGalleryScreen() {
           {FYN_WIDGET_GALLERY.map((entry) => (
             <View key={entry.id} style={styles.section}>
               <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>{entry.typeLabel}</Text>
+                <Text style={[styles.sectionTitle, { color: colors.primary }]}>{entry.typeLabel}</Text>
                 <Text style={[styles.sectionMeta, { color: colors.textMuted }]}>
                   {entry.data.type}
                   {entry.subtitle ? ` · ${entry.subtitle}` : ''}

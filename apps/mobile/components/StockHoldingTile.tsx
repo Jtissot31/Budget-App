@@ -7,13 +7,11 @@ import {
   mockStockHoldingTotalValue,
   type MockStockHolding,
 } from '@/constants/mockStockPortfolio';
-import { BUDGET_DANGER_COLOR } from '@/lib/categoryBudgetUsage';
 import {
   planFinanceContainerCompactTilePaddingStyle,
   planFinanceContainerPressedStyle,
 } from '@/constants/planFinanceKit';
 import {
-  DASHBOARD_VALUE_GREEN,
   moneyAmountTypography,
   spacing,
   typographyKit,
@@ -82,28 +80,22 @@ export const StockHoldingTile = memo(function StockHoldingTile({ holding, onPres
   const { colors } = useAppTheme();
   const totalValue = mockStockHoldingTotalValue(holding);
   const dayUp = holding.dayChangePercent >= 0;
-  const changeColor = dayUp ? DASHBOARD_VALUE_GREEN : BUDGET_DANGER_COLOR;
+  const changeColor = dayUp ? colors.success : colors.danger;
   const tickerLabel = stockTickerShort(holding.ticker);
 
   const card = (
     <PlanFinanceContainer style={styles.card}>
       <View style={styles.headerArea}>
         <View style={styles.changeRow}>
-          <Text style={[styles.change, typographyKit.metaSemibold, { color: changeColor }]} numberOfLines={1}>
+          <Text style={[styles.change, typographyKit.micro, { color: changeColor }]} numberOfLines={1}>
             {formatStockDayChangePercent(holding.dayChangePercent)}
           </Text>
         </View>
         <View style={styles.identityRow}>
           <StockHoldingLogo ticker={holding.ticker} />
           <View style={styles.identityTextCol}>
-            <Text style={[styles.ticker, typographyKit.captionSemibold, { color: colors.text }]} numberOfLines={1}>
+            <Text style={[typographyKit.listPrimary, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail">
               {tickerLabel}
-            </Text>
-            <Text
-              style={[styles.companyName, typographyKit.microMedium, { color: colors.textMuted }]}
-              numberOfLines={1}
-            >
-              {holding.companyName}
             </Text>
           </View>
         </View>
@@ -111,10 +103,10 @@ export const StockHoldingTile = memo(function StockHoldingTile({ holding, onPres
 
       <View style={styles.cardValueRow}>
         <Text
-          style={[moneyAmountTypography({ fontSize: 17, lineHeight: 21 }), styles.value, { color: colors.text }]}
+          style={[moneyAmountTypography({ tier: 'stat' }), styles.value, { color: colors.text }]}
           numberOfLines={1}
           adjustsFontSizeToFit
-          minimumFontScale={0.8}
+          minimumFontScale={0.6}
         >
           {formatCompactCurrency(totalValue)}
         </Text>
@@ -184,12 +176,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 15,
     letterSpacing: 0.2,
-  },
-  ticker: {
-    flexShrink: 0,
-    fontSize: 14,
-    lineHeight: 18,
-    letterSpacing: 0.1,
   },
   companyName: {
     letterSpacing: 0.05,

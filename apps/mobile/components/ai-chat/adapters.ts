@@ -21,7 +21,7 @@ export function createUiActionsFromChatActions(actions: ChatAction[], messageId:
   return actions.map((action, index) => ({
     ...action,
     actionKey: `${messageId}-action-${index}`,
-    status: 'pending' as const,
+    status: action.status ?? 'pending',
   }));
 }
 

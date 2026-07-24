@@ -10,8 +10,11 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
 import { Image } from 'expo-image';
 import { MotiView } from 'moti';
 import { CategoryBudgetProgress } from '@/components/CategoryBudgetProgress';
@@ -269,6 +272,8 @@ function PaymentFormModal({
   feedback?: FormFeedback | null;
 }) {
   const { colors: themeColors, isLight } = useAppTheme();
+  const { height: windowHeight } = useWindowDimensions();
+  const sheetHeight = Math.round(windowHeight * 0.92);
   const [showLogoPicker, setShowLogoPicker] = useState(false);
   const [showAllCategories, setShowAllCategories] = useState(false);
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -369,14 +374,13 @@ function PaymentFormModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={[styles.modalBackdrop, themed.modalBackdrop]}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalKeyboard}>
-          <View style={[styles.sheet, themed.sheet]}>
-            <ScrollView
-              style={styles.sheetScroller}
-              keyboardShouldPersistTaps="always"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={[styles.sheetContent, { paddingBottom: Math.max(bottomInset, 20) }]}
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={[styles.modalBackdrop, themed.modalBackdrop]}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalKeyboard}>
+            <DraggableSheetSurface
+              onClose={onClose}
+              sheetHeight={sheetHeight}
+              style={[styles.sheet, themed.sheet]}
             >
               <View style={[styles.handle, themed.handle]} />
               <View style={styles.sheetHeader}>
@@ -393,6 +397,12 @@ function PaymentFormModal({
                   <AppIcon family="ionicons" name="close" size={19} color={themeColors.textMuted} />
                 </Pressable>
               </View>
+              <ScrollView
+              style={styles.sheetScroller}
+              keyboardShouldPersistTaps="always"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={[styles.sheetContent, { paddingBottom: Math.max(bottomInset, 20) }]}
+            >
 
             <View style={styles.section}>
               <DashboardSectionLabel>Type</DashboardSectionLabel>
@@ -751,9 +761,10 @@ function PaymentFormModal({
               </Pressable>
             ) : null}
             </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </View>
+            </DraggableSheetSurface>
+          </KeyboardAvoidingView>
+        </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -1285,6 +1296,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 4,
     borderRadius: radius.pill,
+    marginTop: spacing.sm,
     marginBottom: 4,
   },
   sheetHeader: {
@@ -1292,6 +1304,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
   },
   sheetTitle: {
     flex: 1,

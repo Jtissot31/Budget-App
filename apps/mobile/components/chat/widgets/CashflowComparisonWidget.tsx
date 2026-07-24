@@ -1,85 +1,41 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { fontFamilies } from '@/constants/plusJakartaFonts';
 import { moneyAmountTypography, spacing } from '@/constants/theme';
 import type { CashflowComparisonData } from '@/types/aiWidgets';
 import {
   buildCashflowInsightMessage,
   buildCashflowPeriodLabel,
   buildCashflowShellLabel,
-  cashflowVerticalBarHeight,
+  cashflowBarFlexWeights,
+  cashflowHonestBarFraction,
   formatCashflowBarAmountLabel,
   formatCashflowHeroAmount,
   normalizeCashflowComparisonData,
   sanitizeCashflowAmount,
   withCashflowBarSignedLabel,
 } from './cashflowWidgetUtils';
-import { aiWidgetFonts, useAIWidgetColors } from './theme';
+import {
+  AI_WIDGET_RADIUS,
+  aiWidgetAmountTextProps,
+  aiWidgetAmountTypography,
+  aiWidgetFonts,
+  aiWidgetHeroAmountTextProps,
+  aiWidgetLabelTextProps,
+  aiWidgetTypography,
+  useAIWidgetColors,
+} from './theme';
 import { WidgetCardShell } from './WidgetCardShell';
 
 type Props = {
   data: CashflowComparisonData;
 };
 
-/** Maquette « Revenus vs dépenses » — vertical bar pair, honest scale. */
-const MOCK = {
-  secondary: '#8A8A8A',
-  barGreen: '#00E664',
-  barRed: '#FF5555',
-  barColumnWidth: 88,
-  chartHeight: 110,
-  barGap: 20,
-  barRadius: 10,
-  heroFontSize: 40,
-  /** Stat tier preset lineHeight is 28px — too small at 40px and clips ascenders/$/minus. */
-  heroLineHeight: 48,
-} as const;
+const TRACK_HEIGHT = 4;
 
-const titleStyle = {
-  fontFamily: fontFamilies.bold,
-  fontSize: 14,
-  lineHeight: 18,
-  letterSpacing: 0.6,
-  textTransform: 'uppercase' as const,
-};
-
-const insightStyle = {
-  fontFamily: aiWidgetFonts.labelRegular,
-  fontSize: 14,
-  lineHeight: 18,
-};
-
-const heroAmountStyle = {
-  ...moneyAmountTypography({
-    tier: 'stat',
-    fontSize: MOCK.heroFontSize,
-    lineHeight: MOCK.heroLineHeight,
-    letterSpacing: -1.2,
-  }),
-  includeFontPadding: false,
-};
-
-const barAmountStyle = {
-  ...moneyAmountTypography({ tier: 'row', fontSize: 14, lineHeight: 20, letterSpacing: -0.3 }),
-  includeFontPadding: false,
-};
-
-const BAR_AMOUNT_GAP = 8;
-
-/** Reserved space above bars — label line + gap (must stay outside chartHeight). */
-const BAR_AMOUNT_LABEL_AREA = barAmountStyle.lineHeight + BAR_AMOUNT_GAP;
-
-const legendStyle = {
-  fontFamily: aiWidgetFonts.label,
-  fontSize: 13,
-  lineHeight: 18,
-};
-
-const periodStyle = {
-  fontFamily: aiWidgetFonts.labelRegular,
-  fontSize: 13,
-  lineHeight: 18,
-};
-
+/**
+ * Cashflow comparison — premium minimalist language aligned with Agenda
+ * {@link AgendaCashHeroCard} / {@link BalanceSummaryWidget}: eyebrow, large net,
+ * quiet insight, slim dual metric tracks (no chunky vertical bars).
+ */
 export function CashflowComparisonWidget({ data }: Props) {
   const palette = useAIWidgetColors();
   const normalized = normalizeCashflowComparisonData(data);
@@ -105,118 +61,150 @@ export function CashflowComparisonWidget({ data }: Props) {
   const insightMessage = buildCashflowInsightMessage(income, expenses, displaySurplus);
   const periodLabel = buildCashflowPeriodLabel(normalized.period);
 
-  const hasChart = income > 0 || expenses > 0;
-  const incomeBarHeight = cashflowVerticalBarHeight(
-    income,
-    income,
-    expenses,
-    MOCK.chartHeight,
-  );
-  const expenseBarHeight = cashflowVerticalBarHeight(
-    expenses,
-    income,
-    expenses,
-    MOCK.chartHeight,
-  );
+  const hasMetrics = income > 0 || expenses > 0;
+  const incomeFraction = cashflowHonestBarFraction(income, income, expenses);
+  const expenseFraction = cashflowHonestBarFraction(expenses, income, expenses);
 
   const surplusColor =
     Math.abs(displaySurplus) < 1
       ? palette.text
       : displaySurplus > 0
-        ? MOCK.barGreen
-        : MOCK.barRed;
+        ? palette.green
+        : palette.expense;
 
-  const chartAccessibilityLabel = `Revenus ${incomeBarLabel}, dépenses ${expensesBarLabel}`;
+  const metricsAccessibilityLabel = `Revenus ${incomeBarLabel}, dépenses ${expensesBarLabel}`;
 
   return (
     <WidgetCardShell style={styles.shell}>
-      <Text style={[styles.title, titleStyle, { color: palette.text }]}>{shellLabel.toUpperCase()}</Text>
+      <Text
+        style={[
+          styles.eyebrow,
+          aiWidgetTypography.eyebrow,
+          { color: palette.accent, fontFamily: aiWidgetFonts.label },
+        ]}
+        {...aiWidgetLabelTextProps}
+      >
+        {shellLabel.toUpperCase()}
+      </Text>
 
       <View style={styles.heroBlock}>
-        <View style={styles.heroAmountSlot}>
-          <Text
-            style={[
-              heroAmountStyle,
-              styles.heroAmount,
-              { color: surplusColor },
-            ]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.75}
-          >
-            {heroLabel}
-          </Text>
-        </View>
-        <Text style={[styles.insight, insightStyle, { color: MOCK.secondary }]}>{insightMessage}</Text>
+        <Text
+          style={[
+            moneyAmountTypography({ tier: 'netWorth' }),
+            styles.heroAmount,
+            { color: surplusColor },
+          ]}
+          {...aiWidgetHeroAmountTextProps}
+          accessibilityLabel={`Cashflow net ${heroLabel}`}
+        >
+          {heroLabel}
+        </Text>
+        <Text
+          style={[
+            aiWidgetTypography.insight,
+            { color: palette.textMuted, fontFamily: aiWidgetFonts.labelRegular },
+          ]}
+          numberOfLines={3}
+          ellipsizeMode="tail"
+        >
+          {insightMessage}
+        </Text>
       </View>
 
-      {hasChart ? (
-        <>
-          <View
-            style={[
-              styles.barPairRow,
-              { height: MOCK.chartHeight + BAR_AMOUNT_LABEL_AREA },
-            ]}
-            accessibilityRole="image"
-            accessibilityLabel={chartAccessibilityLabel}
-          >
-            <CashflowBarColumn
-              amountLabel={incomeBarLabel}
-              barColor={MOCK.barGreen}
-              barHeight={incomeBarHeight}
-            />
-            <CashflowBarColumn
-              amountLabel={expensesBarLabel}
-              barColor={MOCK.barRed}
-              barHeight={expenseBarHeight}
-            />
-          </View>
-
-          <View style={styles.legendRow}>
-            <Text style={[styles.legendLabel, legendStyle, { color: MOCK.secondary }]}>Revenus</Text>
-            <Text style={[styles.legendLabel, legendStyle, { color: MOCK.secondary }]}>Dépenses</Text>
-          </View>
-        </>
+      {hasMetrics ? (
+        <View style={styles.metricsBlock} accessibilityLabel={metricsAccessibilityLabel}>
+          <CashflowMetricRow
+            label="Revenus"
+            amountLabel={incomeBarLabel}
+            amountColor={palette.green}
+            fillColor={palette.green}
+            trackColor={palette.track}
+            labelColor={palette.textMuted}
+            fraction={incomeFraction}
+          />
+          <CashflowMetricRow
+            label="Dépenses"
+            amountLabel={expensesBarLabel}
+            amountColor={palette.expense}
+            fillColor={palette.expense}
+            trackColor={palette.track}
+            labelColor={palette.textMuted}
+            fraction={expenseFraction}
+          />
+        </View>
       ) : null}
 
-      <Text style={[styles.period, periodStyle, { color: MOCK.secondary }]}>{periodLabel}</Text>
+      <Text
+        style={[
+          styles.period,
+          aiWidgetTypography.caption,
+          { color: palette.textMuted, fontFamily: aiWidgetFonts.labelRegular },
+        ]}
+      >
+        {periodLabel}
+      </Text>
     </WidgetCardShell>
   );
 }
 
-type BarColumnProps = {
+type MetricRowProps = {
+  label: string;
   amountLabel: string;
-  barColor: string;
-  barHeight: number;
+  amountColor: string;
+  fillColor: string;
+  trackColor: string;
+  labelColor: string;
+  fraction: number;
 };
 
-function CashflowBarColumn({ amountLabel, barColor, barHeight }: BarColumnProps) {
-  const safeHeight = Number.isFinite(barHeight) && barHeight > 0 ? barHeight : 0;
+function CashflowMetricRow({
+  label,
+  amountLabel,
+  amountColor,
+  fillColor,
+  trackColor,
+  labelColor,
+  fraction,
+}: MetricRowProps) {
+  const weights = cashflowBarFlexWeights(fraction);
+  const showFill = fraction > 0;
 
   return (
-    <View style={styles.barColumn}>
-      <View style={[styles.barAmountSlot, { height: BAR_AMOUNT_LABEL_AREA }]}>
+    <View style={styles.metricRow}>
+      <View style={styles.metricHeader}>
         <Text
-          style={[styles.barAmount, barAmountStyle, { color: MOCK.secondary }]}
-          numberOfLines={1}
+          style={[
+            styles.metricLabel,
+            aiWidgetTypography.legend,
+            { color: labelColor, fontFamily: aiWidgetFonts.labelRegular },
+          ]}
+          {...aiWidgetLabelTextProps}
+        >
+          {label}
+        </Text>
+        <Text
+          style={[
+            aiWidgetAmountTypography('row'),
+            styles.metricAmount,
+            { color: amountColor },
+          ]}
+          {...aiWidgetAmountTextProps}
         >
           {amountLabel}
         </Text>
       </View>
-      <View style={[styles.barTrack, { height: MOCK.chartHeight }]}>
-        {safeHeight > 0 ? (
-          <View
-            style={[
-              styles.bar,
-              {
-                height: safeHeight,
-                backgroundColor: barColor,
-              },
-            ]}
-          />
-        ) : (
-          <View style={styles.barPlaceholder} />
-        )}
+      <View style={[styles.track, { backgroundColor: trackColor }]}>
+        {showFill ? (
+          <>
+            <View
+              style={[
+                styles.trackFill,
+                { flex: weights.fill, backgroundColor: fillColor },
+              ]}
+            />
+            <View style={{ flex: weights.empty }} />
+          </>
+        ) : null}
       </View>
     </View>
   );
@@ -224,80 +212,55 @@ function CashflowBarColumn({ amountLabel, barColor, barHeight }: BarColumnProps)
 
 const styles = StyleSheet.create({
   shell: {
-    gap: 0,
+    gap: spacing.md,
   },
-  title: {
-    marginBottom: 20,
+  eyebrow: {
+    marginBottom: 0,
   },
   heroBlock: {
-    alignItems: 'center',
-    marginBottom: 26,
-    overflow: 'visible',
-  },
-  heroAmountSlot: {
-    width: '100%',
-    minHeight: MOCK.heroLineHeight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'visible',
+    gap: spacing.xs,
+    minWidth: 0,
   },
   heroAmount: {
-    textAlign: 'center',
+    letterSpacing: -1.2,
+    minWidth: 0,
     width: '100%',
-    minHeight: MOCK.heroLineHeight,
   },
-  insight: {
-    textAlign: 'center',
-    marginTop: 6,
+  metricsBlock: {
+    gap: spacing.md,
   },
-  barPairRow: {
+  metricRow: {
+    gap: spacing.sm,
+  },
+  metricHeader: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-    gap: MOCK.barGap,
-    width: '100%',
-    marginBottom: 12,
-    overflow: 'visible',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    minWidth: 0,
   },
-  barColumn: {
-    width: MOCK.barColumnWidth,
-    alignItems: 'center',
-    overflow: 'visible',
+  metricLabel: {
+    flexShrink: 1,
+    minWidth: 0,
   },
-  barAmountSlot: {
-    width: '100%',
-    paddingBottom: BAR_AMOUNT_GAP,
-    justifyContent: 'flex-end',
-    overflow: 'visible',
+  metricAmount: {
+    flexShrink: 1,
+    maxWidth: '58%',
+    fontVariant: ['tabular-nums'],
+    textAlign: 'right',
   },
-  barAmount: {
-    textAlign: 'center',
-    width: '100%',
-    minHeight: barAmountStyle.lineHeight,
-  },
-  barTrack: {
-    width: '100%',
-    justifyContent: 'flex-end',
-  },
-  bar: {
-    width: '100%',
-    borderRadius: MOCK.barRadius,
-  },
-  barPlaceholder: {
-    width: '100%',
-    height: 0,
-  },
-  legendRow: {
+  track: {
+    height: TRACK_HEIGHT,
+    borderRadius: AI_WIDGET_RADIUS,
+    overflow: 'hidden',
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: MOCK.barGap,
-    marginBottom: 18,
+    width: '100%',
   },
-  legendLabel: {
-    width: MOCK.barColumnWidth,
-    textAlign: 'center',
+  trackFill: {
+    height: '100%',
+    borderRadius: AI_WIDGET_RADIUS,
   },
   period: {
-    marginBottom: spacing.md,
+    marginTop: spacing.xs,
   },
 });

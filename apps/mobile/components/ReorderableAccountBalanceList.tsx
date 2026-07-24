@@ -4,7 +4,7 @@ import Sortable, { type SortableGridRenderItem } from 'react-native-sortables';
 import { DashboardAccountBalanceCard } from '@/components/DashboardAccountBalanceCard';
 import { planFinanceContainerPressedStyle } from '@/constants/planFinanceKit';
 import { spacing } from '@/constants/theme';
-import { getAccountLogoUrl } from '@/lib/merchantLogo';
+import { resolveSimulatedAccountLogoUrl } from '@/lib/accountBalancePresentation';
 import { tapHaptic } from '@/lib/haptics';
 import type { SimulatedAccount } from '@/types';
 
@@ -18,11 +18,7 @@ type Props = {
 const ACCOUNT_DRAG_ACTIVATION_MS = 280;
 
 function resolveAccountLogoUrl(account: SimulatedAccount) {
-  return (
-    account.logoUrl ??
-    getAccountLogoUrl(account.institution?.trim() || account.name) ??
-    getAccountLogoUrl(account.name)
-  );
+  return resolveSimulatedAccountLogoUrl(account);
 }
 
 function AccountBalanceSortableTile({

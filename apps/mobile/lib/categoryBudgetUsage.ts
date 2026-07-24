@@ -19,17 +19,17 @@ export type BudgetStatus = {
   percentage: number;
 };
 
-/** At-limit threshold — green bar + checkmark only at exactly 100 %. */
+/** At-limit threshold — green bar for 0–100 %; overspend colors above. */
 export const BUDGET_GREEN_MAX_PERCENT = 100;
 /** Amber bar: 101 <= usagePercent <= 115 (mild overspend). */
 export const BUDGET_AMBER_MIN_PERCENT = 101;
 export const BUDGET_AMBER_MAX_PERCENT = 115;
 
-/** Under-budget bar — white-gray fill below 100 %. */
+/** Empty budget (limit=0 & spent=0) — muted fill, no progress. */
 export const BUDGET_UNDER_BUDGET_COLOR = 'rgba(255,255,255,0.35)';
-/** Under-budget track — muted white below 100 %. */
+/** @deprecated Unused track override; under-budget now uses theme border track. */
 export const BUDGET_UNDER_BUDGET_TRACK_COLOR = 'rgba(255,255,255,0.08)';
-/** Green bar — limit exactly met (100 % only). */
+/** Green bar — on track (0–100 %). Matches `colors.accentGreen`. */
 export const BUDGET_GREEN_COLOR = '#4ADE80';
 /** Amber warning — mild overspend (101–115 %). */
 export const BUDGET_WARNING_COLOR = '#C9974A';
@@ -42,6 +42,7 @@ export const CATEGORY_STATUS_TAG_THRESHOLD = BUDGET_GREEN_MAX_PERCENT;
 /**
  * Single source of truth for budget color, status label, and usage percentage.
  * Edge cases: limit=0 & spent=0 → gray, no label; limit=0 & spent>0 → red, overspend.
+ * On track (≤100 %): green; mild overspend: amber; significant: red.
  */
 export function getBudgetStatus(spent: number, allocated: number): BudgetStatus {
   const spentValue = Math.max(0, spent);
@@ -63,7 +64,7 @@ export function getBudgetStatus(spent: number, allocated: number): BudgetStatus 
 
   if (percentage < BUDGET_GREEN_MAX_PERCENT) {
     return {
-      color: BUDGET_UNDER_BUDGET_COLOR,
+      color: BUDGET_GREEN_COLOR,
       label: null,
       percentage,
     };
@@ -151,11 +152,8 @@ export function categoryBudgetBarColor(
   return getBudgetStatus(spent, allocated).color;
 }
 
-/** Under-budget track color; undefined for green / amber / red tiers. */
-export function categoryBudgetBarTrackColor(spent: number, allocated: number): string | undefined {
-  if (getBudgetStatus(spent, allocated).percentage < BUDGET_GREEN_MAX_PERCENT) {
-    return BUDGET_UNDER_BUDGET_TRACK_COLOR;
-  }
+/** Track override; undefined uses theme border for all on-track / overspend tiers. */
+export function categoryBudgetBarTrackColor(_spent: number, _allocated: number): string | undefined {
   return undefined;
 }
 
@@ -167,7 +165,7 @@ export function categoryStatusTagLabel(usage: CategoryBudgetUsage): string {
   return usage.statusLabel ?? '';
 }
 
-/** Bar fill opacity — under-budget gray is pre-muted via color alpha. */
+/** Bar fill opacity — solid for all tiers. */
 export function categoryBudgetBarOpacity(_usage: CategoryBudgetUsage): number {
   return 1;
 }

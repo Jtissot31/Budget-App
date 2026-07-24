@@ -15,11 +15,16 @@ import { FynChatEntryCard } from '@/components/plans/FynChatEntryCard';
 import { WidgetGalleryShortcutRow } from '@/components/plans/WidgetGalleryShortcutRow';
 import { HubLoansSection } from '@/components/plans/HubLoansSection';
 import { HubSavingsGoalsSection } from '@/components/plans/HubSavingsGoalsSection';
-import { HubSectionHeader } from '@/components/plans/HubSectionHeader';
+import { HubSectionHeader, HUB_SECTION_INNER_GAP } from '@/components/plans/HubSectionHeader';
 import { PlanHubCardCarousel } from '@/components/plans/PlanHubCardCarousel';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { planFinanceKit } from '@/constants/planFinanceKit';
-import { FLOATING_NAV_CONTENT_PADDING, PAGE_TITLE_STYLE, spacing } from '@/constants/theme';
+import {
+  FLOATING_NAV_CONTENT_PADDING,
+  PAGE_TITLE_CONTENT_GAP,
+  PAGE_TITLE_STYLE,
+  spacing,
+} from '@/constants/theme';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { dataEvents } from '@/lib/events';
 import type { Plan, PlanActifOuTermine, PlanSuggere } from '@/lib/plans/Plan';
@@ -30,11 +35,15 @@ import {
   loadPlanHubSuggestions,
   selectPlansForMainHub,
 } from '@/lib/plans/planHubData';
+import { PLAN_HOME_ROW } from '@/lib/plans/planCardPresentation';
+
+/** Hub carousel: at most 3 suggested plans (explore/catalog can show more). */
+const HUB_SUGGESTED_PLANS_LIMIT = 3;
 
 /** Active/paused only when any exist; otherwise suggestions only — never mixed. */
 function plansForHubCarousel(activePlans: PlanActifOuTermine[], suggestions: PlanSuggere[]): Plan[] {
   if (activePlans.length > 0) return activePlans;
-  return suggestions;
+  return suggestions.slice(0, HUB_SUGGESTED_PLANS_LIMIT);
 }
 
 export function PlanFinancierHub() {
@@ -46,6 +55,7 @@ export function PlanFinancierHub() {
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const enrichGenerationRef = useRef(0);
+  const scrollRef = useRef<ScrollView>(null);
 
   const applyStoredPlans = useCallback((storedPlans: Plan[]) => {
     setListPlans(selectPlansForMainHub(storedPlans) as PlanActifOuTermine[]);
@@ -126,7 +136,7 @@ export function PlanFinancierHub() {
   }, [loadSuggestions]);
 
   useEffect(() => dataEvents.subscribe(reloadHub), [reloadHub]);
-  useRefreshOnFocus(reloadHub, { skipInitial: true });
+  useRefreshOnFocus(reloadHub, { skipInitial: true, minIntervalMs: 8_000 });
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -178,6 +188,7 @@ export function PlanFinancierHub() {
         </View>
 
         <ScrollView
+          ref={scrollRef}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.scrollContent,
@@ -192,7 +203,7 @@ export function PlanFinancierHub() {
           }
         >
           <View style={styles.plansSection}>
-            <HubSectionHeader eyebrow="Stratégie" title="Plan financier" />
+            <HubSectionHeader eyebrow="Stratégie" title="Tes plans" accentEyebrow />
 
             {showCarouselSpinner ? (
               <View style={styles.carouselLoadingWrap}>
@@ -200,9 +211,6 @@ export function PlanFinancierHub() {
               </View>
             ) : isEmpty ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>
-                  Aucun plan financier actif pour l&apos;instant.
-                </Text>
                 <ExploreMorePlansRow onPress={handleOpenExplorer} prominent />
               </View>
             ) : (
@@ -217,9 +225,10 @@ export function PlanFinancierHub() {
 
           <HubLoansSection />
 
-          <FynChatEntryCard />
-
-          <WidgetGalleryShortcutRow onPress={handleOpenWidgetGallery} />
+          <View style={styles.footerBlock}>
+            <FynChatEntryCard scrollRef={scrollRef} />
+            <WidgetGalleryShortcutRow onPress={handleOpenWidgetGallery} />
+          </View>
         </ScrollView>
       </View>
     </PageTransition>
@@ -235,7 +244,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
+    paddingBottom: PAGE_TITLE_CONTENT_GAP,
     gap: spacing.md,
   },
   title: {
@@ -246,23 +255,20 @@ const styles = StyleSheet.create({
     gap: planFinanceKit.layout.sectionGap,
   },
   plansSection: {
-    gap: spacing.sm,
+    gap: HUB_SECTION_INNER_GAP,
   },
   carouselLoadingWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 180,
+    minHeight: PLAN_HOME_ROW.iconWellSize + PLAN_HOME_ROW.paddingVertical * 2,
     paddingVertical: spacing.xl,
   },
   emptyState: {
     alignItems: 'stretch',
-    gap: spacing.xl,
-    paddingVertical: spacing.lg,
+    paddingVertical: spacing.xs,
   },
-  emptyText: {
-    color: planFinanceKit.colors.textMuted,
-    fontSize: 16,
-    lineHeight: 22,
-    textAlign: 'center',
+  footerBlock: {
+    gap: spacing.md,
+    paddingTop: spacing.xs,
   },
 });

@@ -68,14 +68,14 @@ export function BudgetShortcutCards({ onPressPlans, onPressSavingsGoals }: Props
         title="Plans financiers"
         subtitle="Voir mes plans"
         accessibilityLabel="Ouvrir les plans financiers"
-        icon={<TrendingUp size={16} color={colors.accentGreen} strokeWidth={2} />}
+        icon={<TrendingUp size={16} color={colors.textSecondary} strokeWidth={2} />}
         onPress={onPressPlans}
       />
       <ShortcutCard
         title="Objectifs d'épargne"
         subtitle="Voir mes objectifs"
         accessibilityLabel="Ouvrir les objectifs d'épargne"
-        icon={<Target size={16} color={colors.accentGreen} strokeWidth={2} />}
+        icon={<Target size={16} color={colors.textSecondary} strokeWidth={2} />}
         onPress={onPressSavingsGoals}
       />
     </View>

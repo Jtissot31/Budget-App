@@ -17,9 +17,21 @@ const WIDGET_TYPE_REGEX = new RegExp(
   `"type"\\s*:\\s*"(${AI_WIDGET_TYPES.join('|')})"`,
 );
 
-const ACTION_KEY_REGEX = /"action"\s*:/;
+/**
+ * Chat actions use a string action name: `"action":"creer_objectif"`.
+ * Widgets often include a CTA object: `"action":{"label":"Voir…"}` — must NOT match those,
+ * or parseMessageBlocks skips the whole widget as a fake "action block".
+ */
+const CHAT_ACTION_KEY_REGEX = /"action"\s*:\s*"/;
 const STRUCTURED_JSON_LEAD_REGEX = /^\{\s*"(?:type|action)"\s*:/;
 const INCOMPLETE_FENCE_TAIL_REGEX = /```[\w-]*\s*\n?[\s\S]*$/;
+
+function isChatActionJsonBlock(json: string): boolean {
+  if (!CHAT_ACTION_KEY_REGEX.test(json)) return false;
+  // Widgets can coincidentally include string fields — never treat typed widgets as chat actions.
+  if (WIDGET_TYPE_REGEX.test(json)) return false;
+  return true;
+}
 
 function isWidgetType(value: string): value is AIWidgetType {
   return WIDGET_TYPE_SET.has(value);
@@ -128,11 +140,25 @@ function parseWidgetJson(json: string): AIWidgetData | null {
         }
         return parsed as unknown as AIWidgetData;
 
-      case 'balance_summary_card':
+      case 'balance_summary_card': {
         if (typeof parsed.label !== 'string' || typeof parsed.value_label !== 'string') {
           return null;
         }
+        const variant = parsed.variant;
+        if (variant !== undefined && variant !== 'total' && variant !== 'account') {
+          return null;
+        }
+        const looksLikeAccount =
+          variant === 'account' ||
+          typeof parsed.account_id === 'string' ||
+          typeof parsed.account_name === 'string';
+        if (looksLikeAccount && variant !== 'total') {
+          const name = typeof parsed.account_name === 'string' ? parsed.account_name.trim() : '';
+          const id = typeof parsed.account_id === 'string' ? parsed.account_id.trim() : '';
+          if (!name && !id) return null;
+        }
         return parsed as unknown as AIWidgetData;
+      }
 
       default:
         return null;
@@ -157,7 +183,7 @@ export function findActionJsonBlocks(text: string): string[] {
     }
 
     const { json, end } = extracted;
-    if (ACTION_KEY_REGEX.test(json)) {
+    if (isChatActionJsonBlock(json)) {
       blocks.push(json);
     }
     searchFrom = end;
@@ -192,7 +218,7 @@ function looksLikeStructuredJsonFragment(fragment: string): boolean {
   return (
     STRUCTURED_JSON_LEAD_REGEX.test(trimmed) ||
     WIDGET_TYPE_REGEX.test(trimmed) ||
-    ACTION_KEY_REGEX.test(trimmed)
+    CHAT_ACTION_KEY_REGEX.test(trimmed)
   );
 }
 

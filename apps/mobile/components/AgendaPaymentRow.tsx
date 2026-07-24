@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import {
   TransactionAmountLabel,
+  recurringPaymentAmountDirection,
 } from '@/components/TransactionAmountLabel';
 import {
   jakartaMediumText,
@@ -10,6 +11,7 @@ import {
   moneyAmountTypography,
   spacing,
 } from '@/constants/theme';
+import { pressableRowMotionStyle } from '@/constants/motionKit';
 import { formatDisplayMoneyAbsolute, formatRecurringPaymentAmount } from '@/lib/formatDisplayMoney';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
@@ -80,6 +82,10 @@ export const AgendaPaymentRow = memo(function AgendaPaymentRow({
       ? colors.success
       : colors.text;
 
+  const amountDirection = isIncome
+    ? 'income'
+    : recurringPaymentAmountDirection(bill.kind ?? 'payment');
+
   const formattedAmount = bill.recurring
     ? formatRecurringPaymentAmount(bill.amount, bill.kind ?? 'payment')
     : formatDisplayMoneyAbsolute(bill.amount);
@@ -96,7 +102,7 @@ export const AgendaPaymentRow = memo(function AgendaPaymentRow({
       style={({ pressed }) => [
         styles.row,
         embedded && styles.rowEmbedded,
-        pressed && styles.pressed,
+        pressableRowMotionStyle(pressed),
       ]}
     >
       <View style={styles.mainRow}>
@@ -111,7 +117,11 @@ export const AgendaPaymentRow = memo(function AgendaPaymentRow({
           style={[
             styles.avatar,
             embedded && !hasRemoteLogo && styles.avatarEmbedded,
-            embedded && !hasRemoteLogo && { borderColor: colors.borderStrong, backgroundColor: colors.surfaceElevated },
+            embedded &&
+              !hasRemoteLogo && {
+                borderColor: colors.containerBorder,
+                backgroundColor: colors.surfaceElevated,
+              },
           ]}
         />
 
@@ -134,10 +144,9 @@ export const AgendaPaymentRow = memo(function AgendaPaymentRow({
               ) : (
                 <TransactionAmountLabel
                   amount={formattedAmount}
-                  direction="neutral"
+                  direction={amountDirection}
                   color={amountColor}
                   textStyle={styles.amount}
-                  showDirectionIcon={false}
                 />
               )}
             </View>
@@ -166,9 +175,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.lg,
   },
-  pressed: {
-    opacity: 0.88,
-  },
   mainRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -178,7 +184,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   avatarEmbedded: {
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 9,
     flexShrink: 0,
   },

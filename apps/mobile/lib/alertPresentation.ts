@@ -19,6 +19,7 @@ export const ALERT_TITLES = {
   budgetOver: 'Enveloppe budgétaire dépassée',
   highInterestDebt: 'Dette à taux élevé',
   balanceLow: 'Solde bas sur un compte',
+  planAdaptation: 'Adaptation de plan proposée',
 } as const;
 
 function merchantLabelFromPaymentName(paymentName?: string): string | null {
@@ -65,6 +66,8 @@ export function alertTypeHeaderTitle(kind: AlertCenterKind): string {
       return 'Alerte Budget';
     case 'high_interest_debt':
       return 'Alerte Dette';
+    case 'plan_adaptation':
+      return 'Adaptation de plan';
     case 'fyn':
     default:
       return 'Alerte Fyn';
@@ -137,9 +140,11 @@ export type AlertSolution = {
   title: string;
   description: string;
   ctaLabel: string;
-  /** Expo Router pathname, or null for non-navigating tips. */
+  /** Expo Router pathname, or null for non-navigating tips / local actions. */
   href: string | null;
   params?: Record<string, string>;
+  /** Local alert-detail action (plan adaptation confirm flow). */
+  localAction?: 'accept_adaptation' | 'dismiss_adaptation';
 };
 
 export type AlertDetailContent = {
@@ -332,6 +337,8 @@ export function alertListIcon(kind: AlertCenterKind): {
       return { family: 'ionicons', name: 'trending-down-outline' };
     case 'low_funds':
       return { family: 'ionicons', name: 'wallet-outline' };
+    case 'plan_adaptation':
+      return { family: 'ionicons', name: 'swap-horizontal-outline' };
     case 'fyn':
     default:
       return { family: 'ionicons', name: 'bulb-outline' };
@@ -341,7 +348,16 @@ export function alertListIcon(kind: AlertCenterKind): {
 export function buildAlertDetailContent(
   item: Pick<
     AlertCenterItem,
-    'kind' | 'title' | 'message' | 'accountId' | 'montant' | 'recurring' | 'paymentName' | 'id'
+    | 'kind'
+    | 'title'
+    | 'message'
+    | 'accountId'
+    | 'montant'
+    | 'recurring'
+    | 'paymentName'
+    | 'id'
+    | 'adaptationProposalId'
+    | 'relatedPlanId'
   >,
 ): AlertDetailContent {
   switch (item.kind) {
@@ -453,6 +469,46 @@ export function buildAlertDetailContent(
           : 'Garde un coussin de quelques jours de dépenses sur ton compte courant pour absorber les échéances imprévues.',
         actionsLabel: 'Tes actions',
         solutions: lowFundsSolutions(item),
+      };
+
+    case 'plan_adaptation':
+      return {
+        eyebrow: 'Plan financier',
+        icon: { family: 'ionicons', name: 'swap-horizontal-outline' },
+        accentToken: 'accent',
+        problemLabel: 'Proposition',
+        problemBody:
+          item.message ||
+          'Fyn a détecté une adaptation utile pour un de tes plans actifs.',
+        insightFallbackBody:
+          'Les adaptations automatiques restent des propositions : rien ne change tant que tu n’as pas confirmé.',
+        actionsLabel: 'Tes actions',
+        solutions: [
+          {
+            id: 'accept-adaptation',
+            title: 'Appliquer l’adaptation',
+            description: 'Confirme le changement proposé sur ton plan.',
+            ctaLabel: 'Confirmer',
+            href: null,
+            localAction: 'accept_adaptation',
+          },
+          {
+            id: 'view-plan',
+            title: 'Voir le plan',
+            description: 'Consulte le plan avant de décider.',
+            ctaLabel: 'Ouvrir le plan',
+            href: item.relatedPlanId ? '/plans/[id]' : '/(tabs)/goals',
+            params: item.relatedPlanId ? { id: item.relatedPlanId } : undefined,
+          },
+          {
+            id: 'dismiss-adaptation',
+            title: 'Ignorer pour l’instant',
+            description: 'Garde le plan tel quel — aucune modification.',
+            ctaLabel: 'Ignorer',
+            href: null,
+            localAction: 'dismiss_adaptation',
+          },
+        ],
       };
 
     case 'fyn':

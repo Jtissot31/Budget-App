@@ -1,6 +1,12 @@
 import { Image } from 'expo-image';
 import { StyleSheet, Text, View } from 'react-native';
-import { jakartaMediumText, jakartaSemiboldText, moneyAmountTypography } from '@/constants/theme';
+import {
+  DASHBOARD_VALUE_GREEN,
+  DASHBOARD_VALUE_RED,
+  jakartaMediumText,
+  jakartaSemiboldText,
+  moneyAmountTypography,
+} from '@/constants/theme';
 import { creditUsedFromBalance } from '@/lib/creditLimitUtilization';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
 import type { AccountKind, SimulatedAccount } from '@/types';
@@ -16,8 +22,8 @@ const CARD = {
   number: 'rgba(255, 255, 255, 0.85)',
   name: 'rgba(255, 255, 255, 0.7)',
   text: '#ffffff',
-  negative: '#ff5555',
-  positive: '#4ade80',
+  negative: DASHBOARD_VALUE_RED,
+  positive: DASHBOARD_VALUE_GREEN,
   creditMeta: 'rgba(255, 255, 255, 0.42)',
 } as const;
 

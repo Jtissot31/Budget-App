@@ -107,5 +107,9 @@ export function floatingGlassFabSurface(colors: AppColors, isLight: boolean): Vi
 
 
 
-export const floatingGlassButtonPressed = { opacity: 0.78 } as const;
+/** FAB / glass chrome press — opacity + compact scale (see motionKit). */
+export const floatingGlassButtonPressed = {
+  opacity: 0.78,
+  transform: [{ scale: 0.97 }],
+} as const;
 

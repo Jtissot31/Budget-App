@@ -790,6 +790,11 @@ export function isExecutableChatAction(action: ChatActionType): boolean {
   return SUPPORTED_ACTIONS.includes(action);
 }
 
+/** Executable action names for the system prompt — never advertise unsupported types. */
+export function listExecutableChatActions(): ChatActionType[] {
+  return [...SUPPORTED_ACTIONS];
+}
+
 export function describeChatAction(action: ChatAction): string {
   return action.confirmation.trim();
 }

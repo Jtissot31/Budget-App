@@ -122,16 +122,42 @@ export type AllocationChartData = {
   caption?: string;
 };
 
-/** Hero balance card — Clean Financial Dashboard « Solde total » pattern. */
+/**
+ * Hero balance card — aggregate « Solde total » or a specific account’s solde
+ * when the user asks for one of their accounts.
+ */
 export type BalanceSummaryCardData = {
   type: 'balance_summary_card';
+  /**
+   * Eyebrow label.
+   * - total: typically « Solde total »
+   * - account: typically « Solde » (account name is shown separately)
+   */
   label: string;
   value_label: string;
-  /** e.g. « +10 % par rapport au mois dernier » */
+  /** e.g. « +10 % par rapport au mois dernier » — omit when not available for that account. */
   trend_label?: string;
   /** Trend badge color; defaults from trend_label sign when omitted. */
   positive?: boolean;
   action?: WidgetAction;
+  /**
+   * `account` when answering a single-account balance ask.
+   * Inferred as `account` when `account_id` or `account_name` is present.
+   */
+  variant?: 'total' | 'account';
+  /** Deep-link target for account detail (preferred when known). */
+  account_id?: string;
+  /** Account display name — primary identity for the account variant. */
+  account_name?: string;
+  account_institution?: string;
+  account_last4?: string;
+  /** cheque | epargne | credit | cash | checking | savings */
+  account_kind?: string;
+  /**
+   * Optional institution logo URL. When omitted, resolved from
+   * `account_institution` / `account_name` via `getAccountLogoUrl`.
+   */
+  account_logo_url?: string;
 };
 
 export type AIWidgetData =

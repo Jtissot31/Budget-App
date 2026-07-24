@@ -36,7 +36,12 @@ import {
   planFinanceSecondaryButtonStyle,
 } from '@/constants/planFinanceKit';
 import { interMediumText, interSemiboldText, spacing } from '@/constants/theme';
-import { appendUserPlan, activateSuggestedPlan } from '@/lib/plans/plansStore';
+import {
+  activateSuggestedPlan,
+  appendUserPlan,
+  resolveEditablePlan,
+  upsertUserPlan,
+} from '@/lib/plans/plansStore';
 import {
   PLAN_SUBTYPE_LABELS,
   type PlanCategory,
@@ -74,6 +79,8 @@ type Params = {
   signal?: string;
   total?: string;
   index?: string;
+  /** When set, save updates this plan instead of creating a new one. */
+  editPlanId?: string;
 };
 
 const FALLBACK_CADENCE_OPTIONS: readonly PlanCadenceOption[] = [
@@ -95,6 +102,9 @@ export default function PlanCreateScreen() {
   const screenTitle = params.titre?.trim() || subtypeLabel || 'Nouveau plan';
   const screenLead = PLAN_SUBTYPE_DESCRIPTIONS[subtype];
   const isDebtWizard = usesDebtPayoffWizard(subtype);
+  const editPlanId = params.editPlanId?.trim() || undefined;
+  const isEditing = Boolean(editPlanId);
+  const headerEyebrow = isEditing ? 'MODIFIER LE PLAN' : undefined;
   const config = useMemo(() => getPlanTypeFormConfig(subtype), [subtype]);
   const cadenceField = useMemo(() => config.fields.find((f) => f.kind === 'cadence'), [config]);
   const cadenceOptions = cadenceField?.cadenceOptions ?? FALLBACK_CADENCE_OPTIONS;
@@ -126,6 +136,31 @@ export default function PlanCreateScreen() {
       setSelectedAccountId((current) => current || options[0]?.id || '');
     })();
   }, [hasAccountField, isDebtWizard]);
+
+  useEffect(() => {
+    if (!editPlanId) return;
+    void (async () => {
+      const existing = await resolveEditablePlan(editPlanId);
+      if (!existing) return;
+      setTextValues((prev) => ({
+        ...prev,
+        montant_cible: existing.montant_cible?.toString() ?? prev.montant_cible ?? '',
+        date_cible: existing.date_cible ?? prev.date_cible ?? '',
+        solde_initial: existing.montant_actuel?.toString() ?? prev.solde_initial ?? '',
+      }));
+      if (existing.compte_lie) {
+        setSelectedAccountId((current) => current || existing.compte_lie || '');
+      }
+      if (existing.cadence) {
+        const amountMatch = existing.cadence.match(/^([\d\s]+(?:[.,]\d+)?)/);
+        if (amountMatch?.[1]) {
+          setCadenceAmount(amountMatch[1].replace(/\s/g, '').replace(',', '.'));
+        }
+        if (/mois/i.test(existing.cadence)) setCadenceFrequency('month');
+        else if (/sem/i.test(existing.cadence)) setCadenceFrequency('week');
+      }
+    })();
+  }, [editPlanId]);
 
   const queue = useMemo<QueueItem[]>(() => {
     if (!params.queue) return [];
@@ -187,6 +222,29 @@ export default function PlanCreateScreen() {
       montant_actuel?: number;
       parametres?: DebtWizardAssembled['parametres'];
     }) => {
+      if (editPlanId) {
+        const existing = await resolveEditablePlan(editPlanId);
+        if (!existing) {
+          throw new Error('Plan introuvable');
+        }
+        await upsertUserPlan({
+          ...existing,
+          titre: suggestion.titre || existing.titre,
+          description: suggestion.description || existing.description,
+          compte_lie: fields.compte_lie ?? existing.compte_lie,
+          cadence: fields.cadence ?? existing.cadence,
+          date_cible: fields.date_cible ?? existing.date_cible,
+          montant_cible:
+            fields.montant_cible !== undefined ? fields.montant_cible : existing.montant_cible,
+          montant_actuel:
+            fields.montant_actuel !== undefined ? fields.montant_actuel : existing.montant_actuel,
+          parametres: fields.parametres ?? existing.parametres,
+          statut: existing.statut === 'complete' ? 'complete' : existing.statut,
+        });
+        router.back();
+        return;
+      }
+
       const plan = activateSuggestedPlan(suggestion, fields);
       await appendUserPlan(plan);
 
@@ -213,7 +271,7 @@ export default function PlanCreateScreen() {
       await setPendingPlanChatConfirmation(total);
       router.back();
     },
-    [index, params.messageId, queue, router, suggestion, total],
+    [editPlanId, index, params.messageId, queue, router, suggestion, total],
   );
 
   const handleSave = useCallback(async () => {
@@ -319,12 +377,16 @@ export default function PlanCreateScreen() {
   }, [isDebtWizard, router, wizardStep]);
 
   const primaryLabel = useMemo(() => {
+    if (isEditing) {
+      if (isDebtWizard && wizardStep < debtWizardStepCount() - 1) return 'Continuer';
+      return 'Enregistrer';
+    }
     if (isDebtWizard) {
       if (wizardStep < debtWizardStepCount() - 1) return 'Continuer';
       return index < total ? 'Créer et continuer' : 'Créer le plan';
     }
     return index < total ? 'Créer et continuer' : 'Créer le plan';
-  }, [index, isDebtWizard, total, wizardStep]);
+  }, [index, isDebtWizard, isEditing, total, wizardStep]);
 
   const secondaryLabel = isDebtWizard && wizardStep > 0 ? 'Retour' : 'Annuler';
 
@@ -414,7 +476,9 @@ export default function PlanCreateScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {total > 1 || !isDebtWizard ? (
+          {isEditing ? (
+            <Text style={[styles.progress, planFinanceEyebrowStyle()]}>{headerEyebrow}</Text>
+          ) : total > 1 || !isDebtWizard ? (
             <Text style={[styles.progress, planFinanceEyebrowStyle()]}>{`PLAN ${index} DE ${total}`}</Text>
           ) : null}
           <Text style={[styles.title, planFinanceFonts.heroTitle]}>{screenTitle}</Text>

@@ -10,6 +10,8 @@ import {
 
 type Props = {
   label?: string;
+  /** Override eyebrow tint — optional override. */
+  labelColor?: string;
   caption?: string;
   children: ReactNode;
   style?: ViewStyle;

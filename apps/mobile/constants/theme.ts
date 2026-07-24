@@ -96,7 +96,7 @@ export const segmentedTabBarDark = {
 /** Segmented tab bar — light theme (unchanged from prior light work) */
 export const segmentedTabBarLight = {
   track: 'rgba(10, 10, 10, 0.06)',
-  activePill: 'rgba(0, 168, 84, 0.14)',
+  activePill: 'rgba(10, 10, 10, 0.10)',
   activeText: '#0D1117',
   inactiveText: '#52525B',
 } as const;
@@ -464,8 +464,8 @@ export const typography = {
 /**
  * DM Mono font tokens (`DMMono_400Regular`, `DMMono_500Medium`).
  *
- * **Exclusively** for the ARTICLES / receipt section in the transaction detail view
- * (`app/transaction-detail.tsx` — `TransactionReceiptCard`, itemized line amounts).
+ * **Exclusively** for the ARTICLES / receipt section
+ * (`TransactionArticlesReceiptCard`, transaction detail / add-transaction itemized lines).
  *
  * Do **not** use DM Mono elsewhere. Labels → Plus Jakarta. Money amounts → {@link moneyAmountTypography}
  * ({@link MONEY_AMOUNT_FONT} / Inter 800 ExtraBold) or {@link transactionRowAmountTypography}.
@@ -527,11 +527,6 @@ export function goalProgressTrackColor(isLight: boolean): string {
  */
 export { MONEY_AMOUNT_FONT, TRANSACTION_ROW_AMOUNT_FONT, interNumericExtraBoldText } from './interFonts';
 
-const moneyAmountFontBase = {
-  fontFamily: MONEY_AMOUNT_FONT,
-  fontWeight: 'normal' as const,
-};
-
 type MoneyAmountTier = 'card' | 'hero' | 'stat' | 'row' | 'detailHero' | 'netWorth';
 
 function moneyAmountPresetForTier(tier: MoneyAmountTier) {
@@ -554,6 +549,9 @@ function moneyAmountPresetForTier(tier: MoneyAmountTier) {
 /**
  * Canonical money typography — Inter 800 ExtraBold, tabular nums.
  * Use everywhere a dollar amount appears (lists, cards, charts, detail stats).
+ *
+ * Note: inlines font tokens (no module-level `moneyAmountFontBase`) so circular
+ * imports cannot hit a TDZ when this runs during another module's init.
  */
 export function moneyAmountTypography(options?: {
   /** Preset size tier; default `card` (16px). */
@@ -566,7 +564,8 @@ export function moneyAmountTypography(options?: {
   const tier = options?.tier ?? 'card';
   const preset = moneyAmountPresetForTier(tier);
   return {
-    ...moneyAmountFontBase,
+    fontFamily: MONEY_AMOUNT_FONT,
+    fontWeight: 'normal' as const,
     fontVariant: preset.fontVariant,
     fontSize: options?.fontSize ?? preset.fontSize,
     lineHeight: options?.lineHeight ?? ('lineHeight' in preset ? preset.lineHeight : undefined),
@@ -1100,6 +1099,20 @@ export const detailSubSectionsGap = spacing.lg;
 
 /** Min height for mortgage chart carousel pages ({@link MortgageDetailCharts}). */
 export const detailCarouselPageMinHeight = 252;
+
+/**
+ * Major form section eyebrows (Date, Méthode, Catégorie, Articles…).
+ * Bolder than nested micro-labels — pair with `colors.text`.
+ */
+export function formSectionLabelStyle(): TextStyle {
+  return {
+    ...typographyKit.eyebrow,
+    ...jakartaBoldText,
+  };
+}
+
+/** Precomputed form section eyebrow — safe for StyleSheet.create. */
+export const FORM_SECTION_LABEL_STYLE: TextStyle = formSectionLabelStyle();
 
 /** Eyebrow « DÉTAILS » (or « TRANSACTIONS ») on a SurfaceCard detail block. */
 export function detailSectionLabelStyle(): TextStyle {

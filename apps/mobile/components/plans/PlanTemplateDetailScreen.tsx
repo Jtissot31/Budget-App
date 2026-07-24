@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PageTransition } from '@/components/PageTransition';
 import { AvalancheStrategyContent } from '@/components/plans/AvalancheStrategyContent';
+import { PlanTimeline } from '@/components/plans/PlanTimeline';
+import { PlanWhyCard } from '@/components/plans/PlanWhyCard';
 import { SnowballStrategyContent } from '@/components/plans/SnowballStrategyContent';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
@@ -23,6 +25,8 @@ import { PLAN_SUBTYPE_LABELS, planCategoryForSubtype, type PlanSubtype } from '@
 import { getCategoryIcon } from '@/lib/plans/planCardPresentation';
 import { buildPrefilledSubtypeEntryParams } from '@/lib/plans/planCreateNavigation';
 import { getPlanSubtypeConfig } from '@/lib/plans/planSubtypeConfig';
+import { timelineStepsForTemplate } from '@/lib/plans/planTimelineModel';
+import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
   subtype: PlanSubtype;
@@ -33,6 +37,7 @@ type Props = {
 export function PlanTemplateDetailScreen({ subtype, raison }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { colors } = useAppTheme();
   const config = getPlanSubtypeConfig(subtype);
   const category = planCategoryForSubtype(subtype);
   const pf = planFinanceKit.colors;
@@ -40,6 +45,15 @@ export function PlanTemplateDetailScreen({ subtype, raison }: Props) {
   const staticWhy = config.fullDescription;
   const [whyText, setWhyText] = useState(raison?.trim() || staticWhy);
   const strategyText = config.strategy;
+
+  const roadmapSteps = useMemo(
+    () =>
+      timelineStepsForTemplate(subtype, {
+        whyDetail: whyText,
+        strategyDetail: strategyText,
+      }),
+    [subtype, whyText, strategyText],
+  );
 
   useEffect(() => {
     if (raison?.trim()) {
@@ -84,7 +98,7 @@ export function PlanTemplateDetailScreen({ subtype, raison }: Props) {
 
   return (
     <PageTransition>
-      <View style={[styles.screen, { backgroundColor: pf.background }]}>
+      <View style={[styles.screen, { backgroundColor: colors.screenCanvas || pf.background }]}>
         <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.md }]}>
           <Pressable
             accessibilityRole="button"
@@ -96,10 +110,10 @@ export function PlanTemplateDetailScreen({ subtype, raison }: Props) {
               pressed && planFinanceContainerPressedStyle(),
             ]}
           >
-            <AppIcon family="material" name="arrow-back" size={22} color={pf.text} />
+            <AppIcon family="material" name="arrow-back" size={22} color={colors.text} />
           </Pressable>
           {hasStrategyTemplate ? (
-            <Text style={[styles.inlineTitle, { color: pf.text }]} numberOfLines={2}>
+            <Text style={[styles.inlineTitle, { color: colors.text }]} numberOfLines={2}>
               {subtype === 'snowball' ? 'Stratégie Boule de neige' : 'Stratégie Avalanche'}
             </Text>
           ) : null}
@@ -120,38 +134,47 @@ export function PlanTemplateDetailScreen({ subtype, raison }: Props) {
           ) : (
             <>
               <View style={styles.titleBlock}>
-                <AppIcon family="material-community" name={getCategoryIcon(category)} size={28} color={pf.textMuted} />
-                <Text style={[styles.planTitle, planFinanceFonts.heroTitle]}>{PLAN_SUBTYPE_LABELS[subtype]}</Text>
-                <Text style={[styles.modelBadge, interMediumText]}>Modèle</Text>
-                <Text style={[styles.planSummary, planFinanceFonts.body]}>{config.fullDescription}</Text>
+                <AppIcon
+                  family="material-community"
+                  name={getCategoryIcon(category)}
+                  size={28}
+                  color={colors.textMuted}
+                />
+                <Text style={[styles.planTitle, planFinanceFonts.heroTitle, { color: colors.text }]}>
+                  {PLAN_SUBTYPE_LABELS[subtype]}
+                </Text>
+                <Text style={[styles.modelBadge, interMediumText, { color: colors.textMuted }]}>Modèle</Text>
+                <Text style={[styles.planSummary, planFinanceFonts.body, { color: colors.textMuted }]}>
+                  {config.fullDescription}
+                </Text>
               </View>
 
-              <View style={[planFinanceCardStyle(), styles.block]}>
-                <Text style={planFinanceFonts.sectionCaps}>POURQUOI CONSIDÉRER CE PLAN</Text>
-                <Text style={[planFinanceFonts.body, styles.blockBody]}>{whyText}</Text>
-              </View>
+              <PlanTimeline steps={roadmapSteps} sectionLabel="FEUILLE DE ROUTE" />
+
+              <PlanWhyCard rationale={whyText} bullets={config.impactBullets} />
 
               <View style={[planFinanceCardStyle(), styles.block]}>
-                <Text style={planFinanceFonts.sectionCaps}>STRATÉGIE</Text>
-                <Text style={[planFinanceFonts.body, styles.blockBody]}>{strategyText}</Text>
-              </View>
-
-              <View style={[planFinanceCardStyle(), styles.block]}>
-                <Text style={planFinanceFonts.sectionCaps}>IMPACT</Text>
-                <View style={styles.bullets}>
-                  {config.impactBullets.map((bullet) => (
-                    <View key={bullet} style={styles.bulletRow}>
-                      <View style={[styles.bulletDot, { backgroundColor: pf.textMuted }]} />
-                      <Text style={[planFinanceFonts.body, styles.bulletText]}>{bullet}</Text>
-                    </View>
-                  ))}
-                </View>
+                <Text style={[planFinanceFonts.sectionCaps, { color: colors.accentGreen || colors.primary }]}>
+                  STRATÉGIE
+                </Text>
+                <Text style={[planFinanceFonts.body, styles.blockBody, { color: colors.text }]}>
+                  {strategyText}
+                </Text>
               </View>
             </>
           )}
         </ScrollView>
 
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+        <View
+          style={[
+            styles.footer,
+            {
+              paddingBottom: Math.max(insets.bottom, spacing.md),
+              backgroundColor: colors.screenCanvas || pf.background,
+              borderTopColor: colors.containerBorder,
+            },
+          ]}
+        >
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Créer ce plan"
@@ -198,7 +221,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   modelBadge: {
-    color: planFinanceKit.colors.textMuted,
     fontSize: 13,
   },
   planSummary: {
@@ -210,24 +232,6 @@ const styles = StyleSheet.create({
   blockBody: {
     marginTop: spacing.xs,
   },
-  bullets: {
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  bulletRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-  },
-  bulletDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginTop: 7,
-  },
-  bulletText: {
-    flex: 1,
-  },
   footer: {
     position: 'absolute',
     left: 0,
@@ -235,9 +239,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    backgroundColor: planFinanceKit.colors.background,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: planFinanceKit.colors.border,
   },
   ctaLabel: {
     color: planFinanceKit.colors.textOnAccent,

@@ -4,7 +4,14 @@ import type { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { spacing } from '@/constants/theme';
 import type { ProgressCardData } from '@/types/aiWidgets';
-import { AI_WIDGET_RADIUS, aiWidgetAmountTypography, aiWidgetFonts, aiWidgetTypography, useAIWidgetColors } from './theme';
+import {
+  AI_WIDGET_RADIUS,
+  aiWidgetAmountTextProps,
+  aiWidgetFonts,
+  aiWidgetKeyStatTextProps,
+  aiWidgetTypography,
+  useAIWidgetColors,
+} from './theme';
 import { WidgetCardShell } from './WidgetCardShell';
 
 type Props = {
@@ -22,6 +29,10 @@ function formatValueLabel(value: string): string {
   return value.replace(/ /g, '\u00A0');
 }
 
+/**
+ * Progress card — amount + percent phrase stack so « 70 % de l'objectif » never
+ * mid-phrase-ellipsizes beside a long money amount.
+ */
 export function ProgressCardWidget({ data }: Props) {
   const palette = useAIWidgetColors();
   const percent = Math.min(100, Math.max(0, data.percent));
@@ -35,15 +46,20 @@ export function ProgressCardWidget({ data }: Props) {
         ) : null}
       </View>
 
-      <View style={styles.valueRow}>
+      <View style={styles.valueBlock}>
         <Text
-          style={[aiWidgetTypography.value, { color: palette.text }]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
+          style={[aiWidgetTypography.value, styles.valueLabel, { color: palette.text }]}
+          {...aiWidgetAmountTextProps}
         >
           {formatValueLabel(data.value_label)}
         </Text>
-        <Text style={[styles.percentLabel, aiWidgetAmountTypography('badge'), { color: palette.green }]}>
+        <Text
+          style={[
+            styles.percentLabel,
+            { color: palette.green, fontFamily: aiWidgetFonts.label },
+          ]}
+          {...aiWidgetKeyStatTextProps}
+        >
           {data.percent_label}
         </Text>
       </View>
@@ -57,6 +73,7 @@ export function ProgressCardWidget({ data }: Props) {
           <AppIcon family="material-community" name="check-circle-outline" size={14} color={palette.green} />
           <Text
             style={[styles.statusText, { color: palette.textMuted, fontFamily: aiWidgetFonts.labelRegular }]}
+            numberOfLines={3}
           >
             {data.status_line}
           </Text>
@@ -67,7 +84,9 @@ export function ProgressCardWidget({ data }: Props) {
         <View style={styles.actionsRow}>
           {data.actions.map((action) => (
             <View key={action.label} style={[styles.actionPill, { backgroundColor: palette.track }]}>
-              <Text style={[styles.actionText, { color: palette.text, fontFamily: aiWidgetFonts.label }]}>
+              <Text
+                style={[styles.actionText, { color: palette.text, fontFamily: aiWidgetFonts.label }]}
+              >
                 {action.label}
               </Text>
             </View>
@@ -84,16 +103,21 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     width: '100%',
   },
-  valueRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
+  valueBlock: {
     width: '100%',
+    minWidth: 0,
+    gap: spacing.xs,
+  },
+  valueLabel: {
+    width: '100%',
+    minWidth: 0,
   },
   percentLabel: {
-    fontSize: 13,
-    flexShrink: 0,
+    fontSize: 14,
+    lineHeight: 18,
+    letterSpacing: -0.1,
+    width: '100%',
+    minWidth: 0,
   },
   track: {
     height: 8,
@@ -106,12 +130,15 @@ const styles = StyleSheet.create({
   },
   statusRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.xs,
+    minWidth: 0,
   },
   statusText: {
     fontSize: 13,
+    lineHeight: 18,
     flex: 1,
+    minWidth: 0,
   },
   actionsRow: {
     flexDirection: 'row',

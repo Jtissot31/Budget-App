@@ -1,12 +1,11 @@
 import { StyleSheet, Text, View } from 'react-native';
 import type { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
+import { DashboardCard } from '@/components/DashboardCard';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { planFinanceKit, planFinanceSecondaryButtonStyle } from '@/constants/planFinanceKit';
-import { spacing } from '@/constants/theme';
+import { spacing, typographyKit } from '@/constants/theme';
 import type { AlertCardData } from '@/types/aiWidgets';
-import { aiWidgetFonts, aiWidgetTypography, useAIWidgetColors } from './theme';
-import { WidgetCardShell } from './WidgetCardShell';
+import { useAIWidgetColors } from './theme';
 
 type Props = {
   data: AlertCardData;
@@ -18,7 +17,6 @@ type SeverityStyle = {
   eyebrow: string;
   icon: MaterialIconName;
   accent: string;
-  wellBg: string;
 };
 
 function resolveSeverityStyle(
@@ -31,21 +29,18 @@ function resolveSeverityStyle(
         eyebrow: 'ALERTE',
         icon: 'alert-circle-outline',
         accent: palette.red,
-        wellBg: palette.dangerMuted,
       };
     case 'warning':
       return {
         eyebrow: 'ALERTE',
         icon: 'alert-outline',
         accent: palette.warning,
-        wellBg: palette.warningMuted,
       };
     case 'success':
       return {
         eyebrow: 'CONFIRMATION',
         icon: 'check-circle-outline',
         accent: palette.green,
-        wellBg: palette.successMuted,
       };
     case 'info':
     default:
@@ -53,93 +48,74 @@ function resolveSeverityStyle(
         eyebrow: 'INFO',
         icon: 'information-outline',
         accent: palette.info,
-        wellBg: palette.track,
       };
   }
 }
 
+/**
+ * Alert card — same DashboardCard shell / typography language as Agenda
+ * {@link AgendaCashHeroCard} (solde chèque), without any chart.
+ */
 export function AlertCardWidget({ data }: Props) {
   const palette = useAIWidgetColors();
   const severity = resolveSeverityStyle(data.severity, palette);
 
   return (
-    <WidgetCardShell label={severity.eyebrow}>
-      <View style={styles.headerRow}>
-        <View style={[styles.iconWell, { backgroundColor: severity.wellBg }]}>
-          <AppIcon family="material-community" name={severity.icon} size={18} color={severity.accent} />
-        </View>
-
-        <View style={styles.copyBlock}>
-          <Text style={[styles.title, { color: palette.text, fontFamily: aiWidgetFonts.title }]}>
-            {data.title}
-          </Text>
-          <Text
-            style={[
-              aiWidgetTypography.insight,
-              styles.message,
-              { color: palette.textMuted, fontFamily: aiWidgetFonts.labelRegular },
-            ]}
-          >
-            {data.message}
-          </Text>
-        </View>
+    <DashboardCard padding={spacing.lg} innerStyle={styles.cardInner}>
+      <View style={styles.eyebrowRow}>
+        <AppIcon
+          family="material-community"
+          name={severity.icon}
+          size={14}
+          color={severity.accent}
+        />
+        <Text style={[typographyKit.eyebrow, { color: severity.accent }]} numberOfLines={1}>
+          {severity.eyebrow}
+        </Text>
       </View>
 
+      <Text
+        style={[typographyKit.sectionTitle, styles.title, { color: palette.text }]}
+        numberOfLines={3}
+        ellipsizeMode="tail"
+      >
+        {data.title}
+      </Text>
+
+      <Text
+        style={[typographyKit.metaMedium, { color: palette.textMuted }]}
+        numberOfLines={5}
+        ellipsizeMode="tail"
+      >
+        {data.message}
+      </Text>
+
       {data.action ? (
-        <View
-          style={[
-            styles.actionButton,
-            planFinanceSecondaryButtonStyle(),
-            { borderColor: palette.border },
-          ]}
+        <Text
+          style={[typographyKit.meta, styles.action, { color: severity.accent }]}
           accessibilityRole="button"
           accessibilityLabel={data.action.label}
         >
-          <Text style={[styles.actionText, { color: palette.text, fontFamily: aiWidgetFonts.label }]}>
-            {data.action.label}
-          </Text>
-        </View>
+          {data.action.label} ›
+        </Text>
       ) : null}
-    </WidgetCardShell>
+    </DashboardCard>
   );
 }
 
-const ICON_WELL_SIZE = 32;
-
 const styles = StyleSheet.create({
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+  cardInner: {
     gap: spacing.md,
   },
-  iconWell: {
-    width: ICON_WELL_SIZE,
-    height: ICON_WELL_SIZE,
-    borderRadius: planFinanceKit.radius.small,
+  eyebrowRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  copyBlock: {
-    flex: 1,
-    minWidth: 0,
     gap: spacing.xs,
   },
   title: {
-    fontSize: 16,
-    lineHeight: 22,
-    letterSpacing: -0.2,
+    letterSpacing: -0.4,
   },
-  message: {
-    marginTop: 0,
-  },
-  actionButton: {
-    minHeight: 40,
-    alignSelf: 'stretch',
-    paddingHorizontal: spacing.md,
-  },
-  actionText: {
-    fontSize: 13,
-    letterSpacing: 0.2,
+  action: {
+    marginTop: spacing.xs,
   },
 });

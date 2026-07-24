@@ -13,18 +13,34 @@ import { planSubtypeIcon } from './planCardPresentation';
 import { buildPlanTypeProgressView } from './planTypeFormConfig';
 
 const runtimePlanDetails = new Map<string, DashboardPlanDetail>();
+/** Mock plans the user archived this session — hide from resolve until app restart clears memory. */
+const archivedPlanIds = new Set<string>();
 
 export function registerPlanDetailForNavigation(plan: PlanActifOuTermine): void {
+  archivedPlanIds.delete(plan.id);
   runtimePlanDetails.set(plan.id, planToDashboardDetail(plan));
 }
 
+export function unregisterPlanDetailForNavigation(planId: string): void {
+  runtimePlanDetails.delete(planId);
+  archivedPlanIds.add(planId);
+}
+
 export function getRegisteredPlanDetail(planId: string): DashboardPlanDetail | undefined {
+  if (archivedPlanIds.has(planId)) return undefined;
   return runtimePlanDetails.get(planId);
 }
 
 export function resolveDashboardPlanById(planId: string): DashboardPlanDetail | undefined {
+  if (archivedPlanIds.has(planId)) return undefined;
   return runtimePlanDetails.get(planId) ?? MOCK_DASHBOARD_PLANS.find((plan) => plan.id === planId);
 }
+
+const MOCK_PLAN_SUBTYPE_BY_ID: Record<string, Plan['subtype']> = {
+  'mock-fonds-urgence': 'fonds_urgence',
+  'mock-dettes': 'avalanche',
+  'mock-budget': 'enveloppe',
+};
 
 export function mockDashboardPlanToPlan(detail: DashboardPlanDetail): PlanActifOuTermine {
   const categoryKey = Object.entries(PLAN_CATEGORY_LABELS).find(
@@ -34,10 +50,15 @@ export function mockDashboardPlanToPlan(detail: DashboardPlanDetail): PlanActifO
   return {
     id: detail.id,
     category: categoryKey ?? 'epargne',
-    subtype: 'fonds_urgence',
+    subtype: MOCK_PLAN_SUBTYPE_BY_ID[detail.id] ?? 'fonds_urgence',
     titre: detail.name,
     description: detail.summary,
-    statut: detail.status === 'Actif' ? 'actif' : detail.status === 'Complété' ? 'complete' : 'en_pause',
+    statut:
+      detail.status === 'Complété'
+        ? 'complete'
+        : detail.status === 'En pause'
+          ? 'en_pause'
+          : 'actif',
     montant_actuel: detail.currentAmount,
     montant_cible: detail.targetAmount,
     cadence: detail.contributionLabel,

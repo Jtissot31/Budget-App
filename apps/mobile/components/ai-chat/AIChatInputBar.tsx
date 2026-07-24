@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { jakartaRegularText, PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
+import { jakartaRegularText, PAGE_PADDING_HORIZONTAL, radius, spacing } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
 import { useAIChatColors } from './theme';
@@ -94,7 +94,7 @@ export function AIChatInputBar({ value, onChangeText, onSend, disabled = false, 
                 disabled && styles.sendDisabled,
               ]}
             >
-              <AppIcon family="material-community" name="send" size={20} color={palette.userBubbleText} />
+              <AppIcon family="material-community" name="send" size={20} color={palette.onAccent} />
             </Pressable>
           ) : (
             <Pressable
@@ -130,10 +130,11 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 24,
+    borderRadius: radius.xl,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    borderWidth: 1,
+    paddingVertical: spacing.xs,
+    minHeight: 44,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   textInput: {
     flex: 1,
@@ -142,7 +143,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 2,
     maxHeight: 96,
-    minHeight: 56,
+    minHeight: 36,
   },
   inputIconButton: {
     padding: spacing.xs,
@@ -163,6 +164,6 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   pressed: {
-    opacity: 0.78,
+    opacity: 0.7,
   },
 });

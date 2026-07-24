@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { spacing } from '@/constants/theme';
 import type { PlanFinancier } from '@/lib/dashboardPlansMock';
 import { tapHaptic } from '@/lib/haptics';
-import { PLAN_DETAIL, planDetailCardStyle, planDetailFonts } from './planDetailTheme';
+import {
+  planDetailCardStyleFromTheme,
+  planDetailFonts,
+  usePlanDetailTheme,
+} from './planDetailTheme';
 
 type DetailRow = {
   label: string;
@@ -18,6 +21,7 @@ type Props = {
 
 export function PlanDetailsCollapsible({ plan }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const theme = usePlanDetailTheme();
 
   const rows: DetailRow[] = [
     { label: 'Démarré', value: plan.startedAtLabel },
@@ -30,7 +34,7 @@ export function PlanDetailsCollapsible({ plan }: Props) {
   }
 
   return (
-    <View style={planDetailCardStyle.card}>
+    <View style={planDetailCardStyleFromTheme(theme)}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded }}
@@ -40,20 +44,23 @@ export function PlanDetailsCollapsible({ plan }: Props) {
         }}
         style={styles.headerRow}
       >
-        <Text style={[planDetailFonts.sectionCaps, { color: PLAN_DETAIL.textMuted }]}>DÉTAILS DU PLAN</Text>
-        <AppIcon family="material" 
+        <Text style={[planDetailFonts.sectionCaps, { color: theme.textMuted }]}>DÉTAILS DU PLAN</Text>
+        <AppIcon
+          family="material"
           name={expanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
           size={22}
-          color={PLAN_DETAIL.textMuted}
+          color={theme.textMuted}
         />
       </Pressable>
 
       {expanded ? (
-        <View style={styles.rows}>
+        <View style={[styles.rows, { borderTopColor: theme.border }]}>
           {rows.map((row) => (
             <View key={row.label} style={styles.row}>
-              <Text style={[planDetailFonts.detailLabel, { color: PLAN_DETAIL.textMuted }]}>{row.label}</Text>
-              <Text style={[planDetailFonts.detailValue, { color: PLAN_DETAIL.text, flex: 1, textAlign: 'right' }]}>
+              <Text style={[planDetailFonts.detailLabel, { color: theme.textMuted }]}>{row.label}</Text>
+              <Text
+                style={[planDetailFonts.detailValue, { color: theme.text, flex: 1, textAlign: 'right' }]}
+              >
                 {row.value}
               </Text>
             </View>
@@ -76,7 +83,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingTop: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: PLAN_DETAIL.border,
   },
   row: {
     flexDirection: 'row',

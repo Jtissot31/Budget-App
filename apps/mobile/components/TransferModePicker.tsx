@@ -5,6 +5,7 @@ import { MdiIcon } from '@/components/MdiIcon';
 import {
   CHIP_BORDER_WIDTH,
   CHIP_PADDING_HORIZONTAL,
+  FORM_SECTION_LABEL_STYLE,
   jakartaBoldText,
   radius,
   spacing,
@@ -85,7 +86,9 @@ export function TransferModePicker({ value, onChange }: Props) {
 
   return (
     <View style={styles.section}>
-      <DashboardSectionLabel>Provenance</DashboardSectionLabel>
+      <DashboardSectionLabel style={[FORM_SECTION_LABEL_STYLE, { color: colors.text }]}>
+        Provenance
+      </DashboardSectionLabel>
       <View style={styles.grid}>
         {TRANSFER_MODE_OPTIONS.map(({ mode, icon, contactDirection, label, accessibilityLabel }) => {
           const selected = value === mode;

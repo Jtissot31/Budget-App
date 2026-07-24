@@ -63,6 +63,12 @@ function upsertAlert(
  * MVP local rules — future batch evaluation via Gemini Flash 2.5.
  */
 export async function evaluateAlerts(): Promise<AIAlert[]> {
+  // Surface plan adaptation proposals as alerts (never silently mutate plans).
+  const { evaluateAndSurfacePlanAdaptations } = await import(
+    '@/lib/plans/planAdaptationProposals'
+  );
+  await evaluateAndSurfacePlanAdaptations().catch(() => undefined);
+
   const dataMode = await resolveDataMode();
   const isManual = dataMode === 'manual';
   const [accounts, budgets, loans] = await Promise.all([

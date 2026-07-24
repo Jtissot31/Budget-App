@@ -6,8 +6,11 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { PremiumSwitch } from '@/components/PremiumSwitch';
@@ -28,6 +31,8 @@ type Props = {
 
 export function ContactFormModal({ visible, bottomInset = 0, onClose, onSaved }: Props) {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const sheetHeight = Math.round(windowHeight * 0.55);
   const { colors, isLight } = useAppTheme();
   const [nameDraft, setNameDraft] = useState('');
   const [isEmployer, setIsEmployer] = useState(false);
@@ -64,22 +69,26 @@ export function ContactFormModal({ visible, bottomInset = 0, onClose, onSaved }:
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Fermer"
-        style={[styles.backdrop, { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' }]}
-        onPress={onClose}
-      />
-      <View
-        style={[
-          styles.sheet,
-          {
-            backgroundColor: colors.containerBackground,
-            borderColor: colors.containerBorder,
-            paddingBottom: Math.max(insets.bottom, bottomInset, spacing.lg),
-          },
-        ]}
-      >
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={[styles.backdrop, { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' }]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Fermer"
+            style={StyleSheet.absoluteFill}
+            onPress={onClose}
+          />
+          <DraggableSheetSurface
+            onClose={onClose}
+            sheetHeight={sheetHeight}
+            style={[
+              styles.sheet,
+              {
+                backgroundColor: colors.containerBackground,
+                borderColor: colors.containerBorder,
+                paddingBottom: Math.max(insets.bottom, bottomInset, spacing.lg),
+              },
+            ]}
+          >
         <View style={[styles.handle, { backgroundColor: colors.borderStrong }]} />
         <View style={styles.header}>
           <Text style={[styles.title, { color: colors.text }]}>Ajouter un contact</Text>
@@ -142,7 +151,9 @@ export function ContactFormModal({ visible, bottomInset = 0, onClose, onSaved }:
           onPress={() => void save()}
           disabled={saving}
         />
-      </View>
+          </DraggableSheetSurface>
+        </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -150,6 +161,7 @@ export function ContactFormModal({ visible, bottomInset = 0, onClose, onSaved }:
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
+    justifyContent: 'flex-end',
   },
   sheet: {
     borderTopLeftRadius: 28,

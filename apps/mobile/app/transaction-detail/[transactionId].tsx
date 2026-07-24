@@ -17,13 +17,13 @@ import {
   View,
   type TextStyle,
 } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
 import { Image } from 'expo-image';
 import * as Sharing from 'expo-sharing';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AddArticleSheet, isInlineArticleScrollTargetReady, type InlineArticleScrollTarget } from '@/components/AddArticleSheet';
+import { isInlineArticleScrollTargetReady, type InlineArticleScrollTarget } from '@/components/AddArticleSheet';
+import { TransactionArticlesReceiptCard } from '@/components/TransactionArticlesReceiptCard';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
 import { DetailSectionsList } from '@/components/DetailSectionRows';
@@ -93,6 +93,7 @@ import {
   getSavingsGoals,
   getSimulatedAccounts,
   getTransactionById,
+  getTransactions,
   insertTransaction,
 } from '@/lib/db';
 import { detailRowEditableContainer, detailRowValueMoney, detailRowSelectValueText } from '@/lib/textLayout';
@@ -107,12 +108,14 @@ import { tapHaptic, successHaptic } from '@/lib/haptics';
 import { dataEvents } from '@/lib/events';
 import { useAppTheme } from '@/lib/themeContext';
 import { useContactPhotoMap } from '@/hooks/useContactPhotoMap';
+import { accountPickerRowPresentation } from '@/lib/accountBalancePresentation';
+import {
+  countPaymentAccountUsage,
+  sortByPaymentAccountUsage,
+} from '@/lib/paymentAccountUsage';
 import type { Category, SavingsGoal, SimulatedAccount, Transaction } from '@/types';
 
-type PaymentAccountOption = {
-  id: string;
-  label: string;
-};
+type PaymentAccountOption = SettingsPickerOption<string>;
 
 type TransactionFieldEditors = {
   accountId: string | null;
@@ -177,17 +180,37 @@ function mergeTransactionDate(isoDate: string, newDayYmd: string): string {
   return existing.toISOString();
 }
 
-function buildPaymentAccountOptions(accounts: SimulatedAccount[]): PaymentAccountOption[] {
-  if (accounts.length > 0) {
-    return accounts.map((account) => ({
-      id: account.id,
-      label: account.last4 ? `${account.name} • ${account.last4}` : account.name,
-    }));
-  }
-  return MANUAL_ENTRY_ACCOUNTS.map((account) => ({
-    id: account.id,
-    label: account.label,
-  }));
+function buildPaymentAccountOptions(
+  accounts: SimulatedAccount[],
+  usageCounts: ReadonlyMap<string, number> = new Map(),
+): PaymentAccountOption[] {
+  const unsorted: PaymentAccountOption[] =
+    accounts.length > 0
+      ? accounts.map((account) => {
+          const row = accountPickerRowPresentation(account);
+          return {
+            id: account.id,
+            label: row.label,
+            description: row.description,
+            fieldLabel: row.fieldLabel,
+            icon: row.icon,
+            logoUrl: row.logoUrl,
+          };
+        })
+      : (() => {
+          const manualIcons: Record<string, string> = {
+            checking: 'wallet-outline',
+            credit: 'card-outline',
+            savings: 'cash-outline',
+          };
+          return MANUAL_ENTRY_ACCOUNTS.map((account) => ({
+            id: account.id,
+            label: account.label,
+            description: account.id === 'checking' ? 'Chèque' : account.id === 'credit' ? 'Crédit' : 'Épargne',
+            icon: manualIcons[account.id] ?? 'wallet-outline',
+          }));
+        })();
+  return sortByPaymentAccountUsage(unsorted, usageCounts);
 }
 
 function buildCategoryPickerOptions(categories: Category[]): SettingsPickerOption<string>[] {
@@ -1030,58 +1053,6 @@ function TransactionShareCard({
   );
 }
 
-/** Receipt paper zigzag edge — SVG path tiling zigzag teeth across full width */
-function ReceiptZigzagEdge({ width, color, position }: { width: number; color: string; position: 'top' | 'bottom' }) {
-  const toothWidth = 10;
-  const toothDepth = 7;
-  const height = toothDepth;
-
-  if (width <= 0) return null;
-
-  const count = Math.max(1, Math.ceil(width / toothWidth));
-  const totalWidth = width;
-  const step = totalWidth / count;
-
-  // Build zigzag path — for 'top': teeth point upward (cut into card from top)
-  // For 'bottom': teeth point downward (cut into card from bottom)
-  let d = '';
-  if (position === 'top') {
-    // Start at bottom-left, go up to peaks
-    d = `M 0,${height}`;
-    for (let i = 0; i < count; i++) {
-      const x0 = i * step;
-      const xMid = x0 + step / 2;
-      const x1 = x0 + step;
-      d += ` L ${xMid},0 L ${x1},${height}`;
-    }
-    d += ` L ${totalWidth},${height} Z`;
-  } else {
-    // Start at top-left, go down to valleys
-    d = `M 0,0`;
-    for (let i = 0; i < count; i++) {
-      const x0 = i * step;
-      const xMid = x0 + step / 2;
-      const x1 = x0 + step;
-      d += ` L ${xMid},${height} L ${x1},0`;
-    }
-    d += ` L ${totalWidth},0 Z`;
-  }
-
-  return (
-    <Svg
-      width={totalWidth}
-      height={height}
-      style={[
-        styles.receiptZigzag,
-        position === 'top' ? { top: 0 } : { bottom: 0 },
-      ]}
-      pointerEvents="none"
-    >
-      <Path d={d} fill={color} />
-    </Svg>
-  );
-}
-
 function TransactionReceiptCard({
   transaction,
   colors,
@@ -1116,175 +1087,36 @@ function TransactionReceiptCard({
   onViewReceipt: () => void;
 }) {
   const { isLight } = useAppTheme();
-  const { width: windowWidth } = useWindowDimensions();
-  const [measuredCardWidth, setMeasuredCardWidth] = useState(0);
   const receiptAttached = hasAttachedReceipt(transaction);
   const receiptLabel = receiptAttached
     ? getReceiptStatusLabel(transaction.receiptStatus, transaction.receiptUri)
     : null;
   const canPreviewReceipt = isPreviewableReceipt(transaction.receiptUri);
-  const total = articles.reduce((sum, a) => sum + a.price, 0);
   const maxArticlePrice = useMemo(
     () => getRemainingArticleBudget(transaction.amount, articles),
     [articles, transaction.amount],
   );
-
-  // Monochrome palette — BankAccountCard shell language, no colour accents
-  const cardFill = isLight ? '#FAFAFA' : '#0F0F10';
   const tearColor = isLight ? 'rgba(0,0,0,0.11)' : 'rgba(255,255,255,0.11)';
-  const rowDivider = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)';
   const ghostBorder = isLight ? 'rgba(0,0,0,0.11)' : 'rgba(255,255,255,0.11)';
   const receiptWell = isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.06)';
-  // Zigzag teeth filled with card's own background color — blends edges into card face
-  const zigzagColor = cardFill;
-
-  // Fallback until onLayout fires; content area matches scroll container width
-  const cardWidth = measuredCardWidth > 0 ? measuredCardWidth : windowWidth - spacing.lg * 2;
-  // Tooth depth used for extra padding so content doesn't sit under the zigzag
-  const zigzagDepth = 7;
   const [scanSourcePickerOpen, setScanSourcePickerOpen] = useState(false);
 
   return (
-    <View
-      style={styles.receiptCard}
-      onLayout={(event) => {
-        const nextWidth = event.nativeEvent.layout.width;
-        if (nextWidth > 0 && nextWidth !== measuredCardWidth) {
-          setMeasuredCardWidth(nextWidth);
-        }
-      }}
+    <TransactionArticlesReceiptCard
+      articles={articles}
+      colors={colors}
+      inlineArticleExpanded={inlineArticleExpanded}
+      maxArticlePrice={maxArticlePrice}
+      inlineArticleFormRef={inlineArticleFormRef}
+      onInlineScrollTargetChange={onInlineArticleScrollTargetChange}
+      scrollToOffset={onInlineArticleScrollToOffset}
+      onNameFocusChange={onInlineArticleNameFocusChange}
+      onContentLayout={onInlineArticleContentLayout}
+      onOpenInlineArticle={onOpenInlineArticle}
+      onCloseInlineArticle={onCloseInlineArticle}
+      onAddArticle={onInlineArticleAdd}
+      onRemoveArticle={onRemoveArticle}
     >
-      {/* Top zigzag — sits over screen canvas so teeth read as torn paper */}
-      <ReceiptZigzagEdge width={cardWidth} color={zigzagColor} position="top" />
-
-      <View
-        style={[
-          styles.receiptCardBody,
-          {
-            backgroundColor: cardFill,
-            marginTop: zigzagDepth,
-            marginBottom: zigzagDepth,
-          },
-        ]}
-      >
-      {/* Header: receipt icon + "ARTICLES" eyebrow only */}
-      <View style={styles.receiptHeaderLeft}>
-        <AppIcon family="ionicons" name="receipt-outline" size={12} color={colors.textMuted} />
-        <Text style={[detailSectionLabelStyle(), { color: colors.textMuted }]}>ARTICLES</Text>
-      </View>
-
-      {/* Dashed tear-line — receipt paper separation effect */}
-      <View style={[styles.receiptTearLine, { borderColor: tearColor }]} />
-
-      {/* Article list — above inline add form when articles exist */}
-      {articles.length > 0 ? (
-        <View style={styles.receiptArticlesBlock}>
-          <View style={styles.receiptTableHead}>
-            <Text style={[detailSubSectionHeaderStyle(), styles.receiptTableHeadLabel, { color: colors.textMuted }]}>
-              Article
-            </Text>
-            <Text style={[detailSubSectionHeaderStyle(), styles.receiptTableHeadAmount, { color: colors.textMuted }]}>
-              Montant
-            </Text>
-            <View style={styles.receiptTableHeadAction} />
-          </View>
-          {articles.map((article, index) => (
-            <View
-              key={`${article.name}-${index}`}
-              style={[
-                styles.receiptArticleRow,
-                index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: rowDivider },
-              ]}
-            >
-              <View style={styles.receiptArticleCopy}>
-                <Text
-                  style={[styles.receiptArticleName, articlesReceiptTypography('regular'), { color: colors.text }]}
-                  numberOfLines={1}
-                >
-                  {article.name}
-                </Text>
-                {article.categoryName ? (
-                  <Text
-                    style={[styles.receiptArticleCategory, articlesReceiptTypography('regular'), { color: colors.textMuted }]}
-                    numberOfLines={1}
-                  >
-                    {article.categoryName}
-                  </Text>
-                ) : null}
-              </View>
-              <Text style={[styles.receiptArticlePrice, articlesReceiptTypography('medium'), { color: colors.text }]}>
-                {formatDisplayMoneyAbsolute(article.price)}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Retirer ${article.name}`}
-                hitSlop={8}
-                onPress={() => onRemoveArticle(index)}
-                style={({ pressed }) => [styles.receiptArticleRemoveBtn, pressed && styles.pressed]}
-              >
-                <AppIcon family="ionicons" name="close" size={13} color={colors.textMuted} />
-              </Pressable>
-            </View>
-          ))}
-          {total > 0 ? (
-            <View style={[styles.receiptArticleTotalRow, { borderTopColor: tearColor }]}>
-              <Text style={[styles.receiptArticleTotalLabel, articlesReceiptTypography('medium'), { color: colors.textMuted }]}>
-                TOTAL
-              </Text>
-              <Text style={[styles.receiptArticleTotalValue, articlesReceiptTypography('medium'), { color: colors.text }]}>
-                {formatDisplayMoneyAbsolute(total)}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      ) : !inlineArticleExpanded ? (
-        <Text style={[styles.receiptEmptyText, articlesReceiptTypography('regular'), { color: colors.textMuted }]}>
-          Aucun article
-        </Text>
-      ) : null}
-
-      {inlineArticleExpanded ? (
-        <View
-          ref={inlineArticleFormRef}
-          style={[
-            styles.receiptInlineFormWrap,
-            articles.length > 0 && styles.receiptInlineFormWrapBelowArticles,
-            articles.length > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: rowDivider },
-          ]}
-        >
-          <AddArticleSheet
-            variant="inline"
-            visible={inlineArticleExpanded}
-            maxArticlePrice={maxArticlePrice}
-            scrollToOffset={onInlineArticleScrollToOffset}
-            onInlineScrollTargetChange={onInlineArticleScrollTargetChange}
-            onNameFocusChange={onInlineArticleNameFocusChange}
-            onContentLayout={onInlineArticleContentLayout}
-            onAdd={onInlineArticleAdd}
-            onClose={onCloseInlineArticle}
-          />
-        </View>
-      ) : null}
-
-      {!inlineArticleExpanded ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Ajouter un article"
-          onPress={onOpenInlineArticle}
-          style={({ pressed }) => [
-            styles.receiptJoinButton,
-            { borderColor: ghostBorder },
-            pressed && styles.pressed,
-          ]}
-        >
-          <AppIcon family="ionicons" name="add-outline" size={14} color={colors.textMuted} />
-          <Text style={[styles.receiptJoinButtonText, typographyKit.metaMedium, { color: colors.textMuted }]}>
-            Ajouter
-          </Text>
-        </Pressable>
-      ) : null}
-
-      {/* Receipt attachment section */}
       {receiptLabel ? (
         <>
           <View style={[styles.receiptTearLine, { borderColor: tearColor }]} />
@@ -1396,11 +1228,7 @@ function TransactionReceiptCard({
           ) : null}
         </View>
       ) : null}
-      </View>
-
-      {/* Bottom zigzag — sits over screen canvas below the card body */}
-      <ReceiptZigzagEdge width={cardWidth} color={zigzagColor} position="bottom" />
-    </View>
+    </TransactionArticlesReceiptCard>
   );
 }
 
@@ -1420,6 +1248,9 @@ export default function TransactionDetailScreen() {
   const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
+  const [paymentAccountUsageCounts, setPaymentAccountUsageCounts] = useState<Map<string, number>>(
+    () => new Map(),
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
   const [insufficientFundsAlert, setInsufficientFundsAlert] = useState<{
@@ -1456,18 +1287,22 @@ export default function TransactionDetailScreen() {
       setAccounts([]);
       setCategories([]);
       setSavingsGoals([]);
+      setPaymentAccountUsageCounts(new Map());
       return;
     }
-    const [nextTransaction, nextAccounts, nextCategories, nextSavingsGoals] = await Promise.all([
-      getTransactionById(transactionId),
-      getSimulatedAccounts(),
-      getCategories(),
-      getSavingsGoals(),
-    ]);
+    const [nextTransaction, nextAccounts, nextCategories, nextSavingsGoals, nextTransactions] =
+      await Promise.all([
+        getTransactionById(transactionId),
+        getSimulatedAccounts(),
+        getCategories(),
+        getSavingsGoals(),
+        getTransactions(),
+      ]);
     setTransaction(nextTransaction);
     setAccounts(nextAccounts);
     setCategories(nextCategories);
     setSavingsGoals(nextSavingsGoals);
+    setPaymentAccountUsageCounts(countPaymentAccountUsage(nextTransactions));
   }, [transactionId]);
 
   useEffect(() => {
@@ -1486,7 +1321,10 @@ export default function TransactionDetailScreen() {
     [transaction, contactPhotoByKey],
   );
 
-  const accountOptions = useMemo(() => buildPaymentAccountOptions(accounts), [accounts]);
+  const accountOptions = useMemo(
+    () => buildPaymentAccountOptions(accounts, paymentAccountUsageCounts),
+    [accounts, paymentAccountUsageCounts],
+  );
   const categoryOptions = useMemo(() => buildCategoryPickerOptions(categories), [categories]);
 
   const persistTransactionUpdate = useCallback(
@@ -1970,7 +1808,13 @@ export default function TransactionDetailScreen() {
     return {
       accountId,
       accountLabel,
-      accountOptions: accountOptions.map((option) => ({ id: option.id, label: option.label })),
+      accountOptions: accountOptions.map((option) => ({
+        id: option.id,
+        label: option.label,
+        description: option.description,
+        fieldLabel: option.fieldLabel,
+        icon: option.icon,
+      })),
       categoryId: transaction.categoryId?.trim() || '',
       categoryLabel,
       categoryOptions: resolvedCategoryOptions,
@@ -2468,45 +2312,9 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: spacing.md,
   },
-  // ── Receipt card — same horizontal span as other cards, zigzag-only edges ──
-  receiptCard: {
-    position: 'relative' as const,
-    overflow: 'visible' as const,
-  },
-  receiptCardBody: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-    gap: spacing.md,
-    overflow: 'visible' as const,
-  },
-  receiptZigzag: {
-    position: 'absolute' as const,
-    left: 0,
-    right: 0,
-  },
-  receiptCardAccentStripe: {
-    position: 'absolute' as const,
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1.5,
-  },
-  receiptHeaderLeft: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: spacing.xs,
-  },
   receiptTearLine: {
     borderTopWidth: 1,
     borderStyle: 'dashed' as const,
-  },
-  receiptInlineFormWrap: {
-    marginTop: -spacing.xs,
-    overflow: 'visible' as const,
-    zIndex: 10,
-  },
-  receiptInlineFormWrapBelowArticles: {
-    marginTop: 0,
   },
   noteBody: {
     ...typographyKit.body,
@@ -2532,18 +2340,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: 2,
-  },
-  receiptJoinButton: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    gap: spacing.sm,
-    minHeight: 38,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  receiptJoinButtonText: {
-    letterSpacing: 0.2,
   },
   receiptScanBlock: {
     gap: spacing.xs,
@@ -2664,87 +2460,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden' as const,
   },
 
-  // Article rows (premium receipt layout)
-  receiptArticlesBlock: {
-    gap: spacing.xs,
-  },
-  receiptTableHead: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingBottom: spacing.xs,
-  },
-  receiptTableHeadLabel: {
-    flex: 1,
-    minWidth: 0,
-    marginBottom: 0,
-  },
-  receiptTableHeadAmount: {
-    marginBottom: 0,
-    textAlign: 'right' as const,
-    minWidth: 72,
-  },
-  receiptTableHeadAction: {
-    width: 26,
-    flexShrink: 0,
-  },
-  receiptArticleRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-  },
-  receiptArticleCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  receiptArticleName: {
-    fontSize: 13,
-    letterSpacing: 0.3,
-    lineHeight: 18,
-  },
-  receiptArticleCategory: {
-    fontSize: 10,
-    letterSpacing: 0.4,
-    lineHeight: 14,
-  },
-  receiptArticlePrice: {
-    fontSize: 13,
-    letterSpacing: 0.3,
-    flexShrink: 0,
-    minWidth: 72,
-    textAlign: 'right' as const,
-  },
-  receiptArticleRemoveBtn: {
-    width: 26,
-    height: 26,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    flexShrink: 0,
-  },
-  receiptArticleTotalRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
-    paddingTop: spacing.sm,
-    marginTop: 2,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  receiptArticleTotalLabel: {
-    fontSize: 10,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 1.2,
-  },
-  receiptArticleTotalValue: {
-    fontSize: 13,
-    letterSpacing: 0.4,
-  },
-  receiptEmptyText: {
-    fontSize: 12,
-    textAlign: 'center' as const,
-    paddingVertical: spacing.md,
-    letterSpacing: 0.4,
-  },
   receiptStatusLabel: {
     lineHeight: 18,
   },

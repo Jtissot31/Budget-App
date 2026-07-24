@@ -26,6 +26,7 @@ import { isAbortError } from '@/lib/abortError';
 import { useAIChatColors } from '@/components/ai-chat/theme';
 import {
   executeChatAction,
+  invalidateChatSessionCache,
   loadChatHistory,
   saveChatHistory,
   sendChatMessage,
@@ -117,6 +118,8 @@ export function AIChatAdvisorScreen({
   const layoutScrollPendingRef = useRef(false);
   const prevEstimatedOverlayHeightRef = useRef(0);
   const scrollTargetRef = useRef<{ kind: 'end' } | null>(null);
+  const streamRafRef = useRef<number | null>(null);
+  const pendingStreamPartialRef = useRef<string | null>(null);
   const [scrollRequestId, setScrollRequestId] = useState(0);
 
   const [messages, setMessages] = useState<AIChatUiMessage[]>([]);
@@ -178,6 +181,11 @@ export function AIChatAdvisorScreen({
 
     return () => {
       cancelled = true;
+      if (streamRafRef.current != null) {
+        cancelAnimationFrame(streamRafRef.current);
+        streamRafRef.current = null;
+      }
+      pendingStreamPartialRef.current = null;
     };
   }, []);
 
@@ -350,7 +358,30 @@ export function AIChatAdvisorScreen({
           };
 
           const history = await loadChatHistory();
-          await saveChatHistory([...history, persistedUserMessage, persistedAssistantMessage]);
+          const historyWithStatus = history.map((message) => {
+            if (message.id !== pendingUiAction.messageId || !message.actions?.length) {
+              return message;
+            }
+            return {
+              ...message,
+              actions: message.actions.map((action, index) => {
+                const actionKey = `${message.id}-action-${index}`;
+                if (actionKey !== pendingUiAction.actionKey) return action;
+                return {
+                  ...action,
+                  status: result.ok ? ('success' as const) : ('error' as const),
+                };
+              }),
+            };
+          });
+          await saveChatHistory([
+            ...historyWithStatus,
+            persistedUserMessage,
+            persistedAssistantMessage,
+          ]);
+          if (result.ok) {
+            invalidateChatSessionCache();
+          }
 
           const assistantUiMessage = aiMessageToUiMessage(persistedAssistantMessage);
 
@@ -371,25 +402,43 @@ export function AIChatAdvisorScreen({
           return;
         }
 
-        const result = await sendChatMessage(text, {
+          const flushStreamingPartial = (partial: string) => {
+            if (requestRef.current !== requestId) return;
+            const { text: streamText, blocks } = buildStreamingAssistantDisplay(partial);
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === streamMessageId
+                  ? { ...message, text: streamText, blocks, streaming: true }
+                  : message,
+              ),
+            );
+            queueScrollToEnd();
+          };
+
+          const result = await sendChatMessage(text, {
           imageUri: imageUri ?? undefined,
           onActivity: handleActivity,
           signal: abortController.signal,
           onToken: useStreaming
             ? (partial) => {
                 if (requestRef.current !== requestId) return;
-                const { text, blocks } = buildStreamingAssistantDisplay(partial);
-                setMessages((prev) =>
-                  prev.map((message) =>
-                    message.id === streamMessageId
-                      ? { ...message, text, blocks, streaming: true }
-                      : message,
-                  ),
-                );
-                queueScrollToEnd();
+                // Coalesce token updates to one commit per animation frame.
+                pendingStreamPartialRef.current = partial;
+                if (streamRafRef.current != null) return;
+                streamRafRef.current = requestAnimationFrame(() => {
+                  streamRafRef.current = null;
+                  const latest = pendingStreamPartialRef.current;
+                  pendingStreamPartialRef.current = null;
+                  if (latest != null) flushStreamingPartial(latest);
+                });
               }
             : undefined,
         });
+        if (streamRafRef.current != null) {
+          cancelAnimationFrame(streamRafRef.current);
+          streamRafRef.current = null;
+        }
+        pendingStreamPartialRef.current = null;
         if (requestRef.current !== requestId) return;
 
         const assistantUiMessage = aiMessageToUiMessage(result.assistantMessage);
@@ -458,16 +507,44 @@ export function AIChatAdvisorScreen({
 
     const result = await executeChatAction(targetAction);
     const alertCard = buildActionResultAlertCard(result, targetAction);
+    if (result.ok) {
+      invalidateChatSessionCache();
+    }
+
+    const updatedUiMessage = (() => {
+      const withAction = updateMessageAction(targetMessage, actionKey, {
+        status: result.ok ? 'success' : 'error',
+      });
+      return appendAlertCardToMessage(withAction, alertCard);
+    })();
 
     setMessages((prev) =>
-      prev.map((message) => {
-        if (message.id !== messageId) return message;
-        const withAction = updateMessageAction(message, actionKey, {
-          status: result.ok ? 'success' : 'error',
-        });
-        return appendAlertCardToMessage(withAction, alertCard);
-      }),
+      prev.map((message) => (message.id === messageId ? updatedUiMessage : message)),
     );
+
+    try {
+      const history = await loadChatHistory();
+      const nextHistory = history.map((message) => {
+        if (message.id !== messageId) return message;
+        return {
+          ...message,
+          actions: message.actions?.map((action, index) => {
+            const key = `${message.id}-action-${index}`;
+            if (key !== actionKey) return action;
+            return {
+              ...action,
+              status: result.ok ? ('success' as const) : ('error' as const),
+            };
+          }),
+          blocks: updatedUiMessage.blocks,
+          content: updatedUiMessage.text || message.content,
+        };
+      });
+      await saveChatHistory(nextHistory);
+    } catch {
+      // UI already reflects the outcome; persistence is best-effort.
+    }
+
     queueScrollToEnd();
   }, [messages, queueScrollToEnd]);
 
@@ -552,6 +629,43 @@ export function AIChatAdvisorScreen({
       });
     },
     [router],
+  );
+
+  const keyExtractor = useCallback(
+    (item: ListItem) => (item.kind === 'projection' ? item.id : item.message.id),
+    [],
+  );
+
+  const onConfirmAction = useCallback(
+    (messageId: string, actionKey: string) => {
+      void handleConfirmAction(messageId, actionKey);
+    },
+    [handleConfirmAction],
+  );
+
+  const renderChatItem = useCallback(
+    ({ item }: { item: ListItem }) => {
+      if (item.kind === 'projection') {
+        return <AIChatProjectionWidget projection={item.projection} />;
+      }
+      return (
+        <AIChatMessage
+          message={item.message}
+          actionsDisabled={isResponding}
+          onConfirmAction={onConfirmAction}
+          onCancelAction={handleCancelAction}
+          onConfirmPlanSuggestions={handleConfirmPlanSuggestions}
+          onConfirmPlanGoal={handleConfirmPlanGoal}
+        />
+      );
+    },
+    [
+      handleCancelAction,
+      handleConfirmPlanGoal,
+      handleConfirmPlanSuggestions,
+      isResponding,
+      onConfirmAction,
+    ],
   );
 
   useFocusEffect(
@@ -761,24 +875,8 @@ export function AIChatAdvisorScreen({
             onContentSizeChange={handleListContentSizeChange}
             onScrollBeginDrag={handleChatScrollBeginDrag}
             onScrollToIndexFailed={handleScrollToIndexFailed}
-            keyExtractor={(item) =>
-              item.kind === 'projection' ? item.id : item.message.id
-            }
-            renderItem={({ item }) => {
-              if (item.kind === 'projection') {
-                return <AIChatProjectionWidget projection={item.projection} />;
-              }
-              return (
-                <AIChatMessage
-                  message={item.message}
-                  actionsDisabled={isResponding}
-                  onConfirmAction={(messageId, actionKey) => void handleConfirmAction(messageId, actionKey)}
-                  onCancelAction={handleCancelAction}
-                  onConfirmPlanSuggestions={handleConfirmPlanSuggestions}
-                  onConfirmPlanGoal={handleConfirmPlanGoal}
-                />
-              );
-            }}
+            keyExtractor={keyExtractor}
+            renderItem={renderChatItem}
           />
 
           {showBottomOverlay ? (

@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { DASHBOARD_VALUE_GREEN, darkColors } from '@/constants/theme';
 type Props = {
   children: ReactNode;
 };
@@ -14,6 +15,18 @@ export class RootErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
 
   static getDerivedStateFromError(error: Error): State {
+    // Web uses a noop SQLite stub — never hard-crash the shell for leftover sqlite noise.
+    // Also swallow FontFaceObserver / expo-font web timeouts (`6000ms timeout exceeded`).
+    const message = (error?.message ?? '').toLowerCase();
+    if (
+      message.includes('sqlite') ||
+      message.includes('opfs') ||
+      message.includes('wa-sqlite') ||
+      message.includes('workerchannel') ||
+      /\d+ms timeout exceeded/.test(message)
+    ) {
+      return { error: null };
+    }
     return { error };
   }
 
@@ -49,7 +62,7 @@ export class RootErrorBoundary extends Component<Props, State> {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#0A0A0A',
+    backgroundColor: darkColors.background,
   },
   content: {
     flexGrow: 1,
@@ -70,13 +83,13 @@ const styles = StyleSheet.create({
   button: {
     alignSelf: 'flex-start',
     marginTop: 8,
-    backgroundColor: '#00E664',
+    backgroundColor: DASHBOARD_VALUE_GREEN,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
   buttonText: {
-    color: '#0A0A0A',
+    color: darkColors.background,
     fontSize: 14,
     fontWeight: '800',
   },

@@ -96,7 +96,6 @@ function AllocationBreakdownBar({
   availableAmount: number;
 }) {
   const { colors } = useAppTheme();
-  const total = PAYCHECK_MOCK_AMOUNT;
 
   const segments = useMemo(() => {
     const allocationSegments = lines.map((line) => ({
@@ -134,16 +133,28 @@ function AllocationBreakdownBar({
             <Text style={[styles.legendLabel, { color: colors.text }, jakartaMediumText]} numberOfLines={1}>
               {line.label}
             </Text>
-            <Text style={[styles.legendValue, { color: colors.textMuted }, jakartaMediumText]}>
-              {Math.round((line.amount / total) * 100)} %
+            <Text
+              style={[
+                styles.legendValue,
+                { color: colors.textMuted },
+                moneyAmountTypography({ tier: 'row', fontSize: typography.micro }),
+              ]}
+            >
+              {formatDisplayMoneyAbsolute(line.amount)}
             </Text>
           </View>
         ))}
         <View style={styles.legendRow}>
           <View style={[styles.legendDot, { backgroundColor: AVAILABLE_GREEN }]} />
           <Text style={[styles.legendLabel, { color: colors.text }, jakartaMediumText]}>Disponible</Text>
-          <Text style={[styles.legendValue, { color: AVAILABLE_GREEN }, jakartaSemiboldText]}>
-            {Math.round((availableAmount / total) * 100)} %
+          <Text
+            style={[
+              styles.legendValue,
+              { color: AVAILABLE_GREEN },
+              moneyAmountTypography({ tier: 'row', fontSize: typography.micro }),
+            ]}
+          >
+            {formatDisplayMoneyAbsolute(availableAmount)}
           </Text>
         </View>
       </View>

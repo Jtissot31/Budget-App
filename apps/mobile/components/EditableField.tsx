@@ -117,8 +117,14 @@ export function EditableField({
       : type === 'date'
         ? (formatDateLabel?.(value) ?? formatFriendlyDateLabel(toLocalDateInputValue(value)))
         : type === 'select'
-          ? (selectOptions.find((option) => option.id === selectedId)?.label?.trim()
-              || (value.trim() && !/^\d+$/.test(value.trim()) ? value : ''))
+          ? (() => {
+              const match = selectOptions.find((option) => option.id === selectedId);
+              return (
+                match?.fieldLabel?.trim()
+                || match?.label?.trim()
+                || (value.trim() && !/^\d+$/.test(value.trim()) ? value : '')
+              );
+            })()
           : value;
 
   const validate = useCallback(

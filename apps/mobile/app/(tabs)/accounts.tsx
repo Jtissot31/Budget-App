@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { cashBanknotesLogoUri } from '@/components/icons/CashBanknotesOutlineIcon';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -15,6 +16,8 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
 import type { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -47,7 +50,6 @@ import {
   type NetWorthChartPeriod,
   type PortfolioChartCardHandle,
   type PortfolioChartCardPeriodData,
-  CHART_FULL_BLEED_RIGHT_INSET,
 } from '@/components/PortfolioChartCard';
 import {
   FLOATING_SCROLL_SIZE,
@@ -376,10 +378,14 @@ const CHART_HUB_SCOPE_LABELS: Record<NetWorthChartScope, string> = {
 };
 
 const CHART_HUB_LAYOUT = {
+  /** Flat: no fill / border / radius — blends with page bg. */
   cardVariant: 'flat' as const,
-  cardPadding: 0,
+  cardPadding: spacing.lg,
+  /** Zero plot inset + chartHorizontalBleed cancels padding so the plot is edge-to-edge. */
   plotHorizontalInset: 0,
-  plotHorizontalInsetRight: CHART_FULL_BLEED_RIGHT_INSET,
+  plotHorizontalInsetRight: 0,
+  /** Match cardPadding — negative margin on plot only; title/chips stay padded. */
+  chartHorizontalBleed: spacing.lg,
 } as const;
 const PATRIMOINE_PERIOD_REAL_WINDOW_OVERRIDE = {
   '1J': 2,
@@ -500,7 +506,6 @@ export default function AccountsScreen() {
     typeof params.editWealthAssetId === 'string' ? params.editWealthAssetId.trim() : '';
   const editLoanId = typeof params.editLoanId === 'string' ? params.editLoanId.trim() : '';
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
   const { colors, ghost, ghostCardShadow, isLight } = useAppTheme();
   const scrollRef = useRef<ScrollView>(null);
   const portfolioChartRef = useRef<PortfolioChartCardHandle>(null);
@@ -810,9 +815,8 @@ export default function AccountsScreen() {
     () => ({
       ...CHART_HUB_LAYOUT,
       eyebrowStyle: [styles.heroEyebrow, styles.heroEyebrowCashFlow],
-      chartBleedStyle: styles.chartScreenBleed(screenWidth),
     }),
-    [screenWidth],
+    [],
   );
   const portfolioChartPoints = useMemo(
     () =>
@@ -1779,6 +1783,7 @@ export default function AccountsScreen() {
           <DashboardCard
             variant={chartHubLayoutProps.cardVariant}
             padding={chartHubLayoutProps.cardPadding}
+            style={styles.chartHubCardShell}
             innerStyle={styles.chartHubCard}
           >
             <Pressable
@@ -1802,7 +1807,7 @@ export default function AccountsScreen() {
               onPress={clearPortfolioChartSelection}
               accessibilityRole="none"
               accessibilityLabel="Effacer la sélection du graphique"
-              style={chartHubLayoutProps.chartBleedStyle}
+              style={styles.chartInCard}
             >
               <PortfolioChartCard
                 ref={portfolioChartRef}
@@ -1821,6 +1826,7 @@ export default function AccountsScreen() {
                 }
                 plotHorizontalInset={chartHubLayoutProps.plotHorizontalInset}
                 plotHorizontalInsetRight={chartHubLayoutProps.plotHorizontalInsetRight}
+                chartHorizontalBleed={chartHubLayoutProps.chartHorizontalBleed}
                 selectionPersistence="release"
               />
             </Pressable>
@@ -2012,9 +2018,7 @@ export default function AccountsScreen() {
           {kind === 'cash' ? (
             <View style={styles.formHead}>
               <View style={styles.logoPreviewWrap}>
-                <IconFrame size={52}>
-                  <AppIcon family="ionicons" name="cash-banknotes-outline" size={22} color={colors.primary} />
-                </IconFrame>
+                <LogoIconFrame uri={cashBanknotesLogoUri()} size={52} />
               </View>
               <View style={styles.formHeadCopy}>
                 <Text style={[styles.formHint, formThemed.textMuted]}>
@@ -3421,7 +3425,7 @@ function PortfolioTypePickerSheet<T extends string>({
             ]}
           >
             <View style={[styles.typePickerIconWell, { backgroundColor: colors.surfaceElevated }]}>
-              <AppIcon family="ionicons" name={option.icon} size={22} color={colors.primary} />
+              <AppIcon family="ionicons" name={option.icon} size={22} color={colors.textSecondary} />
             </View>
             <View style={styles.typePickerCopy}>
               <Text style={[styles.typePickerLabel, formThemed.text]}>{option.label}</Text>
@@ -3447,26 +3451,31 @@ function PortfolioFormSheetModal({
   children: React.ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const sheetHeight = Math.round(windowHeight * 0.92);
   const { colors, ghostCardShadow } = useAppTheme();
   const formThemed = usePortfolioFormTheme();
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={[styles.formModalBackdrop, formThemed.modalBackdrop]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.formModalKeyboard}
-        >
-          <View
-            style={[
-              styles.formModalSheet,
-              ghostCardShadow,
-              formThemed.sheet,
-              { paddingBottom: Math.max(insets.bottom, spacing.md) },
-            ]}
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={[styles.formModalBackdrop, formThemed.modalBackdrop]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.formModalKeyboard}
           >
-            <View style={[styles.formModalHandle, formThemed.handle]} />
+            <DraggableSheetSurface
+              onClose={onClose}
+              sheetHeight={sheetHeight}
+              style={[
+                styles.formModalSheet,
+                ghostCardShadow,
+                formThemed.sheet,
+                { paddingBottom: Math.max(insets.bottom, spacing.md) },
+              ]}
+            >
+              <View style={[styles.formModalHandle, formThemed.handle]} />
             <View style={styles.modalTitleRow}>
               <Text style={[styles.formTitle, formThemed.text]} numberOfLines={1}>
                 {title}
@@ -3482,9 +3491,10 @@ function PortfolioFormSheetModal({
             >
               {children}
             </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </View>
+            </DraggableSheetSurface>
+          </KeyboardAvoidingView>
+        </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -3966,13 +3976,16 @@ const styles = StyleSheet.create({
     marginTop: PORTFOLIO_SECTION_GAP,
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
-  chartHubCard: {
-    gap: spacing.md,
+  /** Clip full-bleed plot (flat hub has no radius; overflow still contains the chart). */
+  chartHubCardShell: {
+    overflow: 'hidden',
   },
-  chartScreenBleed: (screenWidth: number) => ({
-    width: screenWidth - 4,
-    marginLeft: -(PAGE_PADDING_HORIZONTAL - 2),
-  }),
+  chartHubCard: {
+    gap: spacing.xs,
+  },
+  chartInCard: {
+    alignSelf: 'stretch',
+  },
   heroMetricsBlock: {
     alignItems: 'flex-start',
     gap: spacing.xs,
@@ -3982,7 +3995,7 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'center',
     gap: spacing.xs,
-    marginBottom: spacing.md,
+    marginBottom: spacing.xs,
   },
   accountsSectionBlock: {
     gap: 0,
@@ -4016,7 +4029,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   heroEyebrowCashFlow: {
-    marginBottom: spacing.xl,
+    marginBottom: spacing.sm,
   },
   pageTitle: {
     ...PAGE_TITLE_STYLE,

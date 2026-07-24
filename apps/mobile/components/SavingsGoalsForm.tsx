@@ -10,8 +10,11 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import { GoalSparkChartCarousel } from '@/components/GoalSparkChartCarousel';
@@ -161,6 +164,8 @@ export function SavingsGoalFormModal({
   onSave: () => void | Promise<void>;
 }) {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const sheetHeight = Math.round(windowHeight * 0.92);
   const { colors: themeColors, isLight } = useAppTheme();
   const projection = useMemo(
     () => getGoalProjection(form, dashboard, categoryBudgets, recurringPayments, goals),
@@ -227,13 +232,18 @@ export function SavingsGoalFormModal({
 
   return (
     <Modal visible={form != null} animationType="slide" transparent onRequestClose={onDismiss}>
-      <View style={[styles.modalBackdrop, themed.modalBackdrop]}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalKeyboard}
-        >
-          <View style={[styles.modalCard, themed.sheet]}>
-            <View style={[styles.handle, themed.handle]} />
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={[styles.modalBackdrop, themed.modalBackdrop]}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.modalKeyboard}
+          >
+            <DraggableSheetSurface
+              onClose={onDismiss}
+              sheetHeight={sheetHeight}
+              style={[styles.modalCard, themed.sheet]}
+            >
+              <View style={[styles.handle, themed.handle]} />
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, themed.text]}>
                 {isEditingExistingGoal ? 'Modifier' : 'Nouvel objectif'}
@@ -399,9 +409,10 @@ export function SavingsGoalFormModal({
                 disabled={saving}
               />
             </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </View>
+            </DraggableSheetSurface>
+          </KeyboardAvoidingView>
+        </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

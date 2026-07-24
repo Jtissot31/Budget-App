@@ -64,6 +64,7 @@ import {
   type NumpadDefaultMode,
 } from '@/lib/settings';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
+import { resetOnboarding } from '@/lib/onboarding';
 import {
   getPayEstimationSettings,
   PAY_ESTIMATION_FREQUENCY_OPTIONS,
@@ -76,7 +77,20 @@ import {
 } from '@/lib/payEstimationSettings';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import { clearChatHistory, getChatQuotaState, getDataModeLabel } from '@/lib/ai/chatService';
-import { isAnthropicApiKeyConfigured, isGeminiApiKeyConfigured } from '@/lib/ai/env';
+import {
+  getAnthropicApiKeySource,
+  getGeminiApiKeySource,
+  isAnthropicApiKeyConfigured,
+  isGeminiApiKeyConfigured,
+} from '@/lib/ai/env';
+import {
+  clearUserAnthropicApiKey,
+  clearUserGeminiApiKey,
+  hydrateUserApiKeys,
+  setUserAnthropicApiKey,
+  setUserGeminiApiKey,
+} from '@/lib/ai/userApiKeys';
+import { FynApiKeySheet, type FynApiKeyProvider } from '@/components/ai-chat/FynApiKeySheet';
 import { useAppTheme } from '@/lib/themeContext';
 
 type PickerKind = 'currency' | 'language' | 'region' | 'pay_frequency' | null;
@@ -100,6 +114,9 @@ export default function SettingsScreen() {
   const [aiQuotaLabel, setAiQuotaLabel] = useState<string | undefined>(undefined);
   const [geminiApiKeyConfigured, setGeminiApiKeyConfigured] = useState(false);
   const [anthropicApiKeyConfigured, setAnthropicApiKeyConfigured] = useState(false);
+  const [geminiApiKeySource, setGeminiApiKeySource] = useState<'user' | 'env' | null>(null);
+  const [anthropicApiKeySource, setAnthropicApiKeySource] = useState<'user' | 'env' | null>(null);
+  const [apiKeySheetProvider, setApiKeySheetProvider] = useState<FynApiKeyProvider | null>(null);
   const [clearingChatHistory, setClearingChatHistory] = useState(false);
 
   const [payFrequency, setPayFrequency] = useState<PayEstimationFrequency | null>(null);
@@ -169,8 +186,11 @@ export default function SettingsScreen() {
         ? `${quota.messagesThisMonth}/${quota.monthlyLimit} messages ce mois`
         : `${quota.messagesThisMonth} message${quota.messagesThisMonth > 1 ? 's' : ''} ce mois`,
     );
+    await hydrateUserApiKeys();
     setGeminiApiKeyConfigured(isGeminiApiKeyConfigured());
     setAnthropicApiKeyConfigured(isAnthropicApiKeyConfigured());
+    setGeminiApiKeySource(getGeminiApiKeySource());
+    setAnthropicApiKeySource(getAnthropicApiKeySource());
     setPayFrequency(paySettings.frequency);
     setPaySecondLastDate(paySettings.secondLastDate ?? '');
     setPayLastDate(paySettings.lastDate ?? '');
@@ -271,6 +291,18 @@ export default function SettingsScreen() {
                   </View>
                 ) : undefined
               }
+            />
+            <SettingsNavigationRow
+              label="Revoir l’introduction"
+              hint="Relance l’intro et la visite guidée dans l’app."
+              icon="sparkles-outline"
+              onPress={() => {
+                tapHaptic();
+                void (async () => {
+                  await resetOnboarding();
+                  router.replace('/onboarding');
+                })();
+              }}
               isLast
             />
           </SettingsSection>
@@ -454,18 +486,18 @@ export default function SettingsScreen() {
           <SettingsSection title="Fyn">
             <SettingsNavigationRow
               label="Clé Gemini"
-              hint="Gemini Flash — moteur principal de Fyn (chat, insights, plans)."
+              hint="Gemini Flash — moteur principal de Fyn (chat, insights, plans). Sans serveur."
               icon="key-outline"
-              value={geminiApiKeyConfigured ? 'Active' : 'Absente'}
+              value={
+                geminiApiKeyConfigured
+                  ? geminiApiKeySource === 'user'
+                    ? 'Personnelle'
+                    : 'Env'
+                  : 'Absente'
+              }
               onPress={() => {
                 tapHaptic();
-                showFeedback(
-                  geminiApiKeyConfigured ? 'Clé Gemini active' : 'Clé Gemini absente',
-                  geminiApiKeyConfigured
-                    ? 'La clé Gemini est chargée. Si Fyn ne répond pas, redémarre Expo avec le cache vidé : npx expo start -c'
-                    : '1. Copie apps/mobile/.env.example vers apps/mobile/.env\n2. Colle ta clé dans EXPO_PUBLIC_GEMINI_API_KEY=\n3. Redémarre Expo : npx expo start -c',
-                  geminiApiKeyConfigured ? 'success' : 'warning',
-                );
+                setApiKeySheetProvider('gemini');
               }}
               accessory={
                 <View
@@ -490,19 +522,19 @@ export default function SettingsScreen() {
               }
             />
             <SettingsNavigationRow
-              label="Clé Anthropic"
-              hint="Anthropic (Claude) — repli optionnel si Gemini est absent."
+              label="Clé Claude"
+              hint="Anthropic (Claude) — repli si Gemini est absente. Chat direct depuis l’appareil."
               icon="key-outline"
-              value={anthropicApiKeyConfigured ? 'Active' : 'Absente'}
+              value={
+                anthropicApiKeyConfigured
+                  ? anthropicApiKeySource === 'user'
+                    ? 'Personnelle'
+                    : 'Env'
+                  : 'Absente'
+              }
               onPress={() => {
                 tapHaptic();
-                showFeedback(
-                  anthropicApiKeyConfigured ? 'Clé Anthropic active' : 'Clé Anthropic absente',
-                  anthropicApiKeyConfigured
-                    ? 'Clé de repli chargée — utilisée seulement si EXPO_PUBLIC_GEMINI_API_KEY est vide.'
-                    : 'Optionnel : EXPO_PUBLIC_ANTHROPIC_API_KEY dans .env pour un repli chat sans Gemini.',
-                  anthropicApiKeyConfigured ? 'success' : 'info',
-                );
+                setApiKeySheetProvider('anthropic');
               }}
               accessory={
                 <View
@@ -653,6 +685,46 @@ export default function SettingsScreen() {
             const next = id as PayEstimationFrequency;
             setPayFrequency(next);
             void persistPayEstimationFrequency(next);
+          }}
+        />
+
+        <FynApiKeySheet
+          visible={apiKeySheetProvider != null}
+          provider={apiKeySheetProvider ?? 'gemini'}
+          hasKey={
+            apiKeySheetProvider === 'anthropic' ? anthropicApiKeyConfigured : geminiApiKeyConfigured
+          }
+          keySource={
+            apiKeySheetProvider === 'anthropic' ? anthropicApiKeySource : geminiApiKeySource
+          }
+          onClose={() => setApiKeySheetProvider(null)}
+          onSave={async (key) => {
+            if (apiKeySheetProvider === 'anthropic') {
+              await setUserAnthropicApiKey(key);
+            } else {
+              await setUserGeminiApiKey(key);
+            }
+            setGeminiApiKeyConfigured(isGeminiApiKeyConfigured());
+            setAnthropicApiKeyConfigured(isAnthropicApiKeyConfigured());
+            setGeminiApiKeySource(getGeminiApiKeySource());
+            setAnthropicApiKeySource(getAnthropicApiKeySource());
+            showFeedback(
+              'Clé enregistrée',
+              'Fyn utilisera cette clé directement depuis l’appareil (sans serveur).',
+              'success',
+            );
+          }}
+          onClear={async () => {
+            if (apiKeySheetProvider === 'anthropic') {
+              await clearUserAnthropicApiKey();
+            } else {
+              await clearUserGeminiApiKey();
+            }
+            setGeminiApiKeyConfigured(isGeminiApiKeyConfigured());
+            setAnthropicApiKeyConfigured(isAnthropicApiKeyConfigured());
+            setGeminiApiKeySource(getGeminiApiKeySource());
+            setAnthropicApiKeySource(getAnthropicApiKeySource());
+            showFeedback('Clé supprimée', 'La clé personnelle a été retirée de cet appareil.', 'info');
           }}
         />
 

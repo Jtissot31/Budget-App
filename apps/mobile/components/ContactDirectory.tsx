@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
 
@@ -28,7 +29,7 @@ export function filterContacts(contacts: ContactDirectoryRow[], query: string) {
 
 
 
-export function ContactRow({
+export const ContactRow = memo(function ContactRow({
 
   contact,
 
@@ -124,7 +125,7 @@ export function ContactRow({
 
   );
 
-}
+});
 
 
 

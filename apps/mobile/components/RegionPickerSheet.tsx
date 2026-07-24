@@ -10,10 +10,12 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
+import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Gesture,
@@ -387,6 +389,8 @@ function AlphabetIndexRail({
 export function RegionPickerSheet({ visible, selectedId, onClose, onSelect }: Props) {
   const { colors, isLight } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const sheetHeight = Math.round(windowHeight * 0.92);
   const listRef = useRef<FlatList<IndexedListItem>>(null);
   const isRailScrubbingRef = useRef(false);
 
@@ -646,7 +650,9 @@ export function RegionPickerSheet({ visible, selectedId, onClose, onSelect }: Pr
             accessibilityLabel="Fermer"
           />
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboard}>
-          <View
+          <DraggableSheetSurface
+            onClose={handleClose}
+            sheetHeight={sheetHeight}
             style={[
               styles.sheet,
               {
@@ -784,7 +790,7 @@ export function RegionPickerSheet({ visible, selectedId, onClose, onSelect }: Pr
                 />
               ) : null}
             </View>
-          </View>
+          </DraggableSheetSurface>
         </KeyboardAvoidingView>
       </View>
       </GestureHandlerRootView>

@@ -3,12 +3,12 @@ import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
-import { HubSectionHeader } from '@/components/plans/HubSectionHeader';
-import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
-import { floatingGlassButtonPressed } from '@/constants/floatingGlassButton';
+import { HubSectionHeader, HUB_SECTION_INNER_GAP } from '@/components/plans/HubSectionHeader';
+import { OnyxContainer } from '@/components/OnyxContainer';
 import {
-  planFinanceContainerPressedStyle,
-  planFinanceContainerRowLayoutStyle,
+  ONYX_CONTAINER,
+  onyxContainerPressedStyle,
+  onyxContainerRowLayoutStyle,
 } from '@/constants/planFinanceKit';
 import { getLoans } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
@@ -20,15 +20,16 @@ import {
   loanTypeBadgeLabel,
 } from '@/lib/loanPresentation';
 import { computeLineOfCreditUtilization } from '@/lib/loanDetailSections';
-import { moneyAmountTypography, radius, spacing, typographyKit } from '@/constants/theme';
+import { moneyAmountTypography, spacing, typographyKit } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 import type { Loan } from '@/types';
 
 const PREVIEW_LIMIT = 3;
+const LOAN_ICON_SIZE = 40;
 
 export function HubLoansSection() {
   const router = useRouter();
-  const { colors, isLight } = useAppTheme();
+  const { colors } = useAppTheme();
   const [loans, setLoans] = useState<Loan[]>([]);
 
   const load = useCallback(async () => {
@@ -58,13 +59,9 @@ export function HubLoansSection() {
 
   return (
     <View style={styles.section}>
-      <HubSectionHeader eyebrow="Obligations" title="Mes prêts et obligations" />
+      <HubSectionHeader eyebrow="Obligations" title="Prêts et dettes" />
 
-      {loans.length === 0 ? (
-        <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-          Aucun prêt enregistré. Ajoutes-en un pour le suivre ici.
-        </Text>
-      ) : (
+      {loans.length === 0 ? null : (
         <View style={styles.cardList}>
           {previewLoans.map((loan) => {
             const loanType = loan.type ?? 'personal_loan';
@@ -78,10 +75,14 @@ export function HubLoansSection() {
                 accessibilityRole="button"
                 accessibilityLabel={`Voir le détail de ${displayTitle}`}
                 onPress={() => openLoan(loan)}
-                style={({ pressed }) => [pressed && planFinanceContainerPressedStyle()]}
+                style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
               >
-                <PlanFinanceContainer style={styles.loanRow}>
-                  <UserPickedIconWell icon={resolveLoanIcon(loan)} size={44} wellGlyphWhite />
+                <OnyxContainer style={styles.loanRow}>
+                  <UserPickedIconWell
+                    icon={resolveLoanIcon(loan)}
+                    size={LOAN_ICON_SIZE}
+                    wellGlyphWhite
+                  />
                   <View style={styles.loanCopy}>
                     <Text style={[styles.loanType, { color: colors.textMuted }]} numberOfLines={1}>
                       {loanTypeBadgeLabel(loanType)}
@@ -91,7 +92,13 @@ export function HubLoansSection() {
                     </Text>
                   </View>
                   <View style={styles.loanAmountCol}>
-                    <Text style={[styles.loanAmount, moneyAmountTypography({ tier: 'row' }), { color: colors.text }]}>
+                    <Text
+                      style={[
+                        styles.loanAmount,
+                        moneyAmountTypography({ tier: 'row' }),
+                        { color: colors.text },
+                      ]}
+                    >
                       {formatLoanDebtAmount(loan.balanceRemaining)}
                     </Text>
                     {utilization && loan.principal > 0 ? (
@@ -105,43 +112,41 @@ export function HubLoansSection() {
                       </Text>
                     ) : null}
                   </View>
-                </PlanFinanceContainer>
+                </OnyxContainer>
               </Pressable>
             );
           })}
         </View>
       )}
 
-      <View style={styles.actions}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Ajouter un prêt ou une obligation"
-          onPress={openPortfolioDebts}
-          style={({ pressed }) => [
-            styles.addCta,
-            {
-              backgroundColor: isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(18, 18, 18, 0.92)',
-              borderColor: colors.borderStrong,
-            },
-            pressed && floatingGlassButtonPressed,
-          ]}
-        >
-          <AppIcon family="ionicons" name="add" size={18} color={colors.textSecondary} />
-          <Text style={[styles.addCtaLabel, { color: colors.text }]}>Ajouter</Text>
-        </Pressable>
-      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Ajouter un prêt ou une obligation"
+        onPress={openPortfolioDebts}
+        style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
+      >
+        <OnyxContainer style={styles.addCta}>
+          <View style={[styles.addIconWell, { backgroundColor: colors.input }]}>
+            <AppIcon family="ionicons" name="add" size={18} color={colors.textSecondary} />
+          </View>
+          <Text style={[styles.addLabel, typographyKit.rowTitle, { color: colors.text }]}>
+            Ajouter une obligation
+          </Text>
+          <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
+        </OnyxContainer>
+      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   section: {
-    gap: spacing.sm,
+    gap: HUB_SECTION_INNER_GAP,
   },
   cardList: {
-    gap: spacing.sm,
+    gap: ONYX_CONTAINER.listGap,
   },
-  loanRow: planFinanceContainerRowLayoutStyle(),
+  loanRow: onyxContainerRowLayoutStyle(),
   loanCopy: {
     flex: 1,
     minWidth: 0,
@@ -168,24 +173,20 @@ const styles = StyleSheet.create({
     ...typographyKit.metaMedium,
     letterSpacing: 0.2,
   },
-  emptyText: {
-    ...typographyKit.body,
-    lineHeight: 22,
-  },
-  actions: {
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
   addCta: {
-    flexDirection: 'row',
+    ...onyxContainerRowLayoutStyle(),
+    minHeight: 56,
+  },
+  addIconWell: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
-    minHeight: 44,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    flexShrink: 0,
   },
-  addCtaLabel: {
-    ...typographyKit.bodyMedium,
+  addLabel: {
+    flex: 1,
+    minWidth: 0,
   },
 });

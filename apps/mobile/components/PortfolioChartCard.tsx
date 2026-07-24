@@ -22,7 +22,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
-import { DASHBOARD_VALUE_GREEN, jakartaMediumText, moneyAmountTypography, radius } from '@/constants/theme';
+import { DASHBOARD_VALUE_GREEN, jakartaMediumText, moneyAmountTypography, radius, spacing } from '@/constants/theme';
 import { ThemeSegmentedControl } from '@/components/ThemeSegmentedControl';
 import { formatDisplayMoney } from '@/lib/formatDisplayMoney';
 import { useAppTheme } from '@/lib/themeContext';
@@ -77,10 +77,11 @@ export type NetWorthChartPeriod =
   | '10A'
   | 'TOUT';
 
-const CHART_HEIGHT = 190;
+/** Plot height — keep compact so the hub card stays under ~280pt tall. */
+const CHART_HEIGHT = 120;
 const CHART_VERTICAL_PADDING = 6;
-/** Horizontal inset on both edges — room for endpoint dot and balanced plot margins. */
-const CHART_HORIZONTAL_INSET = 1;
+/** Horizontal inset on both edges — room for endpoint/selection dots inside the frame. */
+const CHART_HORIZONTAL_INSET = SVG_DOT_OVERFLOW;
 /** Right inset when plotHorizontalInset is 0 — keeps endpoint halo inside the frame (RN clips overflow). */
 export const CHART_FULL_BLEED_RIGHT_INSET = ENDPOINT_DOT_HALO_R + 1;
 const CHART_Y_PADDING_RATIO = 0.05;
@@ -823,6 +824,11 @@ export const PortfolioChartCard = forwardRef<
     plotHorizontalInset?: number;
     /** Right plot inset; defaults to plotHorizontalInset. Use with plotHorizontalInset=0 for edge bleed. */
     plotHorizontalInsetRight?: number;
+    /**
+     * Negative horizontal margin on the plot only (not period chips), equal to parent card padding
+     * so the line/fill reaches the card’s left/right inner edges.
+     */
+    chartHorizontalBleed?: number;
     /** Optional per-period real-data window (tail slice) override. */
     periodRealWindowOverride?: Partial<Record<NetWorthChartPeriod, number>>;
     /** Optional per-period max chart point override after downsampling. */
@@ -849,6 +855,7 @@ export const PortfolioChartCard = forwardRef<
     periodLabels,
     plotHorizontalInset = CHART_HORIZONTAL_INSET,
     plotHorizontalInsetRight = plotHorizontalInset,
+    chartHorizontalBleed = 0,
     periodRealWindowOverride,
     periodMaxChartPointsOverride,
     getChartPoints,
@@ -917,7 +924,14 @@ export const PortfolioChartCard = forwardRef<
     }
   }, []);
 
-  const chartWidth = Math.max(containerWidth, 0);
+  const chartWidth =
+    Math.max(containerWidth, 0) +
+    (chartHorizontalBleed > 0 ? chartHorizontalBleed * 2 : 0);
+  /** Skip negative X margins when plot insets already clear selection/endpoint dots. */
+  const svgHorizontalOverflow =
+    plotHorizontalInset >= SVG_DOT_OVERFLOW && plotHorizontalInsetRight >= SVG_DOT_OVERFLOW
+      ? 0
+      : SVG_DOT_OVERFLOW;
   const visiblePoints = useMemo(
     () =>
       getChartPoints
@@ -1294,7 +1308,18 @@ export const PortfolioChartCard = forwardRef<
     <View style={styles.wrapper} onLayout={handleLayout}>
       {containerWidth > 0 ? (
         <View style={styles.card}>
-          <View style={styles.chartArea}>
+          <View
+            style={[
+              styles.chartArea,
+              chartHorizontalBleed > 0
+                ? {
+                    marginHorizontal: -chartHorizontalBleed,
+                    width: chartWidth,
+                    alignSelf: 'center',
+                  }
+                : null,
+            ]}
+          >
             <Pressable
               style={StyleSheet.absoluteFill}
               onPress={clearSelection}
@@ -1325,10 +1350,13 @@ export const PortfolioChartCard = forwardRef<
               ]}
             >
               <Svg
-                width={chartWidth + SVG_DOT_OVERFLOW * 2}
+                width={chartWidth + svgHorizontalOverflow * 2}
                 height={CHART_HEIGHT + SVG_DOT_OVERFLOW * 2}
-                viewBox={`${-SVG_DOT_OVERFLOW} ${-SVG_DOT_OVERFLOW} ${chartWidth + SVG_DOT_OVERFLOW * 2} ${CHART_HEIGHT + SVG_DOT_OVERFLOW * 2}`}
-                style={{ marginLeft: -SVG_DOT_OVERFLOW, marginTop: -SVG_DOT_OVERFLOW }}
+                viewBox={`${-svgHorizontalOverflow} ${-SVG_DOT_OVERFLOW} ${chartWidth + svgHorizontalOverflow * 2} ${CHART_HEIGHT + SVG_DOT_OVERFLOW * 2}`}
+                style={{
+                  marginLeft: -svgHorizontalOverflow,
+                  marginTop: -SVG_DOT_OVERFLOW,
+                }}
               >
                 {showAreaFill ? (
                   <MorphingChartAreaFill
@@ -1436,7 +1464,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   periodSelectorRow: {
-    marginTop: 12,
+    marginTop: spacing.sm,
   },
   chartArea: {
     width: '100%',

@@ -1,4 +1,6 @@
+import { cashBanknotesLogoUri } from '@/components/icons/CashBanknotesOutlineIcon';
 import { DASHBOARD_VALUE_GREEN, DASHBOARD_VALUE_RED } from '@/constants/theme';
+import { getAccountLogoUrl } from '@/lib/merchantLogo';
 import type { AccountKind, SimulatedAccount } from '@/types';
 
 export type AccountBalanceDisplayAccount = Pick<
@@ -201,6 +203,43 @@ export function accountBalanceIconForKind(
   return 'wallet-outline';
 }
 
+/** Resolve institution logo for account tiles / picker rows. */
+export function resolveSimulatedAccountLogoUrl(account: SimulatedAccount): string | null {
+  if (account.kind === 'cash') {
+    return account.logoUrl?.trim() || cashBanknotesLogoUri() || null;
+  }
+  return (
+    account.logoUrl?.trim() ||
+    getAccountLogoUrl(account.institution?.trim() || account.name) ||
+    getAccountLogoUrl(account.name) ||
+    null
+  );
+}
+
+/** Sheet / select-field presentation for a payment account row. */
+export function accountPickerRowPresentation(account: SimulatedAccount): {
+  label: string;
+  description: string;
+  fieldLabel: string;
+  icon: string;
+  logoUrl: string | null;
+} {
+  const label = accountBalanceDisplayName(account);
+  const last4 = account.last4?.trim();
+  const subtitle = accountBalanceSubtitle(account);
+  const parts: string[] = [];
+  if (subtitle) parts.push(subtitle);
+  if (last4) parts.push(`••${last4}`);
+  if (parts.length === 0) parts.push(accountKindTypeLabel(account.kind));
+
+  return {
+    label,
+    description: parts.join(' · '),
+    fieldLabel: last4 ? `${label} · ${last4}` : label,
+    icon: accountBalanceIconForKind(account.kind),
+    logoUrl: resolveSimulatedAccountLogoUrl(account),
+  };
+}
 export function accountBalanceValueColor(
   account: AccountBalanceDisplayAccount,
   defaultTextColor: string,

@@ -11,6 +11,9 @@ const KEY_HIT_SLOP = { top: 10, bottom: 10, left: 8, right: 8 } as const;
 /** Keeps the press active when the finger drifts slightly off the key. */
 const KEY_PRESS_RETENTION = { top: 24, bottom: 24, left: 16, right: 16 } as const;
 
+/** Cancel key press when the finger moves this far — scroll vs intentional tap. */
+const MOVE_CANCEL_PX = 10;
+
 type Props = {
   value: string;
   onChange: (value: string) => void;
@@ -40,7 +43,9 @@ export function GhostNumpad({ value, onChange }: Props) {
 
 function AnimatedKey({ label, onPress }: { label: string; onPress: () => void }) {
   const scale = useRef(new Animated.Value(1)).current;
-  const handledOnPressIn = useRef(false);
+  const touchStartY = useRef(0);
+  const touchStartX = useRef(0);
+  const cancelledByMove = useRef(false);
   const { colors } = useAppTheme();
 
   const animateTo = (value: number) => {
@@ -56,20 +61,31 @@ function AnimatedKey({ label, onPress }: { label: string; onPress: () => void })
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label === '⌫' ? 'Effacer' : label}
-      delayPressIn={0}
       delayLongPress={500}
       hitSlop={KEY_HIT_SLOP}
       pressRetentionOffset={KEY_PRESS_RETENTION}
-      onPressIn={() => {
-        handledOnPressIn.current = true;
+      onPressIn={(e) => {
+        cancelledByMove.current = false;
+        touchStartX.current = e.nativeEvent.pageX;
+        touchStartY.current = e.nativeEvent.pageY;
         animateTo(0.94);
-        onPress();
+      }}
+      onTouchMove={(e) => {
+        if (cancelledByMove.current) return;
+        const dx = Math.abs(e.nativeEvent.pageX - touchStartX.current);
+        const dy = Math.abs(e.nativeEvent.pageY - touchStartY.current);
+        if (dx > MOVE_CANCEL_PX || dy > MOVE_CANCEL_PX) {
+          cancelledByMove.current = true;
+          animateTo(1);
+        }
       }}
       onPress={() => {
-        if (!handledOnPressIn.current) onPress();
+        // Only commit on a real tap. ScrollView cancels onPress when it steals
+        // the gesture; movement threshold covers residual scroll-start cases.
+        if (cancelledByMove.current) return;
+        onPress();
       }}
       onPressOut={() => {
-        handledOnPressIn.current = false;
         animateTo(1);
       }}
       android_ripple={

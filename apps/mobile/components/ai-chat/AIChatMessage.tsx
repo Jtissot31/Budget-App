@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Image, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 import { jakartaMediumText, jakartaRegularText, spacing } from '@/constants/theme';
@@ -160,7 +161,7 @@ function resolveAssistantBlocks(message: AIChatUiMessage): MessageBlock[] {
 
 
 
-export function AIChatMessage({
+export const AIChatMessage = memo(function AIChatMessage({
 
   message,
 
@@ -303,7 +304,7 @@ export function AIChatMessage({
 
   );
 
-}
+});
 
 
 

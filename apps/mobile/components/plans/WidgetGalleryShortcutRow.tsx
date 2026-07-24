@@ -1,23 +1,23 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { OnyxContainer } from '@/components/OnyxContainer';
 import {
-  planFinanceContainerPressedStyle,
-  planFinanceKit,
+  onyxContainerPressedStyle,
+  onyxContainerRowLayoutStyle,
 } from '@/constants/planFinanceKit';
-import { interSemiboldText, spacing } from '@/constants/theme';
+import { typographyKit } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
+import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
   onPress: () => void;
 };
 
 const LABEL = 'Galerie widgets';
-
-const SHORTCUT_BORDER = 'rgba(255, 255, 255, 0.14)';
-const ICON_WELL = 'rgba(255, 255, 255, 0.08)';
+const SUBTITLE = "Raccourcis Fyn sur l'accueil";
 
 export function WidgetGalleryShortcutRow({ onPress }: Props) {
-  const { colors: pf } = planFinanceKit;
+  const { colors } = useAppTheme();
 
   return (
     <Pressable
@@ -27,64 +27,47 @@ export function WidgetGalleryShortcutRow({ onPress }: Props) {
         tapHaptic();
         onPress();
       }}
-      style={({ pressed }) => [styles.pressable, pressed && planFinanceContainerPressedStyle()]}
+      style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
     >
-      <View
-        style={[
-          styles.button,
-          {
-            backgroundColor: pf.surface,
-            borderColor: SHORTCUT_BORDER,
-          },
-        ]}
-      >
-        <View style={[styles.iconWell, { backgroundColor: ICON_WELL }]}>
-          <AppIcon family="material-community" name="view-grid-outline" size={16} color={pf.textMuted} />
+      <OnyxContainer style={styles.row}>
+        <View style={[styles.iconWell, { backgroundColor: colors.input }]}>
+          <AppIcon
+            family="material-community"
+            name="view-grid-outline"
+            size={18}
+            color={colors.accentGreen || colors.primary}
+          />
         </View>
-        <Text style={[styles.label, interSemiboldText, { color: pf.textMuted }]} numberOfLines={1}>
-          {LABEL}
-        </Text>
-        <View style={[styles.chevronWell, { backgroundColor: ICON_WELL }]}>
-          <AppIcon family="ionicons" name="chevron-forward" size={14} color={pf.textMuted} />
+        <View style={styles.copy}>
+          <Text style={[typographyKit.rowTitle, { color: colors.text }]} numberOfLines={1}>
+            {LABEL}
+          </Text>
+          <Text style={[typographyKit.metaMedium, { color: colors.textMuted }]} numberOfLines={1}>
+            {SUBTITLE}
+          </Text>
         </View>
-      </View>
+        <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
+      </OnyxContainer>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  pressable: {
-    alignSelf: 'stretch',
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 11,
-    minHeight: 46,
-    borderRadius: planFinanceKit.radius.button,
-    borderWidth: 1,
+  row: {
+    ...onyxContainerRowLayoutStyle(),
+    minHeight: 56,
   },
   iconWell: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
-  label: {
+  copy: {
     flex: 1,
-    fontSize: 15,
-    lineHeight: 20,
-    letterSpacing: -0.15,
-  },
-  chevronWell: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
+    minWidth: 0,
+    gap: 2,
   },
 });

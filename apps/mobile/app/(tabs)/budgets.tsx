@@ -1,4 +1,4 @@
-// Budget categories: clean slate — rebuild structure/logic here (no legacy donut/hit-test).
+// Budget categories: mockup layout (compact hero ring + 2-col cards).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 import {
@@ -14,10 +14,9 @@ import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AddBudgetCategoryModal } from '@/components/budget/AddBudgetCategoryModal';
 import { BudgetCategoryDetailSheet } from '@/components/budget/BudgetCategoryDetailSheet';
-import { BudgetCategoryAddRow } from '@/components/budget/BudgetCategoryAddRow';
 import { BudgetCategoryRow } from '@/components/budget/BudgetCategoryRow';
+import { BudgetHeroCard } from '@/components/budget/BudgetHeroCard';
 import { MonthSelector } from '@/components/MonthSelector';
-import { BudgetDonut, type BudgetDonutCategory } from '@/components/BudgetDonut';
 import { DashboardCard } from '@/components/DashboardCard';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { PageTransition } from '@/components/PageTransition';
@@ -54,7 +53,8 @@ import { dataEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
-const SECTION_BREAK = spacing.lg;
+const SECTION_BREAK = spacing.xl;
+const GRID_GAP = spacing.sm;
 
 function currentMonthStart(): Date {
   return startOfMonth(new Date());
@@ -82,7 +82,7 @@ export default function BudgetScreen() {
   const [categories, setCategories] = useState<BudgetCategoryUiModel[]>([]);
   const [detailCategoryId, setDetailCategoryId] = useState<string | null>(null);
   const [addVisible, setAddVisible] = useState(false);
-  /** Month shown in the donut hub and category list — always matches `categories`. */
+  /** Month shown in the hero and category list — always matches `categories`. */
   const [displayMonth, setDisplayMonth] = useState(currentMonthStart);
   /** Month shown in the selector — may lead `displayMonth` while data loads. */
   const [pendingMonth, setPendingMonth] = useState(currentMonthStart);
@@ -153,7 +153,7 @@ export default function BudgetScreen() {
     () => sortBudgetCategoriesByPriority(categories),
     [categories],
   );
-  const donutCategories = useMemo<readonly BudgetDonutCategory[]>(
+  const heroCategories = useMemo(
     () =>
       categories
         .filter((category) => category.limit > 0)
@@ -162,6 +162,7 @@ export default function BudgetScreen() {
           name: category.name,
           spent: category.spent,
           limit: category.limit,
+          color: category.color,
         })),
     [categories],
   );
@@ -199,6 +200,14 @@ export default function BudgetScreen() {
     navigateToMonth(new Date(budgetMonth.getFullYear(), budgetMonth.getMonth() + 1, 1));
   }, [budgetMonth, navigateToMonth]);
 
+  const categoryPairs = useMemo(() => {
+    const pairs: BudgetCategoryUiModel[][] = [];
+    for (let i = 0; i < listCategories.length; i += 2) {
+      pairs.push(listCategories.slice(i, i + 2));
+    }
+    return pairs;
+  }, [listCategories]);
+
   const renderItem: ListRenderItem<BudgetCategoryUiModel> = useCallback(() => null, []);
 
   const listHeaderComponent = useMemo(
@@ -213,66 +222,69 @@ export default function BudgetScreen() {
           <BudgetPageHeader />
         </View>
 
-        <View style={pageStyles.donutSection}>
-          <DashboardCard variant="flat" padding={spacing.lg} innerStyle={pageStyles.distributionCard}>
-            <MonthSelector
-              month={budgetMonth}
-              onPrevious={goBudgetPrevious}
-              onNext={goBudgetNext}
-              canGoPrevious={canGoBudgetPrevious}
-              canGoNext={canGoBudgetNext}
-            />
-            <BudgetDonut
-              categories={donutCategories}
-              totalAllocated={totals.totalAllocated}
-              totalSpent={totals.totalSpent}
-              onSelectCategory={(id) => {
-                if (id) openCategoryDetail(id);
-              }}
-              hubEyebrow={hubEyebrow}
-              isCurrentMonth={isCurrentMonth(displayMonth)}
-            />
-          </DashboardCard>
-        </View>
-
-        <View style={pageStyles.listHeader}>
-          <DashboardSectionLabel>Catégories</DashboardSectionLabel>
-          {showAddButton ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Ajouter une catégorie budget"
-              hitSlop={10}
-              onPress={() => {
-                tapHaptic();
-                setAddVisible(true);
-              }}
-              style={({ pressed }) => [
-                pageStyles.addButton,
-                {
-                  backgroundColor: colors.containerBackground,
-                  borderColor: colors.containerBorder,
-                },
-                pressed && pageStyles.pressed,
-              ]}
-            >
-              <AppIcon family="ionicons" name="add" size={20} color={colors.textSecondary} />
-            </Pressable>
-          ) : null}
+        <View style={pageStyles.monthSection}>
+          <MonthSelector
+            month={budgetMonth}
+            onPrevious={goBudgetPrevious}
+            onNext={goBudgetNext}
+            canGoPrevious={canGoBudgetPrevious}
+            canGoNext={canGoBudgetNext}
+          />
         </View>
 
         {listCategories.length > 0 ? (
-          <View style={pageStyles.categoriesSection}>
-            {listCategories.map((item) => (
-              <BudgetCategoryRow
-                key={item.id}
-                category={item}
-                onPress={openCategoryDetail}
+          <>
+            <View style={pageStyles.heroSection}>
+              <BudgetHeroCard
+                categories={heroCategories}
+                totalAllocated={totals.totalAllocated}
+                totalSpent={totals.totalSpent}
+                hubEyebrow={hubEyebrow}
+                isCurrentMonth={isCurrentMonth(displayMonth)}
+                onSelectCategory={openCategoryDetail}
               />
-            ))}
-            {showAddButton ? (
-              <BudgetCategoryAddRow onPress={() => setAddVisible(true)} />
-            ) : null}
-          </View>
+            </View>
+
+            <View style={pageStyles.listHeader}>
+              <DashboardSectionLabel>Catégories</DashboardSectionLabel>
+              {showAddButton ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Ajouter une catégorie budget"
+                  hitSlop={10}
+                  onPress={() => {
+                    tapHaptic();
+                    setAddVisible(true);
+                  }}
+                  style={({ pressed }) => [
+                    pageStyles.addButton,
+                    {
+                      backgroundColor: colors.containerBackground,
+                      borderColor: colors.containerBorder,
+                    },
+                    pressed && pageStyles.pressed,
+                  ]}
+                >
+                  <AppIcon family="ionicons" name="add" size={20} color={colors.textSecondary} />
+                </Pressable>
+              ) : null}
+            </View>
+
+            <View style={pageStyles.categoriesSection}>
+              {categoryPairs.map((pair) => (
+                <View key={pair.map((item) => item.id).join('-')} style={pageStyles.categoryRow}>
+                  {pair.map((item) => (
+                    <BudgetCategoryRow
+                      key={item.id}
+                      category={item}
+                      onPress={openCategoryDetail}
+                    />
+                  ))}
+                  {pair.length === 1 ? <View style={pageStyles.categorySpacer} /> : null}
+                </View>
+              ))}
+            </View>
+          </>
         ) : null}
       </View>
     ),
@@ -280,11 +292,12 @@ export default function BudgetScreen() {
       budgetMonth,
       canGoBudgetNext,
       canGoBudgetPrevious,
-      listCategories,
+      categoryPairs,
+      listCategories.length,
       colors.containerBackground,
       colors.containerBorder,
       colors.textSecondary,
-      donutCategories,
+      heroCategories,
       displayMonth,
       goBudgetNext,
       goBudgetPrevious,
@@ -395,10 +408,11 @@ const pageStyles = StyleSheet.create({
   headerBlock: {
     gap: PAGE_TITLE_CONTENT_GAP,
   },
-  distributionCard: {
-    gap: spacing.md,
+  monthSection: {
+    marginTop: spacing.lg + spacing.xs,
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
-  donutSection: {
+  heroSection: {
     marginTop: PORTFOLIO_SECTION_GAP,
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
@@ -408,18 +422,25 @@ const pageStyles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     marginTop: SECTION_BREAK,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
   categoriesSection: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     marginBottom: spacing.md,
-    /** Match portefeuille account tile breathing room (not a single stacked list card). */
-    gap: spacing.md,
+    gap: GRID_GAP,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    gap: GRID_GAP,
+  },
+  categorySpacer: {
+    flex: 1,
+    minWidth: 0,
   },
   addButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,

@@ -1,7 +1,12 @@
 import { loadEncryptedJson, saveEncryptedJson } from '@/lib/ai/encryptedStorage';
 import { dataEvents } from '@/lib/events';
 import type { PlanActifOuTermine, PlanParametres, PlanSuggere } from './Plan';
-import { registerPlanDetailForNavigation } from './planDashboardAdapter';
+import {
+  mockDashboardPlanToPlan,
+  registerPlanDetailForNavigation,
+  resolveDashboardPlanById,
+  unregisterPlanDetailForNavigation,
+} from './planDashboardAdapter';
 
 const PLANS_STORAGE_KEY = 'bt_financial_plans_v1';
 
@@ -28,6 +33,54 @@ export async function appendUserPlan(plan: PlanActifOuTermine): Promise<PlanActi
   const next = [...existing, plan];
   await saveUserPlans(next);
   return next;
+}
+
+/** Insert or replace a plan by id (edit / status changes). */
+export async function upsertUserPlan(plan: PlanActifOuTermine): Promise<PlanActifOuTermine[]> {
+  const existing = await loadUserPlans();
+  const index = existing.findIndex((item) => item.id === plan.id);
+  const next =
+    index >= 0
+      ? existing.map((item, i) => (i === index ? plan : item))
+      : [...existing, plan];
+  await saveUserPlans(next);
+  return next;
+}
+
+export async function removeUserPlan(planId: string): Promise<boolean> {
+  const existing = await loadUserPlans();
+  const next = existing.filter((item) => item.id !== planId);
+  if (next.length === existing.length) {
+    // Mock-only plan: hide via archive tombstone.
+    unregisterPlanDetailForNavigation(planId);
+    dataEvents.emit();
+    return true;
+  }
+  unregisterPlanDetailForNavigation(planId);
+  await saveUserPlans(next);
+  return true;
+}
+
+/** Store plan if present; otherwise promote a mock detail into a mutable entity. */
+export async function resolveEditablePlan(planId: string): Promise<PlanActifOuTermine | null> {
+  const stored = await loadUserPlans();
+  const fromStore = stored.find((plan) => plan.id === planId);
+  if (fromStore) return fromStore;
+
+  const detail = resolveDashboardPlanById(planId);
+  if (!detail) return null;
+  return mockDashboardPlanToPlan(detail);
+}
+
+export async function setUserPlanStatut(
+  planId: string,
+  statut: PlanActifOuTermine['statut'],
+): Promise<PlanActifOuTermine | null> {
+  const editable = await resolveEditablePlan(planId);
+  if (!editable || editable.statut === 'complete') return null;
+  const updated: PlanActifOuTermine = { ...editable, statut };
+  await upsertUserPlan(updated);
+  return updated;
 }
 
 export function activateSuggestedPlan(

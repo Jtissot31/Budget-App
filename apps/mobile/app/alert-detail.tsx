@@ -6,20 +6,19 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PageTransition } from '@/components/PageTransition';
+import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
 import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
-import { PLAN_DETAIL, planDetailCardStyle, planDetailFonts } from '@/components/plans/planDetailTheme';
+import {
+  planDetailFonts,
+  usePlanDetailTheme,
+} from '@/components/plans/planDetailTheme';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
+  PLAN_FINANCE_CONTAINER,
   planFinanceContainerPressedStyle,
   planFinanceContainerRowLayoutStyle,
 } from '@/constants/planFinanceKit';
-import {
-  interExtraBoldText,
-  interMediumText,
-  interSemiboldText,
-  spacing,
-  typographyKit,
-} from '@/constants/theme';
+import { interExtraBoldText, interMediumText, interSemiboldText, spacing } from '@/constants/theme';
 import { useAlertCenter, useAlertCenterSources } from '@/hooks/useAlertCenter';
 import { tapHaptic } from '@/lib/haptics';
 import type { AlertCenterItem, AlertCenterKind, AlertCenterSeverity } from '@/lib/alerts';
@@ -30,6 +29,11 @@ import {
   type AlertSolution,
 } from '@/lib/alertPresentation';
 import { generateAlertSolutions } from '@/lib/ai/alertSolutionService';
+import {
+  acceptPlanAdaptation,
+  dismissPlanAdaptation,
+  getPlanAdaptationProposal,
+} from '@/lib/plans/planAdaptationProposals';
 import { resolveCreditLimitTimelineData } from '@/lib/resolveCreditLimitTimeline';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -43,6 +47,7 @@ const KINDS: AlertCenterKind[] = [
   'credit_limit',
   'budget_over',
   'high_interest_debt',
+  'plan_adaptation',
   'fyn',
 ];
 
@@ -50,24 +55,34 @@ function parseKind(value: string): AlertCenterKind {
   return KINDS.includes(value as AlertCenterKind) ? (value as AlertCenterKind) : 'fyn';
 }
 
-function resolveSeverityColor(severity: AlertCenterSeverity, colors: ReturnType<typeof useAppTheme>['colors']): string {
+function resolveSeverityColor(
+  severity: AlertCenterSeverity,
+  colors: ReturnType<typeof useAppTheme>['colors'],
+  accent: string,
+): string {
   switch (severity) {
     case 'danger':
       return colors.danger;
     case 'warning':
       return colors.warning;
     case 'success':
-      return PLAN_DETAIL.accent;
+      return accent;
     default:
       return colors.textMuted;
   }
 }
 
 function solutionIcon(solution: AlertSolution): { family: 'ionicons' | 'material-community'; name: string } {
+  if (solution.localAction === 'accept_adaptation') {
+    return { family: 'ionicons', name: 'checkmark-circle-outline' };
+  }
+  if (solution.localAction === 'dismiss_adaptation') {
+    return { family: 'ionicons', name: 'close-circle-outline' };
+  }
   if (solution.href?.includes('ai-chat')) {
     return { family: 'ionicons', name: 'chatbubble-ellipses-outline' };
   }
-  if (solution.href?.includes('plans')) {
+  if (solution.href?.includes('plans') || solution.href?.includes('goals')) {
     return { family: 'ionicons', name: 'layers-outline' };
   }
   if (solution.href?.includes('budget')) {
@@ -79,9 +94,6 @@ function solutionIcon(solution: AlertSolution): { family: 'ionicons' | 'material
   if (solution.href?.includes('transaction')) {
     return { family: 'ionicons', name: 'calendar-outline' };
   }
-  if (solution.href?.includes('goals')) {
-    return { family: 'ionicons', name: 'flag-outline' };
-  }
   return { family: 'ionicons', name: 'arrow-forward-circle-outline' };
 }
 
@@ -89,6 +101,7 @@ export default function AlertDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useAppTheme();
+  const theme = usePlanDetailTheme();
   const params = useLocalSearchParams<{
     id?: string;
     kind?: string;
@@ -98,15 +111,27 @@ export default function AlertDetailScreen() {
     montant?: string;
     recurring?: string;
     paymentName?: string;
+    adaptationProposalId?: string;
+    relatedPlanId?: string;
   }>();
 
   const { recurringPayments, simulatedAccounts, incomeTransactions, ready } = useAlertCenterSources();
-  const { items, markRead } = useAlertCenter({
+  const { items, markRead, refresh } = useAlertCenter({
     recurringPayments,
     simulatedAccounts,
     incomeTransactions,
     enabled: ready,
   });
+
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const [resultModal, setResultModal] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    variant: 'success' | 'info' | 'error';
+  }>({ visible: false, title: '', message: '', variant: 'info' });
 
   const paramItem = useMemo((): AlertCenterItem | null => {
     const id = asString(params.id);
@@ -115,22 +140,24 @@ export default function AlertDetailScreen() {
     if (!id && !title) return null;
     const montantRaw = asString(params.montant);
     const recurringRaw = asString(params.recurring);
-    const recurring =
-      recurringRaw === '1' ? true : recurringRaw === '0' ? false : undefined;
-    const paymentName = asString(params.paymentName) || undefined;
+    const adaptationProposalId = asString(params.adaptationProposalId) || undefined;
+    const relatedPlanId = asString(params.relatedPlanId) || undefined;
+    const kind = parseKind(asString(params.kind));
     return {
-      id: id || 'param',
-      kind: parseKind(asString(params.kind)),
-      section: 'urgent',
-      severity: 'warning',
-      title: title || 'Message',
+      id: id || `param-${title}`,
+      kind,
+      section: kind === 'plan_adaptation' ? 'opportunities' : 'urgent',
+      severity: 'info',
+      title: title || 'Alerte',
       message,
       timestamp: new Date().toISOString(),
-      read: true,
+      read: false,
       accountId: asString(params.accountId) || undefined,
       montant: montantRaw ? Number(montantRaw) : null,
-      recurring,
-      paymentName,
+      recurring: recurringRaw === '1' ? true : recurringRaw === '0' ? false : undefined,
+      paymentName: asString(params.paymentName) || undefined,
+      adaptationProposalId,
+      relatedPlanId,
     };
   }, [params]);
 
@@ -189,7 +216,11 @@ export default function AlertDetailScreen() {
   }, [detail.solutions, item]);
 
   const severity = item?.severity ?? 'warning';
-  const severityColor = resolveSeverityColor(severity, colors);
+  const isCreditLimit = item?.kind === 'credit_limit';
+  /** Plan-style accent for credit-limit; severity tone for other alerts. */
+  const problemLabelColor = isCreditLimit
+    ? theme.accent
+    : resolveSeverityColor(severity, colors, theme.accent);
 
   const insightContext = useMemo(
     () =>
@@ -223,18 +254,80 @@ export default function AlertDetailScreen() {
     router.back();
   }, [router]);
 
-  const handleSolution = useCallback(
-    (href: string | null, solutionParams?: Record<string, string>) => {
-      if (!href) return;
+  const adaptationProposalId =
+    item?.adaptationProposalId ?? asString(params.adaptationProposalId) ?? '';
+
+  useEffect(() => {
+    if (!adaptationProposalId || item?.kind !== 'plan_adaptation') return;
+    let cancelled = false;
+    void (async () => {
+      const proposal = await getPlanAdaptationProposal(adaptationProposalId);
+      if (cancelled || !proposal) return;
+      setConfirmMessage(
+        `${proposal.summary}\n\nPourquoi c’est utile : ${proposal.whyUseful}`,
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [adaptationProposalId, item?.kind]);
+
+  const handleAcceptAdaptation = useCallback(async () => {
+    if (!adaptationProposalId || confirmBusy) return;
+    setConfirmBusy(true);
+    try {
+      const result = await acceptPlanAdaptation(adaptationProposalId);
+      setConfirmVisible(false);
+      setResultModal({
+        visible: true,
+        title: result.ok ? 'Adaptation appliquée' : 'Impossible d’appliquer',
+        message: result.message,
+        variant: result.ok ? 'success' : 'error',
+      });
+      if (result.ok) {
+        void refresh();
+        if (item) void markRead(item);
+      }
+    } finally {
+      setConfirmBusy(false);
+    }
+  }, [adaptationProposalId, confirmBusy, item, markRead, refresh]);
+
+  const handleDismissAdaptation = useCallback(async () => {
+    if (!adaptationProposalId) return;
+    tapHaptic();
+    const result = await dismissPlanAdaptation(adaptationProposalId);
+    setResultModal({
+      visible: true,
+      title: 'Proposition ignorée',
+      message: result.message,
+      variant: 'info',
+    });
+    void refresh();
+    if (item) void markRead(item);
+  }, [adaptationProposalId, item, markRead, refresh]);
+
+  const handleSolutionPress = useCallback(
+    (solution: AlertSolution) => {
+      if (solution.localAction === 'accept_adaptation') {
+        tapHaptic();
+        setConfirmVisible(true);
+        return;
+      }
+      if (solution.localAction === 'dismiss_adaptation') {
+        void handleDismissAdaptation();
+        return;
+      }
+      if (!solution.href) return;
       tapHaptic();
-      router.push({ pathname: href as never, params: solutionParams });
+      router.push({ pathname: solution.href as never, params: solution.params });
     },
-    [router],
+    [handleDismissAdaptation, router],
   );
 
   return (
     <PageTransition>
-      <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <View style={[styles.screen, { backgroundColor: theme.background }]}>
         <View style={[styles.header, { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.md }]}>
           <Pressable
             accessibilityRole="button"
@@ -243,13 +336,13 @@ export default function AlertDetailScreen() {
             onPress={handleBack}
             style={({ pressed }) => [
               styles.backButton,
-              { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
+              { backgroundColor: theme.surface, borderColor: theme.border },
               pressed && styles.pressed,
             ]}
           >
-            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
+            <AppIcon family="material" name="arrow-back" size={22} color={theme.text} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.text }, interExtraBoldText]} numberOfLines={1}>
+          <Text style={[styles.headerTitle, { color: theme.text }, interExtraBoldText]} numberOfLines={1}>
             {alertTypeHeaderTitle(item?.kind ?? 'fyn')}
           </Text>
           <View style={styles.headerSpacer} />
@@ -259,34 +352,25 @@ export default function AlertDetailScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.content,
-            { paddingBottom: Math.max(insets.bottom + spacing.xl, 56) },
+            {
+              paddingBottom: Math.max(insets.bottom + spacing.xl, 56),
+              gap: theme.sectionGap,
+            },
           ]}
         >
-          {/* 1. Le problème */}
-          <View
-            style={[
-              planDetailCardStyle.card,
-              styles.problemCard,
-              {
-                backgroundColor: colors.containerBackground,
-                borderColor: colors.containerBorder,
-              },
-            ]}
-          >
-            <Text style={[styles.sectionLabel, { color: severityColor }, interSemiboldText]}>
+          {/* 1. Le problème — same Onyx shell as INSIGHT / action rows */}
+          <PlanFinanceContainer style={[styles.problemCard, styles.problemShell]}>
+            <Text style={[planDetailFonts.sectionCaps, { color: problemLabelColor }]}>
               {detail.problemLabel}
             </Text>
             {alertAccountLine ? (
-              <Text
-                style={[typographyKit.metaMedium, styles.accountLine, { color: colors.textMuted }]}
-                numberOfLines={1}
-              >
+              <Text style={[planDetailFonts.detailLabel, styles.accountLine, { color: theme.textMuted }]} numberOfLines={1}>
                 {alertAccountLine}
               </Text>
             ) : null}
-            <Text style={[styles.problemBody, { color: colors.text }, interMediumText]}>{detail.problemBody}</Text>
+            <Text style={[planDetailFonts.body, { color: theme.text }]}>{detail.problemBody}</Text>
             {creditLimitTimeline ? <CreditLimitProblemTimeline data={creditLimitTimeline} /> : null}
-          </View>
+          </PlanFinanceContainer>
 
           {/* 2. Conseil préventif INSIGHT (Gemini ou fallback statique) */}
           {insightContext ? (
@@ -296,7 +380,7 @@ export default function AlertDetailScreen() {
             />
           ) : (
             <View style={styles.fixSection}>
-              <Text style={[planDetailFonts.body, { color: colors.text }]}>
+              <Text style={[planDetailFonts.body, { color: theme.text }]}>
                 {detail.insightFallbackBody}
               </Text>
             </View>
@@ -304,13 +388,13 @@ export default function AlertDetailScreen() {
 
           {/* 3. Tes actions */}
           <View style={styles.actionsSection}>
-            <Text style={[styles.sectionLabel, { color: colors.textMuted }, interSemiboldText]}>
+            <Text style={[planDetailFonts.sectionCaps, { color: theme.textMuted }]}>
               {detail.actionsLabel}
             </Text>
 
             <View style={styles.actionsList}>
               {solutions.map((solution, index) => {
-                const interactive = Boolean(solution.href);
+                const interactive = Boolean(solution.href) || Boolean(solution.localAction);
                 const icon = solutionIcon(solution);
 
                 const card = (
@@ -321,17 +405,17 @@ export default function AlertDetailScreen() {
                       </Text>
                     </View>
                     <View style={styles.actionCopy}>
-                      <Text style={[styles.actionTitle, { color: colors.text }, interSemiboldText]}>
+                      <Text style={[styles.actionTitle, { color: theme.text }, interSemiboldText]}>
                         {solution.title}
                       </Text>
-                      <Text style={[styles.actionBody, { color: colors.textMuted }, interMediumText]}>
+                      <Text style={[styles.actionBody, { color: theme.textMuted }, interMediumText]}>
                         {solution.description}
                       </Text>
                     </View>
                     {interactive ? (
                       <View style={styles.actionTrailing}>
-                        <AppIcon family={icon.family} name={icon.name} size={18} color={PLAN_DETAIL.accent} />
-                        <AppIcon family="ionicons" name="chevron-forward" size={16} color={PLAN_DETAIL.accent} />
+                        <AppIcon family={icon.family} name={icon.name} size={18} color={theme.accent} />
+                        <AppIcon family="ionicons" name="chevron-forward" size={16} color={theme.accent} />
                       </View>
                     ) : null}
                   </PlanFinanceContainer>
@@ -350,7 +434,7 @@ export default function AlertDetailScreen() {
                     key={solution.id}
                     accessibilityRole="button"
                     accessibilityLabel={solution.ctaLabel}
-                    onPress={() => handleSolution(solution.href, solution.params)}
+                    onPress={() => handleSolutionPress(solution)}
                     style={({ pressed }) => [styles.actionItem, pressed && planFinanceContainerPressedStyle()]}
                   >
                     {card}
@@ -361,6 +445,38 @@ export default function AlertDetailScreen() {
           </View>
         </ScrollView>
       </View>
+
+      <ThemedConfirmModal
+        visible={confirmVisible}
+        title="Confirmer l’adaptation"
+        message={
+          confirmMessage ||
+          item?.message ||
+          'Appliquer le changement proposé sur ton plan ?'
+        }
+        confirmLabel={confirmBusy ? 'Application…' : 'Appliquer'}
+        cancelLabel="Pas maintenant"
+        variant="success"
+        icon="swap-horizontal-outline"
+        onConfirm={() => {
+          void handleAcceptAdaptation();
+        }}
+        onCancel={() => setConfirmVisible(false)}
+      />
+
+      <ThemedConfirmModal
+        visible={resultModal.visible}
+        title={resultModal.title}
+        message={resultModal.message}
+        confirmLabel="OK"
+        variant={resultModal.variant}
+        onConfirm={() => {
+          setResultModal((prev) => ({ ...prev, visible: false }));
+          if (resultModal.variant === 'success' || resultModal.variant === 'info') {
+            router.back();
+          }
+        }}
+      />
     </PageTransition>
   );
 }
@@ -377,7 +493,7 @@ const styles = StyleSheet.create({
   backButton: {
     width: 38,
     height: 38,
-    borderRadius: 19,
+    borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
@@ -390,11 +506,10 @@ const styles = StyleSheet.create({
   headerSpacer: { width: 38 },
   content: {
     paddingHorizontal: spacing.lg,
-    gap: PLAN_DETAIL.sectionGap,
   },
-  sectionLabel: {
-    fontSize: 13,
-    letterSpacing: 0.1,
+  problemShell: {
+    alignSelf: 'stretch',
+    padding: PLAN_FINANCE_CONTAINER.padding.card,
   },
   problemCard: {
     gap: spacing.md,
@@ -402,10 +517,6 @@ const styles = StyleSheet.create({
   accountLine: {
     marginTop: -spacing.xs,
     letterSpacing: -0.1,
-  },
-  problemBody: {
-    fontSize: 16,
-    lineHeight: 24,
   },
   fixSection: {
     gap: spacing.sm,

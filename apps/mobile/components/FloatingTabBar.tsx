@@ -33,11 +33,14 @@ import {
   spacing,
   typographyKit,
 } from '@/constants/theme';
+import { pressableCompactMotionStyle } from '@/constants/motionKit';
 import { tapHaptic } from '@/lib/haptics';
 import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsForm';
 import { uiEvents } from '@/lib/events';
 import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
+import { useAppTourTarget } from '@/hooks/useAppTourTarget';
+import type { TourTargetId } from '@/lib/onboardingTour';
 
 /** Matches `radius.pill` (999) — literal avoids Hermes `radius` binding clashes in this module. */
 const PILL_BORDER_RADIUS = 999;
@@ -68,6 +71,53 @@ const ROUTE_LABELS: Record<string, string> = {
 };
 
 const HIDDEN_ROUTES = new Set(['settings', 'widgets']);
+
+const ROUTE_TOUR_TARGETS: Record<string, TourTargetId> = {
+  index: 'tab:index',
+  transactions: 'tab:transactions',
+  goals: 'tab:goals',
+  accounts: 'tab:accounts',
+  budgets: 'tab:budgets',
+};
+
+type TourableTabProps = {
+  targetId: TourTargetId;
+  tabLabel: string;
+  focused: boolean;
+  iconName: keyof typeof MaterialCommunityIcons.glyphMap;
+  iconColor: string;
+  onPress: () => void;
+};
+
+function TourableTabButton({
+  targetId,
+  tabLabel,
+  focused,
+  iconName,
+  iconColor,
+  onPress,
+}: TourableTabProps) {
+  const tourRef = useAppTourTarget(targetId);
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.tabSlot, pressableCompactMotionStyle(pressed)]}
+      accessibilityRole="tab"
+      accessibilityLabel={tabLabel}
+      accessibilityState={{ selected: focused }}
+    >
+      <View ref={tourRef} collapsable={false} style={styles.tabInner}>
+        <AppIcon
+          family="material-community"
+          name={iconName}
+          size={focused ? TAB_ICON_SIZE + 1 : TAB_ICON_SIZE}
+          color={iconColor}
+          focused={focused}
+        />
+      </View>
+    </Pressable>
+  );
+}
 
 /** `Plus` from src/icons — React Native SVG. */
 function PlusFabIcon({ size, color }: { size: number; color: string }) {
@@ -566,24 +616,15 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
               };
 
               return (
-                <Pressable
+                <TourableTabButton
                   key={route.key}
+                  targetId={ROUTE_TOUR_TARGETS[route.name] ?? 'tab:index'}
+                  tabLabel={tabLabel}
+                  focused={focused}
+                  iconName={iconName}
+                  iconColor={iconColor}
                   onPress={onPress}
-                  style={({ pressed }) => [styles.tabSlot, pressed && styles.pressed]}
-                  accessibilityRole="tab"
-                  accessibilityLabel={tabLabel}
-                  accessibilityState={{ selected: focused }}
-                >
-                  <View style={styles.tabInner}>
-                    <AppIcon
-                      family="material-community"
-                      name={iconName}
-                      size={focused ? TAB_ICON_SIZE + 1 : TAB_ICON_SIZE}
-                      color={iconColor}
-                      focused={focused}
-                    />
-                  </View>
-                </Pressable>
+                />
               );
             })}
           </View>
@@ -683,5 +724,4 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: radius.lg,
   },
-  pressed: { opacity: 0.78 },
 });

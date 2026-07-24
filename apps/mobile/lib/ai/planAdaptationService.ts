@@ -1,5 +1,9 @@
 /**
- * Plan recommendation enrichment — Gemini adapts raison_recommandation with local memory.
+ * Plan recommendation copy enrichment — Gemini adapts raison_recommandation / template why
+ * with local memory. This never mutates active plans in plansStore.
+ *
+ * Parameter adaptations (cadence, cible, extra…) go through
+ * `planAdaptationProposals` → in-app alert → user confirm.
  */
 import type { PlanSuggere } from '@/lib/plans/Plan';
 

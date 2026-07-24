@@ -49,16 +49,40 @@ export type FormatNumberDisplayOptions = {
   maximumFractionDigits?: number;
 };
 
-/** Display a numeric value with fr-CA grouping (e.g. `1 234`, `1 234,56`). */
+/** Narrow no-break space — preferred fr-CA thousands separator. */
+const FR_CA_GROUP_SEP = '\u202f';
+
+/** Insert fr-CA grouping into an integer digit string (e.g. `1200` → `1 200`). */
+function groupIntegerDigits(intDigits: string): string {
+  const digits = intDigits.replace(/\D/g, '') || '0';
+  if (digits.length < THOUSANDS_MIN_DIGITS) return digits;
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, FR_CA_GROUP_SEP);
+}
+
+/**
+ * Display a numeric value with fr-CA grouping (e.g. `1 234`, `1 234,56`).
+ * Always inserts a narrow no-break space from 1 000+ so Hermes / RN Web
+ * cannot drop the separator the way `toLocaleString('fr-CA')` sometimes does.
+ */
 export function formatNumberDisplay(value: number, options?: FormatNumberDisplayOptions): string {
   if (!Number.isFinite(value)) {
     return formatNumberDisplay(0, options);
   }
 
-  return Math.abs(value).toLocaleString(FR_CA_NUMBER_LOCALE, {
-    minimumFractionDigits: options?.minimumFractionDigits,
-    maximumFractionDigits: options?.maximumFractionDigits,
-  });
+  const abs = Math.abs(value);
+  const minFrac = options?.minimumFractionDigits ?? 0;
+  const maxFrac = options?.maximumFractionDigits ?? minFrac;
+  const fractionDigits = Math.max(0, maxFrac);
+
+  if (fractionDigits <= 0) {
+    return groupIntegerDigits(String(Math.round(abs)));
+  }
+
+  const fixed = abs.toFixed(fractionDigits);
+  const [intRaw, decRaw = ''] = fixed.split('.');
+  const grouped = groupIntegerDigits(intRaw);
+  const paddedDec = decRaw.length < minFrac ? decRaw.padEnd(minFrac, '0') : decRaw;
+  return `${grouped},${paddedDec}`;
 }
 
 /**
@@ -76,10 +100,8 @@ export function formatNumberInput(raw: string): string {
   let formattedInt: string;
   if (!intDigits) {
     formattedInt = '0';
-  } else if (intDigits.length >= THOUSANDS_MIN_DIGITS) {
-    formattedInt = Number(intDigits).toLocaleString(FR_CA_NUMBER_LOCALE, { maximumFractionDigits: 0 });
   } else {
-    formattedInt = intDigits;
+    formattedInt = groupIntegerDigits(intDigits);
   }
 
   if (dotIndex < 0) return formattedInt;

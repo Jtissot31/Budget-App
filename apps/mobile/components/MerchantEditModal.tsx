@@ -34,6 +34,7 @@ import {
   searchMerchantNameSuggestions,
 } from '@/lib/merchantLogo';
 import { persistMerchantLogoUri } from '@/lib/merchantLogoStorage';
+import { logoUrlForMerchantMemory } from '@/lib/merchantLogoMemory';
 import { EXPENSE_MDI_ICON, type MdiIconName } from '@/lib/mdiIconCatalog';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { pickReceiptFromGallery } from '@/lib/receiptCapture';
@@ -191,6 +192,7 @@ export function MerchantEditModal({
         logoUrl = await persistMerchantLogoUri(customLogoUri, originalName);
         useAutoLogo = false;
       } else if (autoLogoUrl) {
+        logoUrl = logoUrlForMerchantMemory(originalName, autoLogoUrl);
         useAutoLogo = true;
       }
 
@@ -207,7 +209,12 @@ export function MerchantEditModal({
       await upsertMerchantOverride({
         originalName: merchant.originalName,
         displayName: displayName === merchant.originalName ? null : displayName,
-        logoUrl: logoMode === 'logo' ? selectedLogoUrl : null,
+        logoUrl:
+          logoMode === 'logo'
+            ? selectedLogoUrl
+            : logoMode === 'auto'
+              ? logoUrlForMerchantMemory(displayName, autoLogoUrl)
+              : null,
         icon: logoMode === 'icon' ? selectedIcon : logoMode === 'auto' ? selectedIcon : null,
         useAutoLogo: logoMode === 'auto',
         hidden: false,

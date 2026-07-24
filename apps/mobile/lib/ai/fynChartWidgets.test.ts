@@ -107,8 +107,43 @@ function sampleRfa(): FinancialSummaryAnonymous {
 
 assert.deepEqual(detectFynChartIntents('quels sont mes abonnements'), ['subscriptions']);
 assert.ok(detectFynChartIntents('cashflow ce mois').includes('cashflow_trend'));
+assert.ok(detectFynChartIntents('mes soldes').includes('balances'));
+assert.ok(detectFynChartIntents('montre mes soldes').includes('balances'));
+assert.ok(detectFynChartIntents('show my balances').includes('balances'));
 
 const context = sampleContext();
+context.accounts = [
+  {
+    name: 'Tangerine Chèque',
+    institution: 'Tangerine',
+    type: 'checking',
+    balance: 3412.5,
+    last4: '4521',
+    creditLimit: null,
+    interestRate: null,
+    dueDay: null,
+  },
+  {
+    name: 'Épargne',
+    institution: 'Desjardins',
+    type: 'savings',
+    balance: 1800,
+    last4: null,
+    creditLimit: null,
+    interestRate: null,
+    dueDay: null,
+  },
+  {
+    name: 'Visa',
+    institution: 'Banque',
+    type: 'credit',
+    balance: -4200,
+    last4: '1111',
+    creditLimit: 8000,
+    interestRate: 19.9,
+    dueDay: 12,
+  },
+];
 const rfa = sampleRfa();
 const subscriptionWidgets = buildContextChartWidgets('quels abonnements', context, rfa);
 assert.equal(subscriptionWidgets[0]?.type, 'allocation_chart');
@@ -130,6 +165,33 @@ if (incomeWidget?.type === 'cashflow_comparison') {
   assert.equal(incomeWidget.surplus, 800);
   assert.match(incomeWidget.caption ?? '', /Surplus moyen/);
 }
+
+const balanceWidgets = buildContextChartWidgets('mes soldes', context, rfa);
+assert.ok(balanceWidgets.some((widget) => widget.type === 'balance_summary_card'));
+const totalBalance = balanceWidgets.find(
+  (widget) => widget.type === 'balance_summary_card' && widget.variant === 'total',
+);
+assert.ok(totalBalance);
+if (totalBalance?.type === 'balance_summary_card') {
+  // 3412.50 + 1800 = 5212.50 — credit excluded from liquid total
+  assert.match(totalBalance.value_label.replace(/\u00a0/g, ' '), /5\s*212/);
+}
+assert.ok(
+  balanceWidgets.some(
+    (widget) =>
+      widget.type === 'balance_summary_card' &&
+      widget.variant === 'account' &&
+      widget.account_name === 'Tangerine Chèque',
+  ),
+);
+
+const enrichedBalances = enrichAssistantBlocksWithContextWidgets(
+  [{ type: 'text', content: 'Voici tes soldes.' }],
+  'mes soldes',
+  context,
+  rfa,
+);
+assert.ok(enrichedBalances.some((block) => block.type === 'balance_summary_card'));
 
 const enriched = enrichAssistantBlocksWithContextWidgets(
   [{ type: 'text', content: 'Voici tes abonnements.' }],

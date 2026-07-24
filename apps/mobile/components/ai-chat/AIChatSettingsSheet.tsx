@@ -6,8 +6,11 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
@@ -21,7 +24,12 @@ import {
 } from '@/constants/theme';
 import { clearChatHistory, getChatQuotaState, getDataModeLabel } from '@/lib/ai/chatService';
 import type { ChatQuotaState } from '@/lib/ai/types';
-import { isFynChatApiKeyConfigured, isGeminiApiKeyConfigured } from '@/lib/ai/env';
+import {
+  getGeminiApiKeySource,
+  isFynChatApiKeyConfigured,
+  isGeminiApiKeyConfigured,
+} from '@/lib/ai/env';
+import { hydrateUserApiKeys } from '@/lib/ai/userApiKeys';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 import { useAIChatColors } from './theme';
@@ -42,6 +50,8 @@ export function AIChatSettingsSheet({ visible, onClose, onHistoryCleared }: Prop
   const palette = useAIChatColors();
   const { colors, isLight } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const sheetHeight = Math.round(windowHeight * (Platform.OS === 'web' ? 0.7 : 0.52));
 
   const [dataModeLabel, setDataModeLabel] = useState('Manuel');
   const [quotaState, setQuotaState] = useState<ChatQuotaState | null>(null);
@@ -54,6 +64,7 @@ export function AIChatSettingsSheet({ visible, onClose, onHistoryCleared }: Prop
   );
 
   const loadSettings = useCallback(async () => {
+    await hydrateUserApiKeys();
     const [modeLabel, quota] = await Promise.all([getDataModeLabel(), getChatQuotaState()]);
     setDataModeLabel(shortenDataModeLabel(modeLabel));
     setQuotaState(quota);
@@ -102,23 +113,27 @@ export function AIChatSettingsSheet({ visible, onClose, onHistoryCleared }: Prop
   const quotaNearLimit = quotaState?.warningThresholdReached ?? false;
   const geminiConfigured = isGeminiApiKeyConfigured();
   const fynActive = isFynChatApiKeyConfigured();
+  const geminiSource = getGeminiApiKeySource();
 
   return (
     <>
       <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
-        <View style={[styles.backdrop, { backgroundColor: backdropColor }]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} accessibilityLabel="Fermer" />
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <View style={[styles.backdrop, { backgroundColor: backdropColor }]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} accessibilityLabel="Fermer" />
 
-          <View
-            style={[
-              styles.sheet,
-              {
-                backgroundColor: palette.aiBubble,
-                borderColor: palette.border,
-                paddingBottom: Math.max(insets.bottom, spacing.lg),
-              },
-            ]}
-          >
+            <DraggableSheetSurface
+              onClose={handleClose}
+              sheetHeight={sheetHeight}
+              style={[
+                styles.sheet,
+                {
+                  backgroundColor: palette.aiBubble,
+                  borderColor: palette.border,
+                  paddingBottom: Math.max(insets.bottom, spacing.lg),
+                },
+              ]}
+            >
             <View style={[styles.handle, { backgroundColor: palette.border }]} />
 
             <View style={styles.header}>
@@ -150,7 +165,11 @@ export function AIChatSettingsSheet({ visible, onClose, onHistoryCleared }: Prop
 
                 {!fynActive ? (
                   <Text style={[styles.statusHint, { color: palette.textMuted }, jakartaRegularText]}>
-                    Ajoute EXPO_PUBLIC_GEMINI_API_KEY dans .env, puis redémarre Expo (npx expo start -c).
+                    Ajoute une clé Gemini ou Claude dans Réglages → Fyn pour chatter sans serveur.
+                  </Text>
+                ) : geminiConfigured && geminiSource === 'user' ? (
+                  <Text style={[styles.statusHint, { color: palette.textMuted }, jakartaRegularText]}>
+                    Clé Gemini personnelle — appels directs depuis l’appareil.
                   </Text>
                 ) : null}
 
@@ -231,7 +250,7 @@ export function AIChatSettingsSheet({ visible, onClose, onHistoryCleared }: Prop
                 <AppIcon family="ionicons" name="chevron-forward" size={16} color={palette.textMuted} />
               </Pressable>
             </View>
-          </View>
+            </DraggableSheetSurface>
 
           <ConfirmDeleteModal
             embedded
@@ -243,6 +262,7 @@ export function AIChatSettingsSheet({ visible, onClose, onHistoryCleared }: Prop
             onCancel={() => setConfirmClearVisible(false)}
           />
         </View>
+        </GestureHandlerRootView>
       </Modal>
     </>
   );

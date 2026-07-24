@@ -78,7 +78,12 @@ export type AlertCategory =
 
 
 
-export type AlertAction = 'voir_plan' | 'modifier_budget' | 'voir_compte' | null;
+export type AlertAction =
+  | 'voir_plan'
+  | 'modifier_budget'
+  | 'voir_compte'
+  | 'confirmer_adaptation'
+  | null;
 
 
 
@@ -275,6 +280,14 @@ export interface AIAlert {
   /** True when dataMode is manual and the alert is based on user-entered data. */
 
   estimee?: boolean;
+
+  /** Pending automatic plan adaptation — apply only after user confirms. */
+
+  adaptationProposalId?: string;
+
+  /** Plan targeted by a plan_adaptation alert. */
+
+  relatedPlanId?: string;
 
 }
 
@@ -704,6 +717,8 @@ export type ChatActionParams =
 
 
 
+export type ChatActionStatus = 'pending' | 'success' | 'error' | 'cancelled';
+
 export interface ChatAction {
 
   action: ChatActionType;
@@ -711,6 +726,9 @@ export interface ChatAction {
   params: ChatActionParams;
 
   confirmation: string;
+
+  /** Persisted after confirm/cancel so reloads and « oui » do not re-run stale actions. */
+  status?: ChatActionStatus;
 
 }
 

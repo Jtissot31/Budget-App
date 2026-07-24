@@ -3,6 +3,7 @@ import { filterRfaDebtsEligibleForAcceleratedPlan } from '@/lib/plans/debtPlanEl
 import type {
   AIWidgetData,
   AllocationChartData,
+  BalanceSummaryCardData,
   BarChartData,
   CashflowComparisonData,
   DebtTableData,
@@ -20,8 +21,11 @@ export type FynChartIntent =
   | 'budget_vs_actual'
   | 'subscriptions'
   | 'debts'
-  | 'merchant_spend';
+  | 'merchant_spend'
+  | 'balances'
+  | 'account_balance';
 
+type ContextAccount = FynFinancialContext['accounts'][number];
 
 function normalizeQuestion(question: string): string {
   return question
@@ -30,6 +34,34 @@ function normalizeQuestion(question: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+}
+
+function isCreditAccount(account: ContextAccount): boolean {
+  return account.type === 'credit';
+}
+
+function findMentionedAccount(question: string, accounts: readonly ContextAccount[]): ContextAccount | null {
+  const normalized = normalizeQuestion(question);
+  if (!normalized || accounts.length === 0) return null;
+
+  let best: ContextAccount | null = null;
+  let bestScore = 0;
+
+  for (const account of accounts) {
+    const name = normalizeQuestion(account.name);
+    const institution = account.institution ? normalizeQuestion(account.institution) : '';
+    let score = 0;
+    if (name.length >= 3 && normalized.includes(name)) score = Math.max(score, name.length);
+    if (institution.length >= 3 && normalized.includes(institution)) {
+      score = Math.max(score, institution.length);
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = account;
+    }
+  }
+
+  return best;
 }
 
 export function detectFynChartIntents(question: string): FynChartIntent[] {
@@ -51,14 +83,80 @@ export function detectFynChartIntents(question: string): FynChartIntent[] {
   if (/\b(cashflow|flux|surplus|revenu|revenus|depense|depenses)\b/.test(normalized)) {
     intents.push('cashflow_trend', 'income_vs_expenses');
   }
-  if (/\b(dette|dettes|rembours|hypotheque|carte|credit)\b/.test(normalized)) {
+  if (/\b(dette|dettes|rembours|hypotheque)\b/.test(normalized)) {
+    intents.push('debts');
+  } else if (/\b(carte|credit)\b/.test(normalized) && !/\b(solde|soldes|balance|balances)\b/.test(normalized)) {
     intents.push('debts');
   }
   if (/\b(combien|total).*\bchez\b/.test(normalized)) {
     intents.push('merchant_spend');
   }
+  if (
+    /\b(mes soldes|mon solde|soldes?|balances?|liquidites?|liquidity|account balances?|my balances?|how much.*(have|got)|combien (j ai|jai|ai je|il me reste))\b/.test(
+      normalized,
+    ) ||
+    /\b(montre|voir|affiche|show|display)\b.*\b(soldes?|balances?|comptes?|accounts?)\b/.test(normalized) ||
+    /\b(soldes?|balances?|comptes?|accounts?)\b.*\b(montre|voir|affiche|show|display)\b/.test(normalized)
+  ) {
+    intents.push('balances');
+  }
 
   return [...new Set(intents)];
+}
+
+function buildAccountBalanceCard(account: ContextAccount): BalanceSummaryCardData {
+  const kind = account.type;
+  return {
+    type: 'balance_summary_card',
+    variant: 'account',
+    label: 'Solde',
+    account_name: account.name,
+    ...(account.institution ? { account_institution: account.institution } : {}),
+    ...(account.last4 ? { account_last4: account.last4 } : {}),
+    ...(kind ? { account_kind: kind } : {}),
+    value_label: formatDisplayMoneyAbsoluteExact(account.balance),
+    action: { label: 'Voir le compte' },
+  };
+}
+
+function buildTotalBalanceCard(accounts: readonly ContextAccount[]): BalanceSummaryCardData | null {
+  const liquid = accounts.filter((account) => !isCreditAccount(account));
+  if (liquid.length === 0) return null;
+  const total = liquid.reduce((sum, account) => sum + account.balance, 0);
+  return {
+    type: 'balance_summary_card',
+    variant: 'total',
+    label: 'Solde total',
+    value_label: formatDisplayMoneyAbsoluteExact(total),
+    action: { label: 'Voir les comptes' },
+  };
+}
+
+function buildBalanceWidgets(question: string, context: FynFinancialContext): AIWidgetData[] {
+  const accounts = context.accounts;
+  if (accounts.length === 0) return [];
+
+  const mentioned = findMentionedAccount(question, accounts);
+  const normalized = normalizeQuestion(question);
+  const asksSpecificAccount =
+    Boolean(mentioned) &&
+    (/\b(solde|balance|combien|sur mon|on my|de mon|of my)\b/.test(normalized) ||
+      (mentioned != null && normalized.includes(normalizeQuestion(mentioned.name))));
+
+  if (mentioned && asksSpecificAccount && !/\b(mes soldes|my balances|tous mes|all my)\b/.test(normalized)) {
+    return [buildAccountBalanceCard(mentioned)];
+  }
+
+  const widgets: AIWidgetData[] = [];
+  const total = buildTotalBalanceCard(accounts);
+  if (total) widgets.push(total);
+
+  const liquid = accounts.filter((account) => !isCreditAccount(account)).slice(0, 4);
+  for (const account of liquid) {
+    widgets.push(buildAccountBalanceCard(account));
+  }
+
+  return widgets;
 }
 
 function buildCategoryBarChart(context: FynFinancialContext): BarChartData | null {
@@ -276,6 +374,11 @@ export function buildContextChartWidgets(
         if (widget) widgets.push(widget);
         break;
       }
+      case 'balances':
+      case 'account_balance': {
+        widgets.push(...buildBalanceWidgets(question, context));
+        break;
+      }
       default:
         break;
     }
@@ -294,6 +397,16 @@ const CHART_WIDGET_TYPES = new Set([
 ]);
 
 function widgetSignature(widget: AIWidgetData): string {
+  if (widget.type === 'balance_summary_card') {
+    const accountKey =
+      ('account_name' in widget && typeof widget.account_name === 'string'
+        ? widget.account_name
+        : '') ||
+      ('account_id' in widget && typeof widget.account_id === 'string' ? widget.account_id : '') ||
+      widget.variant ||
+      '';
+    return `${widget.type}:${widget.label}:${accountKey}`;
+  }
   return `${widget.type}:${'label' in widget && typeof widget.label === 'string' ? widget.label : ''}`;
 }
 
@@ -312,12 +425,15 @@ export function enrichAssistantBlocksWithContextWidgets(
       .map((block) => widgetSignature(block)),
   );
 
+  const hasBalanceWidget = blocks.some((block) => block.type === 'balance_summary_card');
   const hasChartWidget = blocks.some(
     (block) => block.type !== 'text' && CHART_WIDGET_TYPES.has(block.type),
   );
 
   const toAdd = contextWidgets.filter((widget) => {
     if (existing.has(widgetSignature(widget))) return false;
+    // Model already shipped balance cards — do not append a second local set.
+    if (widget.type === 'balance_summary_card' && hasBalanceWidget) return false;
     if (hasChartWidget && CHART_WIDGET_TYPES.has(widget.type) && widget.type !== 'debt_table') {
       return false;
     }

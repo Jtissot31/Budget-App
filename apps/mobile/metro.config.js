@@ -26,16 +26,20 @@ if (!config.resolver.sourceExts.includes('mjs')) {
 }
 
 // expo-font web: FontFaceObserver defaults to 6000ms — too short for dev web preview.
+// FontLoader.web imports `./ExpoFontLoader` (no `.web` in the module name); Metro then
+// picks ExpoFontLoader.web.js via platform resolution. Match that request name, not
+// `ExpoFontLoader.web`, or the stock 6000ms loader stays in the bundle.
 const expoFontLoaderWebPatch = path.resolve(__dirname, 'lib/expoFontLoaderWebPatch.js');
 const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (
-    platform === 'web' &&
-    typeof moduleName === 'string' &&
-    moduleName.includes('expo-font') &&
-    moduleName.includes('ExpoFontLoader.web')
-  ) {
-    return { type: 'sourceFile', filePath: expoFontLoaderWebPatch };
+  if (platform === 'web' && typeof moduleName === 'string') {
+    const normalized = moduleName.replace(/\\/g, '/');
+    const isExpoFontLoader =
+      /(^|\/)ExpoFontLoader(\.web)?$/.test(normalized) ||
+      normalized.includes('ExpoFontLoader.web');
+    if (isExpoFontLoader) {
+      return { type: 'sourceFile', filePath: expoFontLoaderWebPatch };
+    }
   }
   if (defaultResolveRequest) {
     return defaultResolveRequest(context, moduleName, platform);

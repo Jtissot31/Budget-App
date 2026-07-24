@@ -9,10 +9,14 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type TextStyle,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BudgetCategoryPicker } from '@/components/BudgetCategoryPicker';
 import { DetailSubSection } from '@/components/DetailSectionRows';
 import { EditableField } from '@/components/EditableField';
 import { GhostNumpad } from '@/components/GhostNumpad';
@@ -88,6 +92,8 @@ export function AddArticleSheet({
 }: AddArticleSheetProps) {
   const { colors, isLight } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const sheetHeight = Math.round(windowHeight * 0.88);
   const isInline = variant === 'inline';
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -266,11 +272,13 @@ export function AddArticleSheet({
   };
 
   const hasBudgetCap = maxArticlePrice != null && Number.isFinite(maxArticlePrice);
-  const budgetExhausted = hasBudgetCap && maxArticlePrice <= 0;
+  // Soft hint only when remaining > 0. Never hard-block with « entièrement réparti »
+  // (empty form often has amount 0 → remaining 0; with articles, user may still add lines).
+  const softBudgetCap = hasBudgetCap && maxArticlePrice > 0 ? maxArticlePrice : undefined;
 
   const handlePriceChange = useCallback((next: string) => {
-    if (!hasBudgetCap || budgetExhausted) {
-      if (!budgetExhausted) setPrice(next);
+    if (softBudgetCap == null) {
+      setPrice(next);
       return;
     }
     if (next.length === 0) {
@@ -278,22 +286,21 @@ export function AddArticleSheet({
       return;
     }
     const parsed = parseFormattedNumber(next);
-    if (!Number.isFinite(parsed) || isArticlePriceWithinBudget(parsed, maxArticlePrice)) {
+    if (!Number.isFinite(parsed) || isArticlePriceWithinBudget(parsed, softBudgetCap)) {
       setPrice(next);
     }
-  }, [budgetExhausted, hasBudgetCap, maxArticlePrice]);
+  }, [softBudgetCap]);
 
   const parsedPrice = parseFormattedNumber(price);
   const hasValidPrice = price.length > 0 && Number.isFinite(parsedPrice) && parsedPrice > 0;
   const priceWithinBudget =
-    budgetExhausted
-      ? false
-      : !hasBudgetCap
-        ? hasValidPrice
-        : hasValidPrice && isArticlePriceWithinBudget(parsedPrice, maxArticlePrice);
+    softBudgetCap == null
+      ? hasValidPrice
+      : hasValidPrice && isArticlePriceWithinBudget(parsedPrice, softBudgetCap);
+  // Category is optional while adding an article — required only on form Enregistrer.
   const canAdvanceFromName = trimmedName.length > 0;
-  const canAdvanceFromCategory = effectiveCategoryId != null || categories.length === 0;
-  const canSave = canAdvanceFromName && canAdvanceFromCategory && priceWithinBudget;
+  const canAdvanceFromCategory = true;
+  const canSave = canAdvanceFromName && priceWithinBudget;
 
   const handleSave = () => {
     const trimmed = name.trim();
@@ -415,44 +422,84 @@ export function AddArticleSheet({
         notifyInlineContentLayout();
       }}
     >
-      <TextInput
-        key="article-name-input"
-        ref={nameInputRef}
-        style={[styles.inlineNameInput, { color: colors.text }]}
-        placeholder="Nom article…"
-        placeholderTextColor={colors.textMuted}
-        value={name}
-        autoCorrect={false}
-        autoComplete="off"
-        onChangeText={(text) => {
-          setName(text);
-          if (!text.trim()) {
-            setCategoryId(null);
-            setCategoryManuallySelected(false);
-          }
-        }}
-        onFocus={() => {
-          nameInputFocusedRef.current = true;
-          notifyInlineContentLayout(true);
-          onNameFocusChange?.(true);
-        }}
-        onBlur={() => {
-          nameInputFocusedRef.current = false;
-          onNameFocusChange?.(false);
-        }}
-        returnKeyType="done"
-        blurOnSubmit={false}
-        onSubmitEditing={() => {
-          Keyboard.dismiss();
-          nameInputRef.current?.blur();
-        }}
-      />
-      <View style={styles.inlineAmountSlot}>
+      <View
+        style={[
+          styles.inlineNameShell,
+          {
+            backgroundColor: inputSurface.backgroundColor,
+            borderColor: inputSurface.borderColor,
+            borderWidth: inputSurface.borderWidth,
+          },
+        ]}
+      >
+        <TextInput
+          key="article-name-input"
+          ref={nameInputRef}
+          style={[styles.inlineNameInput, { color: colors.text }]}
+          placeholder="Nom article…"
+          placeholderTextColor={colors.textMuted}
+          value={name}
+          autoCorrect={false}
+          autoComplete="off"
+          onChangeText={(text) => {
+            setName(text);
+            if (!text.trim()) {
+              setCategoryId(null);
+              setCategoryManuallySelected(false);
+            }
+          }}
+          onFocus={() => {
+            nameInputFocusedRef.current = true;
+            notifyInlineContentLayout(true);
+            onNameFocusChange?.(true);
+          }}
+          onBlur={() => {
+            nameInputFocusedRef.current = false;
+            onNameFocusChange?.(false);
+          }}
+          returnKeyType="done"
+          blurOnSubmit={false}
+          onSubmitEditing={() => {
+            Keyboard.dismiss();
+            nameInputRef.current?.blur();
+          }}
+        />
+      </View>
+    </View>
+  );
+
+  const nestedFieldLabelStyle = [
+    styles.nestedFieldLabel,
+    { color: colors.textMuted },
+  ];
+
+  const inlinePriceField = (
+    <View style={styles.inlinePriceBlock}>
+      <Text style={nestedFieldLabelStyle}>Prix</Text>
+      <View
+        style={[
+          styles.inlinePriceShell,
+          {
+            backgroundColor: inputSurface.backgroundColor,
+            borderColor: inputSurface.borderColor,
+            borderWidth: inputSurface.borderWidth,
+          },
+        ]}
+      >
+        <Text
+          style={[
+            styles.inlinePriceCurrency,
+            moneyAmountTypography({ tier: 'row' }),
+            { color: colors.textMuted },
+          ]}
+        >
+          $
+        </Text>
         <NumericAmountInput
           style={[
-            styles.inlineAmountInput,
+            styles.inlinePriceInput,
             moneyAmountTypography({ tier: 'row' }),
-            { color: colors.text },
+            { color: price.length > 0 ? colors.text : colors.textMuted },
           ]}
           placeholder="0,00"
           placeholderTextColor={colors.textMuted}
@@ -461,24 +508,14 @@ export function AddArticleSheet({
           keyboardType="decimal-pad"
           accessibilityLabel="Montant de l'article"
         />
-        <Text style={[styles.inlineAmountCurrency, typographyKit.metaMedium, { color: colors.textMuted }]}>
-          $
-        </Text>
       </View>
+      {softBudgetCap != null ? (
+        <Text style={[styles.inlineBudgetHint, typographyKit.microMedium, { color: colors.textMuted }]}>
+          Max. {formatDisplayMoneyAbsolute(softBudgetCap)}
+        </Text>
+      ) : null}
     </View>
   );
-
-  const inlineBudgetHint = hasBudgetCap && !budgetExhausted ? (
-    <Text style={[styles.inlineBudgetHint, typographyKit.microMedium, { color: colors.textMuted }]}>
-      Max. {formatDisplayMoneyAbsolute(maxArticlePrice)}
-    </Text>
-  ) : null;
-
-  const inlineBudgetError = budgetExhausted ? (
-    <Text style={[styles.inlineBudgetError, typographyKit.microMedium, { color: colors.danger }]}>
-      Montant transaction entièrement réparti
-    </Text>
-  ) : null;
 
   const inlineCancelLink = (
     <Pressable
@@ -517,69 +554,18 @@ export function AddArticleSheet({
 
   const inlineCategoryField = categories.length > 0 ? (
     <View
-      style={[styles.inlineCategoryBlock, { borderTopColor: colors.border }]}
+      style={styles.inlineCategoryBlock}
       onLayout={() => {
         notifyInlineContentLayout();
       }}
     >
-      <View style={styles.inlineCategoryHeader}>
-        <Text style={[detailSubSectionHeaderStyle(), { color: colors.textMuted, marginBottom: 0 }]}>
-          Catégorie
-        </Text>
-        <Text style={[typographyKit.microMedium, { color: colors.textMuted }]}>
-          Choisis où ce montant ira dans ton budget
-        </Text>
-      </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="always"
-        contentContainerStyle={styles.inlineCategoryChips}
-      >
-        {categories.map((category) => {
-          const selected = effectiveCategoryId === category.id;
-          const suggested = !categoryManuallySelected && inferredCategoryId === category.id;
-          return (
-            <Pressable
-              key={category.id}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              accessibilityLabel={`Catégorie ${category.name}${suggested ? ', suggérée' : ''}`}
-              onPress={() => onCategorySelect(category.id)}
-              style={({ pressed }) => [
-                styles.inlineCategoryChip,
-                {
-                  backgroundColor: selected
-                    ? 'rgba(74, 222, 128, 0.16)'
-                    : isLight
-                      ? 'rgba(0,0,0,0.04)'
-                      : 'rgba(255,255,255,0.06)',
-                  borderColor: selected ? colors.primary : colors.border,
-                },
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text
-                style={[
-                  typographyKit.metaMedium,
-                  { color: selected ? colors.primary : colors.text },
-                ]}
-                numberOfLines={1}
-              >
-                {category.name}
-              </Text>
-              {suggested && !selected ? (
-                <Text style={[typographyKit.microMedium, { color: colors.textMuted }]}>suggéré</Text>
-              ) : null}
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-      {!effectiveCategoryId && trimmedName.length > 0 ? (
-        <Text style={[typographyKit.microMedium, { color: colors.warning }]}>
-          Sélectionne une catégorie pour continuer
-        </Text>
-      ) : null}
+      <BudgetCategoryPicker
+        categories={categories}
+        searchText={trimmedName}
+        selectedId={effectiveCategoryId}
+        onSelect={onCategorySelect}
+        labelStyle={nestedFieldLabelStyle}
+      />
     </View>
   ) : null;
 
@@ -620,17 +606,12 @@ export function AddArticleSheet({
     >
       <View style={styles.articlePriceHeaderRow}>
         <Text style={[detailSubSectionHeaderStyle(), { color: colors.textMuted }]}>Prix</Text>
-        {hasBudgetCap && !budgetExhausted ? (
+        {softBudgetCap != null ? (
           <Text style={[styles.articlePriceBudgetHint, typographyKit.metaMedium, { color: colors.textMuted }]}>
-            Max. {formatDisplayMoneyAbsolute(maxArticlePrice)}
+            Max. {formatDisplayMoneyAbsolute(softBudgetCap)}
           </Text>
         ) : null}
       </View>
-      {budgetExhausted ? (
-        <Text style={[styles.articlePriceBudgetError, typographyKit.metaMedium, { color: colors.danger }]}>
-          Montant transaction entièrement réparti
-        </Text>
-      ) : null}
       <View
         style={[
           styles.articlePriceShell,
@@ -698,8 +679,7 @@ export function AddArticleSheet({
       }}
     >
       {inlineNameAmountRow}
-      {inlineBudgetHint}
-      {inlineBudgetError}
+      {inlinePriceField}
       {inlineCategoryField}
       {inlineFooterActions}
     </View>
@@ -738,31 +718,34 @@ export function AddArticleSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <KeyboardAvoidingView
-        style={styles.sheetBackdrop}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Fermer"
-          style={styles.sheetBackdropDismiss}
-          onPress={handleClose}
-        />
-        <View
-          style={[
-            styles.articleSheet,
-            {
-              backgroundColor: colors.containerBackground,
-              borderColor: colors.containerBorder,
-              paddingBottom: Math.max(insets.bottom + spacing.lg, spacing.xl),
-            },
-          ]}
-          onStartShouldSetResponder={() => true}
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <KeyboardAvoidingView
+          style={styles.sheetBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View style={[styles.articleSheetHandle, { backgroundColor: colors.border }]} />
-          {sheetFormBody}
-        </View>
-      </KeyboardAvoidingView>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Fermer"
+            style={styles.sheetBackdropDismiss}
+            onPress={handleClose}
+          />
+          <DraggableSheetSurface
+            onClose={handleClose}
+            sheetHeight={sheetHeight}
+            style={[
+              styles.articleSheet,
+              {
+                backgroundColor: colors.containerBackground,
+                borderColor: colors.containerBorder,
+                paddingBottom: Math.max(insets.bottom + spacing.lg, spacing.xl),
+              },
+            ]}
+          >
+            <View style={[styles.articleSheetHandle, { backgroundColor: colors.border }]} />
+            {sheetFormBody}
+          </DraggableSheetSurface>
+        </KeyboardAvoidingView>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -798,73 +781,57 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   inlineArticleForm: {
-    gap: spacing.xs,
+    gap: spacing.md,
     overflow: 'visible' as const,
     zIndex: 10,
   },
+  /** Nested under ARTICLES — quieter than major section eyebrows. */
+  nestedFieldLabel: {
+    ...typographyKit.microMedium,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase' as const,
+  },
   inlineNameAmountRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  inlineNameShell: {
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    minHeight: 48,
+    justifyContent: 'center' as const,
   },
   inlineNameInput: {
     ...typographyKit.bodyMedium,
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: 0,
+    paddingVertical: spacing.sm,
     backgroundColor: 'transparent',
   },
-  inlineAmountSlot: {
+  inlinePriceBlock: {
+    gap: spacing.sm,
+  },
+  inlinePriceShell: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    flexShrink: 0,
-    minWidth: 72,
-    gap: 2,
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    minHeight: 50,
   },
-  inlineAmountInput: {
-    minWidth: 48,
-    maxWidth: 80,
-    paddingVertical: 0,
-    textAlign: 'right' as const,
+  inlinePriceCurrency: {
+    flexShrink: 0,
+  },
+  inlinePriceInput: {
+    flex: 1,
+    minWidth: 96,
+    paddingVertical: spacing.sm,
+    textAlign: 'left' as const,
     backgroundColor: 'transparent',
-  },
-  inlineAmountCurrency: {
-    flexShrink: 0,
   },
   inlineBudgetHint: {
     textAlign: 'right' as const,
-    marginTop: -spacing.xs,
-    paddingRight: spacing.sm,
-  },
-  inlineBudgetError: {
-    marginTop: -spacing.xs,
-    paddingRight: spacing.sm,
+    paddingRight: spacing.xs,
   },
   inlineCategoryBlock: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    marginTop: spacing.xs,
-    paddingTop: spacing.md,
     gap: spacing.sm,
-  },
-  inlineCategoryHeader: {
-    gap: 2,
-  },
-  inlineCategoryChips: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: spacing.xs,
-    paddingVertical: 2,
-  },
-  inlineCategoryChip: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    maxWidth: 180,
   },
   inlineFooterActions: {
     flexDirection: 'row' as const,
@@ -872,7 +839,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     marginTop: spacing.xs,
-    paddingTop: spacing.md,
+    paddingTop: spacing.md + 2,
   },
   inlineCancelLink: {
     flexShrink: 0,
@@ -916,9 +883,6 @@ const styles = StyleSheet.create({
   articlePriceBudgetHint: {
     flexShrink: 1,
     textAlign: 'right' as const,
-  },
-  articlePriceBudgetError: {
-    marginTop: -spacing.xs,
   },
   articleInputShell: {
     borderRadius: radius.md,

@@ -1,15 +1,34 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect } from 'react';
+import { Pressable, StyleSheet, Text, View, type RefObject, type ScrollView } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { useRouter } from 'expo-router';
 import { FynAvatar } from '@/components/ai-chat/FynAvatar';
-import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
-import { planFinanceKit } from '@/constants/planFinanceKit';
-import { interMediumText, interSemiboldText, spacing, typography } from '@/constants/theme';
+import { OnyxContainer } from '@/components/OnyxContainer';
+import {
+  onyxContainerPressedStyle,
+  onyxContainerRowLayoutStyle,
+} from '@/constants/planFinanceKit';
+import { typographyKit } from '@/constants/theme';
+import { useAppTourTarget } from '@/hooks/useAppTourTarget';
+import { registerAppTourRevealer } from '@/lib/appTourTargets';
 import { tapHaptic } from '@/lib/haptics';
+import { useAppTheme } from '@/lib/themeContext';
 
-export function FynChatEntryCard() {
+type Props = {
+  /** Parent hub scroll — tour scrolls to end so this card is visible. */
+  scrollRef?: RefObject<ScrollView | null>;
+};
+
+export function FynChatEntryCard({ scrollRef }: Props) {
   const router = useRouter();
-  const pf = planFinanceKit.colors;
+  const { colors } = useAppTheme();
+  const tourRef = useAppTourTarget('fyn-entry');
+
+  useEffect(() => {
+    return registerAppTourRevealer('fyn-entry', () => {
+      scrollRef?.current?.scrollToEnd({ animated: true });
+    });
+  }, [scrollRef]);
 
   return (
     <Pressable
@@ -19,46 +38,47 @@ export function FynChatEntryCard() {
         tapHaptic();
         router.push('/fyn-chat');
       }}
-      style={({ pressed }) => [pressed && styles.pressed]}
+      style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
     >
-      <PlanFinanceContainer style={styles.card}>
-        <FynAvatar size={48} showStatus statusBorderColor={pf.background} />
-        <View style={styles.copy}>
-          <Text style={[styles.title, interSemiboldText, { color: pf.text }]}>Parler à Fyn</Text>
-          <Text style={[styles.subtitle, interMediumText, { color: pf.textMuted }]}>
-            Conseiller IA — budget, dettes et objectifs
-          </Text>
-        </View>
-        <AppIcon family="material-community" name="chevron-right" size={22} color={pf.textMuted} />
-      </PlanFinanceContainer>
+      <View ref={tourRef} collapsable={false}>
+        <OnyxContainer style={styles.row}>
+          <FynAvatar size={40} showStatus statusBorderColor={colors.containerBackground} />
+          <View style={styles.copy}>
+            <Text
+              style={[typographyKit.rowTitle, { color: colors.text }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              Parler à Fyn
+            </Text>
+            <Text
+              style={[typographyKit.metaMedium, { color: colors.textMuted }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              Conseiller IA pour tes plans
+            </Text>
+          </View>
+          <AppIcon
+            family="ionicons"
+            name="chevron-forward"
+            size={16}
+            color={colors.accentGreen || colors.primary}
+          />
+        </OnyxContainer>
+      </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+  row: {
+    ...onyxContainerRowLayoutStyle(),
+    minHeight: 56,
   },
   copy: {
     flex: 1,
     minWidth: 0,
     gap: 2,
-  },
-  title: {
-    fontSize: typography.body,
-    lineHeight: 22,
-    letterSpacing: -0.2,
-  },
-  subtitle: {
-    fontSize: typography.meta,
-    lineHeight: 18,
-  },
-  pressed: {
-    opacity: 0.86,
   },
 });

@@ -27,6 +27,7 @@ import {
   resolveTransactionHistorySubtitle,
 } from '@/lib/accountTransactionFlow';
 import { useSavingsGoals } from '@/hooks/useSavingsGoals';
+import { pressableRowMotionStyle } from '@/constants/motionKit';
 import { tapHaptic } from '@/lib/haptics';
 import { userPickedIconLogoSize } from '@/lib/userPickedIcon';
 import { useAppTheme } from '@/lib/themeContext';
@@ -155,7 +156,7 @@ const TransactionRowBase = memo(function TransactionRowBase({
       style={({ pressed }) => [
         styles.row,
         embedded && styles.rowEmbedded,
-        pressed && styles.pressed,
+        pressableRowMotionStyle(pressed),
       ]}
     >
       <View style={[styles.mainRow, embedded && styles.mainRowEmbedded]}>
@@ -171,7 +172,11 @@ const TransactionRowBase = memo(function TransactionRowBase({
           style={[
             styles.avatar,
             embedded && !framelessLogo && styles.avatarEmbedded,
-            embedded && !framelessLogo && { borderColor: colors.borderStrong, backgroundColor: colors.surfaceElevated },
+            embedded &&
+              !framelessLogo && {
+                borderColor: colors.containerBorder,
+                backgroundColor: colors.surfaceElevated,
+              },
           ]}
         />
 
@@ -265,12 +270,9 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   avatarEmbedded: {
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 9,
     flexShrink: 0,
-  },
-  pressed: {
-    opacity: 0.88,
   },
   mainRow: {
     flexDirection: 'row',

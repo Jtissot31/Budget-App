@@ -4,7 +4,7 @@ import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import { planFinanceKit } from '@/constants/planFinanceKit';
 import { buildCompactSparklinePaths } from '@/lib/chartStockLinePath';
 
-export const CHECKING_SPARKLINE_HEIGHT = 56;
+export const CHECKING_SPARKLINE_HEIGHT = 60;
 const SPARKLINE_STROKE_WIDTH = 2;
 /** Soft wash under the Accueil sparkline — aligned with PortfolioChartCard area fill. */
 const SPARKLINE_FILL_TOP_OPACITY = 0.18;

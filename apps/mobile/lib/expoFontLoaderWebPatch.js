@@ -161,13 +161,19 @@ const ExpoFontLoader = {
       return Promise.resolve();
     }
 
+    // @font-face is already injected above. Never reject — FontFaceObserver timeouts
+    // (stock 6000ms or otherwise) must not surface as Uncaught Error on web preview.
     return new FontObserver(fontFamilyName, {
       display: resource.display,
     })
       .load(null, WEB_FONT_LOAD_TIMEOUT_MS)
       .catch(async () => {
         if (await waitForFontFace(fontFamilyName)) return;
-        throw new Error(`${WEB_FONT_LOAD_TIMEOUT_MS}ms timeout exceeded`);
+        if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+          console.warn(
+            `[expo-font] web load timed out for "${fontFamilyName}" after ${WEB_FONT_LOAD_TIMEOUT_MS}ms — continuing with injected @font-face`,
+          );
+        }
       });
   },
 };

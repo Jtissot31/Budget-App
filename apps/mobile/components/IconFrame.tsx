@@ -46,6 +46,11 @@ type RemoteLogoImageProps = {
   contentFit?: ImageContentFit;
   /** When true, logo uses the full box (no padded inset) — for frameless calendar markers. */
   fullSize?: boolean;
+  /**
+   * Logo fill inside the sized box (default `USER_PICKED_ICON_LOGO_INSET_RATIO`).
+   * Ignored when `fullSize` is true. Use a higher value for compact picker tiles.
+   */
+  insetRatio?: number;
   recyclingKey?: string;
   onError?: () => void;
   onLoad?: () => void;
@@ -57,13 +62,14 @@ export function RemoteLogoImage({
   size,
   contentFit = 'contain',
   fullSize = false,
+  insetRatio,
   recyclingKey,
   onError,
   onLoad,
 }: RemoteLogoImageProps) {
   const imageStyle = fullSize
     ? { width: size, height: size }
-    : remoteLogoImageStyle(size);
+    : remoteLogoImageStyle(size, insetRatio);
 
   return (
     <Image

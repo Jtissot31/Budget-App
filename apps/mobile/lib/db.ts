@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { Platform } from 'react-native';
+import { LogBox, Platform } from 'react-native';
 import {
   accumulateAccountMoneyFlows,
   getTransactionAccountDeltas,
@@ -10,6 +10,7 @@ import { parseItemizedNote } from '@/lib/itemizedNote';
 import { dataEvents } from '@/lib/events';
 import { normalizeSearch } from '@/lib/categoryInference';
 import { DEPRECATED_BUDGET_CATEGORY_IDS } from '@/constants/categoryOptions';
+import { createWebMemorySqliteDatabase } from '@/lib/webMemorySqlite';
 import type {
   Category,
   CategoryBudget,
@@ -26,6 +27,29 @@ import type {
   TransactionType,
   WealthAsset,
 } from '@/types';
+
+
+/**
+ * Web strategy: never call expo-sqlite `openDatabaseAsync` (WASM/OPFS hangs in previews).
+ * Use a JS in-memory DB that stores rows so demo seed + Accueil show mock data.
+ */
+const WEB_USES_STUB_ONLY = Platform.OS === 'web';
+
+const WEB_LOGBOX_IGNORE_KEY = '__budgetTrackerSqliteLogBoxIgnoreInstalled__';
+if (WEB_USES_STUB_ONLY && __DEV__) {
+  const g = globalThis as typeof globalThis & { [WEB_LOGBOX_IGNORE_KEY]?: boolean };
+  if (!g[WEB_LOGBOX_IGNORE_KEY]) {
+    g[WEB_LOGBOX_IGNORE_KEY] = true;
+    LogBox.ignoreLogs([
+      'Unknown',
+      'Uncaught Error: Unknown',
+      /NativeStatement/,
+      /WorkerChannel/,
+      /expo-sqlite\/web/,
+      /OPFS lock unavailable/,
+    ]);
+  }
+}
 
 const DB_SINGLETON_KEY = '__budgetTrackerSqlite__';
 
@@ -68,220 +92,181 @@ function getDbSingletonState(): DbSingletonState {
   return nativeDbState;
 }
 
-/** Web needs extra time for WASM worker + OPFS; native can be slower on cold start with WAL. */
-const DB_OPEN_TIMEOUT_MS = Platform.OS === 'web' ? 30_000 : 15_000;
+/** Native only — web never opens expo-sqlite, so no open-timeout Errors exist there. */
+const DB_OPEN_TIMEOUT_MS = 15_000;
 
-type PromiseQueue = { tail: Promise<void> };
+const WEB_STUB_DB_KEY = '__budgetTrackerSqliteStubDb__';
+const WEB_DEGRADED_STUB_KEY = '__budgetTrackerSqliteDegradedStub__';
+const WEB_STUB_WARNED_KEY = '__budgetTrackerSqliteStubWarned__';
 
-const WEB_OPEN_QUEUE_KEY = '__budgetTrackerSqliteOpenQueue__';
-const WEB_OP_QUEUE_KEY = '__budgetTrackerSqliteOpQueue__';
-
-function getWebPromiseQueue(key: string): PromiseQueue {
-  const globalState = globalThis as typeof globalThis & Record<string, PromiseQueue | undefined>;
-  if (!globalState[key]) {
-    globalState[key] = { tail: Promise.resolve() };
-  }
-  return globalState[key]!;
-}
-
-const nativeDbOpenQueue: PromiseQueue = { tail: Promise.resolve() };
-const nativeDbOpQueue: PromiseQueue = { tail: Promise.resolve() };
-
-async function withPromiseQueue<T>(queue: PromiseQueue, operation: () => Promise<T>): Promise<T> {
-  const previous = queue.tail;
-  let release!: () => void;
-  queue.tail = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await previous;
-  try {
-    return await operation();
-  } finally {
-    release();
-  }
-}
-
-async function withWebDbOpenQueue<T>(operation: () => Promise<T>): Promise<T> {
-  const queue =
-    Platform.OS === 'web' ? getWebPromiseQueue(WEB_OPEN_QUEUE_KEY) : nativeDbOpenQueue;
-  return withPromiseQueue(queue, operation);
+function setWebDegradedStub(): void {
+  if (!WEB_USES_STUB_ONLY) return;
+  const g = globalThis as typeof globalThis & { [WEB_DEGRADED_STUB_KEY]?: boolean };
+  g[WEB_DEGRADED_STUB_KEY] = true;
 }
 
 /**
- * Serialize async SQLite calls on web. The wa-sqlite worker handles messages concurrently;
- * overlapping prepare/run/reset on one connection surfaces as opaque NativeStatement#resetAsync errors.
- * Queue lives on globalThis so Fast Refresh does not drop in-flight serialization.
+ * JS in-memory DB for web previews — supports demo seed (accounts, transactions, etc.).
+ * Never opens expo-sqlite WASM.
  */
-async function withWebDbOpQueue<T>(operation: () => Promise<T>): Promise<T> {
-  const queue = Platform.OS === 'web' ? getWebPromiseQueue(WEB_OP_QUEUE_KEY) : nativeDbOpQueue;
-  return withPromiseQueue(queue, operation);
-}
-
-const WEB_SERIALIZED_DB_METHODS = new Set([
-  'runAsync',
-  'getFirstAsync',
-  'getAllAsync',
-  'getEachAsync',
-  'execAsync',
-  'prepareAsync',
-  'withTransactionAsync',
-]);
-
-const WEB_MEMORY_FALLBACK_KEY = '__budgetTrackerSqliteMemoryFallback__';
-
-function isWebMemoryFallbackOnly(): boolean {
-  if (Platform.OS !== 'web') return false;
-  const globalState = globalThis as typeof globalThis & {
-    [WEB_MEMORY_FALLBACK_KEY]?: boolean;
+function createNoopSqliteDatabase(): SQLite.SQLiteDatabase {
+  const g = globalThis as typeof globalThis & {
+    [WEB_STUB_DB_KEY]?: SQLite.SQLiteDatabase;
   };
-  return globalState[WEB_MEMORY_FALLBACK_KEY] === true;
+  if (g[WEB_STUB_DB_KEY]) return g[WEB_STUB_DB_KEY]!;
+
+  const memory = createWebMemorySqliteDatabase();
+  g[WEB_STUB_DB_KEY] = memory as unknown as SQLite.SQLiteDatabase;
+  return g[WEB_STUB_DB_KEY]!;
 }
 
-function setWebMemoryFallbackOnly(): void {
-  const globalState = globalThis as typeof globalThis & {
-    [WEB_MEMORY_FALLBACK_KEY]?: boolean;
-  };
-  globalState[WEB_MEMORY_FALLBACK_KEY] = true;
+function resolveWebStubDatabase(reason: string): SQLite.SQLiteDatabase {
+  setWebDegradedStub();
+  if (__DEV__) {
+    const g = globalThis as typeof globalThis & { [WEB_STUB_WARNED_KEY]?: boolean };
+    if (!g[WEB_STUB_WARNED_KEY]) {
+      g[WEB_STUB_WARNED_KEY] = true;
+      console.warn(
+        `[db] Web in-memory JS DB (${reason}) — demo seed enabled, expo-sqlite skipped`,
+      );
+    }
+  }
+  const state = getDbSingletonState();
+  state.openFailed = false;
+  state.appliedMigrationVersion = SCHEMA_MIGRATION_VERSION;
+  const stub = createNoopSqliteDatabase();
+  state.promise = Promise.resolve(stub);
+  return stub;
 }
 
-function isWebSqliteRecoverableError(error: unknown): boolean {
-  const message = sqliteErrorMessage(error).toLowerCase();
-  // Note: "no such column" is handled by SCHEMA_MIGRATION_VERSION / withWealthSchemaRetry —
-  // do not treat it as OPFS corruption (that would wipe to :memory: unnecessarily).
+const WEB_SQLITE_ERROR_GUARD_KEY = '__budgetTrackerSqliteErrorGuardHandlers__';
+
+/** FontFaceObserver / stock expo-font web: `6000ms timeout exceeded` (and similar). */
+function isWebFontLoadTimeoutError(reason: unknown): boolean {
+  const message = sqliteErrorMessage(reason).toLowerCase();
+  if (!message.includes('timeout exceeded')) return false;
+  const stack =
+    reason instanceof Error && typeof reason.stack === 'string'
+      ? reason.stack
+      : typeof reason === 'object' &&
+          reason !== null &&
+          'stack' in reason &&
+          typeof (reason as { stack?: unknown }).stack === 'string'
+        ? (reason as { stack: string }).stack
+        : '';
+  return (
+    /\d+ms timeout exceeded/.test(message) ||
+    stack.includes('fontfaceobserver') ||
+    stack.includes('ExpoFontLoader') ||
+    stack.includes('expo-font')
+  );
+}
+
+function isExpoSqliteWorkerError(reason: unknown): boolean {
+  const message = sqliteErrorMessage(reason).toLowerCase();
+
+  if (message.includes('sqlite opfs') || message.includes('opfs lock unavailable')) {
+    return true;
+  }
+
+  const stack =
+    reason instanceof Error && typeof reason.stack === 'string'
+      ? reason.stack
+      : typeof reason === 'object' &&
+          reason !== null &&
+          'stack' in reason &&
+          typeof (reason as { stack?: unknown }).stack === 'string'
+        ? (reason as { stack: string }).stack
+        : '';
+
+  if (
+    stack.includes('expo-sqlite') ||
+    stack.includes('WorkerChannel') ||
+    stack.includes('SQLiteModule') ||
+    stack.includes('wa-sqlite')
+  ) {
+    return true;
+  }
+
   return (
     message.length === 0 ||
     message === 'unknown' ||
     message === 'unknown sqlite error' ||
-    message.includes('reset') ||
-    message.includes('error resetting statement') ||
-    message.includes('statement not found') ||
-    message.includes('database not found') ||
-    message.includes('nomodificationallowed') ||
-    message.includes('access handle') ||
     message.includes('opfs') ||
+    message.includes('sqlite open') ||
     message.includes('[object object]')
   );
 }
 
-const WEB_SQLITE_ERROR_GUARD_KEY = '__budgetTrackerSqliteErrorGuard__';
-
-function isExpoSqliteWorkerError(reason: unknown): boolean {
-  if (!(reason instanceof Error)) return false;
-  const stack = typeof reason.stack === 'string' ? reason.stack : '';
-  if (
-    stack.includes('expo-sqlite') ||
-    stack.includes('WorkerChannel') ||
-    stack.includes('SQLiteModule')
-  ) {
-    return true;
-  }
-  return isWebSqliteRecoverableError(reason);
+function shouldSuppressWebBootNoise(reason: unknown): boolean {
+  return isExpoSqliteWorkerError(reason) || isWebFontLoadTimeoutError(reason);
 }
 
+type WebSqliteErrorGuardHandlers = {
+  onRejection: (event: PromiseRejectionEvent) => void;
+  onError: (event: ErrorEvent) => void;
+};
+
 /**
- * expo-sqlite's web worker rejects orphaned request deferreds — e.g. in-flight ops that
- * settle after the DB layer already recovered via the in-memory fallback / closeAsync.
- * Those land as unhandled rejections with opaque "Unknown" messages and trip the Expo dev
- * error overlay. Registering at module load (before the overlay's own listener mounts) lets
- * us stop propagation for SQLite-only failures; genuine data errors are still surfaced by the
- * awaited call sites. Native (iOS/Android) never installs this.
+ * expo-sqlite's web worker can still reject orphaned deferreds if something else
+ * imported the WASM worker. Suppress those so LogBox stays clean — we never open a DB on web.
  */
 function installWebSqliteErrorGuard(): void {
   if (Platform.OS !== 'web') return;
   if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+
   const globalState = globalThis as typeof globalThis & {
-    [WEB_SQLITE_ERROR_GUARD_KEY]?: boolean;
+    [WEB_SQLITE_ERROR_GUARD_KEY]?: WebSqliteErrorGuardHandlers;
   };
-  if (globalState[WEB_SQLITE_ERROR_GUARD_KEY]) return;
-  globalState[WEB_SQLITE_ERROR_GUARD_KEY] = true;
 
-  window.addEventListener(
-    'unhandledrejection',
-    (event: PromiseRejectionEvent) => {
-      if (!isExpoSqliteWorkerError(event.reason)) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      console.warn(
-        '[db] Suppressed orphaned expo-sqlite web worker rejection',
-        sqliteErrorMessage(event.reason),
-      );
-    },
-    true,
-  );
+  const previous = globalState[WEB_SQLITE_ERROR_GUARD_KEY];
+  if (previous) {
+    window.removeEventListener('unhandledrejection', previous.onRejection, true);
+    window.removeEventListener('error', previous.onError, true);
+  }
 
-  window.addEventListener(
-    'error',
-    (event: ErrorEvent) => {
-      if (!isExpoSqliteWorkerError(event.error)) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      console.warn('[db] Suppressed expo-sqlite web worker error', sqliteErrorMessage(event.error));
-    },
-    true,
-  );
+  const onRejection = (event: PromiseRejectionEvent) => {
+    if (!shouldSuppressWebBootNoise(event.reason)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (__DEV__) {
+      const label = isWebFontLoadTimeoutError(event.reason)
+        ? 'web font load timeout'
+        : 'orphaned expo-sqlite web worker rejection';
+      console.warn(`[db] Suppressed ${label}`, sqliteErrorMessage(event.reason));
+    }
+  };
+
+  const onError = (event: ErrorEvent) => {
+    const candidate = event.error ?? event.message;
+    if (!shouldSuppressWebBootNoise(candidate)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (__DEV__) {
+      const label = isWebFontLoadTimeoutError(candidate)
+        ? 'web font load timeout'
+        : 'expo-sqlite web worker error';
+      console.warn(`[db] Suppressed ${label}`, sqliteErrorMessage(candidate));
+    }
+  };
+
+  globalState[WEB_SQLITE_ERROR_GUARD_KEY] = { onRejection, onError };
+  window.addEventListener('unhandledrejection', onRejection, true);
+  window.addEventListener('error', onError, true);
 }
 
 installWebSqliteErrorGuard();
 
-async function reopenWebDatabaseInMemory(): Promise<{
-  raw: SQLite.SQLiteDatabase;
-  wrapped: SQLite.SQLiteDatabase;
-}> {
-  const state = getDbSingletonState();
-  setWebMemoryFallbackOnly();
-  state.openFailed = false;
-  state.appliedMigrationVersion = 0;
-
-  // Open + migrate outside the wrapped proxy so the caller (already holding the op
-  // queue) can retry on `raw` without deadlocking on withWebDbOpQueue.
-  const raw = await withDbOpenTimeout(SQLite.openDatabaseAsync(':memory:'), 'SQLite open');
-  await initializeDatabaseSchema(raw);
-  state.appliedMigrationVersion = SCHEMA_MIGRATION_VERSION;
-  const wrapped = wrapDbForWeb(raw);
-  state.promise = Promise.resolve(wrapped);
-  return { raw, wrapped };
+/**
+ * Web: install JS in-memory DB at module load (no expo-sqlite WASM).
+ * Demo seed runs via ensureDbReady() and populates accounts/transactions.
+ */
+function preferWebStubAtBoot(): void {
+  if (!WEB_USES_STUB_ONLY) return;
+  resolveWebStubDatabase('web-memory-js-at-boot');
 }
 
-function wrapDbForWeb(db: SQLite.SQLiteDatabase): SQLite.SQLiteDatabase {
-  if (Platform.OS !== 'web') return db;
-
-  return new Proxy(db, {
-    get(target, prop, receiver) {
-      const value = Reflect.get(target, prop, receiver);
-      if (typeof value !== 'function') return value;
-      if (typeof prop === 'string' && WEB_SERIALIZED_DB_METHODS.has(prop)) {
-        return (...args: unknown[]) =>
-          withWebDbOpQueue(async () => {
-            try {
-              return await (value as (...inner: unknown[]) => Promise<unknown>).apply(target, args);
-            } catch (error) {
-              if (isWebMemoryFallbackOnly() || !isWebSqliteRecoverableError(error)) {
-                throw error;
-              }
-              console.warn(
-                `[db] web SQLite ${prop} failed; recovering with in-memory database`,
-                sqliteErrorMessage(error),
-              );
-              try {
-                await target.closeAsync();
-              } catch {
-                // Broken OPFS handle — ignore close failures.
-              }
-              const { raw } = await reopenWebDatabaseInMemory();
-              const recoveredFn = Reflect.get(raw, prop);
-              if (typeof recoveredFn !== 'function') throw error;
-              // Retry on raw while still holding the op queue (avoid re-entrant Proxy deadlock).
-              return await (recoveredFn as (...inner: unknown[]) => Promise<unknown>).apply(
-                raw,
-                args,
-              );
-            }
-          });
-      }
-      return value.bind(target);
-    },
-  });
-}
+preferWebStubAtBoot();
 
 function sqliteErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -300,65 +285,77 @@ export function isDatabaseAvailable(): boolean {
 }
 
 async function openDatabaseWithName(databaseName: string): Promise<SQLite.SQLiteDatabase> {
-  const open = async (): Promise<SQLite.SQLiteDatabase> => {
-    const raw = await withDbOpenTimeout(SQLite.openDatabaseAsync(databaseName), 'SQLite open');
-    await initializeDatabaseSchema(raw);
-    const state = getDbSingletonState();
-    state.appliedMigrationVersion = SCHEMA_MIGRATION_VERSION;
-    return wrapDbForWeb(raw);
-  };
-
-  if (Platform.OS !== 'web') {
-    return open();
+  // Web never reaches here via getDb(), but keep a hard guard.
+  if (WEB_USES_STUB_ONLY) {
+    return resolveWebStubDatabase('web-open-guard');
   }
 
-  return withWebDbOpenQueue(async () => {
-    if (typeof navigator !== 'undefined' && 'locks' in navigator) {
-      return navigator.locks.request('budget-tracker-sqlite-opfs', { mode: 'exclusive' }, open);
-    }
-    return open();
-  });
+  const raw = await openNativeSqlite(databaseName);
+  await initializeDatabaseSchema(raw);
+  const state = getDbSingletonState();
+  state.appliedMigrationVersion = SCHEMA_MIGRATION_VERSION;
+  return raw;
 }
 
 async function openDatabaseOnce(): Promise<SQLite.SQLiteDatabase> {
-  if (isWebMemoryFallbackOnly()) {
-    return openDatabaseWithName(':memory:');
+  if (WEB_USES_STUB_ONLY) {
+    return resolveWebStubDatabase('web-stub-only');
   }
   return openDatabaseWithName('budget.db');
 }
 
 async function openDatabaseResilient(): Promise<SQLite.SQLiteDatabase> {
+  if (WEB_USES_STUB_ONLY) {
+    return resolveWebStubDatabase('web-stub-only');
+  }
   try {
     return await openDatabaseOnce();
   } catch (error) {
-    if (Platform.OS !== 'web') throw error;
-
     console.warn(
-      '[Boot] OPFS SQLite open failed; trying in-memory database for this session.',
-      error,
+      '[Boot] SQLite open failed; retrying file database once.',
+      sqliteErrorMessage(error),
     );
-    setWebMemoryFallbackOnly();
-    return openDatabaseWithName(':memory:');
+    try {
+      return await openDatabaseWithName('budget.db');
+    } catch (retryError) {
+      console.warn('[Boot] SQLite open retry failed', sqliteErrorMessage(retryError));
+      throw retryError;
+    }
   }
 }
 
-function withDbOpenTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`${label} timed out after ${DB_OPEN_TIMEOUT_MS}ms`)),
-      DB_OPEN_TIMEOUT_MS,
-    );
-    promise.then(
+/**
+ * Native-only open with a hard timeout. Web never calls this (stub-only path).
+ */
+async function openNativeSqlite(databaseName: string): Promise<SQLite.SQLiteDatabase> {
+  const openPromise = SQLite.openDatabaseAsync(databaseName);
+  void openPromise.catch(() => {});
+
+  const timeoutMs = DB_OPEN_TIMEOUT_MS;
+  const result = new Promise<SQLite.SQLiteDatabase>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(`Native SQLite open exceeded ${timeoutMs}ms`));
+    }, timeoutMs);
+    openPromise.then(
       (value) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
         resolve(value);
       },
       (error: unknown) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
         reject(error);
       },
     );
   });
+  void result.catch(() => {});
+  return result;
 }
 
 /** Parses stored `transactions.date` for chronological ordering (ISO from device / API). */
@@ -545,17 +542,30 @@ async function forceApplyIncrementalMigrations(db: SQLite.SQLiteDatabase): Promi
 }
 
 export async function getDb(): Promise<SQLite.SQLiteDatabase> {
+  // Web: immediate noop stub — never awaits expo-sqlite / OPFS / :memory:.
+  if (WEB_USES_STUB_ONLY) {
+    return resolveWebStubDatabase('getDb-web-stub');
+  }
+
   const state = getDbSingletonState();
   if (!state.promise) {
     state.openFailed = false;
     state.appliedMigrationVersion = 0;
-    state.promise = openDatabaseResilient().catch((error: unknown) => {
-      state.openFailed = true;
-      state.promise = null;
-      state.appliedMigrationVersion = 0;
-      console.warn('[Boot] SQLite open failed', error);
-      throw error;
-    });
+    const opening = openDatabaseResilient()
+      .then((db) => {
+        state.openFailed = false;
+        return db;
+      })
+      .catch((error: unknown) => {
+        state.openFailed = true;
+        state.promise = null;
+        state.appliedMigrationVersion = 0;
+        console.warn('[Boot] SQLite open failed', sqliteErrorMessage(error));
+        throw error;
+      });
+    // Absorb unhandledrejection for floating callers (void getDb() / fire-and-forget).
+    void opening.catch(() => {});
+    state.promise = opening;
   }
   const db = await state.promise;
   if ((state.appliedMigrationVersion ?? 0) < SCHEMA_MIGRATION_VERSION) {
@@ -1311,7 +1321,10 @@ export async function getMerchantOverrides(): Promise<MerchantOverride[]> {
   }));
 }
 
-export async function upsertMerchantOverride(override: MerchantOverride): Promise<void> {
+export async function upsertMerchantOverride(
+  override: MerchantOverride,
+  options?: { emit?: boolean },
+): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `INSERT INTO merchant_overrides (original_name, display_name, logo_url, icon, use_auto_logo, hidden, updated_at)
@@ -1333,7 +1346,9 @@ export async function upsertMerchantOverride(override: MerchantOverride): Promis
       override.updatedAt,
     ],
   );
-  dataEvents.emit();
+  if (options?.emit !== false) {
+    dataEvents.emit();
+  }
 }
 
 export async function getSavingsGoals(): Promise<SavingsGoal[]> {

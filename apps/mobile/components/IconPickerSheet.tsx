@@ -8,8 +8,11 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MdiIcon } from '@/components/MdiIcon';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
@@ -42,6 +45,8 @@ export function IconPickerSheet({
 }: Props) {
   const { colors, isLight } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const sheetHeight = Math.round(windowHeight * 0.88);
   const [query, setQuery] = useState('');
 
   const resolvedSelected = useMemo(
@@ -76,18 +81,22 @@ export function IconPickerSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
-      <View style={[styles.backdrop, { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' }]}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboard}>
-          <View
-            style={[
-              styles.sheet,
-              {
-                backgroundColor: colors.containerBackground,
-                borderColor: colors.containerBorder,
-                paddingBottom: Math.max(insets.bottom, spacing.md),
-              },
-            ]}
-          >
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={[styles.backdrop, { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} accessibilityLabel="Fermer" />
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboard}>
+            <DraggableSheetSurface
+              onClose={handleClose}
+              sheetHeight={sheetHeight}
+              style={[
+                styles.sheet,
+                {
+                  backgroundColor: colors.containerBackground,
+                  borderColor: colors.containerBorder,
+                  paddingBottom: Math.max(insets.bottom, spacing.md),
+                },
+              ]}
+            >
             <View style={[styles.handle, { backgroundColor: colors.borderStrong }]} />
             <View style={styles.header}>
               <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
@@ -169,9 +178,10 @@ export function IconPickerSheet({
                 );
               })}
             </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </View>
+            </DraggableSheetSurface>
+          </KeyboardAvoidingView>
+        </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

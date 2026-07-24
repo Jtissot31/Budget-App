@@ -10,6 +10,7 @@ import {
   typography,
   typographyKit,
 } from '@/constants/theme';
+import { pressableRowMotionStyle } from '@/constants/motionKit';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 import { UNIFORM_ROW_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
@@ -76,7 +77,7 @@ function RowShell({
         tapHaptic();
         onPress();
       }}
-      style={({ pressed }) => [pressed && styles.pressed]}
+      style={({ pressed }) => [pressableRowMotionStyle(pressed)]}
     >
       {content}
     </Pressable>
@@ -94,7 +95,12 @@ function RowCopy({
   return (
     <View style={styles.copy}>
       {icon ? (
-        <View style={[styles.iconWell, { backgroundColor: colors.surfaceElevated }]}>
+        <View
+          style={[
+            styles.iconWell,
+            { backgroundColor: colors.surfaceElevated },
+          ]}
+        >
           <AppIcon
             family="ionicons"
             name={icon}
@@ -153,7 +159,9 @@ export function SettingsNavigationRow({
             {value}
           </Text>
         ) : null}
-        {accessory ?? <AppIcon family="ionicons" name="chevron-forward" size={18} color={colors.textMuted} />}
+        {accessory ?? (
+          <AppIcon family="ionicons" name="chevron-forward" size={18} color={colors.textMuted} />
+        )}
       </View>
     </RowShell>
   );
@@ -203,9 +211,6 @@ const styles = StyleSheet.create({
     minHeight: UNIFORM_ROW_MIN_HEIGHT,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-  },
-  pressed: {
-    opacity: 0.82,
   },
   copy: {
     flex: 1,

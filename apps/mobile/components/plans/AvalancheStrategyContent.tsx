@@ -83,12 +83,24 @@ const MILESTONE_ARROWS: readonly { x: number; y: number }[] = [
   { x: 202, y: 80 },
 ];
 
-const STEPS: readonly string[] = [
-  'Classe toutes tes dettes du taux d’intérêt le plus élevé au plus bas (peu importe le solde).',
-  'Paie le montant minimum sur toutes tes dettes, sauf celle au taux le plus élevé.',
-  'Mets tout l’argent qu’il te reste sur cette dette la plus coûteuse, jusqu’à ce qu’elle soit remboursée.',
-  'Passe à la dette au taux le plus élevé suivant, et répète — jusqu’à ce que tout soit payé.',
-];
+const STEPS = [
+  {
+    title: 'Classer par taux',
+    summary: 'Du taux d’intérêt le plus élevé au plus bas (peu importe le solde).',
+  },
+  {
+    title: 'Payer les minimums',
+    summary: 'Sur toutes les dettes, sauf celle au taux le plus élevé.',
+  },
+  {
+    title: 'Surplus au plus haut taux',
+    summary: 'Tout l’argent restant sur la dette la plus coûteuse jusqu’à zéro.',
+  },
+  {
+    title: 'Enchaîner la suivante',
+    summary: 'Passer au prochain taux le plus élevé — jusqu’à tout rembourser.',
+  },
+] as const;
 
 /** Copy éducatif « Pourquoi ça marche » — pas le teaser catalogue. */
 const WHY_IT_WORKS =

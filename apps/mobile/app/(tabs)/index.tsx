@@ -1092,29 +1092,76 @@ export default function HomeScreen() {
   }, []);
 
   const loadSparklineTransactions = useCallback(async () => {
-    const loadedTransactions = await getTransactionsSince(sparklineTransactionsSinceIso());
-    setTransactions(loadedTransactions);
+    try {
+      const loadedTransactions = await getTransactionsSince(sparklineTransactionsSinceIso());
+      setTransactions(loadedTransactions);
+    } catch (error) {
+      console.warn('[Accueil] sparkline load failed', error);
+    }
   }, []);
 
   const loadCore = useCallback(async () => {
-    await ensureDbReady();
-    const [
-      name,
-      recurring,
-      loadedSimulatedAccounts,
-      incomeTx,
-    ] = await Promise.all([
-      getUserDisplayName(),
-      getRecurringPayments(),
-      getSimulatedAccounts(),
-      getRecentIncomeTransactions(PAYCHECK_TRANSACTION_LOOKBACK_LIMIT),
-    ]);
+    try {
+      // Web JS memory DB + demo seed is fast; native may need a short wait for SQLite/seed.
+      await Promise.race([
+        ensureDbReady().catch((error: unknown) => {
+          console.warn('[Accueil] ensureDbReady failed', error);
+        }),
+        new Promise<void>((resolve) =>
+          setTimeout(resolve, Platform.OS === 'web' ? 8_000 : 4_000),
+        ),
+      ]);
 
-    setDisplayName(name);
-    setRecurringPayments(recurring);
-    setIncomeTransactions(incomeTx);
-    setSimulatedAccounts(loadedSimulatedAccounts);
-    setIsReady(true);
+      const loadRows = Promise.allSettled([
+        getUserDisplayName(),
+        getRecurringPayments(),
+        getSimulatedAccounts(),
+        getRecentIncomeTransactions(PAYCHECK_TRANSACTION_LOOKBACK_LIMIT),
+      ]);
+
+      const settled = await Promise.race([
+        loadRows,
+        new Promise<'timeout'>((resolve) =>
+          setTimeout(() => resolve('timeout'), Platform.OS === 'web' ? 8_000 : 6_000),
+        ),
+      ]);
+
+      if (settled === 'timeout') {
+        console.warn('[Accueil] data load timed out — rendering with defaults');
+        void loadRows.then(([nameResult, recurringResult, accountsResult, incomeResult]) => {
+          if (nameResult.status === 'fulfilled') setDisplayName(nameResult.value);
+          if (recurringResult.status === 'fulfilled') setRecurringPayments(recurringResult.value);
+          if (accountsResult.status === 'fulfilled') setSimulatedAccounts(accountsResult.value);
+          if (incomeResult.status === 'fulfilled') setIncomeTransactions(incomeResult.value);
+        });
+      } else {
+        const [nameResult, recurringResult, accountsResult, incomeResult] = settled;
+        if (nameResult.status === 'fulfilled') {
+          setDisplayName(nameResult.value);
+        } else {
+          console.warn('[Accueil] display name load failed', nameResult.reason);
+        }
+        if (recurringResult.status === 'fulfilled') {
+          setRecurringPayments(recurringResult.value);
+        } else {
+          console.warn('[Accueil] recurring payments load failed', recurringResult.reason);
+        }
+        if (accountsResult.status === 'fulfilled') {
+          setSimulatedAccounts(accountsResult.value);
+        } else {
+          console.warn('[Accueil] accounts load failed', accountsResult.reason);
+        }
+        if (incomeResult.status === 'fulfilled') {
+          setIncomeTransactions(incomeResult.value);
+        } else {
+          console.warn('[Accueil] income transactions load failed', incomeResult.reason);
+        }
+      }
+    } catch (error) {
+      console.warn('[Accueil] load failed', error);
+    } finally {
+      setIsReady(true);
+    }
   }, []);
 
   const load = useCallback(async () => {
@@ -1152,9 +1199,10 @@ export default function HomeScreen() {
     void checkPaycheckEntryPrompt();
   }, [isReady, alertReminders, checkPaycheckEntryPrompt]);
 
-  useRefreshOnFocus(load, { skipInitial: true });
-  useRefreshOnFocus(checkPaycheckEntryPrompt, { skipInitial: true });
-  useRefreshOnFocus(refreshAlertCenter, { skipInitial: true });
+  // Skip thrashing Accueil when hopping between tabs within a few seconds.
+  useRefreshOnFocus(load, { skipInitial: true, minIntervalMs: 8_000 });
+  useRefreshOnFocus(checkPaycheckEntryPrompt, { skipInitial: true, minIntervalMs: 8_000 });
+  useRefreshOnFocus(refreshAlertCenter, { skipInitial: true, minIntervalMs: 8_000 });
   useScrollToTopOnFocus(
     useCallback(() => {
       scrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -1163,9 +1211,14 @@ export default function HomeScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await syncWithServer();
-    await Promise.all([loadCore(), loadSparklineTransactions()]);
-    setRefreshing(false);
+    try {
+      await syncWithServer();
+      await Promise.all([loadCore(), loadSparklineTransactions()]);
+    } catch (error) {
+      console.warn('[Accueil] refresh failed', error);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const checkingBalance = useMemo(

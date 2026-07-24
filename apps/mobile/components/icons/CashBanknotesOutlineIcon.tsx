@@ -1,101 +1,48 @@
-import type { ComponentProps } from 'react';
 import type { LucideProps } from 'lucide-react-native';
-import Svg, { Circle, Rect } from 'react-native-svg';
+import { Asset } from 'expo-asset';
+import { Image } from 'expo-image';
+
+/** Colorful stacked banknotes — portefeuille / Argent Cash (no monochrome tint). */
+export const CASH_BANKNOTES_ICON = require('@/assets/icons/cash-banknotes.png');
+
+let cachedLogoUri: string | null = null;
+
+/**
+ * Metro / Expo asset URI for logo tiles (`RemoteLogoImage` / `LogoIconFrame`).
+ * Uses `expo-asset` — `Image.resolveAssetSource` is missing on web.
+ */
+export function cashBanknotesLogoUri(): string {
+  if (cachedLogoUri) return cachedLogoUri;
+  cachedLogoUri = Asset.fromModule(CASH_BANKNOTES_ICON).uri ?? '';
+  return cachedLogoUri;
+}
 
 type CashBanknotesOutlineIconProps = {
   size: number;
-  color: string;
+  /** Ignored — illustration keeps its own colors. */
+  color?: string;
   strokeWidth?: number;
 };
 
-const ROUND: Pick<ComponentProps<typeof Rect>, 'strokeLinecap' | 'strokeLinejoin'> = {
-  strokeLinecap: 'round',
-  strokeLinejoin: 'round',
-};
-
 /**
- * Stacked banknotes + coin — outline stroke (svgrepo cash-coin silhouette).
- * Monochrome strokes only; AppIcon passes account tone (primary green on Portefeuille cash rows).
+ * Stacked banknotes illustration for cash money accounts.
+ * Full-color PNG (transparent bg); do not apply theme green tint.
  */
-export function CashBanknotesOutlineIcon({
-  size,
-  color,
-  strokeWidth = 2,
-}: CashBanknotesOutlineIconProps) {
+export function CashBanknotesOutlineIcon({ size }: CashBanknotesOutlineIconProps) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Rect
-        x={1.75}
-        y={2}
-        width={13.75}
-        height={8.5}
-        rx={1.25}
-        stroke={color}
-        strokeWidth={strokeWidth}
-        fill="none"
-        {...ROUND}
-      />
-      <Rect
-        x={3.75}
-        y={4.25}
-        width={13.75}
-        height={8.5}
-        rx={1.25}
-        stroke={color}
-        strokeWidth={strokeWidth}
-        fill="none"
-        {...ROUND}
-      />
-      <Rect
-        x={5.75}
-        y={5.75}
-        width={9.75}
-        height={5.5}
-        rx={0.75}
-        stroke={color}
-        strokeWidth={strokeWidth}
-        fill="none"
-        {...ROUND}
-      />
-      <Circle
-        cx={10.6}
-        cy={8.5}
-        r={1.55}
-        stroke={color}
-        strokeWidth={strokeWidth}
-        fill="none"
-      />
-      <Circle
-        cx={17.35}
-        cy={17.15}
-        r={3.85}
-        stroke={color}
-        strokeWidth={strokeWidth}
-        fill="none"
-      />
-      <Circle
-        cx={17.35}
-        cy={17.15}
-        r={2.15}
-        stroke={color}
-        strokeWidth={strokeWidth}
-        fill="none"
-      />
-    </Svg>
+    <Image
+      source={CASH_BANKNOTES_ICON}
+      style={{ width: size, height: size }}
+      contentFit="contain"
+      contentPosition="center"
+      accessibilityLabel="Argent cash"
+    />
   );
 }
 
 /** Lucide-compatible export for AppIcon / selectedLucideIcons. */
 export function CashBanknotesStackIcon({
   size = 24,
-  color = 'currentColor',
-  strokeWidth = 2,
 }: LucideProps) {
-  return (
-    <CashBanknotesOutlineIcon
-      size={Number(size)}
-      color={String(color)}
-      strokeWidth={Number(strokeWidth)}
-    />
-  );
+  return <CashBanknotesOutlineIcon size={Number(size)} />;
 }

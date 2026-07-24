@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -6,11 +6,15 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 
 import { BottomSheet } from '@/components/BottomSheet';
 
+import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
+
 import { DetailSingleLineRow, type DetailSectionRow } from '@/components/DetailSectionRows';
 
 import { TransactionInsightCard } from '@/components/TransactionInsightCard';
 
-import { EditableField } from '@/components/EditableField';
+import { EditableField, type EditableFieldHandle } from '@/components/EditableField';
+
+import { OverflowMenuButton } from '@/components/OverflowMenuButton';
 
 import { ProgressBar } from '@/components/ProgressBar';
 
@@ -32,7 +36,7 @@ import {
   typographyKit,
 } from '@/constants/theme';
 
-import { updateCategoryLimit, updateCategoryName } from '@/lib/budgetCategories';
+import { deleteCategory, updateCategoryLimit, updateCategoryName } from '@/lib/budgetCategories';
 
 import type { BudgetCategoryUiModel } from '@/lib/budgetCategoryModel';
 
@@ -47,6 +51,7 @@ import {
 } from '@/lib/categoryBudgetUsage';
 
 import {
+  deleteCategoryBudget,
   getTransactionsForBudgetCategoryInMonth,
   sortTransactionsNewestFirst,
   upsertCategory,
@@ -136,11 +141,14 @@ export function BudgetCategoryDetailSheet({
   isCurrentMonth = true,
 }: Props) {
   const { colors, isLight } = useAppTheme();
+  const limitEditRef = useRef<EditableFieldHandle>(null);
   const [localName, setLocalName] = useState('');
   const [localLimit, setLocalLimit] = useState(0);
   const [transactionsExpanded, setTransactionsExpanded] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!category) return;
@@ -152,6 +160,8 @@ export function BudgetCategoryDetailSheet({
     setTransactionsExpanded(false);
     setTransactions([]);
     setTransactionsLoading(false);
+    setConfirmDeleteVisible(false);
+    setDeleting(false);
   }, [category?.id, visible, displayMonth]);
 
   const usage = useMemo(() => {
@@ -274,9 +284,38 @@ export function BudgetCategoryDetailSheet({
     [],
   );
 
+  const handlePressEdit = useCallback(() => {
+    tapHaptic();
+    limitEditRef.current?.startEditing();
+  }, []);
+
+  const handlePressDelete = useCallback(() => {
+    tapHaptic();
+    setConfirmDeleteVisible(true);
+  }, []);
+
+  /**
+   * Removes this category from the monthly budget list (AsyncStorage + category_budgets).
+   * Does not delete transactions — spend history stays tagged; taxonomy row is kept if still referenced.
+   */
+  const handleConfirmDelete = useCallback(async () => {
+    if (!category || deleting) return;
+    setConfirmDeleteVisible(false);
+    setDeleting(true);
+    try {
+      await Promise.all([deleteCategoryBudget(category.id), deleteCategory(category.id)]);
+      successHaptic();
+      onSaved?.();
+      onClose();
+    } catch {
+      setDeleting(false);
+    }
+  }, [category, deleting, onClose, onSaved]);
+
   if (!category) return null;
 
   return (
+    <>
     <BottomSheet
       visible={visible}
       onClose={onClose}
@@ -298,22 +337,41 @@ export function BudgetCategoryDetailSheet({
           />
         </View>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Fermer les détails"
-          hitSlop={10}
-          onPress={onClose}
-          style={({ pressed }) => [
-            styles.closeButton,
-            {
-              backgroundColor: colors.surfaceSolid,
-              borderColor: colors.borderStrong,
-            },
-            pressed && styles.pressed,
-          ]}
-        >
-          <AppIcon family="ionicons" name="close" size={18} color={colors.text} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <OverflowMenuButton
+            accessibilityLabel="Options de la catégorie"
+            items={[
+              {
+                key: 'edit',
+                label: 'Modifier',
+                onPress: handlePressEdit,
+              },
+              {
+                key: 'delete',
+                label: 'Supprimer',
+                icon: 'trash-outline',
+                destructive: true,
+                onPress: handlePressDelete,
+              },
+            ]}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Fermer les détails"
+            hitSlop={10}
+            onPress={onClose}
+            style={({ pressed }) => [
+              styles.closeButton,
+              {
+                backgroundColor: colors.surfaceSolid,
+                borderColor: colors.borderStrong,
+              },
+              pressed && styles.pressed,
+            ]}
+          >
+            <AppIcon family="ionicons" name="close" size={18} color={colors.text} />
+          </Pressable>
+        </View>
       </View>
 
       <View style={[accountDetailHeroBlockStyle(), styles.heroBlock]}>
@@ -366,6 +424,7 @@ export function BudgetCategoryDetailSheet({
                 </Text>
               </View>
               <EditableField
+                editHandleRef={limitEditRef}
                 type="money"
                 value={String(localLimit)}
                 onSave={handleSaveLimit}
@@ -458,6 +517,15 @@ export function BudgetCategoryDetailSheet({
         ) : null}
       </View>
     </BottomSheet>
+
+    <ConfirmDeleteModal
+      visible={confirmDeleteVisible}
+      title="Supprimer cette catégorie ?"
+      message={`Retirer « ${localName || category.name} » du budget ? Les transactions existantes restent dans l'historique.`}
+      onConfirm={() => void handleConfirmDelete()}
+      onCancel={() => setConfirmDeleteVisible(false)}
+    />
+    </>
   );
 }
 
@@ -479,6 +547,12 @@ const styles = StyleSheet.create({
   headerText: {
     flex: 1,
     minWidth: 0,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flexShrink: 0,
   },
   heroLabelField: {
     alignSelf: 'stretch',

@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
+import { ReactNode, useEffect, useMemo, useRef } from 'react';
 import {
   Modal,
   Pressable,
@@ -9,20 +9,17 @@ import {
   ViewStyle,
   useWindowDimensions,
 } from 'react-native';
-import Animated, {
-  Easing,
-  runOnJS,
-  useAnimatedScrollHandler,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated from 'react-native-reanimated';
+import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { radius, spacing, typography, type AppColors } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
+import {
+  SHEET_HANDLE_DRAG_ZONE_HEIGHT,
+  useDraggableSheetGesture,
+  type SheetSnap,
+} from '@/lib/sheet/useDraggableSheetGesture';
 
-type Props = {
-  visible: boolean;
+type SharedProps = {
   onClose: () => void;
   title?: string;
   /** Inline control shown at the trailing edge of the title row (ex. pencil). */
@@ -36,179 +33,144 @@ type Props = {
    * (use for nested `FlatList` / virtualization).
    */
   scrollable?: boolean;
+  /** Start mid-height (`collapsed`) or full (`expanded`). Default expanded. */
+  initialSnap?: SheetSnap;
+  /** Optional custom handle node; default pill grabber. */
+  handle?: ReactNode;
+  /** Hide built-in title row when the caller renders its own header. */
+  hideTitleRow?: boolean;
 };
 
-const DISMISS_DRAG_DISTANCE = 96;
-const DISMISS_VELOCITY = 650;
-const DISMISS_ANIMATION_MS = 240;
-const SPRING_BACK_MS = 200;
-/** Top strip (handle + padding) — always draggable even when nested lists scroll. */
-const HANDLE_DRAG_ZONE_HEIGHT = 56;
+type ModalProps = SharedProps & {
+  visible: boolean;
+  /** When true, skip RN Modal (caller is already a transparent route / outer Modal). */
+  embedded?: false;
+};
 
-export function BottomSheet({
-  visible,
-  onClose,
-  title,
-  titleAccessory,
-  children,
-  sheetStyle,
-  scrollContentContainerStyle,
-  scrollable = true,
-}: Props) {
+type EmbeddedProps = SharedProps & {
+  visible?: boolean;
+  embedded: true;
+};
+
+export type BottomSheetProps = ModalProps | EmbeddedProps;
+
+/**
+ * Unified bottom sheet chrome: grabber + vertical drag (up = expand, down = collapse/dismiss).
+ * Use `embedded` for transparentModal routes (e.g. add-transaction) that already own the backdrop.
+ */
+export function BottomSheet(props: BottomSheetProps) {
+  const {
+    onClose,
+    title,
+    titleAccessory,
+    children,
+    sheetStyle,
+    scrollContentContainerStyle,
+    scrollable = true,
+    initialSnap = 'expanded',
+    handle,
+    hideTitleRow = false,
+  } = props;
+  const visible = props.embedded ? true : props.visible;
+  const embedded = props.embedded === true;
+
   const { colors } = useAppTheme();
   const { height: windowHeight } = useWindowDimensions();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   /** Fixed viewport share so flex + `FlatList` layouts measure reliably outside `ScrollView`. */
   const sheetFixedHeight = Math.min(windowHeight * 0.88, windowHeight);
-
-  const translateY = useSharedValue(0);
-  const scrollY = useSharedValue(0);
-  const isDismissing = useSharedValue(false);
-  const closeEmittedRef = useRef(false);
   const wasVisibleRef = useRef(false);
 
-  const resetSheetPosition = useCallback(() => {
-    translateY.value = 0;
-    scrollY.value = 0;
-    isDismissing.value = false;
-  }, [isDismissing, scrollY, translateY]);
-
-  const requestClose = useCallback(() => {
-    if (closeEmittedRef.current) return;
-    closeEmittedRef.current = true;
-    onClose();
-  }, [onClose]);
+  const {
+    panGesture,
+    scrollNativeGesture,
+    scrollHandler,
+    sheetAnimatedStyle,
+    backdropAnimatedStyle,
+    resetSheetPosition,
+    requestClose,
+  } = useDraggableSheetGesture({
+    onClose,
+    sheetHeight: sheetFixedHeight,
+    initialSnap,
+    scrollable,
+  });
 
   useEffect(() => {
+    if (embedded) {
+      resetSheetPosition(initialSnap);
+      return;
+    }
     if (visible && !wasVisibleRef.current) {
-      closeEmittedRef.current = false;
-      resetSheetPosition();
+      resetSheetPosition(initialSnap);
     }
     wasVisibleRef.current = visible;
-  }, [visible, resetSheetPosition]);
+  }, [embedded, initialSnap, resetSheetPosition, visible]);
 
-  const finishDismiss = useCallback(() => {
-    requestClose();
-  }, [requestClose]);
-
-  const scrollNativeGesture = useMemo(() => Gesture.Native(), []);
-
-  const panGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .activeOffsetY(6)
-        .failOffsetX([-28, 28])
-        .simultaneousWithExternalGesture(scrollNativeGesture)
-        .onUpdate((event) => {
-          'worklet';
-          if (isDismissing.value) return;
-
-          const inHandleZone = event.y <= HANDLE_DRAG_ZONE_HEIGHT;
-          const canDrag =
-            inHandleZone || (scrollable && scrollY.value <= 0.5);
-          if (canDrag && event.translationY > 0) {
-            translateY.value = event.translationY;
-          }
-        })
-        .onEnd((event) => {
-          'worklet';
-          if (isDismissing.value) return;
-
-          const inHandleZone = event.y <= HANDLE_DRAG_ZONE_HEIGHT;
-          const canDismiss =
-            inHandleZone || (scrollable && scrollY.value <= 0.5);
-          const shouldDismiss =
-            canDismiss &&
-            (event.translationY > DISMISS_DRAG_DISTANCE || event.velocityY > DISMISS_VELOCITY);
-
-          if (shouldDismiss) {
-            isDismissing.value = true;
-            translateY.value = withTiming(
-              sheetFixedHeight,
-              { duration: DISMISS_ANIMATION_MS, easing: Easing.out(Easing.cubic) },
-              (finished) => {
-                if (finished) {
-                  runOnJS(finishDismiss)();
-                }
-              },
-            );
-            return;
-          }
-
-          if (translateY.value > 0) {
-            translateY.value = withTiming(0, {
-              duration: SPRING_BACK_MS,
-              easing: Easing.out(Easing.cubic),
-            });
-          }
-        }),
-    [finishDismiss, isDismissing, scrollNativeGesture, scrollY, scrollable, sheetFixedHeight, translateY],
+  const sheetBody = (
+    <GestureDetector gesture={panGesture}>
+      <Animated.View
+        style={[
+          styles.sheet,
+          !scrollable && { height: sheetFixedHeight },
+          sheetStyle,
+          sheetAnimatedStyle,
+        ]}
+      >
+        <View style={styles.handleHitArea}>
+          {handle ?? <View style={styles.handle} />}
+        </View>
+        {title && !hideTitleRow ? (
+          <View style={styles.titleRow}>
+            <Text style={styles.title} numberOfLines={2}>
+              {title}
+            </Text>
+            {titleAccessory}
+          </View>
+        ) : null}
+        {scrollable ? (
+          <GestureDetector gesture={scrollNativeGesture}>
+            <Animated.ScrollView
+              style={styles.scroll}
+              contentContainerStyle={[styles.content, scrollContentContainerStyle]}
+              showsVerticalScrollIndicator={false}
+              onScroll={scrollHandler}
+              scrollEventThrottle={16}
+              bounces
+              keyboardShouldPersistTaps="handled"
+            >
+              {children}
+            </Animated.ScrollView>
+          </GestureDetector>
+        ) : (
+          <View style={[styles.nonScrollBody, scrollContentContainerStyle]}>{children}</View>
+        )}
+      </Animated.View>
+    </GestureDetector>
   );
 
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      scrollY.value = event.contentOffset.y;
-    },
-  });
-
-  const sheetAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
-
-  const backdropAnimatedStyle = useAnimatedStyle(() => {
-    const progress = Math.min(translateY.value / (sheetFixedHeight * 0.45), 1);
-    return { opacity: 1 - progress * 0.55 };
-  });
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={requestClose}>
+  if (embedded) {
+    return (
       <GestureHandlerRootView style={styles.modalRoot}>
         <View style={styles.overlay}>
           <Animated.View style={[styles.backdrop, backdropAnimatedStyle]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={requestClose} accessibilityLabel="Fermer" />
           </Animated.View>
+          {sheetBody}
+        </View>
+      </GestureHandlerRootView>
+    );
+  }
 
-          <GestureDetector gesture={panGesture}>
-            <Animated.View
-              style={[
-                styles.sheet,
-                !scrollable && { height: sheetFixedHeight },
-                sheetStyle,
-                sheetAnimatedStyle,
-              ]}
-            >
-              <View style={styles.handleHitArea}>
-                <View style={styles.handle} />
-              </View>
-              {title ? (
-                <View style={styles.titleRow}>
-                  <Text style={styles.title} numberOfLines={2}>
-                    {title}
-                  </Text>
-                  {titleAccessory}
-                </View>
-              ) : null}
-              {scrollable ? (
-                <GestureDetector gesture={scrollNativeGesture}>
-                  <Animated.ScrollView
-                    style={styles.scroll}
-                    contentContainerStyle={[styles.content, scrollContentContainerStyle]}
-                    showsVerticalScrollIndicator={false}
-                    onScroll={scrollHandler}
-                    scrollEventThrottle={16}
-                    bounces
-                  >
-                    {children}
-                  </Animated.ScrollView>
-                </GestureDetector>
-              ) : (
-                <View style={[styles.nonScrollBody, scrollContentContainerStyle]}>
-                  {children}
-                </View>
-              )}
-            </Animated.View>
-          </GestureDetector>
+  return (
+    <Modal visible={visible} animationType="none" transparent onRequestClose={requestClose}>
+      <GestureHandlerRootView style={styles.modalRoot}>
+        <View style={styles.overlay}>
+          <Animated.View style={[styles.backdrop, backdropAnimatedStyle]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={requestClose} accessibilityLabel="Fermer" />
+          </Animated.View>
+          {sheetBody}
         </View>
       </GestureHandlerRootView>
     </Modal>
@@ -243,7 +205,7 @@ function createStyles(colors: AppColors) {
       alignSelf: 'stretch',
       alignItems: 'center',
       justifyContent: 'center',
-      height: HANDLE_DRAG_ZONE_HEIGHT,
+      height: SHEET_HANDLE_DRAG_ZONE_HEIGHT,
       marginTop: 0,
       marginBottom: 0,
     },

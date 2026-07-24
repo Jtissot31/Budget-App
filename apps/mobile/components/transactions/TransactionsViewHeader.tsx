@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/icons/AppIcon';
@@ -33,10 +34,8 @@ const HISTORY_FILTER_OPTIONS: { id: HistoryTypeFilter; label: string }[] = [
 type Props = {
   topInset: number;
   titleColor: string;
-  mutedColor: string;
   activeView: TransactionsViewTab;
   onChangeView: (view: TransactionsViewTab) => void;
-  onPressScan: () => void;
   showHistoryToolbar: boolean;
   search: string;
   onSearchChange: (text: string) => void;
@@ -49,10 +48,8 @@ type Props = {
 export function TransactionsViewHeader({
   topInset,
   titleColor,
-  mutedColor,
   activeView,
   onChangeView,
-  onPressScan,
   showHistoryToolbar,
   search,
   onSearchChange,
@@ -65,15 +62,14 @@ export function TransactionsViewHeader({
   const insets = useSafeAreaInsets();
   const contentGutter = Platform.OS === 'web' ? 0 : screenHorizontalGutter(insets);
   const filterActive = historyTypeFilter !== 'all';
+  const searchInputRef = useRef<TextInput>(null);
+  const hasQuery = search.trim().length > 0;
 
   return (
     <>
       <View style={{ paddingTop: topInset + SCREEN_TOP_GUTTER, paddingHorizontal: contentGutter }}>
         <View style={styles.topBar}>
           <Text style={[styles.title, { color: titleColor }]}>Transactions</Text>
-          <Pressable onPress={onPressScan} hitSlop={12} style={styles.scanIcon}>
-            <AppIcon family="ionicons" name="scan-outline" size={22} color={mutedColor} />
-          </Pressable>
         </View>
         <View style={showHistoryToolbar ? styles.viewTabsHistory : undefined}>
           <SegmentedTabs
@@ -83,27 +79,50 @@ export function TransactionsViewHeader({
               tapHaptic();
               onChangeView(id);
             }}
+            activeLabelColor="rgba(255,255,255,0.85)"
             showDivider={false}
           />
         </View>
       </View>
       {showHistoryToolbar ? (
-        <View style={[styles.historyToolbar, { paddingHorizontal: contentGutter }]}>
-          <View style={styles.searchFilterRow}>
+        <View
+          style={[
+            styles.historyToolbar,
+            { paddingHorizontal: contentGutter, backgroundColor: colors.background },
+          ]}
+        >
+          <View style={[styles.searchFilterBlock, { backgroundColor: colors.background }]}>
             <View
               style={[
                 styles.searchPill,
-                { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
+                { backgroundColor: colors.background, borderColor: colors.borderSubtle },
               ]}
             >
-              <AppIcon family="ionicons" name="search-outline" size={18} color={colors.textMuted} />
+              <AppIcon family="ionicons" name="search-outline" size={16} color={colors.textMuted} />
               <TextInput
+                ref={searchInputRef}
                 style={[styles.searchInput, { color: colors.text }]}
                 placeholder="Rechercher"
                 placeholderTextColor={colors.textMuted}
                 value={search}
                 onChangeText={onSearchChange}
+                returnKeyType="search"
+                accessibilityLabel="Rechercher"
               />
+              {hasQuery ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Effacer la recherche"
+                  hitSlop={8}
+                  onPress={() => {
+                    tapHaptic();
+                    onSearchChange('');
+                  }}
+                  style={({ pressed }) => [styles.clearSearchBtn, pressed && styles.pressed]}
+                >
+                  <AppIcon family="ionicons" name="close-circle" size={18} color={colors.textMuted} />
+                </Pressable>
+              ) : null}
             </View>
             <Pressable
               accessibilityRole="button"
@@ -116,7 +135,10 @@ export function TransactionsViewHeader({
               }}
               style={({ pressed }) => [
                 styles.filterBtn,
-                { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
+                {
+                  backgroundColor: filterActive ? colors.containerBackground : colors.background,
+                  borderColor: filterActive ? colors.containerBorder : colors.borderSubtle,
+                },
                 pressed && styles.pressed,
               ]}
             >
@@ -124,7 +146,7 @@ export function TransactionsViewHeader({
                 family="ionicons"
                 name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
                 size={20}
-                color={filterActive ? colors.primary : colors.textMuted}
+                color={filterActive ? colors.text : colors.textMuted}
               />
             </Pressable>
           </View>
@@ -163,14 +185,13 @@ const styles = StyleSheet.create({
     ...PAGE_TITLE_STYLE,
     flex: 1,
   },
-  scanIcon: { padding: 4 },
   viewTabsHistory: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   historyToolbar: {
-    marginBottom: 44,
+    marginBottom: spacing.xl,
   },
-  searchFilterRow: {
+  searchFilterBlock: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -182,8 +203,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     minHeight: 44,
-    borderRadius: radius.md,
-    borderWidth: 1,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
@@ -194,18 +215,21 @@ const styles = StyleSheet.create({
     padding: 0,
     includeFontPadding: false,
   },
+  clearSearchBtn: {
+    padding: 4,
+  },
   filterBtn: {
     width: 44,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radius.md,
-    borderWidth: 1,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
   },
   historyFilterWrap: {
     marginBottom: 0,
   },
   pressed: {
-    opacity: 0.78,
+    opacity: 0.7,
   },
 });

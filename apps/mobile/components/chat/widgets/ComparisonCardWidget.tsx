@@ -1,7 +1,13 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { spacing } from '@/constants/theme';
 import type { ComparisonCardData } from '@/types/aiWidgets';
-import { aiWidgetAmountTypography, aiWidgetFonts, aiWidgetTypography, useAIWidgetColors } from './theme';
+import {
+  aiWidgetAmountTextProps,
+  aiWidgetAmountTypography,
+  aiWidgetFonts,
+  aiWidgetTypography,
+  useAIWidgetColors,
+} from './theme';
 import { WidgetCardShell } from './WidgetCardShell';
 
 type Props = {
@@ -33,9 +39,11 @@ export function ComparisonCardWidget({ data }: Props) {
           >
             <Text
               style={[
+                styles.itemLabel,
                 aiWidgetTypography.legend,
                 { color: primary ? palette.text : palette.textMuted, fontFamily: aiWidgetFonts.labelRegular },
               ]}
+              numberOfLines={2}
             >
               {item.label}
             </Text>
@@ -45,6 +53,7 @@ export function ComparisonCardWidget({ data }: Props) {
                 styles.itemValue,
                 { color: primary ? palette.green : palette.text },
               ]}
+              {...aiWidgetAmountTextProps}
             >
               {item.value}
             </Text>
@@ -58,15 +67,23 @@ export function ComparisonCardWidget({ data }: Props) {
 const styles = StyleSheet.create({
   itemRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: spacing.md,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderLeftWidth: 3,
     borderRadius: 8,
+    minWidth: 0,
+  },
+  itemLabel: {
+    flex: 1,
+    minWidth: 0,
   },
   itemValue: {
     textAlign: 'right',
+    flexShrink: 1,
+    maxWidth: '48%',
+    minWidth: 0,
   },
 });

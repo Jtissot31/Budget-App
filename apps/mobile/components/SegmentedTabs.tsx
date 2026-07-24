@@ -3,17 +3,13 @@ import { AppIcon } from '@/components/icons/AppIcon';
 import { LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
-  Easing,
   useAnimatedStyle,
   useSharedValue,
-  withSequence,
   withSpring,
-  withTiming,
 } from 'react-native-reanimated';
 import {
   jakartaBoldText,
   jakartaExtraBoldText,
-  liquidSegmentedSettleSpring,
   liquidSegmentedSpring,
   radius,
 } from '@/constants/theme';
@@ -135,8 +131,6 @@ export function SegmentedTabs<T extends string>({
   const [pillReady, setPillReady] = useState(false);
 
   const pillX = useSharedValue(0);
-  const pillScaleX = useSharedValue(1);
-  const pillScaleY = useSharedValue(1);
   const pillOpacity = useSharedValue(0);
 
   const movePillToIndex = useCallback(
@@ -158,25 +152,6 @@ export function SegmentedTabs<T extends string>({
     [animated, pillOpacity, pillX],
   );
 
-  const runLiquidMorph = useCallback(() => {
-    if (!animated) return;
-
-    pillScaleX.value = withSequence(
-      withTiming(1.07, {
-        duration: 70,
-        easing: Easing.out(Easing.cubic),
-      }),
-      withSpring(1, liquidSegmentedSettleSpring),
-    );
-    pillScaleY.value = withSequence(
-      withTiming(0.94, {
-        duration: 55,
-        easing: Easing.out(Easing.quad),
-      }),
-      withSpring(1, liquidSegmentedSettleSpring),
-    );
-  }, [animated, pillScaleX, pillScaleY]);
-
   useEffect(() => {
     tabLayouts.current = Array.from({ length: tabs.length }, () => null);
     hasAnimatedOnce.current = false;
@@ -187,30 +162,12 @@ export function SegmentedTabs<T extends string>({
 
   useEffect(() => {
     const shouldAnimate = animated && hasAnimatedOnce.current;
-    if (shouldAnimate && prevActiveIndex.current !== resolvedActiveIndex) {
-      runLiquidMorph();
-    }
-
     movePillToIndex(resolvedActiveIndex, shouldAnimate);
     prevActiveIndex.current = resolvedActiveIndex;
     hasAnimatedOnce.current = true;
-  }, [animated, movePillToIndex, resolvedActiveIndex, runLiquidMorph]);
+  }, [animated, movePillToIndex, resolvedActiveIndex]);
 
-  const handleTabLayout = useCallback(
-    (index: number, event: LayoutChangeEvent) => {
-      const { x, width } = event.nativeEvent.layout;
-      if (width <= 0) return;
-
-      tabLayouts.current[index] = { x, width };
-
-      if (index === resolvedActiveIndex) {
-        movePillToIndex(resolvedActiveIndex, false);
-      }
-    },
-    [movePillToIndex, resolvedActiveIndex],
-  );
-
-  /** Deterministic equal-width geometry from the track — avoids Android ScrollView onLayout races. */
+  /** Deterministic equal-width geometry from the track — keeps pill size stable across tabs. */
   const handleTrackLayout = useCallback(
     (event: LayoutChangeEvent) => {
       const trackWidth = event.nativeEvent.layout.width;
@@ -234,7 +191,7 @@ export function SegmentedTabs<T extends string>({
 
   const pillStyle = useAnimatedStyle(() => ({
     opacity: pillOpacity.value,
-    transform: [{ translateX: pillX.value }, { scaleX: pillScaleX.value }, { scaleY: pillScaleY.value }],
+    transform: [{ translateX: pillX.value }],
   }));
 
   return (
@@ -246,6 +203,7 @@ export function SegmentedTabs<T extends string>({
           styles.track,
           {
             backgroundColor: trackBg,
+            height: sc.trackMinHeight,
             minHeight: sc.trackMinHeight,
             padding: sc.trackPadding,
             borderRadius: isSection ? radius.card : radius.xxl,
@@ -285,11 +243,10 @@ export function SegmentedTabs<T extends string>({
               accessibilityRole="button"
               accessibilityState={{ selected }}
               onPress={() => onChange(tab.id)}
-              onLayout={(event) => handleTabLayout(index, event)}
               style={[
                 styles.tab,
                 {
-                  paddingVertical: sc.tabPaddingVertical,
+                  height: sc.tabMinHeight,
                   minHeight: sc.tabMinHeight,
                   borderRadius: sc.tabRadius,
                   backgroundColor: showStaticSelectedFill ? activeBg : 'transparent',

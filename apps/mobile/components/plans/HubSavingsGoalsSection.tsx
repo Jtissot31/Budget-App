@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { HubSectionHeader } from '@/components/plans/HubSectionHeader';
-import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
+import { HubSectionHeader, HUB_SECTION_INNER_GAP } from '@/components/plans/HubSectionHeader';
 import { SavingsGoalHubRow } from '@/components/plans/SavingsGoalHubRow';
 import {
   createNewGoalForm,
@@ -13,9 +12,14 @@ import {
   type GoalForm,
   type NewGoalFormSuggestion,
 } from '@/components/SavingsGoalsForm';
+import { OnyxContainer } from '@/components/OnyxContainer';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
-import { floatingGlassButtonPressed } from '@/constants/floatingGlassButton';
-import { radius, spacing, typographyKit } from '@/constants/theme';
+import {
+  ONYX_CONTAINER,
+  onyxContainerPressedStyle,
+  onyxContainerRowLayoutStyle,
+} from '@/constants/planFinanceKit';
+import { spacing, typographyKit } from '@/constants/theme';
 import { getCategoryBudgets, getDashboard, getRecurringPayments, getSavingsGoals } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
 import type { FormFeedback } from '@/lib/formFeedback';
@@ -28,17 +32,17 @@ import { useAppTheme } from '@/lib/themeContext';
 import type { CategoryBudget, DashboardSummary, RecurringPayment, SavingsGoal } from '@/types';
 
 const PREVIEW_LIMIT = 4;
+const SUGGESTION_ICON_SIZE = 40;
 
 type SavingsGoalSuggestion = NewGoalFormSuggestion & {
   icon: string;
-  hint: string;
 };
 
 const SAVINGS_GOAL_SUGGESTIONS: readonly SavingsGoalSuggestion[] = [
-  { name: "Fonds d'urgence", targetAmount: 5000, icon: 'shield-check-outline', hint: '3 mois de dépenses' },
-  { name: 'Vacances', targetAmount: 2500, icon: 'airplane-outline', hint: 'Prochain voyage' },
-  { name: 'Mise de côté', targetAmount: 1000, icon: 'cash-outline', hint: 'Épargne flexible' },
-  { name: 'Achat important', targetAmount: 3000, icon: 'diamond-outline', hint: 'Projet ou équipement' },
+  { name: "Fonds d'urgence", targetAmount: 5000, icon: 'shield-check-outline' },
+  { name: 'Vacances', targetAmount: 2500, icon: 'airplane-outline' },
+  { name: 'Mise de côté', targetAmount: 1000, icon: 'cash-outline' },
+  { name: 'Achat important', targetAmount: 3000, icon: 'diamond-outline' },
 ];
 
 export function HubSavingsGoalsSection() {
@@ -124,42 +128,36 @@ export function HubSavingsGoalsSection() {
 
   return (
     <View style={styles.section}>
-      <HubSectionHeader eyebrow="Épargne" title={"Mes objectifs d'épargne"} />
+      <HubSectionHeader eyebrow="Épargne" title="Objectifs d'épargne" accentEyebrow />
 
       {goalProgressions.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-            Aucun objectif pour l&apos;instant.
-          </Text>
-          <View style={styles.suggestionsBlock}>
-            <Text style={[styles.suggestionsLabel, { color: colors.accentGreen }]}>
-              Suggéré pour toi
-            </Text>
-            <View style={styles.cardList}>
-              {SAVINGS_GOAL_SUGGESTIONS.map((suggestion) => (
-                <Pressable
-                  key={suggestion.name}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Créer l'objectif ${suggestion.name}`}
-                  onPress={() => openSuggestedGoalForm(suggestion)}
-                  style={({ pressed }) => [pressed && styles.pressed]}
+        <View style={styles.cardList}>
+          {SAVINGS_GOAL_SUGGESTIONS.map((suggestion) => (
+            <Pressable
+              key={suggestion.name}
+              accessibilityRole="button"
+              accessibilityLabel={`Créer l'objectif ${suggestion.name}`}
+              onPress={() => openSuggestedGoalForm(suggestion)}
+              style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
+            >
+              <OnyxContainer style={styles.suggestionRow}>
+                <UserPickedIconWell
+                  icon={suggestion.icon}
+                  size={SUGGESTION_ICON_SIZE}
+                  wellGlyphWhite
+                  noBackground
+                />
+                <Text
+                  style={[styles.suggestionTitle, typographyKit.rowTitle, { color: colors.text }]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
                 >
-                  <PlanFinanceContainer style={styles.suggestionRow}>
-                    <UserPickedIconWell icon={suggestion.icon} size={44} wellGlyphWhite noBackground />
-                    <View style={styles.suggestionCopy}>
-                      <Text style={[styles.suggestionHint, { color: colors.textMuted }]} numberOfLines={1}>
-                        {suggestion.hint}
-                      </Text>
-                      <Text style={[styles.suggestionName, { color: colors.text }]} numberOfLines={2}>
-                        {suggestion.name}
-                      </Text>
-                    </View>
-                    <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
-                  </PlanFinanceContainer>
-                </Pressable>
-              ))}
-            </View>
-          </View>
+                  {suggestion.name}
+                </Text>
+                <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
+              </OnyxContainer>
+            </Pressable>
+          ))}
         </View>
       ) : (
         <View style={styles.cardList}>
@@ -188,7 +186,9 @@ export function HubSavingsGoalsSection() {
             onPress={openAllGoals}
             style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}
           >
-            <Text style={[styles.linkLabel, { color: colors.textSecondary }]}>Voir tous les objectifs</Text>
+            <Text style={[styles.linkLabel, { color: colors.textSecondary }]}>
+              Voir tous les objectifs
+            </Text>
             <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
           </Pressable>
         ) : null}
@@ -196,17 +196,22 @@ export function HubSavingsGoalsSection() {
           accessibilityRole="button"
           accessibilityLabel="Ajouter un objectif d'épargne"
           onPress={openNewGoalForm}
-          style={({ pressed }) => [
-            styles.addCta,
-            {
-              backgroundColor: isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(18, 18, 18, 0.92)',
-              borderColor: colors.borderStrong,
-            },
-            pressed && floatingGlassButtonPressed,
-          ]}
+          style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
         >
-          <AppIcon family="ionicons" name="add" size={18} color={colors.textSecondary} />
-          <Text style={[styles.addCtaLabel, { color: colors.text }]}>Ajouter</Text>
+          <OnyxContainer style={styles.addCta}>
+            <View style={[styles.addIconWell, { backgroundColor: colors.input }]}>
+              <AppIcon
+                family="ionicons"
+                name="add"
+                size={18}
+                color={colors.accentGreen || colors.primary}
+              />
+            </View>
+            <Text style={[styles.addLabel, typographyKit.rowTitle, { color: colors.text }]}>
+              Ajouter un objectif
+            </Text>
+            <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
+          </OnyxContainer>
         </Pressable>
       </View>
 
@@ -228,52 +233,18 @@ export function HubSavingsGoalsSection() {
 
 const styles = StyleSheet.create({
   section: {
-    gap: spacing.sm,
+    gap: HUB_SECTION_INNER_GAP,
   },
   cardList: {
-    gap: spacing.sm,
+    gap: ONYX_CONTAINER.listGap,
   },
-  emptyState: {
-    gap: spacing.md,
-  },
-  emptyText: {
-    ...typographyKit.body,
-    lineHeight: 22,
-  },
-  suggestionsBlock: {
-    gap: spacing.sm,
-  },
-  suggestionsLabel: {
-    ...typographyKit.captionSemibold,
-    letterSpacing: 0.2,
-  },
-  suggestionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    gap: spacing.md,
-    padding: spacing.md,
-  },
-  suggestionCopy: {
+  suggestionRow: onyxContainerRowLayoutStyle(),
+  suggestionTitle: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
-  },
-  suggestionHint: {
-    ...typographyKit.metaMedium,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  suggestionName: {
-    ...typographyKit.bodyBold,
-    letterSpacing: -0.2,
-  },
-  suggestionAmount: {
-    flexShrink: 0,
   },
   actions: {
     gap: spacing.sm,
-    marginTop: spacing.xs,
   },
   linkButton: {
     flexDirection: 'row',
@@ -286,18 +257,22 @@ const styles = StyleSheet.create({
     ...typographyKit.bodyMedium,
   },
   addCta: {
-    flexDirection: 'row',
+    ...onyxContainerRowLayoutStyle(),
+    minHeight: 56,
+  },
+  addIconWell: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
-    minHeight: 44,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    flexShrink: 0,
   },
-  addCtaLabel: {
-    ...typographyKit.bodyMedium,
+  addLabel: {
+    flex: 1,
+    minWidth: 0,
   },
   pressed: {
-    opacity: 0.82,
+    opacity: 0.7,
   },
 });

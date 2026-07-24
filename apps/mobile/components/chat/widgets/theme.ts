@@ -1,17 +1,38 @@
 import { useMemo } from 'react';
 import type { TextStyle } from 'react-native';
+import { MONEY_AMOUNT_FONT } from '@/constants/interFonts';
+import { planFinanceKit } from '@/constants/planFinanceKit';
 import {
   CONTAINER_BORDER,
   CONTAINER_SURFACE,
   DASHBOARD_VALUE_GREEN,
   DASHBOARD_VALUE_RED,
-  MONEY_AMOUNT_FONT,
   chartTokens,
   darkColors,
   moneyAmountTypography,
   spacing,
 } from '@/constants/theme';
-import { planFinanceKit } from '@/constants/planFinanceKit';
+import {
+  APP_MAX_FONT_SIZE_MULTIPLIER,
+  MONEY_MAX_FONT_SIZE_MULTIPLIER,
+  NARROW_CONTENT_WIDTH,
+} from '@/lib/displayScale';
+import {
+  heroAmountTextProps,
+  keyStatPhraseTextProps,
+  scaleSafeLabelTextProps,
+  singleLineAmountProps,
+} from '@/lib/textLayout';
+
+export {
+  APP_MAX_FONT_SIZE_MULTIPLIER,
+  MONEY_MAX_FONT_SIZE_MULTIPLIER,
+  NARROW_CONTENT_WIDTH,
+  heroAmountTextProps,
+  keyStatPhraseTextProps,
+  scaleSafeLabelTextProps,
+  singleLineAmountProps,
+};
 
 /** Premium Onyx card radius — aligned with planFinanceKit / OnyxContainer. */
 export const AI_WIDGET_RADIUS = planFinanceKit.radius.card;
@@ -65,7 +86,7 @@ export const aiWidgetFonts = {
   title: 'PlusJakartaSans_800ExtraBold',
   label: 'PlusJakartaSans_500Medium',
   labelRegular: 'PlusJakartaSans_400Regular',
-  /** Inter 800 ExtraBold — same face as {@link transactionRowAmountTypography}. */
+  /** Inter 800 ExtraBold — same face as transaction row amounts. */
   amount: MONEY_AMOUNT_FONT,
   /** @deprecated Use {@link aiWidgetAmountTypography} or {@link aiWidgetFonts.amount}. */
   mono: MONEY_AMOUNT_FONT,
@@ -95,13 +116,23 @@ export function aiWidgetAmountTypography(size: AIWidgetAmountSize = 'card'): Tex
   });
 }
 
+/**
+ * Static widget type styles. `value` is built without calling {@link moneyAmountTypography}
+ * at module load (avoids TDZ if this file loads during theme init).
+ */
 export const aiWidgetTypography = {
   eyebrow: {
     fontSize: 11,
     letterSpacing: 0.8,
     textTransform: 'uppercase' as const,
   },
-  value: aiWidgetAmountTypography('value'),
+  value: {
+    fontFamily: MONEY_AMOUNT_FONT,
+    fontWeight: 'normal' as const,
+    fontVariant: ['tabular-nums'] as TextStyle['fontVariant'],
+    fontSize: 22,
+    letterSpacing: -0.5,
+  },
   caption: {
     fontSize: 12,
     lineHeight: 16,
@@ -114,5 +145,19 @@ export const aiWidgetTypography = {
   legend: {
     fontSize: 13,
     lineHeight: 18,
+    flexShrink: 1,
+    minWidth: 0,
   },
 } as const;
+
+/** Shared Text props for widget money cells (tables, metrics, heroes). */
+export const aiWidgetAmountTextProps = singleLineAmountProps;
+
+/** Shared Text props for widget hero surplus / balance amounts. */
+export const aiWidgetHeroAmountTextProps = heroAmountTextProps;
+
+/** Shared Text props for widget labels in flex rows. */
+export const aiWidgetLabelTextProps = scaleSafeLabelTextProps;
+
+/** Key progress / goal phrases — wrap + shrink, never mid-phrase ellipsis. */
+export const aiWidgetKeyStatTextProps = keyStatPhraseTextProps;

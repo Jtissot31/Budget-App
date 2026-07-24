@@ -5,7 +5,13 @@ import { planFinanceSecondaryButtonStyle } from '@/constants/planFinanceKit';
 import { spacing } from '@/constants/theme';
 import { formatDisplayMoneyAbsoluteExact } from '@/lib/formatDisplayMoney';
 import type { BarChartData, BarChartItem } from '@/types/aiWidgets';
-import { aiWidgetAmountTypography, aiWidgetFonts, useAIWidgetColors } from './theme';
+import {
+  aiWidgetAmountTextProps,
+  aiWidgetAmountTypography,
+  aiWidgetFonts,
+  aiWidgetLabelTextProps,
+  useAIWidgetColors,
+} from './theme';
 import { WidgetCardShell } from './WidgetCardShell';
 
 type Props = {
@@ -99,10 +105,16 @@ function CategoryRow({ item, maxValue, textColor }: CategoryRowProps) {
   return (
     <View style={styles.row}>
       <View style={styles.rowHeader}>
-        <Text style={[styles.categoryName, categoryNameStyle, { color: textColor }]} numberOfLines={1}>
+        <Text
+          style={[styles.categoryName, categoryNameStyle, { color: textColor }]}
+          {...aiWidgetLabelTextProps}
+        >
           {item.label}
         </Text>
-        <Text style={[styles.amount, amountStyle, { color: spentColor }]} numberOfLines={1}>
+        <Text
+          style={[styles.amount, amountStyle, { color: spentColor }]}
+          {...aiWidgetAmountTextProps}
+        >
           {spentLabel}
           {limitLabel ? (
             <Text style={{ color: limitColor }}>{` / ${limitLabel}`}</Text>
@@ -201,14 +213,17 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
     justifyContent: 'space-between',
     gap: spacing.sm,
+    minWidth: 0,
   },
   categoryName: {
     flex: 1,
     minWidth: 0,
   },
   amount: {
-    flexShrink: 0,
+    flexShrink: 1,
+    maxWidth: '55%',
     textAlign: 'right',
+    minWidth: 0,
   },
   barTrack: {
     width: '100%',

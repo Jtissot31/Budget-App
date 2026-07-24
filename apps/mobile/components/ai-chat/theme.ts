@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { DASHBOARD_VALUE_GREEN } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
 export type AIChatColors = {
@@ -11,31 +10,29 @@ export type AIChatColors = {
   border: string;
   userBubble: string;
   userBubbleText: string;
+  /** Icon/text color on top of a `primary` (green) surface. */
+  onAccent: string;
   aiBubble: string;
-  aiBubbleShadow: string;
-  aiBubbleShadowOpacity: number;
   sendMuted: string;
 };
 
 export function useAIChatColors(): AIChatColors {
-  const { colors, isLight } = useAppTheme();
+  const { colors } = useAppTheme();
 
-  return useMemo(() => {
-    const accent = isLight ? colors.primary : DASHBOARD_VALUE_GREEN;
-
-    return {
+  return useMemo(
+    () => ({
       background: colors.background,
-      surface: colors.input,
-      primary: accent,
+      surface: colors.surfaceElevated,
+      primary: colors.primary,
       text: colors.text,
       textMuted: colors.textSecondary,
       border: colors.border,
-      userBubble: DASHBOARD_VALUE_GREEN,
-      userBubbleText: colors.background,
-      aiBubble: colors.containerBackground,
-      aiBubbleShadow: isLight ? '#0f172a' : '#000000',
-      aiBubbleShadowOpacity: isLight ? 0.08 : 0.16,
+      userBubble: colors.surfaceElevated,
+      userBubbleText: colors.text,
+      onAccent: colors.background,
+      aiBubble: colors.surface,
       sendMuted: colors.textMuted,
-    };
-  }, [colors, isLight]);
+    }),
+    [colors],
+  );
 }

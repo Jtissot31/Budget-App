@@ -1,6 +1,6 @@
 /**
- * Shared Gemini Flash client — EXPO_PUBLIC_GEMINI_API_KEY via lib/ai/env.ts.
- * Dev-only in bundle; production should use a server proxy.
+ * Shared Gemini Flash client — key via lib/ai/env.ts (BYOK SecureStore or EXPO_PUBLIC_*).
+ * Client-direct calls; a server proxy remains optional for multi-user production.
  */
 import { createAbortError, isAbortError } from '@/lib/abortError';
 import { getGeminiApiKey } from './env';

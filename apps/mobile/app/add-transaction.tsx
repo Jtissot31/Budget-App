@@ -12,23 +12,31 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AddArticleSheet } from '@/components/AddArticleSheet';
-import { PaymentMethodField, type PaymentMethodAccount } from '@/components/PaymentMethodField';
+import { useDraggableSheetGesture } from '@/lib/sheet/useDraggableSheetGesture';
+import {
+  isInlineArticleScrollTargetReady,
+  type InlineArticleScrollTarget,
+} from '@/components/AddArticleSheet';
 import { BudgetCategoryPicker } from '@/components/BudgetCategoryPicker';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
+import { SettingsSelectField } from '@/components/SettingsSelectField';
+import type { SettingsPickerOption } from '@/components/SettingsPickerSheet';
 import { GhostNumpad } from '@/components/GhostNumpad';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
+import { TransactionArticlesReceiptCard } from '@/components/TransactionArticlesReceiptCard';
 import { TransferModePicker, type TransferMode } from '@/components/TransferModePicker';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import { formValidationError, type FormFeedback } from '@/lib/formFeedback';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import {
-  articlesReceiptTypography,
   CHIP_BORDER_WIDTH,
   CHIP_PADDING_HORIZONTAL,
   TYPE_TRANSACTION_CHIP_MIN_WIDTH,
@@ -36,8 +44,7 @@ import {
   chipSelectableShellStyle,
   colors,
   containerSurfaceStyle,
-  detailSectionLabelStyle,
-  detailSubSectionHeaderStyle,
+  FORM_SECTION_LABEL_STYLE,
   jakartaBoldText,
   jakartaExtraBoldText,
   interNumericExtraBoldText,
@@ -51,17 +58,26 @@ import {
 } from '@/constants/theme';
 import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
 import { hasMerchantLogoCandidate } from '@/components/TransactionAvatar';
-import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
 import {
+  INCOME_CATEGORY,
   TRANSFER_CATEGORY,
   UNCATEGORIZED_TRANSACTION_CATEGORY,
-  getCategoryIconName,
   type IconName,
 } from '@/constants/categoryOptions';
 import { EXPENSE_DEFAULT_ICON, isExpenseDefaultIcon } from '@/lib/expenseIcon';
 import { EXPENSE_MDI_ICON } from '@/lib/mdiIconCatalog';
 import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
-import { KNOWN_MERCHANT_NAMES } from '@/lib/merchantLogo';
+import {
+  accountBalanceIconForKind,
+  accountPickerRowPresentation,
+} from '@/lib/accountBalancePresentation';
+import {
+  buildMerchantOverrideByNormalizedName,
+  getMerchantOverrideForLabel,
+  normalizeMerchantKey,
+  searchMerchantNameSuggestions,
+} from '@/lib/merchantLogo';
+import { rememberMerchantLogo } from '@/lib/merchantLogoMemory';
 import { useAppTheme } from '@/lib/themeContext';
 import {
   adjustSavingsGoalCurrentAmount,
@@ -71,6 +87,7 @@ import {
   getCategoryBudgets,
   getContacts,
   getLoans,
+  getMerchantOverrides,
   getSavingsGoals,
   getSimulatedAccounts,
   getTransactionById,
@@ -117,9 +134,8 @@ import {
   normalizeSearch,
 } from '@/lib/categoryInference';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
-import { buildArticlesNoteLine, getRemainingArticleBudget, isArticlePriceWithinBudget, parseItemizedNote, type ItemizedNote } from '@/lib/itemizedNote';
+import { buildArticlesNoteLine, getRemainingArticleBudget, parseItemizedNote, type ItemizedNote } from '@/lib/itemizedNote';
 import { parseScanItemsFromRoute } from '@/lib/receiptScan';
-import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { getLocalDateInputValue, toLocalDateInputValue } from '@/lib/localDateInput';
 import { createLocalTransaction, syncWithServer } from '@/lib/sync';
 import {
@@ -134,10 +150,23 @@ import {
   type EmployerIncomeAccountMap,
 } from '@/lib/incomeAccountPreferences';
 import {
+  countPaymentAccountUsage,
+  sortByPaymentAccountUsage,
+} from '@/lib/paymentAccountUsage';
+import {
   getTransferReasonSuggestions,
   saveTransferReasonSuggestion,
 } from '@/lib/transferReasonSuggestions';
-import type { AccountKind, Category, Contact, Loan, SavingsGoal, SimulatedAccount, Transaction, TransactionType } from '@/types';
+import type {
+  Category,
+  Contact,
+  Loan,
+  MerchantOverride,
+  SavingsGoal,
+  SimulatedAccount,
+  Transaction,
+  TransactionType,
+} from '@/types';
 import { getChildSupportSalaryNotices } from '@/lib/childSupportLoan';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
@@ -161,11 +190,6 @@ type PaymentAccountOption = {
   isSimulated: boolean;
 };
 
-function manualAccountKind(accountId: string): AccountKind {
-  if (accountId === 'credit') return 'credit';
-  if (accountId === 'savings') return 'savings';
-  return 'checking';
-}
 type TransferEndpoint = {
   id: string;
   label: string;
@@ -173,6 +197,7 @@ type TransferEndpoint = {
   kind: 'account' | 'goal';
   isSimulated: boolean;
   icon: string;
+  logoUrl?: string | null;
   color: string;
 };
 function amountFontSize(raw: string) {
@@ -222,30 +247,6 @@ function isIconName(value?: string | null): value is IconName {
   return Boolean(value && value in Ionicons.glyphMap);
 }
 
-const TRANSFER_GOAL_ICON_WELL_SIZE = 22;
-const TRANSFER_GOAL_ICON_GLYPH_SIZE = 13;
-
-function TransferGoalChipIcon({
-  icon,
-  selected,
-  selectedColor,
-  mutedColor,
-}: {
-  icon?: string | null;
-  selected: boolean;
-  selectedColor: string;
-  mutedColor: string;
-}) {
-  return (
-    <UserPickedIconBadge
-      icon={icon || 'flag-outline'}
-      color={selected ? selectedColor : mutedColor}
-      size={TRANSFER_GOAL_ICON_WELL_SIZE}
-      iconSize={TRANSFER_GOAL_ICON_GLYPH_SIZE}
-    />
-  );
-}
-
 async function applyLinkedSavingsGoalDeltas(
   accounts: SimulatedAccount[],
   accountDeltas: { id: string; delta: number }[],
@@ -279,6 +280,7 @@ export default function AddTransactionScreen() {
   }>();
   const insets = useSafeAreaInsets();
   const { colors, isLight } = useAppTheme();
+  const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.text }];
   const editId = typeof params.editId === 'string' ? params.editId : '';
   const routeType = typeof params.type === 'string' ? params.type : '';
   const routeLabel = typeof params.label === 'string' ? params.label : '';
@@ -289,6 +291,7 @@ export default function AddTransactionScreen() {
   const [budgetCategoryIds, setBudgetCategoryIds] = useState<Set<string>>(new Set());
   const [savedContacts, setSavedContacts] = useState<Contact[]>([]);
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  const [merchantOverrides, setMerchantOverrides] = useState<MerchantOverride[]>([]);
   const [simulatedAccounts, setSimulatedAccounts] = useState<SimulatedAccount[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
@@ -303,6 +306,8 @@ export default function AddTransactionScreen() {
   const [categoryManuallySelected, setCategoryManuallySelected] = useState(false);
   const [accountId, setAccountId] = useState<string>(MANUAL_ENTRY_ACCOUNTS[0].id);
   const [destinationAccountId, setDestinationAccountId] = useState<string>(MANUAL_ENTRY_ACCOUNTS[1].id);
+  /** Once the user (or route/edit/income flow) picks an account, stop auto-syncing to most-used. */
+  const accountManuallySelectedRef = useRef(Boolean(routeAccountId));
   const [transferMode, setTransferMode] = useState<TransferMode>('accounts');
   const [transferReason, setTransferReason] = useState('');
   const [transferReasonSuggestions, setTransferReasonSuggestions] = useState<string[]>([]);
@@ -316,14 +321,27 @@ export default function AddTransactionScreen() {
   const [fallbackIcon, setFallbackIcon] = useState<string>(EXPENSE_MDI_ICON);
   const [articles, setArticles] = useState<ItemizedNote[]>([]);
   const [inlineArticleExpanded, setInlineArticleExpanded] = useState(false);
+  const [keyboardInset, setKeyboardInset] = useState(0);
   const [scanPrefillApplied, setScanPrefillApplied] = useState(false);
   const [iconPickedManually, setIconPickedManually] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formFeedback, setFormFeedback] = useState<FormFeedback | null>(null);
   const [invalidFields, setInvalidFields] = useState<Set<FormFieldKey>>(() => new Set());
+  const { height: windowHeight } = useWindowDimensions();
   const labelInputRef = useRef<TextInput>(null);
   const transferReasonInputRef = useRef<TextInput>(null);
-  const sheetScrollRef = useRef<ScrollView>(null);
+  const sheetScrollRef = useRef<Animated.ScrollView>(null);
+  const scrollContentRef = useRef<View>(null);
+  const inlineArticleFormRef = useRef<View>(null);
+  const inlineArticleEditingRef = useRef(false);
+  const inlineArticleScrollTargetRef = useRef<InlineArticleScrollTarget>({
+    nameTop: 0,
+    nameBottom: 0,
+    extentBottom: 0,
+  });
+  const inlineArticleScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inlineArticleScrollRafRef = useRef<number | null>(null);
+  const sheetScrollViewportHeightRef = useRef(0);
   const amountSectionYRef = useRef(0);
   const nameSectionYRef = useRef(0);
   const incomeSourceFieldBottomYRef = useRef(0);
@@ -332,22 +350,34 @@ export default function AddTransactionScreen() {
   const categorySectionYRef = useRef(0);
   const sourceAccountSectionYRef = useRef(0);
   const destinationAccountSectionYRef = useRef(0);
-  const articlesSectionYRef = useRef(0);
-  const inlineArticleLocalYRef = useRef(0);
   const lastAutocompleteScrollKeyRef = useRef('');
   const labelInputFocusedRef = useRef(false);
   const pendingIncomeContactScrollRef = useRef(false);
 
+  const merchantOverrideMap = useMemo(
+    () => buildMerchantOverrideByNormalizedName(merchantOverrides),
+    [merchantOverrides],
+  );
+
+  const merchantHistoryNames = useMemo(() => {
+    const names: string[] = [];
+    for (const tx of allTransactions) {
+      if (tx.type !== 'expense') continue;
+      const trimmed = tx.label.trim();
+      if (trimmed) names.push(trimmed);
+    }
+    for (const override of merchantOverrides) {
+      if (override.hidden) continue;
+      names.push(override.displayName?.trim() || override.originalName);
+    }
+    return names;
+  }, [allTransactions, merchantOverrides]);
+
   const merchantSuggestions = useMemo(() => {
     if (type !== 'expense') return [];
-    const query = normalizeSearch(debouncedLabel);
-    if (query.length < 2) return [];
-
-    return KNOWN_MERCHANT_NAMES.filter((merchant) => {
-      const normalized = normalizeSearch(merchant);
-      return normalized !== query && (normalized.startsWith(query) || normalized.includes(query));
-    }).slice(0, 5);
-  }, [debouncedLabel, type]);
+    if (normalizeMerchantKey(debouncedLabel).length < 2) return [];
+    return searchMerchantNameSuggestions(debouncedLabel, merchantHistoryNames, 5);
+  }, [debouncedLabel, merchantHistoryNames, type]);
 
   const contactDirectoryRows = useMemo(
     () => buildContactDirectoryRows(allTransactions, savedContacts),
@@ -406,8 +436,9 @@ export default function AddTransactionScreen() {
       const defaultCat =
         type === 'transfer'
           ? cats.find((c) => c.id === TRANSFER_CATEGORY.id) ?? TRANSFER_CATEGORY
-          : cats.find((c) => (type === 'income' ? c.name === 'Revenus' : c.name !== 'Revenus')) ??
-        cats[0];
+          : type === 'income'
+            ? cats.find((c) => c.id === INCOME_CATEGORY.id || c.name === 'Revenus') ?? INCOME_CATEGORY
+            : cats.find((c) => c.name !== 'Revenus') ?? cats[0];
       setCategoryManuallySelected(false);
       setCategoryId(defaultCat?.id ?? null);
     });
@@ -419,7 +450,10 @@ export default function AddTransactionScreen() {
       setType(routeType);
     }
     if (routeLabel) setLabel(routeLabel);
-    if (routeAccountId) setAccountId(routeAccountId);
+    if (routeAccountId) {
+      accountManuallySelectedRef.current = true;
+      setAccountId(routeAccountId);
+    }
     if (routeScanAmount && !amount) setAmount(formatMoneyInput(parseMoney(routeScanAmount)));
   }, [amount, editId, routeAccountId, routeLabel, routeScanAmount, routeType]);
 
@@ -458,6 +492,10 @@ export default function AddTransactionScreen() {
 
   useEffect(() => {
     void getTransactions().then(setAllTransactions);
+  }, []);
+
+  useEffect(() => {
+    void getMerchantOverrides().then(setMerchantOverrides);
   }, []);
 
   useEffect(() => {
@@ -520,59 +558,94 @@ export default function AddTransactionScreen() {
     // expense: only show categories that exist in the budget page
     return categories.filter((c) => c.name !== 'Revenus' && budgetCategoryIds.has(c.id));
   }, [categories, transferMode, type, budgetCategoryIds]);
+  const paymentAccountUsageCounts = useMemo(
+    () => countPaymentAccountUsage(allTransactions),
+    [allTransactions],
+  );
+
   const accountOptions = useMemo<PaymentAccountOption[]>(() => {
-    if (simulatedAccounts.length > 0) {
-      return simulatedAccounts.map((account) => ({
-        id: account.id,
-        label: account.last4 ? `${account.name} • ${account.last4}` : account.name,
-        isSimulated: true,
-      }));
-    }
+    const unsorted: PaymentAccountOption[] =
+      simulatedAccounts.length > 0
+        ? simulatedAccounts.map((account) => {
+            const row = accountPickerRowPresentation(account);
+            return {
+              id: account.id,
+              label: row.fieldLabel,
+              isSimulated: true,
+            };
+          })
+        : MANUAL_ENTRY_ACCOUNTS.map((account) => ({
+            id: account.id,
+            label: account.label,
+            isSimulated: false,
+          }));
+    return sortByPaymentAccountUsage(unsorted, paymentAccountUsageCounts);
+  }, [paymentAccountUsageCounts, simulatedAccounts]);
 
-    return MANUAL_ENTRY_ACCOUNTS.map((account) => ({
-      id: account.id,
-      label: account.label,
-      isSimulated: false,
-    }));
-  }, [simulatedAccounts]);
-
-  const paymentMethodAccounts = useMemo<PaymentMethodAccount[]>(() => {
-    if (simulatedAccounts.length > 0) {
-      return simulatedAccounts.map((account) => ({
-        id: account.id,
-        name: account.name,
-        last4: account.last4,
-        kind: account.kind,
-      }));
-    }
-
-    return MANUAL_ENTRY_ACCOUNTS.map((account) => ({
-      id: account.id,
-      name: account.label,
-      kind: manualAccountKind(account.id),
-    }));
-  }, [simulatedAccounts]);
-
-  const destinationPaymentMethodAccounts = useMemo(
-    () => paymentMethodAccounts.filter((account) => account.id !== accountId),
-    [accountId, paymentMethodAccounts],
-  );
-
-  const destinationSavingsGoals = useMemo(
-    () => savingsGoals.filter((goal) => goal.id !== accountId),
-    [accountId, savingsGoals],
-  );
+  const accountPickerOptions = useMemo<SettingsPickerOption<string>[]>(() => {
+    const unsorted: SettingsPickerOption<string>[] =
+      simulatedAccounts.length > 0
+        ? simulatedAccounts.map((account) => {
+            const row = accountPickerRowPresentation(account);
+            return {
+              id: account.id,
+              label: row.label,
+              description: row.description,
+              fieldLabel: row.fieldLabel,
+              icon: row.icon,
+              logoUrl: row.logoUrl,
+            };
+          })
+        : (() => {
+            const manualIcons: Record<string, string> = {
+              checking: 'wallet-outline',
+              credit: 'card-outline',
+              savings: 'cash-outline',
+            };
+            return MANUAL_ENTRY_ACCOUNTS.map((account) => ({
+              id: account.id,
+              label: account.label,
+              description:
+                account.id === 'checking' ? 'Chèque' : account.id === 'credit' ? 'Crédit' : 'Épargne',
+              icon: manualIcons[account.id] ?? 'wallet-outline',
+            }));
+          })();
+    return sortByPaymentAccountUsage(unsorted, paymentAccountUsageCounts);
+  }, [paymentAccountUsageCounts, simulatedAccounts]);
 
   const transferEndpoints = useMemo<TransferEndpoint[]>(() => {
-    const accountEntries: TransferEndpoint[] = accountOptions.map((a) => ({
-      id: a.id,
-      label: a.label.split(' • ')[0] ?? a.label,
-      sublabel: a.label.includes(' • ') ? `••${a.label.split(' • ')[1]}` : 'Compte',
-      kind: 'account',
-      isSimulated: a.isSimulated,
-      icon: 'card-outline',
-      color: colors.textSecondary,
-    }));
+    const accountEntries: TransferEndpoint[] =
+      simulatedAccounts.length > 0
+        ? simulatedAccounts.map((account) => {
+            const row = accountPickerRowPresentation(account);
+            return {
+              id: account.id,
+              label: row.label,
+              sublabel: row.description,
+              kind: 'account' as const,
+              isSimulated: true,
+              icon: row.icon,
+              logoUrl: row.logoUrl,
+              color: colors.textSecondary,
+            };
+          })
+        : accountOptions.map((a) => ({
+            id: a.id,
+            label: a.label.split(' · ')[0] ?? a.label.split(' • ')[0] ?? a.label,
+            sublabel: a.label.includes(' · ')
+              ? `••${a.label.split(' · ')[1]}`
+              : a.label.includes(' • ')
+                ? `••${a.label.split(' • ')[1]}`
+                : 'Compte',
+            kind: 'account' as const,
+            isSimulated: a.isSimulated,
+            icon: accountBalanceIconForKind(
+              a.id === 'credit' ? 'credit' : a.id === 'savings' ? 'savings' : a.id === 'cash' ? 'cash' : 'checking',
+            ),
+            logoUrl: null,
+            color: colors.textSecondary,
+          }));
+    const sortedAccountEntries = sortByPaymentAccountUsage(accountEntries, paymentAccountUsageCounts);
     const goalEntries: TransferEndpoint[] = savingsGoals.map((g) => ({
       id: g.id,
       label: g.name,
@@ -580,10 +653,42 @@ export default function AddTransactionScreen() {
       kind: 'goal',
       isSimulated: false,
       icon: (g.icon as string) || 'flag-outline',
+      logoUrl: null,
       color: g.color || colors.primary,
     }));
-    return [...accountEntries, ...goalEntries];
-  }, [accountOptions, colors.primary, colors.textSecondary, savingsGoals]);
+    return [...sortedAccountEntries, ...goalEntries];
+  }, [
+    accountOptions,
+    colors.primary,
+    colors.textSecondary,
+    paymentAccountUsageCounts,
+    savingsGoals,
+    simulatedAccounts,
+  ]);
+
+  const transferSourcePickerOptions = useMemo<SettingsPickerOption<string>[]>(
+    () =>
+      transferEndpoints.map((endpoint) => {
+        const last4Match = endpoint.sublabel.match(/••(\d{4})/);
+        return {
+          id: endpoint.id,
+          label: endpoint.label,
+          description: endpoint.sublabel,
+          fieldLabel:
+            endpoint.kind === 'account' && last4Match
+              ? `${endpoint.label} · ${last4Match[1]}`
+              : undefined,
+          icon: endpoint.icon,
+          logoUrl: endpoint.logoUrl,
+        };
+      }),
+    [transferEndpoints],
+  );
+
+  const transferDestinationPickerOptions = useMemo(
+    () => transferSourcePickerOptions.filter((option) => option.id !== accountId),
+    [accountId, transferSourcePickerOptions],
+  );
 
   useEffect(() => {
     if (!editId || prefilledEditId === editId || categories.length === 0 || accountOptions.length === 0) return;
@@ -661,6 +766,7 @@ export default function AddTransactionScreen() {
       setCategoryManuallySelected(true);
       setAccountId(resolvedSourceId);
       setDestinationAccountId(resolvedDestinationId);
+      accountManuallySelectedRef.current = true;
       const resolvedIcon =
         tx.type === 'expense'
           ? isExpenseDefaultIcon(tx.transactionIcon)
@@ -702,25 +808,30 @@ export default function AddTransactionScreen() {
     const defaultDestination = accountOptions[1] ?? firstAccount;
     if (!firstAccount) return;
 
-    setAccountId((current) =>
-      accountOptions.some((account) => account.id === current) ? current : firstAccount.id,
-    );
+    setAccountId((current) => {
+      if (!accountOptions.some((account) => account.id === current)) return firstAccount.id;
+      // New expense/income: prefer most-used (first after usage sort) until the user picks.
+      if (!editId && !accountManuallySelectedRef.current) return firstAccount.id;
+      return current;
+    });
     setDestinationAccountId((current) =>
       accountOptions.some((account) => account.id === current)
         ? current
         : defaultDestination.id,
     );
-  }, [accountOptions]);
+  }, [accountOptions, editId]);
+
+  const selectPaymentAccount = useCallback((id: string) => {
+    accountManuallySelectedRef.current = true;
+    setAccountId(id);
+  }, []);
 
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
-  const articlesTotal = useMemo(
-    () => articles.reduce((sum, article) => sum + article.price, 0),
-    [articles],
-  );
   const maxArticlePrice = useMemo(() => {
     if (type !== 'expense') return undefined;
     const transactionTotal = parseFormattedNumber(amount);
-    if (!Number.isFinite(transactionTotal) || transactionTotal <= 0) return 0;
+    // No cap until a positive transaction amount is set — avoids false « entièrement réparti ».
+    if (!Number.isFinite(transactionTotal) || transactionTotal <= 0) return undefined;
     return getRemainingArticleBudget(transactionTotal, articles);
   }, [amount, articles, type]);
   const categorySearchText = useMemo(() => {
@@ -748,12 +859,6 @@ export default function AddTransactionScreen() {
     (name: string, price: string, articleCategoryId: string | null, categoryName: string | null) => {
       const priceValue = parseFormattedNumber(price);
       if (!Number.isFinite(priceValue) || priceValue <= 0) return;
-      if (type === 'expense') {
-        const transactionTotal = parseFormattedNumber(amount);
-        if (!Number.isFinite(transactionTotal) || transactionTotal <= 0) return;
-        const remaining = getRemainingArticleBudget(transactionTotal, articles);
-        if (!isArticlePriceWithinBudget(priceValue, remaining)) return;
-      }
       setArticles((current) => [
         ...current,
         {
@@ -764,7 +869,7 @@ export default function AddTransactionScreen() {
         },
       ]);
     },
-    [amount, articles, type],
+    [],
   );
 
   const handleRemoveArticle = useCallback((index: number) => {
@@ -788,7 +893,10 @@ export default function AddTransactionScreen() {
         : [],
     [accountId, incomeReason, label, loans, type],
   );
-  const labelHasLogo = useMemo(() => hasMerchantLogoCandidate(label), [label]);
+  const labelHasLogo = useMemo(() => {
+    const override = getMerchantOverrideForLabel(label, merchantOverrideMap);
+    return hasMerchantLogoCandidate(label, override);
+  }, [label, merchantOverrideMap]);
   const fallbackSourceAccount = accountOptions[0] ?? { id: 'checking', label: 'Chèques', isSimulated: false };
   const sourceAccount = accountOptions.find((account) => account.id === accountId) ?? fallbackSourceAccount;
   const destinationAccount =
@@ -801,25 +909,20 @@ export default function AddTransactionScreen() {
   const isAnyPersonTransfer = isPersonTransferTo || isPersonTransferFrom;
   const usesContactField = type === 'income' || isAnyPersonTransfer;
   const isStandardTransfer = isTransfer && transferMode === 'accounts';
-  const hasAccountOptions = accountOptions.length > 0;
-  const hasSavingsGoalsList = savingsGoals.length > 0;
-  const hasDestinationSavingsGoals = destinationSavingsGoals.length > 0;
   const hasTransferEndpoints = transferEndpoints.length > 0;
 
   useEffect(() => {
     if (!isStandardTransfer || accountId !== destinationAccountId) return;
 
-    const nextDestinationId =
-      destinationPaymentMethodAccounts[0]?.id ?? destinationSavingsGoals[0]?.id ?? null;
+    const nextDestinationId = transferDestinationPickerOptions[0]?.id ?? null;
     if (nextDestinationId && nextDestinationId !== destinationAccountId) {
       setDestinationAccountId(nextDestinationId);
     }
   }, [
     accountId,
     destinationAccountId,
-    destinationPaymentMethodAccounts,
-    destinationSavingsGoals,
     isStandardTransfer,
+    transferDestinationPickerOptions,
   ]);
   const hasMerchantSuggestions = merchantSuggestions.length > 0;
   const hasContactSuggestions = contactSuggestions.length > 0;
@@ -903,14 +1006,263 @@ export default function AddTransactionScreen() {
     });
   }, []);
 
-  const scrollToInlineArticle = useCallback((localY: number, offset = 16) => {
-    requestAnimationFrame(() => {
-      sheetScrollRef.current?.scrollTo({
-        y: Math.max(articlesSectionYRef.current + inlineArticleLocalYRef.current + localY - offset, 0),
-        animated: true,
-      });
-    });
+  const INLINE_ARTICLE_FORM_PADDING = 96;
+  const INLINE_ARTICLE_FORM_TOP_OFFSET = 16;
+  const INLINE_ARTICLE_NAME_VIEWPORT_RATIO = 0.22;
+  const INLINE_ARTICLE_NAME_MIN_TOP = spacing.lg + INLINE_ARTICLE_FORM_TOP_OFFSET;
+  const INLINE_ARTICLE_SCROLL_OFFSET = 24;
+  const SHEET_TOP_MARGIN = 88;
+  const inlineArticleForcedScrollExtent = Math.round(windowHeight * 0.12);
+
+  const estimateInlineArticleKeyboardInset = useCallback(() => {
+    if (keyboardInset > 0) return keyboardInset;
+    if (!inlineArticleEditingRef.current) return 0;
+    return Math.min(Math.round(windowHeight * 0.38), 360);
+  }, [keyboardInset, windowHeight]);
+
+  const cancelPendingInlineArticleScroll = useCallback(() => {
+    if (inlineArticleScrollTimerRef.current != null) {
+      clearTimeout(inlineArticleScrollTimerRef.current);
+      inlineArticleScrollTimerRef.current = null;
+    }
+    if (inlineArticleScrollRafRef.current != null) {
+      cancelAnimationFrame(inlineArticleScrollRafRef.current);
+      inlineArticleScrollRafRef.current = null;
+    }
   }, []);
+
+  const performInlineArticleScroll = useCallback(() => {
+    const content = scrollContentRef.current;
+    const field = inlineArticleFormRef.current;
+    if (!content || !field) return;
+
+    const { nameTop, nameBottom, extentBottom } = inlineArticleScrollTargetRef.current;
+    if (!isInlineArticleScrollTargetReady({ nameTop, nameBottom, extentBottom })) {
+      // Form just opened — scroll the articles card into a comfortable band
+      // before name/layout metrics are ready.
+      field.measureLayout(
+        content,
+        (_x, formY) => {
+          const viewportHeight = Math.max(
+            sheetScrollViewportHeightRef.current > 0
+              ? sheetScrollViewportHeightRef.current
+              : windowHeight - SHEET_TOP_MARGIN,
+            1,
+          );
+          const desiredTop = Math.max(
+            INLINE_ARTICLE_NAME_MIN_TOP,
+            Math.round(viewportHeight * INLINE_ARTICLE_NAME_VIEWPORT_RATIO),
+          );
+          sheetScrollRef.current?.scrollTo({
+            y: Math.max(formY - desiredTop, 0),
+            animated: true,
+          });
+        },
+        () => {},
+      );
+      return;
+    }
+
+    field.measureLayout(
+      content,
+      (_x, formY) => {
+        const viewportHeight = Math.max(
+          sheetScrollViewportHeightRef.current > 0
+            ? sheetScrollViewportHeightRef.current
+            : windowHeight - SHEET_TOP_MARGIN,
+          1,
+        );
+        const effectiveKeyboardInset = estimateInlineArticleKeyboardInset();
+        const visibleBottom = viewportHeight - effectiveKeyboardInset;
+
+        const nameTopY = formY + nameTop;
+        const extentBottomY = formY + (extentBottom > 0 ? extentBottom : nameBottom);
+
+        const desiredNameTop = Math.max(
+          INLINE_ARTICLE_NAME_MIN_TOP,
+          Math.round(visibleBottom * INLINE_ARTICLE_NAME_VIEWPORT_RATIO),
+        );
+
+        let scrollY = Math.max(nameTopY - desiredNameTop, 0);
+
+        if (effectiveKeyboardInset > 0 && extentBottom > 0) {
+          const scrollForKeyboard = extentBottomY - visibleBottom + INLINE_ARTICLE_SCROLL_OFFSET;
+          if (scrollForKeyboard > 0) {
+            scrollY = Math.max(scrollY, scrollForKeyboard);
+          }
+        }
+
+        const maxScrollBeforeOvershoot = Math.max(nameTopY - INLINE_ARTICLE_NAME_MIN_TOP, 0);
+        if (effectiveKeyboardInset <= 0) {
+          scrollY = Math.min(scrollY, maxScrollBeforeOvershoot);
+        }
+
+        sheetScrollRef.current?.scrollTo({
+          y: Math.max(scrollY, 0),
+          animated: true,
+        });
+      },
+      () => {},
+    );
+  }, [estimateInlineArticleKeyboardInset, windowHeight]);
+
+  const scheduleInlineArticleScroll = useCallback((delayMs = 100) => {
+    cancelPendingInlineArticleScroll();
+    inlineArticleScrollTimerRef.current = setTimeout(() => {
+      inlineArticleScrollTimerRef.current = null;
+      inlineArticleScrollRafRef.current = requestAnimationFrame(() => {
+        inlineArticleScrollRafRef.current = requestAnimationFrame(() => {
+          inlineArticleScrollRafRef.current = null;
+          performInlineArticleScroll();
+        });
+      });
+    }, delayMs);
+  }, [cancelPendingInlineArticleScroll, performInlineArticleScroll]);
+
+  const handleInlineArticleScrollTargetChange = useCallback((target: InlineArticleScrollTarget) => {
+    if (!isInlineArticleScrollTargetReady(target)) return;
+    const prev = inlineArticleScrollTargetRef.current;
+    const changed =
+      prev.nameTop !== target.nameTop
+      || prev.nameBottom !== target.nameBottom
+      || prev.extentBottom !== target.extentBottom;
+    inlineArticleScrollTargetRef.current = target;
+    if (changed) {
+      scheduleInlineArticleScroll();
+    }
+  }, [scheduleInlineArticleScroll]);
+
+  const scrollToInlineArticle = useCallback((localY: number, offset = 16) => {
+    const content = scrollContentRef.current;
+    const field = inlineArticleFormRef.current;
+    if (!content || !field) return;
+
+    field.measureLayout(
+      content,
+      (_x, formY) => {
+        requestAnimationFrame(() => {
+          sheetScrollRef.current?.scrollTo({
+            y: Math.max(formY + localY - offset, 0),
+            animated: true,
+          });
+        });
+      },
+      () => {},
+    );
+  }, []);
+
+  const handleInlineArticleContentLayout = useCallback(() => {
+    if (!inlineArticleExpanded) return;
+    scheduleInlineArticleScroll();
+  }, [inlineArticleExpanded, scheduleInlineArticleScroll]);
+
+  const handleInlineArticleNameFocusChange = useCallback((focused: boolean) => {
+    inlineArticleEditingRef.current = focused;
+    if (focused) {
+      scheduleInlineArticleScroll();
+    }
+  }, [scheduleInlineArticleScroll]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardInset(event.endCoordinates.height);
+      if (inlineArticleEditingRef.current) {
+        scheduleInlineArticleScroll();
+      }
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardInset(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [scheduleInlineArticleScroll]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const syncWebKeyboardInset = () => {
+      if (!inlineArticleExpanded) return;
+      const inset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      setKeyboardInset((current) => {
+        const next = inset > 72 ? Math.round(inset) : 0;
+        return current === next ? current : next;
+      });
+      if (inset > 72 && inlineArticleEditingRef.current) {
+        scheduleInlineArticleScroll();
+      }
+    };
+
+    viewport.addEventListener('resize', syncWebKeyboardInset);
+    viewport.addEventListener('scroll', syncWebKeyboardInset);
+    return () => {
+      viewport.removeEventListener('resize', syncWebKeyboardInset);
+      viewport.removeEventListener('scroll', syncWebKeyboardInset);
+    };
+  }, [inlineArticleExpanded, scheduleInlineArticleScroll]);
+
+  useEffect(() => () => cancelPendingInlineArticleScroll(), [cancelPendingInlineArticleScroll]);
+
+  useEffect(() => {
+    if (!inlineArticleExpanded) return;
+    scheduleInlineArticleScroll(120);
+  }, [inlineArticleExpanded, scheduleInlineArticleScroll]);
+
+  const sheetContentContainerStyle = useMemo(() => {
+    const basePaddingBottom = Math.max(insets.bottom, 20);
+    let activePaddingBottom = basePaddingBottom;
+
+    if (inlineArticleExpanded) {
+      activePaddingBottom = Math.max(
+        activePaddingBottom,
+        basePaddingBottom + INLINE_ARTICLE_FORM_PADDING,
+        inlineArticleForcedScrollExtent,
+      );
+    }
+
+    if (inlineArticleExpanded && keyboardInset > 0) {
+      activePaddingBottom = Math.max(
+        activePaddingBottom,
+        keyboardInset + spacing.xl + INLINE_ARTICLE_FORM_PADDING,
+      );
+    }
+
+    const minHeight =
+      inlineArticleExpanded && keyboardInset > 0
+        ? Math.max(
+            (sheetScrollViewportHeightRef.current > 0
+              ? sheetScrollViewportHeightRef.current
+              : windowHeight - SHEET_TOP_MARGIN) + keyboardInset + spacing.lg,
+            0,
+          )
+        : undefined;
+
+    return [
+      styles.sheetContent,
+      {
+        paddingBottom: activePaddingBottom,
+        ...(minHeight != null ? { minHeight } : {}),
+      },
+    ];
+  }, [
+    inlineArticleExpanded,
+    inlineArticleForcedScrollExtent,
+    insets.bottom,
+    keyboardInset,
+    windowHeight,
+  ]);
+
+  const handleSheetContentSizeChange = useCallback(() => {
+    if (!inlineArticleExpanded) return;
+    scheduleInlineArticleScroll();
+  }, [inlineArticleExpanded, scheduleInlineArticleScroll]);
 
   useEffect(() => {
     if (!isTransfer) return;
@@ -1024,6 +1376,7 @@ export default function AddTransactionScreen() {
       );
       setIncomeReason((current) => (current === nextReason ? current : nextReason));
       if (nextAccount) {
+        accountManuallySelectedRef.current = true;
         setAccountId((current) => (current === nextAccount ? current : nextAccount));
       }
       setIncomeContactPickStatus((current) => {
@@ -1241,23 +1594,31 @@ export default function AddTransactionScreen() {
     }
 
     const isExpenseSave = persistedType === 'expense' && !saveAsPersonTransferTo;
+    const isIncomeSave = type === 'income' && !saveAsPersonTransferFrom && !saveAsStandardTransfer;
     const resolvedCategoryId = saveAsStandardTransfer
       ? TRANSFER_CATEGORY.id
-      : isExpenseSave
-        ? resolveExpenseCategoryId(
-            articles,
-            label.trim(),
-            visibleCats,
-            inferredExpenseCategoryId,
-            categoryId,
-            categoryManuallySelected,
-          )
-        : categoryId;
+      : isIncomeSave
+        ? INCOME_CATEGORY.id
+        : isExpenseSave
+          ? resolveExpenseCategoryId(
+              articles,
+              label.trim(),
+              visibleCats,
+              inferredExpenseCategoryId,
+              categoryId,
+              categoryManuallySelected,
+            )
+          : categoryId;
 
-    if (!resolvedCategoryId) {
+    // Income never asks for a budget category — expense (and person transfers) still require one.
+    if (
+      !isIncomeSave &&
+      (!resolvedCategoryId ||
+        (isExpenseSave && resolvedCategoryId === UNCATEGORIZED_TRANSACTION_CATEGORY.id))
+    ) {
       markInvalid(
         'category',
-        formValidationError('Catégorie', 'Choisissez une catégorie.'),
+        formValidationError('Catégorie', 'Sélectionne une catégorie pour continuer'),
       );
     }
     if (saveAsStandardTransfer && accountId === destinationAccountId) {
@@ -1347,6 +1708,9 @@ export default function AddTransactionScreen() {
     if (saveAsStandardTransfer) {
       await upsertCategory(TRANSFER_CATEGORY);
     }
+    if (isIncomeSave) {
+      await upsertCategory(INCOME_CATEGORY);
+    }
     if (
       isExpenseSave &&
       resolvedCategoryId === UNCATEGORIZED_TRANSACTION_CATEGORY.id
@@ -1419,6 +1783,11 @@ export default function AddTransactionScreen() {
       syncStatus: 'pending',
     });
 
+    if (isExpenseSave && transactionLabel) {
+      // Learn merchant → logo so future typing auto-applies the same mark.
+      void rememberMerchantLogo(transactionLabel).catch(() => {});
+    }
+
     if (editingTransaction) {
       const previousDeltas = getTransactionAccountDeltas(editingTransaction);
       const nextDeltas = getTransactionAccountDeltas({ amount: parsed, type: persistedType, note });
@@ -1490,32 +1859,66 @@ export default function AddTransactionScreen() {
     }
   };
 
+  const sheetDragHeight = Math.min(windowHeight * 0.92, Math.max(windowHeight - SHEET_TOP_MARGIN, 1));
+  const closeSheet = useCallback(() => {
+    router.back();
+  }, [router]);
+  const {
+    panGesture,
+    scrollNativeGesture,
+    scrollHandler,
+    sheetAnimatedStyle,
+    backdropAnimatedStyle,
+    requestClose,
+  } = useDraggableSheetGesture({
+    onClose: closeSheet,
+    sheetHeight: sheetDragHeight,
+    scrollable: true,
+  });
+
   return (
-    <View style={[styles.screen, styles.modalBackdrop, themed.modalBackdrop]}>
+    <GestureHandlerRootView style={[styles.screen, styles.modalBackdrop]}>
+      <Animated.View style={[styles.dragBackdrop, themed.modalBackdrop, backdropAnimatedStyle]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={requestClose} accessibilityLabel="Fermer" />
+      </Animated.View>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.modalKeyboard}
       >
-        <ScrollView
-              ref={sheetScrollRef}
-              style={[styles.sheet, themed.sheet]}
-              keyboardShouldPersistTaps="always"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={[styles.sheetContent, { paddingBottom: Math.max(insets.bottom, 20) }]}
-            >
-              <View style={[styles.handle, themed.handle]} />
+        <GestureDetector gesture={panGesture}>
+          <Animated.View style={[styles.sheet, themed.sheet, sheetAnimatedStyle]}>
+            <GestureDetector gesture={scrollNativeGesture}>
+              <Animated.ScrollView
+                ref={sheetScrollRef}
+                style={styles.sheetScroll}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                onScrollBeginDrag={() => Keyboard.dismiss()}
+                onScroll={scrollHandler}
+                scrollEventThrottle={16}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={sheetContentContainerStyle}
+                onLayout={(event) => {
+                  sheetScrollViewportHeightRef.current = event.nativeEvent.layout.height;
+                }}
+                onContentSizeChange={handleSheetContentSizeChange}
+              >
+              <View ref={scrollContentRef} collapsable={false} style={styles.sheetContentInner}>
+              <View style={styles.handleHitArea}>
+                <View style={[styles.handle, themed.handle]} />
+              </View>
               <View style={styles.sheetHeader}>
                 <Text style={[styles.sheetTitle, themed.text]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
                   {sheetTitle}
                 </Text>
-                <Pressable onPress={() => router.back()} hitSlop={12} style={[styles.sheetClose, themed.closeButton]}>
+                <Pressable onPress={requestClose} hitSlop={12} style={[styles.sheetClose, themed.closeButton]}>
                   <AppIcon family="ionicons" name="close" size={19} color={colors.textMuted} />
                 </Pressable>
               </View>
 
               {!routeType && (
                 <View style={styles.section}>
-                  <DashboardSectionLabel>Type</DashboardSectionLabel>
+                  <DashboardSectionLabel style={sectionLabelStyle}>Type</DashboardSectionLabel>
                   <View style={styles.wrapRow}>
                     {(['expense', 'income', 'transfer'] as const).map((t) => {
                       const on = type === t;
@@ -1570,7 +1973,7 @@ export default function AddTransactionScreen() {
                   style={styles.section}
                   onLayout={(e) => { nameSectionYRef.current = e.nativeEvent.layout.y; }}
                 >
-                  <DashboardSectionLabel>
+                  <DashboardSectionLabel style={sectionLabelStyle}>
                     {type === 'income'
                       ? 'Employeur / Client'
                       : isPersonTransferFrom
@@ -1731,7 +2134,7 @@ export default function AddTransactionScreen() {
                   style={styles.section}
                   onLayout={(e) => { transferReasonSectionYRef.current = e.nativeEvent.layout.y; }}
                 >
-                  <DashboardSectionLabel>
+                  <DashboardSectionLabel style={sectionLabelStyle}>
                     {isPersonTransferFrom ? 'Description (optionnel)' : 'Raison du virement'}
                   </DashboardSectionLabel>
                   <TextInput
@@ -1808,7 +2211,7 @@ export default function AddTransactionScreen() {
                   style={styles.section}
                   onLayout={(e) => { incomeReasonSectionYRef.current = e.nativeEvent.layout.y; }}
                 >
-                  <DashboardSectionLabel>Raison du revenu</DashboardSectionLabel>
+                  <DashboardSectionLabel style={sectionLabelStyle}>Raison du revenu</DashboardSectionLabel>
                   <TextInput
                     style={[styles.input, themed.controlStrong, themed.text]}
                     placeholder="Ex. travail, vente, don, prime..."
@@ -1902,21 +2305,22 @@ export default function AddTransactionScreen() {
                 placeholder="Choisir une date"
                 variant="sheet"
                 onChangeDate={setDate}
+                labelStyle={sectionLabelStyle}
               />
 
               {type === 'expense' ? (
                 <View style={styles.section}>
-                  <PaymentMethodField
-                    accounts={paymentMethodAccounts}
-                    selectedAccountId={accountId}
-                    onSelectAccount={(id) => {
+                  <SettingsSelectField
+                    label="Méthode de paiement"
+                    options={accountPickerOptions}
+                    selectedId={accountId}
+                    onSelect={(id) => {
                       tapHaptic();
-                      setAccountId(id);
+                      selectPaymentAccount(id);
                     }}
-                    chipControlStyle={themed.control}
-                    chipSelectedStyle={themed.selected}
-                    selectedTextStyle={themed.selectedText}
-                    textSecondaryStyle={{ color: colors.textSecondary }}
+                    pickerTitle="Compte de paiement"
+                    placeholder="Choisir un compte"
+                    emptyHint="Ajoute un compte pour enregistrer la dépense."
                   />
                 </View>
               ) : null}
@@ -1932,7 +2336,6 @@ export default function AddTransactionScreen() {
                     categorySectionYRef.current = event.nativeEvent.layout.y;
                   }}
                 >
-                  <DashboardSectionLabel>Catégorie</DashboardSectionLabel>
                   <BudgetCategoryPicker
                     categories={visibleCats}
                     searchText={categorySearchText}
@@ -1949,15 +2352,16 @@ export default function AddTransactionScreen() {
 
               {type !== 'expense' && !isTransfer ? (
                 <View style={styles.section}>
-                  <PaymentMethodField
+                  <SettingsSelectField
                     label="Compte de dépôt"
-                    accounts={paymentMethodAccounts}
-                    selectedAccountId={accountId}
-                    onSelectAccount={(id) => { tapHaptic(); setAccountId(id); }}
-                    chipControlStyle={themed.control}
-                    chipSelectedStyle={themed.selected}
-                    selectedTextStyle={themed.selectedText}
-                    textSecondaryStyle={{ color: colors.textSecondary }}
+                    options={accountPickerOptions}
+                    selectedId={accountId}
+                    onSelect={(id) => {
+                      tapHaptic();
+                      selectPaymentAccount(id);
+                    }}
+                    pickerTitle="Compte de paiement"
+                    placeholder="Choisir un compte"
                   />
                 </View>
               ) : null}
@@ -1980,7 +2384,6 @@ export default function AddTransactionScreen() {
                   ]}
                   onLayout={(e) => { categorySectionYRef.current = e.nativeEvent.layout.y; }}
                 >
-                  <DashboardSectionLabel>Catégorie</DashboardSectionLabel>
                   <BudgetCategoryPicker
                     categories={visibleCats}
                     searchText={categorySearchText}
@@ -1997,15 +2400,16 @@ export default function AddTransactionScreen() {
 
               {isPersonTransferFrom ? (
                 <View style={styles.section}>
-                  <PaymentMethodField
+                  <SettingsSelectField
                     label="Compte de dépôt"
-                    accounts={paymentMethodAccounts}
-                    selectedAccountId={accountId}
-                    onSelectAccount={(id) => { tapHaptic(); setAccountId(id); }}
-                    chipControlStyle={themed.control}
-                    chipSelectedStyle={themed.selected}
-                    selectedTextStyle={themed.selectedText}
-                    textSecondaryStyle={{ color: colors.textSecondary }}
+                    options={accountPickerOptions}
+                    selectedId={accountId}
+                    onSelect={(id) => {
+                      tapHaptic();
+                      selectPaymentAccount(id);
+                    }}
+                    pickerTitle="Compte de paiement"
+                    placeholder="Choisir un compte"
                   />
                 </View>
               ) : null}
@@ -2019,40 +2423,16 @@ export default function AddTransactionScreen() {
                   ]}
                   onLayout={(e) => { categorySectionYRef.current = e.nativeEvent.layout.y; }}
                 >
-                  <DashboardSectionLabel>Catégorie</DashboardSectionLabel>
-                  <View style={styles.wrapRow}>
-                    {visibleCats.map((c) => {
-                      const on = categoryId === c.id;
-                      return (
-                        <Pressable
-                          key={c.id}
-                          onPress={() => {
-                            tapHaptic();
-                            clearFieldError('category');
-                            setCategoryManuallySelected(true);
-                            setCategoryId(c.id);
-                          }}
-                          style={[styles.categoryChip, themed.control, styles.chipShell, on && themed.selected]}
-                        >
-                          <AppIcon family="ionicons"
-                            name={getCategoryIconName(c)}
-                            size={14}
-                            color={on ? colors.primary : colors.textSecondary}
-                            style={styles.categoryChipIcon}
-                          />
-                          <Text
-                            style={[styles.categoryChipText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                            numberOfLines={2}
-                            ellipsizeMode="tail"
-                            adjustsFontSizeToFit
-                            minimumFontScale={0.82}
-                          >
-                            {c.name}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+                  <BudgetCategoryPicker
+                    categories={visibleCats}
+                    searchText={categorySearchText}
+                    selectedId={categoryId}
+                    onSelect={(id) => {
+                      clearFieldError('category');
+                      setCategoryManuallySelected(true);
+                      setCategoryId(id);
+                    }}
+                  />
                 </View>
               ) : null}
 
@@ -2065,65 +2445,23 @@ export default function AddTransactionScreen() {
                   ]}
                   onLayout={(e) => { sourceAccountSectionYRef.current = e.nativeEvent.layout.y; }}
                 >
-                  <DashboardSectionLabel>De</DashboardSectionLabel>
                   {!hasTransferEndpoints ? (
                     <Text style={[styles.sectionHint, themed.textMuted]}>Aucun compte ou objectif trouvé.</Text>
-                  ) : null}
-                  {hasAccountOptions ? (
-                    <PaymentMethodField
-                      label="Comptes"
-                      accounts={paymentMethodAccounts}
-                      selectedAccountId={accountId}
-                      onSelectAccount={(id) => {
+                  ) : (
+                    <SettingsSelectField
+                      label="De"
+                      options={transferSourcePickerOptions}
+                      selectedId={accountId}
+                      onSelect={(id) => {
                         tapHaptic();
                         clearFieldError('sourceAccount');
                         clearFieldError('destinationAccount');
-                        setAccountId(id);
+                        selectPaymentAccount(id);
                       }}
-                      chipControlStyle={themed.control}
-                      chipSelectedStyle={themed.selected}
-                      selectedTextStyle={themed.selectedText}
-                      textSecondaryStyle={{ color: colors.textSecondary }}
+                      pickerTitle="Compte source"
+                      placeholder="Choisir une source"
                     />
-                  ) : null}
-                  {hasSavingsGoalsList ? (
-                    <>
-                      <Text style={[styles.transferGroupLabel, themed.textMuted]}>{'Objectifs d\u2019épargne'}</Text>
-                      <View style={styles.accountRow}>
-                        {savingsGoals.map((g) => {
-                          const on = accountId === g.id;
-                          return (
-                            <Pressable
-                              key={g.id}
-                              onPress={() => {
-                                tapHaptic();
-                                clearFieldError('sourceAccount');
-                                clearFieldError('destinationAccount');
-                                setAccountId(g.id);
-                              }}
-                              style={[styles.transferGoalChip, on ? themed.selected : themed.control]}
-                            >
-                              <TransferGoalChipIcon
-                                icon={g.icon}
-                                selected={on}
-                                selectedColor={colors.primary}
-                                mutedColor={colors.textSecondary}
-                              />
-                              <Text
-                                style={[
-                                  styles.transferGoalChipText,
-                                  on ? themed.selectedText : { color: colors.textSecondary },
-                                ]}
-                                numberOfLines={1}
-                              >
-                                {g.name} • {formatNumberDisplay(Math.round(g.currentAmount))} $
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    </>
-                  ) : null}
+                  )}
                 </View>
               ) : null}
 
@@ -2136,19 +2474,17 @@ export default function AddTransactionScreen() {
                   ]}
                   onLayout={(e) => { sourceAccountSectionYRef.current = e.nativeEvent.layout.y; }}
                 >
-                  <PaymentMethodField
+                  <SettingsSelectField
                     label="Compte source"
-                    accounts={paymentMethodAccounts}
-                    selectedAccountId={accountId}
-                    onSelectAccount={(id) => {
+                    options={accountPickerOptions}
+                    selectedId={accountId}
+                    onSelect={(id) => {
                       tapHaptic();
                       clearFieldError('sourceAccount');
-                      setAccountId(id);
+                      selectPaymentAccount(id);
                     }}
-                    chipControlStyle={themed.control}
-                    chipSelectedStyle={themed.selected}
-                    selectedTextStyle={themed.selectedText}
-                    textSecondaryStyle={{ color: colors.textSecondary }}
+                    pickerTitle="Compte source"
+                    placeholder="Choisir un compte"
                     emptyHint="Aucun compte trouvé."
                   />
                 </View>
@@ -2163,326 +2499,56 @@ export default function AddTransactionScreen() {
                   ]}
                   onLayout={(e) => { destinationAccountSectionYRef.current = e.nativeEvent.layout.y; }}
                 >
-                  <DashboardSectionLabel>Vers</DashboardSectionLabel>
-                  {destinationPaymentMethodAccounts.length > 0 ? (
-                    <PaymentMethodField
-                      label="Comptes"
-                      accounts={destinationPaymentMethodAccounts}
-                      selectedAccountId={destinationAccountId}
-                      onSelectAccount={(id) => {
-                        tapHaptic();
-                        clearFieldError('sourceAccount');
-                        clearFieldError('destinationAccount');
-                        setDestinationAccountId(id);
-                      }}
-                      chipControlStyle={themed.control}
-                      chipSelectedStyle={themed.selected}
-                      selectedTextStyle={themed.selectedText}
-                      textSecondaryStyle={{ color: colors.textSecondary }}
-                    />
-                  ) : null}
-                  {hasDestinationSavingsGoals ? (
-                    <>
-                      <Text style={[styles.transferGroupLabel, themed.textMuted]}>{'Objectifs d\u2019épargne'}</Text>
-                      <View style={styles.accountRow}>
-                        {destinationSavingsGoals.map((g) => {
-                          const on = destinationAccountId === g.id;
-                          return (
-                            <Pressable
-                              key={g.id}
-                              onPress={() => {
-                                tapHaptic();
-                                clearFieldError('sourceAccount');
-                                clearFieldError('destinationAccount');
-                                setDestinationAccountId(g.id);
-                              }}
-                              style={[styles.transferGoalChip, on ? themed.selected : themed.control]}
-                            >
-                              <TransferGoalChipIcon
-                                icon={g.icon}
-                                selected={on}
-                                selectedColor={colors.primary}
-                                mutedColor={colors.textSecondary}
-                              />
-                              <Text
-                                style={[
-                                  styles.transferGoalChipText,
-                                  on ? themed.selectedText : { color: colors.textSecondary },
-                                ]}
-                                numberOfLines={1}
-                              >
-                                {g.name} • {formatNumberDisplay(Math.round(g.currentAmount))} $
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    </>
-                  ) : null}
+                  <SettingsSelectField
+                    label="Vers"
+                    options={transferDestinationPickerOptions}
+                    selectedId={destinationAccountId}
+                    onSelect={(id) => {
+                      tapHaptic();
+                      clearFieldError('sourceAccount');
+                      clearFieldError('destinationAccount');
+                      setDestinationAccountId(id);
+                    }}
+                    pickerTitle="Compte destination"
+                    placeholder="Choisir une destination"
+                    emptyHint="Aucun compte ou objectif trouvé."
+                  />
                   {accountId === destinationAccountId ? (
                     <Text style={[styles.transferWarning, { color: colors.warning }]}>Sélectionne deux sources différentes.</Text>
                   ) : null}
                 </View>
               ) : null}
 
-              {type === 'income' ? (
-                <View
-                  style={[
-                    styles.section,
-                    fieldHasError('category') && styles.validationOutline,
-                    fieldHasError('category') && fieldErrorBorder,
-                  ]}
-                  onLayout={(e) => { categorySectionYRef.current = e.nativeEvent.layout.y; }}
-                >
-                  <DashboardSectionLabel>Catégorie</DashboardSectionLabel>
-                  <View style={styles.wrapRow}>
-                    {visibleCats.map((c) => {
-                      const on = categoryId === c.id;
-                      return (
-                        <Pressable
-                          key={c.id}
-                          onPress={() => {
-                            tapHaptic();
-                            clearFieldError('category');
-                            setCategoryManuallySelected(true);
-                            setCategoryId(c.id);
-                          }}
-                          style={[styles.categoryChip, themed.control, styles.chipShell, on && themed.selected]}
-                        >
-                          <AppIcon family="ionicons"
-                            name={getCategoryIconName(c)}
-                            size={14}
-                            color={on ? colors.primary : colors.textSecondary}
-                            style={styles.categoryChipIcon}
-                          />
-                          <Text
-                            style={[styles.categoryChipText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                            numberOfLines={2}
-                            ellipsizeMode="tail"
-                            adjustsFontSizeToFit
-                            minimumFontScale={0.82}
-                          >
-                            {c.name}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              ) : null}
-
               {type === 'expense' ? (
-                <View
-                  style={[
-                    styles.articlesSectionCard,
-                    {
-                      backgroundColor: isLight ? '#FAFAFA' : '#0F0F10',
-                      borderColor: colors.containerBorder,
-                    },
-                  ]}
-                  onLayout={(event) => {
-                    articlesSectionYRef.current = event.nativeEvent.layout.y;
+                <TransactionArticlesReceiptCard
+                  articles={articles}
+                  colors={colors}
+                  inlineArticleExpanded={inlineArticleExpanded}
+                  maxArticlePrice={maxArticlePrice ?? null}
+                  inlineArticleFormRef={inlineArticleFormRef}
+                  scrollToOffset={scrollToInlineArticle}
+                  onInlineScrollTargetChange={handleInlineArticleScrollTargetChange}
+                  onNameFocusChange={handleInlineArticleNameFocusChange}
+                  onContentLayout={handleInlineArticleContentLayout}
+                  onOpenInlineArticle={() => {
+                    tapHaptic();
+                    setInlineArticleExpanded(true);
+                    scheduleInlineArticleScroll(120);
                   }}
-                >
-                    <View style={styles.articlesHeaderRow}>
-                      <View style={styles.articlesHeaderLeft}>
-                        <View style={[styles.articlesIconWell, { backgroundColor: colors.successMuted }]}>
-                          <AppIcon family="ionicons" name="receipt-outline" size={14} color={colors.primary} />
-                        </View>
-                        <Text style={[detailSectionLabelStyle(), { color: colors.text }]}>Articles</Text>
-                        {articles.length > 0 ? (
-                          <View style={[styles.articlesCountBadge, { backgroundColor: colors.successMuted }]}>
-                            <Text style={[styles.articlesCountBadgeText, { color: colors.primary }]}>
-                              {articles.length}
-                            </Text>
-                          </View>
-                        ) : null}
-                      </View>
-                      {!inlineArticleExpanded && articles.length > 0 ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Ajouter un article"
-                          hitSlop={8}
-                          onPress={() => {
-                            tapHaptic();
-                            setInlineArticleExpanded(true);
-                          }}
-                          style={({ pressed }) => [
-                            styles.articlesAddButton,
-                            {
-                              backgroundColor: colors.successMuted,
-                              borderColor: colors.primary,
-                            },
-                            pressed && styles.pressed,
-                          ]}
-                        >
-                          <AppIcon family="ionicons" name="add" size={14} color={colors.primary} />
-                          <Text style={[styles.articlesAddButtonText, { color: colors.primary }]}>Ajouter</Text>
-                        </Pressable>
-                      ) : null}
-                    </View>
-
-                    <View
-                      style={[
-                        styles.articlesTearLine,
-                        { borderColor: isLight ? 'rgba(0,0,0,0.11)' : 'rgba(255,255,255,0.11)' },
-                      ]}
-                    />
-
-                    {!inlineArticleExpanded && articles.length === 0 ? (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Ajouter un article"
-                        onPress={() => {
-                          tapHaptic();
-                          setInlineArticleExpanded(true);
-                        }}
-                        style={({ pressed }) => [
-                          styles.articlesPrimaryAddButton,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <AppIcon family="ionicons" name="add-circle-outline" size={18} color={colors.textSecondary} />
-                        <Text style={styles.articlesPrimaryAddButtonText}>
-                          Ajouter un article
-                        </Text>
-                      </Pressable>
-                    ) : null}
-
-                    {inlineArticleExpanded ? (
-                      <View
-                        style={styles.articlesInlineFormWrap}
-                        onLayout={(event) => {
-                          inlineArticleLocalYRef.current = event.nativeEvent.layout.y;
-                        }}
-                      >
-                        <AddArticleSheet
-                          variant="inline"
-                          visible={inlineArticleExpanded}
-                          maxArticlePrice={maxArticlePrice}
-                          scrollToOffset={scrollToInlineArticle}
-                          onAdd={(name, price, articleCategoryId, categoryName) =>
-                            handleAddArticle(name, price, articleCategoryId, categoryName)
-                          }
-                          onClose={() => setInlineArticleExpanded(false)}
-                        />
-                      </View>
-                    ) : null}
-
-                    {articles.length > 0 ? (
-                      <View
-                        style={[
-                          styles.articlesBlock,
-                          {
-                            backgroundColor: isLight ? '#FFFFFF' : colors.surfaceElevated,
-                            borderColor: isLight ? 'rgba(0,0,0,0.06)' : colors.border,
-                          },
-                        ]}
-                      >
-                        <View style={styles.articlesTableHead}>
-                          <Text
-                            style={[
-                              detailSubSectionHeaderStyle(),
-                              styles.articlesTableHeadLabel,
-                              { color: colors.textMuted },
-                            ]}
-                          >
-                            Article
-                          </Text>
-                          <Text
-                            style={[
-                              detailSubSectionHeaderStyle(),
-                              styles.articlesTableHeadAmount,
-                              { color: colors.textMuted },
-                            ]}
-                          >
-                            Montant
-                          </Text>
-                          <View style={styles.articlesTableHeadAction} />
-                        </View>
-                        {articles.map((article, index) => (
-                          <View
-                            key={`${article.name}-${index}`}
-                            style={[
-                              styles.articleRow,
-                              index > 0 && {
-                                borderTopWidth: StyleSheet.hairlineWidth,
-                                borderTopColor: isLight ? 'rgba(0,0,0,0.06)' : colors.border,
-                              },
-                            ]}
-                          >
-                            <View style={styles.articleCopy}>
-                              <Text
-                                style={[styles.articleName, articlesReceiptTypography('regular'), themed.text]}
-                                numberOfLines={1}
-                              >
-                                {article.name}
-                              </Text>
-                              {article.categoryName ? (
-                                <Text
-                                  style={[
-                                    styles.articleCategory,
-                                    articlesReceiptTypography('regular'),
-                                    themed.textMuted,
-                                  ]}
-                                  numberOfLines={1}
-                                >
-                                  {article.categoryName}
-                                </Text>
-                              ) : null}
-                            </View>
-                            <Text style={[styles.articlePrice, articlesReceiptTypography('medium'), themed.text]}>
-                              {formatDisplayMoneyAbsolute(article.price)}
-                            </Text>
-                            <Pressable
-                              accessibilityRole="button"
-                              accessibilityLabel={`Retirer ${article.name}`}
-                              hitSlop={8}
-                              onPress={() => handleRemoveArticle(index)}
-                              style={({ pressed }) => [styles.articleRemoveBtn, pressed && styles.pressed]}
-                            >
-                              <AppIcon family="ionicons" name="close" size={13} color={colors.textMuted} />
-                            </Pressable>
-                          </View>
-                        ))}
-                        {articlesTotal > 0 ? (
-                          <View
-                            style={[
-                              styles.articleTotalRow,
-                              {
-                                borderTopColor: isLight ? 'rgba(0,0,0,0.11)' : 'rgba(255,255,255,0.11)',
-                              },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.articleTotalLabel,
-                                articlesReceiptTypography('medium'),
-                                themed.textMuted,
-                              ]}
-                            >
-                              TOTAL
-                            </Text>
-                            <Text
-                              style={[styles.articleTotalValue, articlesReceiptTypography('medium'), themed.text]}
-                            >
-                              {formatDisplayMoneyAbsolute(articlesTotal)}
-                            </Text>
-                          </View>
-                        ) : null}
-                      </View>
-                    ) : !inlineArticleExpanded ? (
-                      <Text
-                        style={[
-                          styles.articlesEmptyText,
-                          articlesReceiptTypography('regular'),
-                          themed.textMuted,
-                        ]}
-                      >
-                        Détaillez votre achat article par article
-                      </Text>
-                    ) : null}
-                </View>
+                  onCloseInlineArticle={() => {
+                    setInlineArticleExpanded(false);
+                    inlineArticleEditingRef.current = false;
+                    inlineArticleScrollTargetRef.current = {
+                      nameTop: 0,
+                      nameBottom: 0,
+                      extentBottom: 0,
+                    };
+                  }}
+                  onAddArticle={(name, price, articleCategoryId, categoryName) =>
+                    handleAddArticle(name, price, articleCategoryId, categoryName)
+                  }
+                  onRemoveArticle={handleRemoveArticle}
+                />
               ) : null}
 
               {formFeedback ? (
@@ -2498,9 +2564,13 @@ export default function AddTransactionScreen() {
                 onPress={() => void save()}
                 disabled={saving}
               />
-        </ScrollView>
+              </View>
+              </Animated.ScrollView>
+            </GestureDetector>
+          </Animated.View>
+        </GestureDetector>
       </KeyboardAvoidingView>
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
@@ -2513,6 +2583,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-end',
   },
+  dragBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
   modalKeyboard: { flex: 1, justifyContent: 'flex-end' },
   pressed: { opacity: 0.72 },
   sheet: {
@@ -2521,18 +2594,32 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  sheetScroll: {
+    flexGrow: 0,
   },
   sheetContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    gap: spacing.md,
+  },
+  sheetContentInner: {
+    // Major form blocks (merchant, amount, date, payment, category, articles)
+    gap: spacing.xl,
+  },
+  handleHitArea: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 4,
+    paddingBottom: 8,
+    minHeight: 28,
   },
   handle: {
     alignSelf: 'center',
     width: 44,
     height: 4,
     borderRadius: radius.pill,
-    marginBottom: 4,
   },
   sheetHeader: {
     flexDirection: 'row',
@@ -2559,10 +2646,11 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
   },
   amountSection: {
-    gap: spacing.sm,
+    gap: spacing.md,
+    paddingVertical: spacing.xs,
   },
   amountValidationSection: {
-    gap: spacing.sm,
+    gap: spacing.md,
     borderRadius: radius.lg,
     padding: spacing.md,
   },
@@ -2825,168 +2913,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     ...jakartaExtraBoldText,
     fontSize: typography.meta,
-  },
-  articlesSectionCard: {
-    gap: spacing.md,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    padding: spacing.md,
-  },
-  articlesHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  articlesHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    flex: 1,
-    minWidth: 0,
-  },
-  articlesIconWell: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  articlesCountBadge: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
-  },
-  articlesCountBadgeText: {
-    ...jakartaExtraBoldText,
-    fontSize: typography.micro,
-    lineHeight: 14,
-  },
-  articlesTearLine: {
-    borderTopWidth: 1,
-    borderStyle: 'dashed',
-  },
-  articlesPrimaryAddButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    minHeight: 48,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  articlesPrimaryAddButtonText: {
-    ...jakartaMediumText,
-    fontSize: typography.caption,
-    letterSpacing: 0.2,
-    color: colors.textSecondary,
-  },
-  articlesAddButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  articlesAddButtonText: {
-    ...jakartaExtraBoldText,
-    fontSize: typography.micro,
-    letterSpacing: 0.2,
-  },
-  articlesInlineFormWrap: {
-    gap: spacing.sm,
-  },
-  articlesBlock: {
-    gap: spacing.xs,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  articlesTableHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingBottom: spacing.xs,
-  },
-  articlesTableHeadLabel: {
-    flex: 1,
-    minWidth: 0,
-  },
-  articlesTableHeadAmount: {
-    textAlign: 'right',
-    minWidth: 72,
-  },
-  articlesTableHeadAction: {
-    width: 26,
-    flexShrink: 0,
-  },
-  articleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-  },
-  articleCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  articleName: {
-    fontSize: 13,
-    letterSpacing: 0.3,
-    lineHeight: 18,
-  },
-  articleCategory: {
-    fontSize: 10,
-    letterSpacing: 0.4,
-    lineHeight: 14,
-  },
-  articlePrice: {
-    fontSize: 13,
-    letterSpacing: 0.3,
-    flexShrink: 0,
-    minWidth: 72,
-    textAlign: 'right',
-  },
-  articleRemoveBtn: {
-    width: 26,
-    height: 26,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  articleTotalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: spacing.sm,
-    marginTop: 2,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  articleTotalLabel: {
-    fontSize: 10,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-  },
-  articleTotalValue: {
-    fontSize: 13,
-    letterSpacing: 0.4,
-  },
-  articlesEmptyText: {
-    fontSize: 12,
-    textAlign: 'center',
-    paddingVertical: spacing.sm,
-    letterSpacing: 0.4,
   },
   logoSection: {
     borderRadius: radius.lg,

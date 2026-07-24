@@ -18,7 +18,7 @@ import { typographyKit } from '@/constants/typographyKit';
 export const planFinanceKit = {
   colors: {
     background: DARK_CANVAS,
-    surface: '#111111',
+    surface: CONTAINER_SURFACE,
     surfaceElevated: '#2E2E34',
     input: '#1A1A1D',
     accent: '#4ADE80',
@@ -38,7 +38,10 @@ export const planFinanceKit = {
   layout: {
     cardPadding: 20,
     cardGap: 14,
-    sectionGap: 24,
+    /** Vertical rhythm between major hub blocks (stratégie, épargne, prêts…). */
+    sectionGap: 32,
+    /** Gap inside a hub section (header → content → CTAs). */
+    blockGap: 16,
     fieldGap: 20,
     headerFieldGap: 24,
   },
@@ -72,7 +75,10 @@ export const PLAN_CARD_LIST_GAP = planFinanceKit.layout.cardGap;
 export const ONYX_CONTAINER = {
   borderRadius: planFinanceKit.radius.card,
   borderWidth: 'hairline' as const,
+  /** Keep 0.82 — enhanced with {@link planFinanceContainerPressedStyle} scale. */
   pressedOpacity: 0.82,
+  /** Subtle squash on press (pairs with opacity). */
+  pressedScale: 0.975,
   padding: {
     /** Full-width list row (icon + copy + amount) — 12px all sides */
     row: spacing.md,
@@ -112,9 +118,12 @@ export function planFinanceContainerShellStyle(
 /** @see planFinanceContainerShellStyle */
 export const onyxContainerShellStyle = planFinanceContainerShellStyle;
 
-/** Press feedback on the outer `Pressable` wrapping an Onyx container — opacity 0.82. */
-export function planFinanceContainerPressedStyle(): Pick<ViewStyle, 'opacity'> {
-  return { opacity: ONYX_CONTAINER.pressedOpacity };
+/** Press feedback on the outer `Pressable` wrapping an Onyx container — opacity 0.82 + scale. */
+export function planFinanceContainerPressedStyle(): Pick<ViewStyle, 'opacity' | 'transform'> {
+  return {
+    opacity: ONYX_CONTAINER.pressedOpacity,
+    transform: [{ scale: ONYX_CONTAINER.pressedScale }],
+  };
 }
 
 /** @see planFinanceContainerPressedStyle */

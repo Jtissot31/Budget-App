@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { cashBanknotesLogoUri } from '@/components/icons/CashBanknotesOutlineIcon';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -11,8 +12,11 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -453,6 +457,8 @@ export default function AccountDetailScreen() {
   const params = useLocalSearchParams<{ accountId?: string }>();
   const accountId = typeof params.accountId === 'string' ? params.accountId : '';
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const editAccountSheetHeight = Math.round(windowHeight * 0.92);
   const scrollRef = useRef<ScrollView>(null);
   const searchInputRef = useRef<TextInput>(null);
   const { colors, ghost, ghostCardShadow, isLight } = useAppTheme();
@@ -1097,21 +1103,24 @@ export default function AccountDetailScreen() {
       </ScrollView>
 
       <Modal visible={showForm} animationType="slide" transparent onRequestClose={closeForm}>
-        <View style={[styles.modalBackdrop, formThemed.modalBackdrop]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeForm} />
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.modalKeyboard}
-          >
-            <View
-              style={[
-                styles.modalSheet,
-                ghostCardShadow,
-                formThemed.sheet,
-                { paddingBottom: Math.max(insets.bottom, spacing.md) },
-              ]}
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <View style={[styles.modalBackdrop, formThemed.modalBackdrop]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={closeForm} />
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              style={styles.modalKeyboard}
             >
-              <View style={[styles.modalHandle, formThemed.handle]} />
+              <DraggableSheetSurface
+                onClose={closeForm}
+                sheetHeight={editAccountSheetHeight}
+                style={[
+                  styles.modalSheet,
+                  ghostCardShadow,
+                  formThemed.sheet,
+                  { paddingBottom: Math.max(insets.bottom, spacing.md) },
+                ]}
+              >
+                <View style={[styles.modalHandle, formThemed.handle]} />
               <View style={styles.modalTitleRow}>
                 <Text style={[styles.formTitle, formThemed.text]} numberOfLines={1}>
                   Modifier le compte
@@ -1125,9 +1134,7 @@ export default function AccountDetailScreen() {
               {kind === 'cash' ? (
                 <View style={styles.formHead}>
                   <View style={styles.logoPreviewWrap}>
-                    <IconFrame size={52}>
-                      <AppIcon family="ionicons" name="cash-banknotes-outline" size={22} color={colors.primary} />
-                    </IconFrame>
+                    <LogoIconFrame uri={cashBanknotesLogoUri()} size={52} />
                   </View>
                   <Text style={[styles.formHint, formThemed.textMuted]}>
                     Solde manuel — pas de synchronisation bancaire.
@@ -1318,9 +1325,10 @@ export default function AccountDetailScreen() {
                 </View>
               )}
               </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
+              </DraggableSheetSurface>
+            </KeyboardAvoidingView>
+          </View>
+        </GestureHandlerRootView>
       </Modal>
 
       <RecurringPaymentFormModal

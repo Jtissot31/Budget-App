@@ -31,13 +31,19 @@ export function MerchantLogo({
   const { colors, isLight } = useAppTheme();
   const autoUrls = useMemo(() => getMerchantLogoUrls(name), [name]);
   const resolvedIcon = resolveMdiOrLegacyIcon(icon ?? EXPENSE_MDI_ICON);
+  const storedLogoUrl = logoUrl?.trim() || null;
 
-  const manualLogoUrl = !useAutoLogo ? logoUrl?.trim() || null : null;
   const remoteUrls = useMemo(() => {
-    if (manualLogoUrl) return [manualLogoUrl];
-    if (useAutoLogo) return autoUrls;
-    return [];
-  }, [autoUrls, manualLogoUrl, useAutoLogo]);
+    if (!useAutoLogo) {
+      return storedLogoUrl ? [storedLogoUrl] : [];
+    }
+    // Prefer remembered logo URL (custom / remote memory), then name-based chain.
+    if (storedLogoUrl) {
+      const rest = autoUrls.filter((url) => url !== storedLogoUrl);
+      return [storedLogoUrl, ...rest];
+    }
+    return autoUrls;
+  }, [autoUrls, storedLogoUrl, useAutoLogo]);
 
   const [sourceIndex, setSourceIndex] = useState(0);
   const [giveUp, setGiveUp] = useState(false);

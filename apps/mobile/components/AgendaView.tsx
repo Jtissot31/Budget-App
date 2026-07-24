@@ -13,7 +13,6 @@ import {
   jakartaExtraBoldText,
   jakartaMediumText,
   jakartaSemiboldText,
-  moneyAmountTypography,
   screenHorizontalGutter,
   spacing,
   type AppColors,
@@ -28,7 +27,6 @@ import {
   getRecurringPayments,
   getSimulatedAccounts,
 } from '@/lib/db';
-import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import {
   ESTIMATED_PAYCHECK_LABEL,
   inferAllEstimatedPaychecksForRange,
@@ -39,7 +37,7 @@ import { tapHaptic } from '@/lib/haptics';
 import { isMonthAfter, startOfMonth } from '@/lib/budgetMonth';
 import { useAppTheme } from '@/lib/themeContext';
 import { getMerchantLogoUrl } from '@/lib/merchantLogo';
-import { daysUntilPayment, formatDaysUntilMeta, resolvePaymentStatusBadge } from '@/lib/paymentStatusBadge';
+import { resolvePaymentStatusBadge } from '@/lib/paymentStatusBadge';
 import {
   buildLoanByRecurringPaymentId,
   resolveAgendaBillDisplayIcon,
@@ -79,8 +77,6 @@ type AgendaUpcomingSection = {
   titleBold: string;
   titleSuffix?: string;
   items: Array<{ bill: AgendaBill; dateKey: string }>;
-  expenseTotal: number;
-  incomeTotal: number;
 };
 
 /** Exemple d’échéances — à remplacer par des données API plus tard */
@@ -103,7 +99,7 @@ const BILLS_BY_DATE: Record<string, AgendaBill[]> = {
   '2026-05-28': [{ name: 'Assurance auto', amount: 180, account: 'Chèques', recurring: true }],
 };
 
-const UPCOMING_WINDOW_DAYS = 30;
+const UPCOMING_WINDOW_DAYS = 31;
 const INCOME_TRANSACTION_LOOKBACK_LIMIT = PAYCHECK_TRANSACTION_LOOKBACK_LIMIT;
 /** Jours avant/après la date estimée pour associer un vrai dépôt de paie à ce cycle. */
 const ESTIMATED_PAY_CONFIRMED_WINDOW_BEFORE_DAYS = 5;
@@ -339,6 +335,16 @@ function formatAgendaShortDate(dateKey: string) {
   return `${capitalizeFirst(weekday)}. ${dayLabel} ${month}`;
 }
 
+function formatAgendaFullDate(dateKey: string) {
+  const date = parseIsoDay(dateKey);
+  if (!date) return dateKey;
+  const weekday = date.toLocaleDateString('fr-FR', { weekday: 'long' });
+  const day = date.getDate();
+  const month = date.toLocaleDateString('fr-FR', { month: 'long' });
+  const dayLabel = day === 1 ? '1er' : String(day);
+  return `${capitalizeFirst(weekday)} ${dayLabel} ${month}`;
+}
+
 function formatAgendaSectionSuffix(dateKey: string) {
   return ` · ${formatAgendaShortDate(dateKey).toLowerCase()}`;
 }
@@ -347,26 +353,6 @@ function endOfWeek(date: Date) {
   const day = date.getDay();
   const daysUntilSunday = day === 0 ? 0 : 7 - day;
   return addDays(date, daysUntilSunday);
-}
-
-function sumSectionTotals(items: Array<{ bill: AgendaBill }>) {
-  let expenseTotal = 0;
-  let incomeTotal = 0;
-  items.forEach(({ bill }) => {
-    if ((bill.kind ?? 'payment') === 'income' || isPayBill(bill)) {
-      incomeTotal += bill.amount;
-    } else {
-      expenseTotal += bill.amount;
-    }
-  });
-  return { expenseTotal, incomeTotal };
-}
-
-function formatSectionTotal(expenseTotal: number, incomeTotal: number) {
-  const parts: string[] = [];
-  if (expenseTotal > 0) parts.push(`−${formatDisplayMoneyAbsolute(expenseTotal)}`);
-  if (incomeTotal > 0) parts.push(`+${formatDisplayMoneyAbsolute(incomeTotal)}`);
-  return parts.join(' · ');
 }
 
 function groupUpcomingIntoSections(
@@ -417,33 +403,28 @@ function groupUpcomingIntoSections(
 
   const sections: AgendaUpcomingSection[] = [];
   if (tomorrowItems.length) {
-    const totals = sumSectionTotals(tomorrowItems);
     sections.push({
       titleBold: 'Demain',
       titleSuffix: formatAgendaSectionSuffix(tomorrowKey),
       items: tomorrowItems,
-      ...totals,
     });
   }
   if (thisWeekItems.length) {
     sections.push({
       titleBold: 'Cette semaine',
       items: thisWeekItems,
-      ...sumSectionTotals(thisWeekItems),
     });
   }
   if (nextWeekItems.length) {
     sections.push({
       titleBold: 'Semaine prochaine',
       items: nextWeekItems,
-      ...sumSectionTotals(nextWeekItems),
     });
   }
   laterBuckets.forEach((items, titleBold) => {
     sections.push({
       titleBold,
       items,
-      ...sumSectionTotals(items),
     });
   });
 
@@ -451,22 +432,11 @@ function groupUpcomingIntoSections(
 }
 
 function buildAgendaRowSubtitle(
-  bill: AgendaBill,
   dateKey: string,
-  todayKey: string,
-  recurringPayments: RecurringPayment[],
+  options?: { hideDate?: boolean },
 ) {
-  const recurring = bill.sourceId ? recurringPayments.find((payment) => payment.id === bill.sourceId) : undefined;
-  if (recurring && bill.recurring) {
-    return `${frequencyLabel(recurring.frequency)} · ${bill.account}`;
-  }
-
-  const days = daysUntilPayment(dateKey, new Date(`${todayKey}T12:00:00`));
-  const shortDate = formatAgendaShortDate(dateKey);
-  if (days > 0 && days <= 14) {
-    return `${shortDate} · ${formatDaysUntilMeta(days)}`;
-  }
-  return shortDate;
+  if (options?.hideDate) return null;
+  return formatAgendaShortDate(dateKey);
 }
 
 function resolveBillDisplayName(bill: AgendaBill) {
@@ -644,7 +614,7 @@ function CalendarDayDots({
 
   return (
     <View style={styles.dotsRow}>
-      {hasPayment ? <View style={[styles.eventDot, { backgroundColor: colors.textMuted }]} /> : null}
+      {hasPayment ? <View style={[styles.eventDot, { backgroundColor: colors.warning }]} /> : null}
       {hasIncome ? <View style={[styles.eventDot, styles.eventDotIncome, { backgroundColor: colors.accentGreen }]} /> : null}
     </View>
   );
@@ -858,7 +828,19 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
     [upcoming],
   );
 
-  const selBills = selectedKey ? (billsByDate[selectedKey] ?? []) : null;
+  const upcomingBillsByDate = useMemo(() => {
+    const map: Record<string, AgendaBill[]> = {};
+    upcoming.forEach(([key, bills]) => {
+      map[key] = bills;
+    });
+    return map;
+  }, [upcoming]);
+
+  const selBills = selectedKey
+    ? viewMode === 'list'
+      ? (upcomingBillsByDate[selectedKey] ?? [])
+      : (billsByDate[selectedKey] ?? [])
+    : null;
 
   const openBillDetail = (b: AgendaBill, dateKey: string) => {
     const rp = b.sourceId ? recurringPayments.find((p) => p.id === b.sourceId) : undefined;
@@ -887,7 +869,10 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
     openBillDetail(b, dateKey);
   };
 
-  const renderFlatBillRows = (items: Array<{ bill: AgendaBill; dateKey: string }>) =>
+  const renderFlatBillRows = (
+    items: Array<{ bill: AgendaBill; dateKey: string }>,
+    options?: { hideDate?: boolean },
+  ) =>
     items.map(({ bill, dateKey: billDateKey }, index) => (
       <AgendaPaymentRow
         key={`${billDateKey}-${index}-${bill.sourceId ?? bill.name}`}
@@ -899,7 +884,7 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
         loanByRecurringPaymentId={loanByRecurringPaymentId}
         embedded
         displayName={resolveBillDisplayName(bill)}
-        subtitle={buildAgendaRowSubtitle(bill, billDateKey, todayKey, recurringPayments)}
+        subtitle={buildAgendaRowSubtitle(billDateKey, options) ?? undefined}
         estimatedIncome={isEstimatedPayBill(bill)}
       />
     ));
@@ -910,10 +895,38 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
   const textMutedSoft = colors.textSecondary;
   const surfaceSoft = colors.surfaceElevated;
   const heroPaycheck = heroSnapshot.nextPaycheck;
-  const selectedDayTotals = selBills ? sumSectionTotals(selBills.map((bill) => ({ bill }))) : null;
-  const selectedDayTotal = selectedDayTotals
-    ? formatSectionTotal(selectedDayTotals.expenseTotal, selectedDayTotals.incomeTotal)
-    : '';
+
+  const stripPaymentDateKeys = useMemo(() => {
+    const endKey = (() => {
+      const date = new Date(`${todayKey}T12:00:00`);
+      date.setDate(date.getDate() + 30);
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    })();
+
+    return upcoming
+      .filter(([key]) => key >= todayKey && key <= endKey)
+      .filter(([, bills]) =>
+        bills.some((bill) => (bill.kind ?? 'payment') !== 'income' && !isEstimatedPayBill(bill)),
+      )
+      .map(([key]) => key);
+  }, [todayKey, upcoming]);
+
+  /** Outgoing totals per day for orange timeline markers (excludes income / estimated pay). */
+  const paymentDayAmounts = useMemo(() => {
+    const amounts: Record<string, number> = {};
+    for (const [key, bills] of upcoming) {
+      let dayTotal = 0;
+      for (const bill of bills) {
+        if ((bill.kind ?? 'payment') === 'income' || isEstimatedPayBill(bill)) continue;
+        dayTotal += bill.amount;
+      }
+      if (dayTotal > 0) amounts[key] = dayTotal;
+    }
+    return amounts;
+  }, [upcoming]);
   const selectedDaySuffix =
     selectedKey === dateKeyFromDate(addDays(today, 1))
       ? 'demain'
@@ -924,10 +937,70 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
   const setAgendaViewMode = (mode: AgendaViewMode) => {
     tapHaptic();
     setViewMode(mode);
-    if (mode === 'calendar' && !selectedKey) {
-      setSelectedKey(dateKeyFromDate(addDays(today, 1)));
+    if (mode === 'list') {
+      setSelectedKey(null);
     }
   };
+
+  const clearDaySelection = () => {
+    if (selectedKey) setSelectedKey(null);
+  };
+
+  const onStripDayPress = (key: string) => {
+    tapHaptic();
+    setSelectedKey(selectedKey === key ? null : key);
+  };
+
+  const renderSelectedDayPanel = () => (
+    <View style={styles.dayPanel}>
+      <View style={styles.dayPanelHead}>
+        <Text style={[styles.dayPanelTitle, { color: colors.text }]}>
+          {formatAgendaFullDate(selectedKey!)}
+        </Text>
+        {selectedDaySuffix ? (
+          <Text style={[styles.dayPanelSuffix, { color: textFaint }]}>{selectedDaySuffix}</Text>
+        ) : null}
+      </View>
+      {selBills && selBills.length > 0 ? (
+        <DashboardCard padding={0} innerStyle={styles.groupCard}>
+          {renderFlatBillRows(selBills.map((bill) => ({ bill, dateKey: selectedKey! })), {
+            hideDate: true,
+          })}
+        </DashboardCard>
+      ) : (
+        <View style={styles.emptyStateCompact}>
+          <Text style={[styles.emptyHint, { color: textMutedSoft }]}>Aucun paiement ce jour.</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  const renderUpcomingSections = () =>
+    upcomingCount > 0 ? (
+      upcomingSections.map((section) => (
+        <View key={`${section.titleBold}${section.titleSuffix ?? ''}`} style={styles.section}>
+          <View style={styles.dateHeader}>
+            <Text style={[styles.dateHeaderLabel, { color: textFaint }]}>
+              <Text style={[styles.dateHeaderBold, { color: textMutedSoft }]}>{section.titleBold}</Text>
+              {section.titleSuffix ?? ''}
+            </Text>
+          </View>
+          <DashboardCard padding={0} innerStyle={styles.groupCard}>
+            {renderFlatBillRows(section.items)}
+          </DashboardCard>
+        </View>
+      ))
+    ) : (
+      <View style={styles.emptyState}>
+        <View style={[styles.emptyIcon, { backgroundColor: surfaceSoft, borderColor: colors.borderSubtle }]}>
+          <AppIcon family="ionicons" name="checkmark-circle-outline" size={22} color={textMutedSoft} />
+        </View>
+        <Text style={[styles.emptyTitle, { color: colors.text }]}>Rien de prévu</Text>
+        <Text style={[styles.emptyHint, { color: textMutedSoft }]}>
+          Les prochains {UPCOMING_WINDOW_DAYS} jours apparaîtront ici.
+        </Text>
+      </View>
+    );
 
   const scrollBottomPadding = insets.bottom + FLOATING_NAV_CONTENT_PADDING;
 
@@ -944,10 +1017,8 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
         {headerComponent}
 
         <View style={styles.contextBar}>
-          <View style={styles.ctxLeft}>
-            {viewMode === 'list' ? (
-              <Text style={[styles.ctxTitle, { color: colors.text }]}>À venir</Text>
-            ) : (
+          {viewMode === 'calendar' ? (
+            <View style={styles.ctxMonthCentered} pointerEvents="box-none">
               <View style={styles.ctxMonthRow}>
                 <Text style={[styles.ctxTitle, { color: colors.text }]}>
                   {capitalizeFirst(monthTitle)}{' '}
@@ -961,7 +1032,12 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
                     onPress={prevMonth}
                     style={({ pressed }) => [styles.calNavBtn, pressed && styles.pressed, !canGoAgendaPrevious && styles.calNavBtnDisabled]}
                   >
-                    <AppIcon family="ionicons" name="chevron-back" size={14} color={textFaint} />
+                    <AppIcon
+                      family="ionicons"
+                      name="chevron-back"
+                      size={14}
+                      color={canGoAgendaPrevious ? colors.textSecondary : textFaint}
+                    />
                   </Pressable>
                   <Pressable
                     accessibilityRole="button"
@@ -970,12 +1046,17 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
                     onPress={nextMonth}
                     style={({ pressed }) => [styles.calNavBtn, pressed && styles.pressed, !canGoAgendaNext && styles.calNavBtnDisabled]}
                   >
-                    <AppIcon family="ionicons" name="chevron-forward" size={14} color={textFaint} />
+                    <AppIcon
+                      family="ionicons"
+                      name="chevron-forward"
+                      size={14}
+                      color={canGoAgendaNext ? colors.textSecondary : textFaint}
+                    />
                   </Pressable>
                 </View>
               </View>
-            )}
-          </View>
+            </View>
+          ) : null}
 
           <View style={[styles.viewSwitch, { backgroundColor: surfaceSoft, borderColor: colors.borderSubtle }]}>
             <Pressable
@@ -1016,14 +1097,17 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
         </View>
 
         {viewMode === 'list' ? (
-          <>
+          <Pressable onPress={clearDaySelection}>
             <View style={styles.hero}>
               <AgendaCashHeroCard
-                availableToday={heroSnapshot.cash.availableToday}
                 checkingBalanceTotal={heroSnapshot.cash.checkingBalanceTotal}
                 upcomingBillsBeforePaycheck={heroSnapshot.cash.upcomingBillsBeforePaycheck}
-                gaugePercent={heroSnapshot.cash.gaugePercent}
                 billCount={heroSnapshot.cash.billCount}
+                todayKey={todayKey}
+                paymentDateKeys={stripPaymentDateKeys}
+                paymentDayAmounts={paymentDayAmounts}
+                selectedDateKey={selectedKey}
+                onDayPress={onStripDayPress}
                 paycheck={
                   heroPaycheck
                     ? { amount: heroPaycheck.amount, dateKey: heroPaycheck.dateKey }
@@ -1032,121 +1116,116 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
               />
             </View>
 
-            {upcomingCount > 0 ? (
-              upcomingSections.map((section) => (
-                <View key={`${section.titleBold}${section.titleSuffix ?? ''}`} style={styles.section}>
-                  <View style={styles.dateHeader}>
-                    <Text style={[styles.dateHeaderLabel, { color: textFaint }]}>
-                      <Text style={[styles.dateHeaderBold, { color: textMutedSoft }]}>{section.titleBold}</Text>
-                      {section.titleSuffix ?? ''}
-                    </Text>
-                    <Text style={[styles.dateHeaderTotal, { color: textFaint }]}>
-                      {formatSectionTotal(section.expenseTotal, section.incomeTotal)}
-                    </Text>
-                  </View>
-                  <DashboardCard padding={0} innerStyle={styles.groupCard}>
-                    {renderFlatBillRows(section.items)}
-                  </DashboardCard>
-                </View>
-              ))
-            ) : (
-              <View style={styles.emptyState}>
-                <View style={[styles.emptyIcon, { backgroundColor: surfaceSoft, borderColor: colors.borderSubtle }]}>
-                  <AppIcon family="ionicons" name="checkmark-circle-outline" size={22} color={textMutedSoft} />
-                </View>
-                <Text style={[styles.emptyTitle, { color: colors.text }]}>Rien de prévu</Text>
-                <Text style={[styles.emptyHint, { color: textMutedSoft }]}>
-                  Les prochains 30 jours apparaîtront ici.
-                </Text>
-              </View>
-            )}
-          </>
+            {selectedKey ? renderSelectedDayPanel() : renderUpcomingSections()}
+          </Pressable>
         ) : (
-          <>
-            <View style={styles.calView}>
-              <View style={styles.dowRow}>
+          <Pressable onPress={clearDaySelection}>
+            <DashboardCard padding={spacing.md} style={styles.calCard} innerStyle={styles.calCardInner}>
+              <View style={[styles.dowRow, { borderBottomColor: colors.borderSubtle }]}>
                 {DAYS.map((d, i) => (
-                  <Text key={`${d}-${i}`} style={[styles.dow, { color: textFaint }]}>
+                  <Text
+                    key={`${d}-${i}`}
+                    style={[
+                      styles.dow,
+                      { color: textFaint },
+                      i < DAYS.length - 1 && {
+                        borderRightWidth: StyleSheet.hairlineWidth,
+                        borderRightColor: colors.borderSubtle,
+                      },
+                    ]}
+                  >
                     {d}
                   </Text>
                 ))}
               </View>
               <View style={styles.grid}>
-                {cells.map((cell, i) => {
-                  if (!cell) {
-                    return <View key={i} style={styles.cell} />;
-                  }
-                  const key = dateKey(year, month, cell.day);
-                  const { hasPayment, hasIncome } = calendarDayMarkers(key, billsByDate);
-                  const isToday = key === todayKey;
-                  const isSel = key === selectedKey;
-                  const past = key < todayKey;
+                {Array.from({ length: cells.length / 7 }, (_, weekIndex) => {
+                  const week = cells.slice(weekIndex * 7, weekIndex * 7 + 7);
+                  const isLastWeek = weekIndex === cells.length / 7 - 1;
                   return (
-                    <Pressable
-                      key={i}
-                      style={styles.cell}
-                      onPress={() => {
-                        tapHaptic();
-                        setSelectedKey(isSel ? null : key);
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: isSel }}
+                    <View
+                      key={`week-${weekIndex}`}
+                      style={[
+                        styles.calWeekRow,
+                        !isLastWeek && {
+                          borderBottomWidth: StyleSheet.hairlineWidth,
+                          borderBottomColor: colors.borderSubtle,
+                        },
+                      ]}
                     >
-                      <View
-                        style={[
-                          styles.calCell,
-                          isSel && [styles.calCellSelected, { backgroundColor: surfaceSoft, borderColor: colors.borderStrong }],
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.dayNum,
-                            past && !isSel && { color: textFaint },
-                            isToday && { color: colors.accentGreen, ...jakartaExtraBoldText },
-                            !past && !isToday && !isSel && { color: colors.text },
-                            isSel && !isToday && { color: colors.text },
-                          ]}
-                        >
-                          {cell.day}
-                        </Text>
-                        <CalendarDayDots
-                          hasPayment={hasPayment}
-                          hasIncome={hasIncome}
-                          styles={styles}
-                          colors={colors}
-                        />
-                      </View>
-                    </Pressable>
+                      {week.map((cell, dayIndex) => {
+                        const i = weekIndex * 7 + dayIndex;
+                        const cellDividerStyle =
+                          dayIndex < 6
+                            ? {
+                                borderRightWidth: StyleSheet.hairlineWidth,
+                                borderRightColor: colors.borderSubtle,
+                              }
+                            : null;
+                        if (!cell) {
+                          return <View key={i} style={[styles.cell, cellDividerStyle]} />;
+                        }
+                        const key = dateKey(year, month, cell.day);
+                        const { hasPayment, hasIncome } = calendarDayMarkers(key, billsByDate);
+                        const isToday = key === todayKey;
+                        const isSel = key === selectedKey;
+                        const past = key < todayKey;
+                        return (
+                          <Pressable
+                            key={i}
+                            style={[styles.cell, cellDividerStyle]}
+                            onPress={() => {
+                              tapHaptic();
+                              setSelectedKey(isSel ? null : key);
+                            }}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: isSel }}
+                          >
+                            <View
+                              style={[
+                                styles.calCell,
+                                isSel && [
+                                  styles.calCellSelected,
+                                  {
+                                    backgroundColor: colors.surfaceElevated,
+                                    borderColor: colors.borderStrong,
+                                  },
+                                ],
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.dayNum,
+                                  past && !isSel && { color: textFaint },
+                                  isToday && { color: colors.accentGreen, ...jakartaExtraBoldText },
+                                  !past && !isToday && !isSel && { color: colors.text },
+                                  isSel && !isToday && { color: colors.text },
+                                ]}
+                              >
+                                {cell.day}
+                              </Text>
+                              <CalendarDayDots
+                                hasPayment={hasPayment}
+                                hasIncome={hasIncome}
+                                styles={styles}
+                                colors={colors}
+                              />
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
                   );
                 })}
               </View>
-            </View>
+            </DashboardCard>
 
             {selectedKey ? (
-              <View style={styles.dayPanel}>
-                <View style={styles.dayPanelHead}>
-                  <Text style={[styles.dayPanelTitle, { color: colors.text }]}>
-                    {capitalizeFirst(formatAgendaShortDate(selectedKey).replace(/\./g, ''))}
-                    {selectedDaySuffix ? (
-                      <Text style={[styles.dayPanelSuffix, { color: textFaint }]}> {selectedDaySuffix}</Text>
-                    ) : null}
-                  </Text>
-                  {selBills && selBills.length > 0 ? (
-                    <Text style={[styles.dayPanelSum, { color: textMutedSoft }]}>{selectedDayTotal}</Text>
-                  ) : null}
-                </View>
-                {selBills && selBills.length > 0 ? (
-                  <DashboardCard padding={0} innerStyle={styles.groupCard}>
-                    {renderFlatBillRows(selBills.map((bill) => ({ bill, dateKey: selectedKey })))}
-                  </DashboardCard>
-                ) : (
-                  <View style={styles.emptyStateCompact}>
-                    <Text style={[styles.emptyHint, { color: textMutedSoft }]}>Aucun paiement ce jour.</Text>
-                  </View>
-                )}
-              </View>
-            ) : null}
-          </>
+              renderSelectedDayPanel()
+            ) : (
+              renderUpcomingSections()
+            )}
+          </Pressable>
         )}
 
       </ScrollView>
@@ -1166,7 +1245,7 @@ type AgendaViewStyles = {
   scrollView: ViewStyle;
   scroll: ViewStyle;
   contextBar: ViewStyle;
-  ctxLeft: ViewStyle;
+  ctxMonthCentered: ViewStyle;
   ctxMonthRow: ViewStyle;
   ctxTitle: TextStyle;
   ctxTitleMuted: TextStyle;
@@ -1182,11 +1261,12 @@ type AgendaViewStyles = {
   dateHeader: ViewStyle;
   dateHeaderLabel: TextStyle;
   dateHeaderBold: TextStyle;
-  dateHeaderTotal: TextStyle;
-  calView: ViewStyle;
+  calCard: ViewStyle;
+  calCardInner: ViewStyle;
   dowRow: ViewStyle;
   dow: TextStyle;
   grid: ViewStyle;
+  calWeekRow: ViewStyle;
   cell: ViewStyle;
   calCell: ViewStyle;
   calCellSelected: ViewStyle;
@@ -1199,7 +1279,6 @@ type AgendaViewStyles = {
   dayPanelHead: ViewStyle;
   dayPanelTitle: TextStyle;
   dayPanelSuffix: TextStyle;
-  dayPanelSum: TextStyle;
   emptyState: ViewStyle;
   emptyStateCompact: ViewStyle;
   emptyIcon: ViewStyle;
@@ -1227,16 +1306,18 @@ function createStyles(colors: AppColors): AgendaViewStyles {
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: spacing.xl,
+    position: 'relative',
+    minHeight: 34,
   },
-  ctxLeft: {
-    flex: 1,
-    minWidth: 0,
+  ctxMonthCentered: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   ctxMonthRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    flexWrap: 'wrap',
   },
   ctxTitle: {
     ...jakartaBoldText,
@@ -1266,7 +1347,8 @@ function createStyles(colors: AppColors): AgendaViewStyles {
     borderWidth: 1,
     borderRadius: 10,
     padding: 3,
-    marginLeft: spacing.md,
+    marginLeft: 'auto',
+    zIndex: 1,
   },
   viewSwitchBtn: {
     width: 34,
@@ -1305,17 +1387,17 @@ function createStyles(colors: AppColors): AgendaViewStyles {
   dateHeaderBold: {
     ...jakartaBoldText,
   },
-  dateHeaderTotal: {
-    ...jakartaSemiboldText,
-    fontSize: 12,
-    fontVariant: ['tabular-nums'],
-  },
-  calView: {
+  calCard: {
     marginTop: spacing.sm,
+  },
+  calCardInner: {
+    gap: 0,
   },
   dowRow: {
     flexDirection: 'row',
-    marginBottom: spacing.md,
+    marginBottom: 0,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   dow: {
     flex: 1,
@@ -1326,9 +1408,11 @@ function createStyles(colors: AppColors): AgendaViewStyles {
     textTransform: 'uppercase',
   },
   grid: {
+    flexDirection: 'column',
+  },
+  calWeekRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 4,
+    paddingVertical: 4,
   },
   cell: {
     width: '14.28%',
@@ -1374,7 +1458,8 @@ function createStyles(colors: AppColors): AgendaViewStyles {
   dayPanelHead: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
     paddingTop: 14,
     paddingBottom: 6,
   },
@@ -1382,18 +1467,13 @@ function createStyles(colors: AppColors): AgendaViewStyles {
     ...jakartaBoldText,
     fontSize: 15,
     letterSpacing: -0.1,
-    flex: 1,
+    flexShrink: 1,
     minWidth: 0,
-    paddingRight: spacing.sm,
   },
   dayPanelSuffix: {
     ...jakartaMediumText,
     fontSize: 12.5,
-  },
-  dayPanelSum: {
-    ...jakartaBoldText,
-    fontSize: 15,
-    fontVariant: ['tabular-nums'],
+    flexShrink: 0,
   },
   emptyState: {
     alignItems: 'center',

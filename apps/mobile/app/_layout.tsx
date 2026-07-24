@@ -1,9 +1,12 @@
 import 'react-native-gesture-handler';
-import { Stack } from 'expo-router';
+/** Install web SQLite error guards before boot UI / LogBox mounts. */
+import '@/lib/db';
+import { Redirect, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { loadAsync as loadFontAsync } from 'expo-font';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { InteractionManager, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DMMono_400Regular, DMMono_500Medium } from '@expo-google-fonts/dm-mono';
@@ -16,7 +19,12 @@ import {
   PlusJakartaSans_800ExtraBold,
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { AppBackgroundGradient } from '@/components/AppBackgroundGradient';
+import { RootErrorBoundary } from '@/components/RootErrorBoundary';
 import { ensureDbReady } from '@/lib/init';
+import {
+  isOnboardingCompleted,
+  subscribeOnboardingCompleted,
+} from '@/lib/onboarding';
 import { preloadVectorIconFonts } from '@/lib/preloadVectorIconFonts';
 import { useAppFonts } from '@/lib/useAppFonts';
 import { ThemeProvider, useAppTheme } from '@/lib/themeContext';
@@ -32,9 +40,11 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider>
-        <ThemedRootShell />
-      </ThemeProvider>
+      <RootErrorBoundary>
+        <ThemeProvider>
+          <ThemedRootShell />
+        </ThemeProvider>
+      </RootErrorBoundary>
     </GestureHandlerRootView>
   );
 }
@@ -52,6 +62,9 @@ function ThemedRootShell() {
 function RootLayoutContent() {
   const { colors, statusBarStyle } = useAppTheme();
   const [ready, setReady] = useState(true);
+  /** null = still resolving; true = show intro before tabs. */
+  const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
+  // Critical path fonts only — DM Mono is receipt/articles-only (deferred).
   const [fontsLoaded, fontError] = useAppFonts({
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
@@ -59,8 +72,6 @@ function RootLayoutContent() {
     PlusJakartaSans_700Bold,
     PlusJakartaSans_800ExtraBold,
     Inter_800ExtraBold,
-    DMMono_400Regular,
-    DMMono_500Medium,
   });
 
   useEffect(() => {
@@ -69,17 +80,42 @@ function RootLayoutContent() {
     SplashScreen.hideAsync().catch(() => {});
     void (async () => {
       try {
+        // Settings are readable as soon as SQLite opens — don't wait for demo seed.
+        const done = await isOnboardingCompleted();
+        setNeedsOnboarding(!done);
+      } catch (error) {
+        console.warn('[Boot] onboarding gate failed', error);
+        setNeedsOnboarding(false);
+      }
+    })();
+    void (async () => {
+      try {
         await ensureDbReady();
         console.log('[Boot] database ready');
       } catch (error) {
         console.warn('[Boot] database init failed', error);
       }
     })();
+    const unsub = subscribeOnboardingCompleted((done) => {
+      setNeedsOnboarding(!done);
+    });
+    const idle = InteractionManager.runAfterInteractions(() => {
+      void loadFontAsync({
+        DMMono_400Regular,
+        DMMono_500Medium,
+      }).catch((error: unknown) => {
+        console.warn('[Boot] deferred DM Mono load failed', error);
+      });
+    });
     const timer = setTimeout(() => {
       console.log('[Boot] bootstrap safety tick');
       setReady(true);
     }, BOOTSTRAP_MAX_MS);
-    return () => clearTimeout(timer);
+    return () => {
+      unsub();
+      idle.cancel();
+      clearTimeout(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -92,7 +128,7 @@ function RootLayoutContent() {
     }
   }, [fontsLoaded, fontError]);
 
-  if (!ready) {
+  if (!ready || needsOnboarding === null) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <AppBackgroundGradient />
@@ -126,6 +162,14 @@ function RootLayoutContent() {
           >
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen
+              name="onboarding"
+              options={{
+                headerShown: false,
+                gestureEnabled: false,
+                animation: 'fade',
+              }}
+            />
+            <Stack.Screen
               name="add-transaction"
               options={{
                 headerShown: false,
@@ -158,6 +202,7 @@ function RootLayoutContent() {
             <Stack.Screen name="alert-center" options={{ headerShown: false }} />
             <Stack.Screen name="alert-detail" options={{ headerShown: false }} />
           </Stack>
+          {needsOnboarding ? <Redirect href="/onboarding" /> : null}
         </View>
       </View>
     </>

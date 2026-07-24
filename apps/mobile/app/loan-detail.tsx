@@ -12,8 +12,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChildSupportBreakdownChart } from '@/components/ChildSupportBreakdownChart';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
-import { DetailSingleLineRow } from '@/components/DetailSectionRows';
-import { SurfaceCard } from '@/components/SurfaceCard';
+import { DetailSectionsList } from '@/components/DetailSectionRows';
 import { LineOfCreditCharts } from '@/components/LineOfCreditCharts';
 import { LoanPaymentDonutChart, MortgageDetailCharts } from '@/components/MortgageCharts';
 import { OverflowMenuButton } from '@/components/OverflowMenuButton';
@@ -22,9 +21,6 @@ import { PageTransition } from '@/components/PageTransition';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   detailProgressBarStyle,
-  detailSectionFootnoteStyle,
-  detailSectionLabelStyle,
-  detailSectionsCardStyle,
   jakartaBoldText,
   jakartaExtraBoldText,
   jakartaMediumText,
@@ -313,35 +309,11 @@ export default function LoanDetailScreen() {
               {progressCard}
 
               {visibleDetailSections.length > 0 || detailFootnote ? (
-                <View style={styles.detailsSectionsStack}>
-                  {visibleDetailSections.map((section, sectionIndex) => (
-                    <SurfaceCard
-                      key={section.title}
-                      style={detailSectionsCardStyle()}
-                      padding={spacing.xl}
-                    >
-                      <Text style={[detailSectionLabelStyle(), { color: colors.text }]}>
-                        {section.title}
-                      </Text>
-                      <View style={[styles.detailSectionRows, { borderTopColor: colors.border }]}>
-                        {section.rows.map((row, rowIndex) => (
-                          <DetailSingleLineRow
-                            key={row.label}
-                            row={row}
-                            colors={colors}
-                            isLast={rowIndex === section.rows.length - 1}
-                            rowPaddingVertical={spacing.md}
-                          />
-                        ))}
-                      </View>
-                      {sectionIndex === visibleDetailSections.length - 1 && detailFootnote ? (
-                        <Text style={[detailSectionFootnoteStyle(), { color: colors.textMuted }]}>
-                          {detailFootnote}
-                        </Text>
-                      ) : null}
-                    </SurfaceCard>
-                  ))}
-                </View>
+                <DetailSectionsList
+                  sections={visibleDetailSections}
+                  colors={colors}
+                  footnote={detailFootnote}
+                />
               ) : null}
 
               {linkedAsset?.photoUri?.trim() ? (
@@ -409,12 +381,6 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.lg,
     gap: spacing.xl,
-  },
-  detailsSectionsStack: {
-    gap: spacing.lg,
-  },
-  detailSectionRows: {
-    borderTopWidth: StyleSheet.hairlineWidth,
   },
   bannerWrap: {
     borderRadius: radius.xl,

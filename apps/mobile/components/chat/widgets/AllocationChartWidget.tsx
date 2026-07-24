@@ -2,7 +2,15 @@ import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { spacing } from '@/constants/theme';
 import type { AllocationChartData } from '@/types/aiWidgets';
-import { aiWidgetAmountTypography, aiWidgetFonts, aiWidgetTypography, fynChartSeriesColor, useAIWidgetColors } from './theme';
+import {
+  aiWidgetAmountTextProps,
+  aiWidgetAmountTypography,
+  aiWidgetFonts,
+  aiWidgetLabelTextProps,
+  aiWidgetTypography,
+  fynChartSeriesColor,
+  useAIWidgetColors,
+} from './theme';
 import { WidgetCardShell } from './WidgetCardShell';
 
 type Props = {
@@ -58,10 +66,11 @@ export function AllocationChartWidget({ data }: Props) {
             <View style={[styles.legendDot, { backgroundColor: segment.color }]} />
             <Text
               style={[
+                styles.legendLabel,
                 aiWidgetTypography.legend,
                 { color: palette.text, fontFamily: aiWidgetFonts.labelRegular },
               ]}
-              numberOfLines={1}
+              {...aiWidgetLabelTextProps}
             >
               {segment.label}
             </Text>
@@ -72,6 +81,7 @@ export function AllocationChartWidget({ data }: Props) {
                 aiWidgetAmountTypography('caption'),
                 { color: palette.textMuted },
               ]}
+              {...aiWidgetAmountTextProps}
             >
               {Math.round(segment.percent)} %
             </Text>
@@ -100,14 +110,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    minWidth: 0,
   },
   legendDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
+    flexShrink: 0,
   },
   legendPercent: {
     fontVariant: ['tabular-nums'],
+    flexShrink: 0,
+    textAlign: 'right',
   },
   legendLabel: {
     flex: 1,

@@ -2,12 +2,14 @@ import { Fragment } from 'react';
 import { Platform, StyleSheet, Text, View, type TextStyle } from 'react-native';
 import { dashboardPalette, spacing } from '@/constants/theme';
 import { fontFamilies } from '@/constants/plusJakartaFonts';
+import { useDisplayScale } from '@/lib/displayScale';
 import { formatDisplayMoneyAbsoluteExact } from '@/lib/formatDisplayMoney';
 import { parseFormattedNumber } from '@/lib/formatNumber';
 import type { DebtTableData } from '@/types/aiWidgets';
 import {
+  aiWidgetAmountTextProps,
   aiWidgetAmountTypography,
-  aiWidgetFonts,
+  aiWidgetLabelTextProps,
   useAIWidgetColors,
 } from './theme';
 import { WidgetCardShell } from './WidgetCardShell';
@@ -16,14 +18,19 @@ type Props = {
   data: DebtTableData;
 };
 
-/** Maquette « Dettes Actives » — colonnes fixes + gris secondaire #8A8A8A. */
+/** Maquette « Dettes Actives » — flex columns + gris secondaire #8A8A8A. */
 const MOCK = {
   secondary: '#8A8A8A',
   divider: '#1C1C1C',
   totalBg: dashboardPalette.iconBox,
+  /** Preferred money column widths; shrink below these on dense / narrow layouts. */
   colBalance: 78,
   colRate: 44,
   colPayment: 84,
+  /** Floor widths so amounts can still shrink via adjustsFontSizeToFit. */
+  colBalanceMin: 56,
+  colRateMin: 36,
+  colPaymentMin: 64,
   gridGap: 4,
 } as const;
 
@@ -139,7 +146,8 @@ const debtNameWrapStyle: TextStyle | undefined = Platform.select({
 const rowBalanceStyle = aiWidgetAmountTypography('row');
 
 const moneyCellStyle: TextStyle = {
-  flexShrink: 0,
+  flexShrink: 1,
+  minWidth: 0,
 };
 
 const compactTextStyle = {
@@ -168,6 +176,7 @@ const totalPaymentStyle = aiWidgetAmountTypography('caption');
 
 export function DebtTableWidget({ data }: Props) {
   const palette = useAIWidgetColors();
+  const { isDense } = useDisplayScale();
   const columns = {
     name: data.columns?.name ?? 'Dette',
     balance: data.columns?.balance ?? 'Solde',
@@ -181,24 +190,39 @@ export function DebtTableWidget({ data }: Props) {
   const totalPayment = showPayment ? sumRowMoney(data.rows, 'payment') : null;
   const shellLabel = data.label ?? 'Dettes actives';
 
+  const balanceColStyle = [
+    styles.balanceCol,
+    isDense && { width: MOCK.colBalanceMin, minWidth: MOCK.colBalanceMin, maxWidth: MOCK.colBalance },
+  ];
+  const rateColStyle = [
+    styles.rateCol,
+    isDense && { width: MOCK.colRateMin, minWidth: MOCK.colRateMin, maxWidth: MOCK.colRate },
+  ];
+  const paymentColStyle = [
+    styles.paymentCol,
+    isDense && { width: MOCK.colPaymentMin, minWidth: MOCK.colPaymentMin, maxWidth: MOCK.colPayment },
+  ];
+
   return (
     <WidgetCardShell style={styles.shell}>
-      <Text style={[styles.title, titleStyle, { color: palette.text }]}>{shellLabel.toUpperCase()}</Text>
+      <Text style={[styles.title, titleStyle, { color: palette.text }]} {...aiWidgetLabelTextProps}>
+        {shellLabel.toUpperCase()}
+      </Text>
 
       <View style={styles.headerRow}>
-        <Text style={[styles.nameCol, headerTextStyle, { color: MOCK.secondary }]} numberOfLines={1}>
+        <Text style={[styles.nameCol, headerTextStyle, { color: MOCK.secondary }]} {...aiWidgetLabelTextProps}>
           {columns.name}
         </Text>
-        <Text style={[styles.balanceCol, headerTextStyle, { color: MOCK.secondary }]} numberOfLines={1}>
+        <Text style={[...balanceColStyle, headerTextStyle, { color: MOCK.secondary }]} {...aiWidgetLabelTextProps}>
           {columns.balance}
         </Text>
         {showRate ? (
-          <Text style={[styles.rateCol, headerTextStyle, { color: MOCK.secondary }]} numberOfLines={1}>
+          <Text style={[...rateColStyle, headerTextStyle, { color: MOCK.secondary }]} {...aiWidgetLabelTextProps}>
             {columns.rate}
           </Text>
         ) : null}
         {showPayment ? (
-          <Text style={[styles.paymentCol, headerTextStyle, { color: MOCK.secondary }]} numberOfLines={1}>
+          <Text style={[...paymentColStyle, headerTextStyle, { color: MOCK.secondary }]} {...aiWidgetLabelTextProps}>
             {columns.payment}
           </Text>
         ) : null}
@@ -219,20 +243,23 @@ export function DebtTableWidget({ data }: Props) {
               </Text>
             </View>
             <Text
-              style={[styles.balanceCol, rowBalanceStyle, moneyCellStyle, { color: MOCK.secondary }]}
-              numberOfLines={1}
+              style={[...balanceColStyle, rowBalanceStyle, moneyCellStyle, { color: MOCK.secondary }]}
+              {...aiWidgetAmountTextProps}
             >
               {formatWidgetMoneyNoWrap(row.balance)}
             </Text>
             {showRate ? (
-              <Text style={[styles.rateCol, compactTextStyle, { color: MOCK.secondary }]}>
+              <Text
+                style={[...rateColStyle, compactTextStyle, { color: MOCK.secondary }]}
+                {...aiWidgetAmountTextProps}
+              >
                 {row.rate ?? '—'}
               </Text>
             ) : null}
             {showPayment ? (
               <Text
-                style={[styles.paymentCol, compactTextStyle, moneyCellStyle, { color: MOCK.secondary }]}
-                numberOfLines={1}
+                style={[...paymentColStyle, compactTextStyle, moneyCellStyle, { color: MOCK.secondary }]}
+                {...aiWidgetAmountTextProps}
               >
                 {formatWidgetMoneyNoWrap(row.payment)}
               </Text>
@@ -252,24 +279,27 @@ export function DebtTableWidget({ data }: Props) {
           },
         ]}
       >
-        <Text style={[styles.nameCol, totalLabelStyle, { color: palette.text }]}>
+        <Text style={[styles.nameCol, totalLabelStyle, { color: palette.text }]} {...aiWidgetLabelTextProps}>
           {data.total.label.toUpperCase()}
         </Text>
         <Text
-          style={[styles.balanceCol, totalBalanceStyle, moneyCellStyle, { color: palette.text }]}
-          numberOfLines={1}
+          style={[...balanceColStyle, totalBalanceStyle, moneyCellStyle, { color: palette.text }]}
+          {...aiWidgetAmountTextProps}
         >
           {formatWidgetMoneyNoWrap(totalBalance)}
         </Text>
         {showRate ? (
-          <Text style={[styles.rateCol, totalRateStyle, { color: MOCK.secondary }]}>
+          <Text
+            style={[...rateColStyle, totalRateStyle, { color: MOCK.secondary }]}
+            {...aiWidgetAmountTextProps}
+          >
             {data.total.rate ?? '—'}
           </Text>
         ) : null}
         {showPayment ? (
           <Text
-            style={[styles.paymentCol, totalPaymentStyle, moneyCellStyle, { color: palette.text }]}
-            numberOfLines={1}
+            style={[...paymentColStyle, totalPaymentStyle, moneyCellStyle, { color: palette.text }]}
+            {...aiWidgetAmountTextProps}
           >
             {formatTotalPaymentNoWrap(data.total.payment, totalPayment)}
           </Text>
@@ -322,19 +352,23 @@ const styles = StyleSheet.create({
   },
   balanceCol: {
     width: MOCK.colBalance,
-    minWidth: MOCK.colBalance,
-    flexShrink: 0,
+    minWidth: MOCK.colBalanceMin,
+    maxWidth: MOCK.colBalance,
+    flexShrink: 1,
     textAlign: 'right',
   },
   rateCol: {
     width: MOCK.colRate,
-    flexShrink: 0,
+    minWidth: MOCK.colRateMin,
+    maxWidth: MOCK.colRate,
+    flexShrink: 1,
     textAlign: 'right',
   },
   paymentCol: {
     width: MOCK.colPayment,
-    minWidth: MOCK.colPayment,
-    flexShrink: 0,
+    minWidth: MOCK.colPaymentMin,
+    maxWidth: MOCK.colPayment,
+    flexShrink: 1,
     textAlign: 'right',
   },
 });

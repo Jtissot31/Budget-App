@@ -11,6 +11,7 @@ export type AlertCenterKind =
   | 'credit_limit'
   | 'budget_over'
   | 'high_interest_debt'
+  | 'plan_adaptation'
   | 'fyn';
 
 export type AlertCenterSection = 'urgent' | 'opportunities';
@@ -36,6 +37,10 @@ export type AlertCenterItem = {
   recurring?: boolean;
   /** Merchant or label for the payment tied to this alert. */
   paymentName?: string;
+  /** Pending plan adaptation — confirm before apply. */
+  adaptationProposalId?: string;
+  /** Plan id for plan_adaptation alerts. */
+  relatedPlanId?: string;
 };
 
 export const ALERT_SECTION_ORDER: AlertCenterSection[] = ['urgent', 'opportunities'];
@@ -58,7 +63,12 @@ function aiSeverityToCenter(type: AIAlert['type']): AlertCenterSeverity {
   return 'info';
 }
 
-function aiCategoryToKind(alert: { categorie: AlertCategory; titre: string }): AlertCenterKind {
+function aiCategoryToKind(alert: {
+  categorie: AlertCategory;
+  titre: string;
+  adaptationProposalId?: string;
+}): AlertCenterKind {
+  if (alert.categorie === 'plan' || alert.adaptationProposalId) return 'plan_adaptation';
   if (alert.categorie === 'solde_bas' || alert.categorie === 'fonds_insuffisants') return 'low_funds';
   if (alert.categorie === 'budget') return 'budget_over';
   const lowerTitle = alert.titre.toLowerCase();
@@ -68,7 +78,9 @@ function aiCategoryToKind(alert: { categorie: AlertCategory; titre: string }): A
 }
 
 export function alertSectionForKind(kind: AlertCenterKind): AlertCenterSection {
-  if (kind === 'high_interest_debt' || kind === 'fyn') return 'opportunities';
+  if (kind === 'high_interest_debt' || kind === 'fyn' || kind === 'plan_adaptation') {
+    return 'opportunities';
+  }
   return 'urgent';
 }
 
@@ -148,11 +160,14 @@ function aiAlertToCenterItem(alert: AIAlert): AlertCenterItem {
     read: alert.lu,
     accountId: alert.compteReference ?? undefined,
     fynAlertId: alert.id,
+    adaptationProposalId: alert.adaptationProposalId,
+    relatedPlanId: alert.relatedPlanId,
     montant: alert.montant,
   };
 }
 
 export async function loadFynAlertCenterItems(): Promise<AlertCenterItem[]> {
+  // evaluateAlerts already runs evaluateAndSurfacePlanAdaptations first.
   const alerts = await evaluateAlerts();
   return alerts.map(aiAlertToCenterItem);
 }
@@ -194,6 +209,8 @@ export function alertDetailRouteParams(item: AlertCenterItem): Record<string, st
     montant: item.montant != null ? String(item.montant) : '',
     recurring: item.recurring === true ? '1' : item.recurring === false ? '0' : '',
     paymentName: item.paymentName ?? '',
+    adaptationProposalId: item.adaptationProposalId ?? '',
+    relatedPlanId: item.relatedPlanId ?? '',
   };
 }
 

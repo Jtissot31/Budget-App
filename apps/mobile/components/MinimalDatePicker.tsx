@@ -22,7 +22,7 @@ type DatePickerFieldProps = {
   onChangeDate: (value: string) => void;
   allowClear?: boolean;
   variant?: 'compact' | 'sheet';
-  labelStyle?: import('react-native').TextStyle;
+  labelStyle?: import('react-native').StyleProp<import('react-native').TextStyle>;
 };
 
 const DAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
