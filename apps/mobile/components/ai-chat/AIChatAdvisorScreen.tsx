@@ -6,6 +6,8 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   LayoutChangeEvent,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Platform,
   StyleSheet,
   Text,
@@ -36,9 +38,8 @@ import {
   buildActionResultAlertCard,
   isTextConfirmation,
 } from '@/lib/ai/actionConfirmation';
-import { getActivityPhaseLabel, type ActivityPhase } from '@/lib/ai/activityPhases';
-import { isGeminiApiKeyConfigured } from '@/lib/ai/env';
-import { buildStreamingAssistantDisplay } from '@/lib/ai/messageBlocks';
+import type { ActivityPhase } from '@/lib/ai/activityPhases';
+import { stripCodeFromAssistantText, stripMarkdownForChatDisplay } from '@/lib/ai/messageBlocks';
 import { buildPlanCreateParamsFromSuggestion } from '@/lib/plans/planCreateNavigation';
 import { consumePendingPlanChatConfirmation } from '@/lib/plans/pendingPlanChatConfirmation';
 import { buildPlansCreatedConfirmation } from '@/lib/plans/planRecommendationEngine';
@@ -81,6 +82,8 @@ const CHAT_INPUT_ROW_ESTIMATED_HEIGHT = 96;
 const CHAT_QUICK_CHIPS_ESTIMATED_HEIGHT = 64;
 const CHAT_ACTIVITY_INDICATOR_ESTIMATED_HEIGHT = 96;
 const LIST_BOTTOM_CLEARANCE_GAP = spacing.xl;
+const AUTO_SCROLL_THRESHOLD_PX = 50;
+const TYPEWRITER_MS_PER_CHAR = 15;
 
 function toListItems(messages: AIChatUiMessage[]): ListItem[] {
   const items: ListItem[] = [];
@@ -97,6 +100,16 @@ function toListItems(messages: AIChatUiMessage[]): ListItem[] {
   }
 
   return items;
+}
+
+function resolveTypewriterText(message: AIChatUiMessage): string {
+  const fromBlocks = message.blocks
+    ?.filter((block): block is Extract<typeof block, { type: 'text' }> => block.type === 'text')
+    .map((block) => block.content)
+    .join('\n\n')
+    .trim();
+  const raw = fromBlocks || message.text || '';
+  return stripMarkdownForChatDisplay(stripCodeFromAssistantText(raw)).trim();
 }
 
 export function AIChatAdvisorScreen({
@@ -117,19 +130,39 @@ export function AIChatAdvisorScreen({
   const pendingInstantBottomScrollRef = useRef(false);
   const layoutScrollPendingRef = useRef(false);
   const prevEstimatedOverlayHeightRef = useRef(0);
-  const scrollTargetRef = useRef<{ kind: 'end' } | null>(null);
-  const streamRafRef = useRef<number | null>(null);
-  const pendingStreamPartialRef = useRef<string | null>(null);
-  const [scrollRequestId, setScrollRequestId] = useState(0);
+  const typewriterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [messages, setMessages] = useState<AIChatUiMessage[]>([]);
   const [input, setInput] = useState('');
   const [isResponding, setIsResponding] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [autoScroll, setAutoScroll] = useState(true);
   const [activityState, setActivityState] = useState<ActivityState | null>(null);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [hasUserSentMessage, setHasUserSentMessage] = useState(false);
   const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
   const [settingsVisible, setSettingsVisible] = useState(false);
+
+  const clearTypewriterTimer = useCallback(() => {
+    if (typewriterTimeoutRef.current != null) {
+      clearTimeout(typewriterTimeoutRef.current);
+      typewriterTimeoutRef.current = null;
+    }
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    listRef.current?.scrollToEnd({ animated: true });
+  }, []);
+
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+    if (distanceFromBottom < AUTO_SCROLL_THRESHOLD_PX) {
+      setAutoScroll(true);
+    } else {
+      setAutoScroll(false);
+    }
+  }, []);
 
   const handleKeyboardDismiss = useCallback(() => {
     setKeyboardVisible(false);
@@ -181,13 +214,9 @@ export function AIChatAdvisorScreen({
 
     return () => {
       cancelled = true;
-      if (streamRafRef.current != null) {
-        cancelAnimationFrame(streamRafRef.current);
-        streamRafRef.current = null;
-      }
-      pendingStreamPartialRef.current = null;
+      clearTypewriterTimer();
     };
-  }, []);
+  }, [clearTypewriterTimer]);
 
   const runScrollToEndAfterLayout = useCallback((animated: boolean) => {
     InteractionManager.runAfterInteractions(() => {
@@ -201,11 +230,7 @@ export function AIChatAdvisorScreen({
 
   const requestInstantScrollToBottom = useCallback(() => {
     pendingInstantBottomScrollRef.current = true;
-  }, []);
-
-  const queueScrollToEnd = useCallback(() => {
-    scrollTargetRef.current = { kind: 'end' };
-    setScrollRequestId((id) => id + 1);
+    setAutoScroll(true);
   }, []);
 
   const finalizeInterruptedMessages = useCallback((prev: AIChatUiMessage[]) => {
@@ -224,18 +249,58 @@ export function AIChatAdvisorScreen({
     return withoutEmptyStreaming;
   }, []);
 
+  const revealTextCharacterByCharacter = useCallback(
+    async (messageId: string, fullText: string, requestId: number) => {
+      setIsStreaming(true);
+      setAutoScroll(true);
+
+      for (let i = 1; i <= fullText.length; i += 1) {
+        if (requestRef.current !== requestId) {
+          clearTypewriterTimer();
+          setIsStreaming(false);
+          return;
+        }
+
+        const partial = fullText.slice(0, i);
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === messageId
+              ? {
+                  ...message,
+                  text: partial,
+                  blocks: [{ type: 'text', content: partial }],
+                  streaming: true,
+                }
+              : message,
+          ),
+        );
+
+        await new Promise<void>((resolve) => {
+          clearTypewriterTimer();
+          typewriterTimeoutRef.current = setTimeout(resolve, TYPEWRITER_MS_PER_CHAR);
+        });
+      }
+
+      clearTypewriterTimer();
+      setIsStreaming(false);
+    },
+    [clearTypewriterTimer],
+  );
+
   const handleStopGeneration = useCallback(() => {
-    if (!isResponding) return;
+    if (!isResponding && !isStreaming) return;
 
     tapHaptic();
     requestRef.current += 1;
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
+    clearTypewriterTimer();
 
     setMessages(finalizeInterruptedMessages);
     setIsResponding(false);
+    setIsStreaming(false);
     setActivityState(null);
-  }, [finalizeInterruptedMessages, isResponding]);
+  }, [clearTypewriterTimer, finalizeInterruptedMessages, isResponding, isStreaming]);
 
   const handleScrollToIndexFailed = useCallback(
     (info: { index: number; averageItemLength: number }) => {
@@ -262,7 +327,7 @@ export function AIChatAdvisorScreen({
       const text =
         baseText ||
         (imageUri ? '[Facture jointe] Analyse cette facture et propose une transaction.' : '');
-      if (!text || isResponding) return;
+      if (!text || isResponding || isStreaming) return;
 
       const pendingUiAction = isTextConfirmation(text) ? findPendingActionMessage(messages) : null;
 
@@ -273,32 +338,30 @@ export function AIChatAdvisorScreen({
       setKeyboardVisible(false);
 
       const optimisticUser = createOptimisticUserMessage(text, imageUri ?? undefined);
-      setMessages((prev) => [...prev, optimisticUser]);
+      const streamMessageId = `assistant-stream-${Date.now()}`;
+
+      setMessages((prev) => [
+        ...prev,
+        optimisticUser,
+        {
+          id: streamMessageId,
+          role: 'assistant',
+          text: '',
+          createdAt: Date.now(),
+          streaming: true,
+        },
+      ]);
       setHasUserSentMessage(true);
       setIsResponding(true);
+      setIsStreaming(true);
+      setAutoScroll(true);
       setActivityState(INITIAL_ACTIVITY_STATE);
-      queueScrollToEnd();
+      scrollToBottom();
 
       const requestId = requestRef.current + 1;
       requestRef.current = requestId;
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
-      const streamMessageId = `assistant-stream-${Date.now()}`;
-      const useStreaming = isGeminiApiKeyConfigured();
-
-      if (useStreaming) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: streamMessageId,
-            role: 'assistant',
-            text: '',
-            createdAt: Date.now(),
-            streaming: true,
-          },
-        ]);
-        queueScrollToEnd();
-      }
 
       const handleActivity = (phase: ActivityPhase) => {
         if (requestRef.current !== requestId) return;
@@ -311,7 +374,6 @@ export function AIChatAdvisorScreen({
               : base.completedPhases,
           };
         });
-        queueScrollToEnd();
       };
 
       const applyTextConfirmationUiUpdate = (
@@ -330,11 +392,13 @@ export function AIChatAdvisorScreen({
       try {
         if (pendingUiAction) {
           setMessages((prev) =>
-            prev.map((message) =>
-              message.id === pendingUiAction.messageId
-                ? updateMessageAction(message, pendingUiAction.actionKey, { status: 'executing' })
-                : message,
-            ),
+            prev
+              .filter((message) => message.id !== streamMessageId)
+              .map((message) =>
+                message.id === pendingUiAction.messageId
+                  ? updateMessageAction(message, pendingUiAction.actionKey, { status: 'executing' })
+                  : message,
+              ),
           );
 
           const result = await executeChatAction(pendingUiAction.action);
@@ -386,7 +450,9 @@ export function AIChatAdvisorScreen({
           const assistantUiMessage = aiMessageToUiMessage(persistedAssistantMessage);
 
           setMessages((prev) => {
-            const withoutOptimistic = prev.filter((message) => message.id !== optimisticUser.id);
+            const withoutOptimistic = prev.filter(
+              (message) => message.id !== optimisticUser.id && message.id !== streamMessageId,
+            );
             const withConfirmedAction = applyTextConfirmationUiUpdate(
               withoutOptimistic,
               pendingUiAction,
@@ -398,50 +464,26 @@ export function AIChatAdvisorScreen({
               assistantUiMessage,
             ];
           });
-          queueScrollToEnd();
+          setAutoScroll(true);
+          scrollToBottom();
           return;
         }
 
-          const flushStreamingPartial = (partial: string) => {
-            if (requestRef.current !== requestId) return;
-            const { text: streamText, blocks } = buildStreamingAssistantDisplay(partial);
-            setMessages((prev) =>
-              prev.map((message) =>
-                message.id === streamMessageId
-                  ? { ...message, text: streamText, blocks, streaming: true }
-                  : message,
-              ),
-            );
-            queueScrollToEnd();
-          };
-
-          const result = await sendChatMessage(text, {
+        const result = await sendChatMessage(text, {
           imageUri: imageUri ?? undefined,
           onActivity: handleActivity,
           signal: abortController.signal,
-          onToken: useStreaming
-            ? (partial) => {
-                if (requestRef.current !== requestId) return;
-                // Coalesce token updates to one commit per animation frame.
-                pendingStreamPartialRef.current = partial;
-                if (streamRafRef.current != null) return;
-                streamRafRef.current = requestAnimationFrame(() => {
-                  streamRafRef.current = null;
-                  const latest = pendingStreamPartialRef.current;
-                  pendingStreamPartialRef.current = null;
-                  if (latest != null) flushStreamingPartial(latest);
-                });
-              }
-            : undefined,
         });
-        if (streamRafRef.current != null) {
-          cancelAnimationFrame(streamRafRef.current);
-          streamRafRef.current = null;
-        }
-        pendingStreamPartialRef.current = null;
         if (requestRef.current !== requestId) return;
 
         const assistantUiMessage = aiMessageToUiMessage(result.assistantMessage);
+        const reveal = resolveTypewriterText(assistantUiMessage);
+
+        if (reveal) {
+          setActivityState(null);
+          await revealTextCharacterByCharacter(streamMessageId, reveal, requestId);
+          if (requestRef.current !== requestId) return;
+        }
 
         setMessages((prev) => {
           const withoutOptimistic = prev.filter(
@@ -450,35 +492,40 @@ export function AIChatAdvisorScreen({
           return [
             ...withoutOptimistic,
             aiMessageToUiMessage(result.userMessage),
-            assistantUiMessage,
+            { ...assistantUiMessage, streaming: false },
           ];
         });
-        queueScrollToEnd();
       } catch (error) {
         if (requestRef.current !== requestId) return;
         if (isAbortError(error)) return;
 
         const errorAssistantId = `assistant-error-${Date.now()}`;
+        const errorText =
+          "Impossible d'envoyer le message pour le moment. Réessaie dans un instant.";
+        setActivityState(null);
+        await revealTextCharacterByCharacter(streamMessageId, errorText, requestId);
+        if (requestRef.current !== requestId) return;
+
         setMessages((prev) => [
           ...prev.filter(
-            (message) =>
-              message.id !== optimisticUser.id && message.id !== streamMessageId,
+            (message) => message.id !== optimisticUser.id && message.id !== streamMessageId,
           ),
           optimisticUser,
           {
             id: errorAssistantId,
             role: 'assistant',
-            text: "Impossible d'envoyer le message pour le moment. Réessaie dans un instant.",
+            text: errorText,
             createdAt: Date.now(),
+            streaming: false,
           },
         ]);
-        queueScrollToEnd();
       } finally {
         if (abortControllerRef.current === abortController) {
           abortControllerRef.current = null;
         }
         if (requestRef.current === requestId) {
           setIsResponding(false);
+          setIsStreaming(false);
           setActivityState(null);
         }
       }
@@ -486,9 +533,11 @@ export function AIChatAdvisorScreen({
     [
       input,
       isResponding,
+      isStreaming,
       messages,
       pendingImageUri,
-      queueScrollToEnd,
+      revealTextCharacterByCharacter,
+      scrollToBottom,
     ],
   );
 
@@ -545,8 +594,9 @@ export function AIChatAdvisorScreen({
       // UI already reflects the outcome; persistence is best-effort.
     }
 
-    queueScrollToEnd();
-  }, [messages, queueScrollToEnd]);
+    setAutoScroll(true);
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
 
   const handleCancelAction = useCallback((messageId: string, actionKey: string) => {
     setMessages((prev) =>
@@ -643,6 +693,8 @@ export function AIChatAdvisorScreen({
     [handleConfirmAction],
   );
 
+  const chatBusy = isResponding || isStreaming;
+
   const renderChatItem = useCallback(
     ({ item }: { item: ListItem }) => {
       if (item.kind === 'projection') {
@@ -651,7 +703,7 @@ export function AIChatAdvisorScreen({
       return (
         <AIChatMessage
           message={item.message}
-          actionsDisabled={isResponding}
+          actionsDisabled={chatBusy}
           onConfirmAction={onConfirmAction}
           onCancelAction={handleCancelAction}
           onConfirmPlanSuggestions={handleConfirmPlanSuggestions}
@@ -660,10 +712,10 @@ export function AIChatAdvisorScreen({
       );
     },
     [
+      chatBusy,
       handleCancelAction,
       handleConfirmPlanGoal,
       handleConfirmPlanSuggestions,
-      isResponding,
       onConfirmAction,
     ],
   );
@@ -688,13 +740,14 @@ export function AIChatAdvisorScreen({
         const history = await loadChatHistory();
         await saveChatHistory([...history, assistantMessage]);
         setMessages((prev) => [...prev, aiMessageToUiMessage(assistantMessage)]);
-        queueScrollToEnd();
+        setAutoScroll(true);
+        scrollToBottom();
       })();
 
       return () => {
         cancelled = true;
       };
-    }, [queueScrollToEnd]),
+    }, [scrollToBottom]),
   );
 
   const handlePickImage = useCallback(async (source: 'gallery' | 'camera') => {
@@ -734,12 +787,13 @@ export function AIChatAdvisorScreen({
   const listData = useMemo(() => toListItems(messages), [messages]);
   const showQuickChips = !hasUserSentMessage && messages.length === 0;
   const showInlineComposer = !tabBarVisible;
+  const showActivity = isResponding && !isStreaming && Boolean(activityState?.currentPhase);
   const estimatedInputOverlayHeight =
     (showQuickChips ? CHAT_QUICK_CHIPS_ESTIMATED_HEIGHT : 0) +
     (showInlineComposer ? CHAT_INPUT_ROW_ESTIMATED_HEIGHT : 0) +
-    (isResponding ? CHAT_ACTIVITY_INDICATOR_ESTIMATED_HEIGHT : 0) +
+    (showActivity ? CHAT_ACTIVITY_INDICATOR_ESTIMATED_HEIGHT : 0) +
     chatInputBottomInset;
-  const showBottomOverlay = showInlineComposer || isResponding || (showQuickChips && tabBarVisible);
+  const showBottomOverlay = showInlineComposer || showActivity || (showQuickChips && tabBarVisible);
   const listBottomPadding =
     (showBottomOverlay
       ? Math.max(inputOverlayHeight, estimatedInputOverlayHeight)
@@ -762,16 +816,16 @@ export function AIChatAdvisorScreen({
   }, []);
 
   const handleListContentSizeChange = useCallback(() => {
-    if (scrollTargetRef.current?.kind === 'end' || isResponding) {
-      queueScrollToEnd();
+    if (autoScroll) {
+      scrollToBottom();
     }
-  }, [isResponding, queueScrollToEnd]);
+  }, [autoScroll, scrollToBottom]);
 
-  const headerStatusLabel = activityState?.currentPhase
-    ? getActivityPhaseLabel(activityState.currentPhase)
-    : isResponding
-      ? 'Connexion à Fyn…'
-      : 'En ligne';
+  useEffect(() => {
+    if (autoScroll) {
+      scrollToBottom();
+    }
+  }, [messages, autoScroll, scrollToBottom]);
 
   useFocusEffect(
     useCallback(() => {
@@ -819,21 +873,9 @@ export function AIChatAdvisorScreen({
     runScrollToEndAfterLayout,
   ]);
 
-  useEffect(() => {
-    const target = scrollTargetRef.current;
-    if (!target) return;
-    scrollTargetRef.current = null;
-
-    requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd({ animated: true });
-    });
-  }, [listData, scrollRequestId]);
-
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: palette.background }]} edges={['left', 'right']}>
       <AIChatHeader
-        status={isResponding ? 'thinking' : 'online'}
-        statusLabel={headerStatusLabel}
         topInset={insets.top}
         showBackButton={showBackButton}
         onMenuPress={() => setSettingsVisible(true)}
@@ -872,9 +914,13 @@ export function AIChatAdvisorScreen({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             removeClippedSubviews={Platform.OS === 'android'}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
             onContentSizeChange={handleListContentSizeChange}
             onScrollBeginDrag={handleChatScrollBeginDrag}
             onScrollToIndexFailed={handleScrollToIndexFailed}
+            maxToRenderPerBatch={10}
+            updateCellsBatchingPeriod={50}
             keyExtractor={keyExtractor}
             renderItem={renderChatItem}
           />
@@ -885,7 +931,7 @@ export function AIChatAdvisorScreen({
               pointerEvents="box-none"
               onLayout={handleInputOverlayLayout}
             >
-              {isResponding ? (
+              {showActivity ? (
                 <View style={styles.activityAboveInput}>
                   <AIChatActivityIndicator
                     currentPhase={activityState?.currentPhase ?? null}
@@ -899,7 +945,7 @@ export function AIChatAdvisorScreen({
                   <AIChatQuickChips
                     chips={AI_QUICK_CHIPS}
                     onChipPress={handleChipPress}
-                    disabled={isResponding || !historyLoaded}
+                    disabled={chatBusy || !historyLoaded}
                   />
                 </View>
               ) : null}
@@ -908,14 +954,14 @@ export function AIChatAdvisorScreen({
                 <AIChatMultimodalInput
                   value={input}
                   onChangeText={setInput}
-                  onSend={(text) => void sendMessage(text)}
+                  onSend={(sendText) => void sendMessage(sendText)}
                   onAttach={() => void handlePickImage('gallery')}
                   onCamera={() => void handlePickImage('camera')}
                   onChipPress={handleChipPress}
                   onInputBlur={handleKeyboardDismiss}
                   chips={showQuickChips ? AI_QUICK_CHIPS : []}
                   disabled={!historyLoaded}
-                  isBusy={isResponding}
+                  isBusy={chatBusy}
                   onStop={handleStopGeneration}
                   bottomInset={chatInputBottomInset}
                 />

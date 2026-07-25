@@ -52,17 +52,7 @@ export function AIChatTypingIndicator() {
 
   return (
     <View style={styles.wrapper}>
-      <View
-        style={[
-          styles.bubble,
-          {
-            backgroundColor: palette.aiBubble,
-            borderColor: palette.border,
-            shadowColor: palette.aiBubbleShadow,
-            shadowOpacity: palette.aiBubbleShadowOpacity,
-          },
-        ]}
-      >
+      <View style={[styles.bubble, { backgroundColor: palette.aiBubble }]}>
         <View style={styles.dots}>
           <AnimatedDot delay={0} color={palette.primary} />
           <AnimatedDot delay={140} color={palette.primary} />
@@ -83,12 +73,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 16,
     minHeight: 48,
-    borderRadius: 20,
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 6,
-    elevation: 2,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
