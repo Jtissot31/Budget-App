@@ -62,9 +62,17 @@ import {
   buildFreshFynFinancialSnapshot,
   serializeFynFinancialContext,
 } from './fynFinancialContext';
-import { enrichAssistantBlocksWithContextWidgets } from './fynChartWidgets';
+import {
+  enrichAssistantBlocksWithContextWidgets,
+  scopeBlocksForActionIntent,
+} from './fynChartWidgets';
 import type { FynFinancialContext } from './fynFinancialContextCore';
 import type { RfaInputBundle } from './sanitizeForAI';
+import {
+  buildLocalCreateBudgetCategoryReply,
+  isBudgetCategoryMutationRequest,
+  parseCreateBudgetCategoryIntent,
+} from './localBudgetCategoryIntent';
 
 import {
   getChatSessionContext,
@@ -149,6 +157,7 @@ function buildWidgetCapabilitiesSection(): string {
     'Place chaque widget dans son propre bloc JSON (objet standalone ou ```json```) — JAMAIS dans la prose, JAMAIS tronqué, JAMAIS visible pour l\'utilisateur.',
     'Le texte conversationnel reste en prose courte ; les widgets sont des blocs JSON séparés parsés par l\'app.',
     'Les widgets peuvent coexister avec le bloc action JSON (champ "action") — ne pas mélanger les formats.',
+    'EXCEPTION — actions de mutation (créer/modifier catégorie, compte, etc.) : une phrase d\'intro + le bloc action JSON uniquement. N’ajoute PAS de progress_card, bar_chart, allocation_chart ni vue d’ensemble budget (autres catégories, budget consommé, etc.).',
     '',
     'Quand utiliser un graphique :',
     '- line_chart : évolution dans le temps (valeur nette, épargne, dette, dépenses sur plusieurs mois). data = nombres bruts (min 2 points).',
@@ -1553,6 +1562,33 @@ export async function sendChatMessage(
     };
   }
 
+  // Deterministic create-category path — no Gemini round-trip when name + limit are clear.
+  const createBudgetCategoryIntent = parseCreateBudgetCategoryIntent(trimmed);
+  if (createBudgetCategoryIntent) {
+    throwIfAborted(signal);
+    completedPhases.push('reflexion');
+    emitActivity('analyse');
+    const localReply = buildLocalCreateBudgetCategoryReply(createBudgetCategoryIntent);
+    const assistantMessage: ChatMessage = {
+      id: createMessageId('assistant'),
+      role: 'assistant',
+      content: localReply.content,
+      blocks: localReply.blocks,
+      actions: localReply.actions,
+      createdAt: new Date().toISOString(),
+      activityPhases: completedPhases.length > 0 ? completedPhases : undefined,
+    };
+    const nextHistory = [...history, userMessage, assistantMessage];
+    await saveChatHistory(nextHistory);
+    const quota = await incrementQuota(trimmed, assistantMessage.content);
+    return {
+      userMessage,
+      assistantMessage,
+      quota,
+      offlineMode: false,
+    };
+  }
+
   if (isPlanGoalFollowUpMessage(trimmed)) {
     throwIfAborted(signal);
     const goal = detectPlanGoal(trimmed);
@@ -1646,8 +1682,33 @@ export async function sendChatMessage(
 
   const blocksWithoutFakeSuccess = stripUnsolicitedSuccessAlerts(parsedBlocks);
 
+  // If the model chatted about creating a category but omitted the action JSON, inject a local pending action.
+  let resolvedActions = actions;
+  let blocksForEnrich = blocksWithoutFakeSuccess;
+  const lateCreateIntent = parseCreateBudgetCategoryIntent(trimmed);
+  const hasCreateCategoryAction = resolvedActions.some(
+    (action) => action.action === 'creer_categorie_budget',
+  );
+  const hasBudgetCategoryMutationAction =
+    hasCreateCategoryAction ||
+    resolvedActions.some((action) => action.action === 'modifier_categorie_budget');
+
+  if (lateCreateIntent && !hasCreateCategoryAction) {
+    const localReply = buildLocalCreateBudgetCategoryReply(lateCreateIntent);
+    resolvedActions = localReply.actions;
+    const hasUsefulText = blocksWithoutFakeSuccess.some(
+      (block) => block.type === 'text' && block.content.trim().length > 0,
+    );
+    // One primary UX only: short intro text + confirm action — never Sports/overview widgets.
+    blocksForEnrich = hasUsefulText
+      ? scopeBlocksForActionIntent(blocksWithoutFakeSuccess)
+      : localReply.blocks;
+  } else if (hasBudgetCategoryMutationAction || isBudgetCategoryMutationRequest(trimmed)) {
+    blocksForEnrich = scopeBlocksForActionIntent(blocksWithoutFakeSuccess);
+  }
+
   const enrichedBlocks = enrichAssistantBlocksWithContextWidgets(
-    blocksWithoutFakeSuccess,
+    blocksForEnrich,
     trimmed,
     context.financialContext,
     rfa,
@@ -1669,15 +1730,15 @@ export async function sendChatMessage(
     content:
       plainText ||
       cleanText ||
-      (actions.length > 0 ? '' : 'Je n\'ai pas pu formuler de réponse.'),
+      (resolvedActions.length > 0 ? '' : 'Je n\'ai pas pu formuler de réponse.'),
 
-    blocks: hasWidgets || (actions.length > 0 && enrichedBlocks.some((block) => block.type === 'text'))
+    blocks: hasWidgets || (resolvedActions.length > 0 && enrichedBlocks.some((block) => block.type === 'text'))
       ? enrichedBlocks
       : undefined,
 
     createdAt: new Date().toISOString(),
 
-    actions: actions.length > 0 ? actions : undefined,
+    actions: resolvedActions.length > 0 ? resolvedActions : undefined,
 
     activityPhases: completedPhases.length > 0 ? completedPhases : undefined,
 

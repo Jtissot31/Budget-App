@@ -55,7 +55,7 @@ import { AIChatQuickChips } from './AIChatQuickChips';
 import { AIChatProjectionWidget } from './AIChatProjectionWidget';
 import {
   aiMessageToUiMessage,
-  appendAlertCardToMessage,
+  applyActionResultToMessage,
   createOptimisticUserMessage,
   findPendingActionMessage,
   updateMessageAction,
@@ -560,12 +560,12 @@ export function AIChatAdvisorScreen({
       invalidateChatSessionCache();
     }
 
-    const updatedUiMessage = (() => {
-      const withAction = updateMessageAction(targetMessage, actionKey, {
-        status: result.ok ? 'success' : 'error',
-      });
-      return appendAlertCardToMessage(withAction, alertCard);
-    })();
+    const updatedUiMessage = applyActionResultToMessage(
+      targetMessage,
+      actionKey,
+      alertCard,
+      result.ok ? 'success' : 'error',
+    );
 
     setMessages((prev) =>
       prev.map((message) => (message.id === messageId ? updatedUiMessage : message)),

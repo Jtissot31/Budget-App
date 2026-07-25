@@ -126,6 +126,24 @@ export function appendAlertCardToMessage(
   };
 }
 
+/**
+ * After a tool action runs, replace prior widgets with the confirmation only.
+ * Prevents stacking Sports / budget-overview cards under "Action confirmée".
+ */
+export function applyActionResultToMessage(
+  message: AIChatUiMessage,
+  actionKey: string,
+  alertCard: AlertCardData,
+  status: 'success' | 'error',
+): AIChatUiMessage {
+  const withAction = updateMessageAction(message, actionKey, { status });
+  return {
+    ...withAction,
+    blocks: [alertCard],
+    text: alertCard.message,
+  };
+}
+
 export function findPendingActionMessage(messages: AIChatUiMessage[]): {
   messageId: string;
   actionKey: string;

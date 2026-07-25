@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
-import { buildContextChartWidgets, detectFynChartIntents, enrichAssistantBlocksWithContextWidgets } from './fynChartWidgets';
+import {
+  buildContextChartWidgets,
+  detectFynChartIntents,
+  enrichAssistantBlocksWithContextWidgets,
+  scopeBlocksForActionIntent,
+} from './fynChartWidgets';
 import type { FynFinancialContext } from './fynFinancialContextCore';
 import type { FinancialSummaryAnonymous } from './types';
 
@@ -110,6 +115,11 @@ assert.ok(detectFynChartIntents('cashflow ce mois').includes('cashflow_trend'));
 assert.ok(detectFynChartIntents('mes soldes').includes('balances'));
 assert.ok(detectFynChartIntents('montre mes soldes').includes('balances'));
 assert.ok(detectFynChartIntents('show my balances').includes('balances'));
+assert.deepEqual(
+  detectFynChartIntents('crée une categorie de budget gas 60$ par mois'),
+  [],
+  'mutation requests must not dump budget overview widgets',
+);
 
 const context = sampleContext();
 context.accounts = [
@@ -200,5 +210,52 @@ const enriched = enrichAssistantBlocksWithContextWidgets(
   rfa,
 );
 assert.ok(enriched.some((block) => block.type === 'allocation_chart'));
+
+const createCategoryScoped = enrichAssistantBlocksWithContextWidgets(
+  [
+    { type: 'text', content: 'Bonne idée pour Gas.' },
+    {
+      type: 'progress_card',
+      label: 'Sports',
+      value_label: '163,92 $',
+      percent: 40,
+      percent_label: '40 %',
+      status_line: 'Mois en cours',
+    },
+    {
+      type: 'bar_chart',
+      label: 'Dépenses par catégorie',
+      items: [{ label: 'Sports', value: 163.92, value_label: '163,92 $' }],
+      caption: 'Mois en cours · barre = dépensé sur limite mensuelle',
+      action: { label: 'Voir toutes les catégories' },
+    },
+  ],
+  'crée une categorie de budget gas 60$ par mois',
+  context,
+  rfa,
+);
+assert.equal(createCategoryScoped.length, 1);
+assert.equal(createCategoryScoped[0]?.type, 'text');
+assert.ok(
+  !createCategoryScoped.some((block) => block.type === 'progress_card' || block.type === 'bar_chart'),
+  'create-category must not keep Sports / budget overview widgets',
+);
+
+const scoped = scopeBlocksForActionIntent([
+  { type: 'text', content: 'Intro' },
+  {
+    type: 'progress_card',
+    label: 'Sports',
+    value_label: '1 $',
+    percent: 10,
+    percent_label: '10 %',
+  },
+  { type: 'alert_card', severity: 'warning', title: 'Attention', message: 'Limite basse' },
+  { type: 'alert_card', severity: 'success', title: 'OK', message: 'Done' },
+]);
+assert.deepEqual(
+  scoped.map((block) => block.type),
+  ['text', 'alert_card'],
+);
 
 console.log('fynChartWidgets.test.ts: ok');

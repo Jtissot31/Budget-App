@@ -118,7 +118,11 @@ export const AIChatMessage = memo(function AIChatMessage({
   const isUser = message.role === 'user';
   const assistantBlocks = !isUser ? resolveAssistantBlocks(message) : [];
   const hasBlocks = assistantBlocks.length > 0;
-  const hasActions = Boolean(message.actions?.length);
+  const visibleActions =
+    message.actions?.filter(
+      (action) => action.status === 'pending' || action.status === 'executing',
+    ) ?? [];
+  const hasVisibleActions = visibleActions.length > 0;
   const hasPlanSuggestions = Boolean(message.planSuggestions);
   const hasPlanGoalChoice = Boolean(message.planGoalChoice);
   const lastTextBlockIndex = (() => {
@@ -158,8 +162,8 @@ export const AIChatMessage = memo(function AIChatMessage({
             index === lastTextBlockIndex,
           ),
         )}
-        {hasActions
-          ? message.actions!.map((action, index) => (
+        {hasVisibleActions
+          ? visibleActions.map((action, index) => (
               <WidgetContainer
                 key={action.actionKey}
                 style={
@@ -180,7 +184,7 @@ export const AIChatMessage = memo(function AIChatMessage({
             ))
           : null}
         {hasPlanGoalChoice ? (
-          <View style={hasBlocks || hasActions ? styles.trailingSpacing : styles.noTopSpacing}>
+          <View style={hasBlocks || hasVisibleActions ? styles.trailingSpacing : styles.noTopSpacing}>
             <AIChatPlanGoalChoiceBubble
               state={message.planGoalChoice!}
               onConfirm={(goal) => onConfirmPlanGoal?.(message.id, goal)}
@@ -190,7 +194,7 @@ export const AIChatMessage = memo(function AIChatMessage({
         {hasPlanSuggestions ? (
           <View
             style={
-              hasBlocks || hasActions || hasPlanGoalChoice
+              hasBlocks || hasVisibleActions || hasPlanGoalChoice
                 ? styles.trailingSpacing
                 : styles.noTopSpacing
             }

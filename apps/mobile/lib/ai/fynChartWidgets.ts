@@ -10,6 +10,7 @@ import type {
   LineChartData,
   MessageBlock,
 } from '@/types/aiWidgets';
+import { isBudgetCategoryMutationRequest } from './localBudgetCategoryIntent';
 import { buildCashflowResultCaption, normalizeCashflowComparisonData } from './normalizeCashflowWidget';
 import type { FinancialSummaryAnonymous } from './types';
 import type { FynFinancialContext } from './fynFinancialContextCore';
@@ -66,6 +67,11 @@ function findMentionedAccount(question: string, accounts: readonly ContextAccoun
 
 export function detectFynChartIntents(question: string): FynChartIntent[] {
   const normalized = normalizeQuestion(question);
+  // Create/modify category requests must not dump the full budget overview chart.
+  if (isBudgetCategoryMutationRequest(question)) {
+    return [];
+  }
+
   const intents: FynChartIntent[] = [];
 
   if (/\b(abonnement|abonnements|recurrent|recurrents|netflix|spotify)\b/.test(normalized)) {
@@ -396,6 +402,30 @@ const CHART_WIDGET_TYPES = new Set([
   'debt_table',
 ]);
 
+/** Related-topic / overview widgets — never attach these to a create/modify action reply. */
+const ACTION_SCOPED_OVERVIEW_WIDGET_TYPES = new Set([
+  'line_chart',
+  'bar_chart',
+  'cashflow_comparison',
+  'allocation_chart',
+  'comparison_card',
+  'debt_table',
+  'progress_card',
+  'balance_summary_card',
+]);
+
+/**
+ * Keep only text (and non-success alerts) for mutation action replies.
+ * Prevents dumping Sports / budget-consumed / all-categories cards when creating one category.
+ */
+export function scopeBlocksForActionIntent(blocks: MessageBlock[]): MessageBlock[] {
+  return blocks.filter((block) => {
+    if (block.type === 'text') return Boolean(block.content?.trim());
+    if (block.type === 'alert_card') return block.severity !== 'success';
+    return !ACTION_SCOPED_OVERVIEW_WIDGET_TYPES.has(block.type);
+  });
+}
+
 function widgetSignature(widget: AIWidgetData): string {
   if (widget.type === 'balance_summary_card') {
     const accountKey =
@@ -416,6 +446,11 @@ export function enrichAssistantBlocksWithContextWidgets(
   context: FynFinancialContext,
   rfa: FinancialSummaryAnonymous,
 ): MessageBlock[] {
+  // Mutation flows (create category, etc.) keep only request-scoped UI — no auto overview widgets.
+  if (isBudgetCategoryMutationRequest(question)) {
+    return scopeBlocksForActionIntent(blocks);
+  }
+
   const contextWidgets = buildContextChartWidgets(question, context, rfa);
   if (contextWidgets.length === 0) return blocks;
 
