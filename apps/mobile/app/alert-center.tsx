@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertCenterContent } from '@/components/AlertCenterContent';
 import { PageTransition } from '@/components/PageTransition';
+import { COLORS, RADIUS, SPACING } from '@/constants/design-tokens';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { jakartaExtraBoldText, PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
 import { useAlertCenter, useAlertCenterSources } from '@/hooks/useAlertCenter';
@@ -12,7 +13,10 @@ import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { alertDetailRouteParams } from '@/lib/alerts';
 import { tapHaptic } from '@/lib/haptics';
 
+/** Pitch black — intentional; no exact token (canvas is `#0a0a0a`). */
 const MESSAGES_SCREEN_BG = '#000000';
+/** Filter chip fill — near `COLORS.planFinance.input` (`#1A1A1D`) but not identical. */
+const FILTER_BUTTON_BG = '#1A1A1A';
 
 export default function AlertCenterScreen() {
   const router = useRouter();
@@ -47,7 +51,7 @@ export default function AlertCenterScreen() {
             }}
             style={({ pressed }) => [styles.backHit, pressed && styles.pressed]}
           >
-            <AppIcon family="ionicons" name="arrow-back" size={24} color="#FFFFFF" />
+            <AppIcon family="ionicons" name="arrow-back" size={24} color={COLORS.text} />
           </Pressable>
           <Text style={styles.headerTitle} numberOfLines={1}>
             Messages
@@ -55,14 +59,14 @@ export default function AlertCenterScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={unreadCount > 0 ? 'Tout marquer comme lu' : 'Filtrer'}
-            hitSlop={8}
+            hitSlop={SPACING.sm}
             onPress={() => {
               tapHaptic();
               if (unreadCount > 0) void markAllRead();
             }}
             style={({ pressed }) => [styles.filterButton, pressed && styles.pressed]}
           >
-            <AppIcon family="ionicons" name="options-outline" size={20} color="#FFFFFF" />
+            <AppIcon family="ionicons" name="options-outline" size={20} color={COLORS.text} />
           </Pressable>
         </View>
 
@@ -110,14 +114,14 @@ const styles = StyleSheet.create({
     ...jakartaExtraBoldText,
     fontSize: 26,
     letterSpacing: -0.4,
-    color: '#FFFFFF',
+    color: COLORS.text,
     minWidth: 0,
   },
   filterButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: '#1A1A1A',
+    borderRadius: RADIUS.planIconButton,
+    backgroundColor: FILTER_BUTTON_BG,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
