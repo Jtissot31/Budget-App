@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { RADIUS } from '@/constants/design-tokens';
 import { OnyxContainer } from '@/components/OnyxContainer';
 import {
   onyxContainerPressedStyle,
@@ -54,7 +55,7 @@ const styles = StyleSheet.create({
   addIconWell: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: RADIUS.card, // circle half of 36 icon well
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,

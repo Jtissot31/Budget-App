@@ -8,6 +8,7 @@ import TrendingUpMod from 'lucide-react-native/dist/cjs/icons/trending-up.js';
 const ChevronRight = resolveLucideIcon(ChevronRightMod)!;
 const Target = resolveLucideIcon(TargetMod)!;
 const TrendingUp = resolveLucideIcon(TrendingUpMod)!;
+import { TYPOGRAPHY } from '@/constants/design-tokens';
 import {
   ICON_WELL_SIZE,
   containerSurfaceStyle,
@@ -108,7 +109,7 @@ const styles = StyleSheet.create({
   },
   chevronWrap: {
     position: 'absolute',
-    top: 6,
+    top: 6, // keep — optical
     right: spacing.sm,
     width: 22,
     height: 22,
@@ -117,7 +118,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: fontFamilies.semibold,
-    fontSize: 13,
+    fontSize: TYPOGRAPHY.sizes.meta,
     lineHeight: 17,
     marginTop: spacing.xs,
     paddingRight: 22,
@@ -125,12 +126,12 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontFamily: fontFamilies.regular,
-    fontSize: 11,
+    fontSize: 11, // keep — between tag(10) and micro(12)
     lineHeight: 14,
     marginTop: 1,
     includeFontPadding: false,
   },
   pressed: {
-    opacity: 0.82,
+    opacity: 0.82, // COMPONENTS.onyxContainer.pressedOpacity
   },
 });

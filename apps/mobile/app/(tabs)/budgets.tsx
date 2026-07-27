@@ -26,6 +26,7 @@ import {
   type BudgetCategorySuggestion,
 } from '@/constants/categoryOptions';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
+import { SPACING } from '@/constants/design-tokens';
 import {
   FLOATING_NAV_CONTENT_PADDING,
   PAGE_PADDING_HORIZONTAL,
@@ -64,8 +65,8 @@ import { dataEvents } from '@/lib/events';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
-const SECTION_BREAK = spacing.xl;
-const GRID_GAP = spacing.sm;
+const SECTION_BREAK = SPACING.xl;
+const GRID_GAP = SPACING.onyxListGap;
 
 function currentMonthStart(): Date {
   return startOfMonth(new Date());
@@ -490,7 +491,7 @@ const pageStyles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   pressed: {
-    opacity: 0.82,
+    opacity: 0.82, // COMPONENTS.onyxContainer.pressedOpacity
   },
   disabled: {
     opacity: 0.55,

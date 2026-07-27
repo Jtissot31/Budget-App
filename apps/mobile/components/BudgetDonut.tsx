@@ -9,6 +9,7 @@ import {
   type GestureResponderEvent,
 } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
+import { COLORS, SPACING } from '@/constants/design-tokens';
 import { moneyAmountTypography, spacing, typographyKit } from '@/constants/theme';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { tapHaptic } from '@/lib/haptics';
@@ -19,7 +20,7 @@ const CHART_MAX_WIDTH = 330;
 const CHART_BASE_SIZE = 283;
 const TWO_PI = Math.PI * 2;
 const SEGMENT_GAP = 0.008;
-/** Theme-consistent amber — over-budget donut segments (see categoryBudgetUsage). */
+/** Chart warning accent — keep (not in COLORS; chart palette / over-budget segments). */
 const BUDGET_WARNING_COLOR = '#FBBF24';
 
 export type BudgetDonutCategory = {
@@ -221,7 +222,7 @@ export function BudgetDonut({
   const thickness = chartSize * 0.078;
   const outerRadius = innerRadius + thickness;
   const gap = SEGMENT_GAP;
-  const trackColor = isLight ? colors.border : '#181818';
+  const trackColor = isLight ? colors.border : COLORS.dark.iconBox;
   const hubSize = innerRadius * 1.9;
   const isMonthOverBudget = totalSpent > totalAllocated;
 
@@ -509,7 +510,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,
-    gap: 1,
+    gap: 1, // keep — chart hub geometry
     overflow: 'hidden',
   },
   hubCategoryName: {
@@ -520,8 +521,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'center',
-    gap: 3,
-    marginTop: 2,
+    gap: SPACING.tagPaddingVertical,
+    marginTop: 2, // keep — hub optical
   },
   hubEyebrow: {
     textAlign: 'center',

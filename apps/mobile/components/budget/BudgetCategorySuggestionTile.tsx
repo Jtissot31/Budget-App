@@ -3,6 +3,7 @@ import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import {
   type BudgetCategorySuggestion,
 } from '@/constants/categoryOptions';
+import { SPACING } from '@/constants/design-tokens';
 import {
   jakartaSemiboldText,
   radius,
@@ -68,23 +69,23 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     minWidth: 0,
-    padding: 14,
-    borderRadius: radius.lg,
+    padding: SPACING.planCardGap,
+    borderRadius: radius.lg, // keep — not Onyx 13
     borderWidth: StyleSheet.hairlineWidth,
   },
   pressed: {
-    opacity: 0.82,
+    opacity: 0.82, // COMPONENTS.onyxContainer.pressedOpacity
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 10, // keep
     minWidth: 0,
   },
   iconWell: {
     width: ICON_WELL,
     height: ICON_WELL,
-    borderRadius: 9,
+    borderRadius: 9, // keep — near RADIUS.sm(8)
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -93,7 +94,7 @@ const styles = StyleSheet.create({
   name: {
     flex: 1,
     minWidth: 0,
-    fontSize: 13.5,
+    fontSize: 13.5, // keep — between meta(13) and caption(14)
     lineHeight: 17,
     letterSpacing: -0.1,
     includeFontPadding: false,

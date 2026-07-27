@@ -26,6 +26,7 @@ import { BudgetCashflowImpactCard } from '@/components/budget/BudgetCashflowImpa
 
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 
+import { SPACING } from '@/constants/design-tokens';
 import {
   accountDetailHeroBlockStyle,
   detailSectionLabelStyle,
@@ -631,7 +632,7 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
     justifyContent: 'center',
     flexWrap: 'wrap',
-    gap: 2,
+    gap: 2, // keep — amount row density
   },
   heroSpent: {
     textAlign: 'center',
@@ -639,11 +640,11 @@ const styles = StyleSheet.create({
   statusPill: {
     alignSelf: 'center',
     borderRadius: radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 10, // keep — no 10px SPACING token
+    paddingVertical: SPACING.xs,
   },
   statusPillText: {
-    fontSize: 11,
+    fontSize: 11, // keep — between tag(10) and micro(12)
     lineHeight: 14,
   },
   budgetCard: {

@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import { ProgressBar } from '@/components/ProgressBar';
+import { SPACING, TYPOGRAPHY } from '@/constants/design-tokens';
 import {
   jakartaSemiboldText,
   moneyAmountTypography,
@@ -87,7 +88,7 @@ export function BudgetCategoryRow({ category, selected = false, onPress }: Props
             style={[
               moneyAmountTypography({
                 tier: 'card',
-                fontSize: 16,
+                fontSize: TYPOGRAPHY.moneyTiers.card,
                 lineHeight: 20,
                 letterSpacing: -0.3,
               }),
@@ -127,24 +128,24 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     minWidth: 0,
-    padding: 14,
-    borderRadius: radius.lg,
+    padding: SPACING.planCardGap,
+    borderRadius: radius.lg, // keep RADIUS.lg (16) — not Onyx 13 (audit MAPPING_ACTUEL)
     borderWidth: StyleSheet.hairlineWidth,
-    gap: 10,
+    gap: 10, // keep — near budgetCategoryIconWell radius value
   },
   pressed: {
-    opacity: 0.82,
+    opacity: 0.82, // COMPONENTS.onyxContainer.pressedOpacity
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 10, // keep
     minWidth: 0,
   },
   iconWell: {
     width: ICON_WELL,
     height: ICON_WELL,
-    borderRadius: 9,
+    borderRadius: 9, // keep — near RADIUS.sm(8)
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -153,7 +154,7 @@ const styles = StyleSheet.create({
   name: {
     flex: 1,
     minWidth: 0,
-    fontSize: 13.5,
+    fontSize: 13.5, // keep — between meta(13) and caption(14)
     lineHeight: 17,
     letterSpacing: -0.1,
     includeFontPadding: false,
@@ -169,7 +170,7 @@ const styles = StyleSheet.create({
   },
   limit: {
     flexShrink: 0,
-    fontSize: 11,
+    fontSize: 11, // keep — between tag(10) and micro(12)
     lineHeight: 14,
   },
   barTrack: {
@@ -177,7 +178,7 @@ const styles = StyleSheet.create({
   },
   pct: {
     alignSelf: 'flex-end',
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.sizes.tag,
     lineHeight: 13,
     fontVariant: ['tabular-nums'],
     letterSpacing: -0.2,

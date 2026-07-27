@@ -13,6 +13,7 @@ import {
 import Svg, { Circle } from 'react-native-svg';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { DashboardCard } from '@/components/DashboardCard';
+import { SPACING, TYPOGRAPHY } from '@/constants/design-tokens';
 import {
   moneyAmountTypography,
   PAGE_PADDING_HORIZONTAL,
@@ -519,7 +520,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,
-    gap: 2,
+    gap: 2, // keep — ring hub density
   },
   ringCenterLabel: {
     ...typographyKit.eyebrow,
@@ -538,7 +539,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   eyebrow: {
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.sizes.tag,
     lineHeight: 13,
     letterSpacing: 0.6,
   },
@@ -565,14 +566,14 @@ const styles = StyleSheet.create({
     flex: 1,
     flexShrink: 1,
     minWidth: 0,
-    gap: 3,
+    gap: SPACING.tagPaddingVertical,
   },
   metricColStacked: {
     alignItems: 'center',
   },
   metricLabel: {
     ...typographyKit.eyebrow,
-    fontSize: 9,
+    fontSize: 9, // keep — micro label below tag(10)
     lineHeight: 12,
     letterSpacing: 0.5,
   },
@@ -592,7 +593,7 @@ const styles = StyleSheet.create({
   },
   legendToggleLabel: {
     ...typographyKit.eyebrow,
-    fontSize: 11,
+    fontSize: 11, // keep — between tag(10) and micro(12)
     lineHeight: 14,
     letterSpacing: 0.6,
   },
@@ -625,13 +626,13 @@ const styles = StyleSheet.create({
   },
   legendName: {
     ...typographyKit.microMedium,
-    fontSize: 11,
+    fontSize: 11, // keep
     lineHeight: 14,
     flexShrink: 1,
   },
   legendPct: {
     ...typographyKit.microMedium,
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.sizes.tag,
     lineHeight: 13,
     fontVariant: ['tabular-nums'],
     flexShrink: 0,
