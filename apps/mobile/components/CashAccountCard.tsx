@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, Line, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
+import { COLORS, SPACING, TYPOGRAPHY } from '@/constants/design-tokens';
 import { jakartaMediumText, jakartaSemiboldText, moneyAmountTypography } from '@/constants/theme';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
 import type { SimulatedAccount } from '@/types';
@@ -23,12 +24,13 @@ const CORNER_R = 2;
 const VIEW_RADIUS = 3;
 const STITCH_IN = 4;
 
+/** Wallet illustration palette — feature-local voids; keep vs canvas (#0a0a0a). */
 const C = {
-  back: '#0A0A0C',
-  void: '#0E0E10',
-  slot: '#121214',
-  leather: '#1A1A1A',
-  leatherMid: '#1C1C1F',
+  back: '#0A0A0C', // keep — near canvas
+  void: '#0E0E10', // keep — COLORS.aiChatDark / knownSpecDiffs
+  slot: '#121214', // keep
+  leather: '#1A1A1A', // keep — near planFinance.input
+  leatherMid: '#1C1C1F', // keep
   edge: 'rgba(255,255,255,0.04)',
   foldLine: 'rgba(255,255,255,0.05)',
   foldShadow: 'rgba(0,0,0,0.45)',
@@ -36,9 +38,9 @@ const C = {
   highlight: 'rgba(255,255,255,0.03)',
   stitch: 'rgba(255,255,255,0.08)',
   label: 'rgba(255,255,255,0.45)',
-  text: '#ffffff',
+  text: COLORS.text,
   name: 'rgba(255,255,255,0.70)',
-  negative: '#FF6B6B',
+  negative: COLORS.dark.dashboardValueRed,
 } as const;
 
 /** Trapezoid top edge — wallet flap read, not a flat card rectangle */
@@ -241,7 +243,7 @@ const styles = StyleSheet.create({
     bottom: -4,
     borderRadius: VIEW_RADIUS,
     backgroundColor: C.back,
-    shadowColor: '#000000',
+    shadowColor: '#000000', // keep — shadow noise
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.5,
     shadowRadius: 5,
@@ -269,13 +271,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   balanceBlock: {
-    gap: 3,
+    gap: SPACING.tagPaddingVertical,
     alignItems: 'flex-start',
     paddingTop: 4,
   },
   balanceLabel: {
     ...jakartaMediumText,
-    fontSize: 9,
+    fontSize: 9, // keep
     letterSpacing: 1.1,
     textTransform: 'uppercase',
     color: C.label,
@@ -283,7 +285,7 @@ const styles = StyleSheet.create({
   balanceAmount: {
     ...moneyAmountTypography({
       tier: 'stat',
-      fontSize: 26,
+      fontSize: 26, // keep — between heroStat(24) and hero(28)
       lineHeight: 30,
       letterSpacing: -0.5,
       textAlign: 'left',
@@ -293,20 +295,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: SPACING.md,
   },
   accountName: {
     ...jakartaSemiboldText,
     flex: 1,
     minWidth: 0,
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.sizes.tag,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
     color: C.name,
   },
   kindLabel: {
     ...jakartaMediumText,
-    fontSize: 9,
+    fontSize: 9, // keep
     letterSpacing: 1,
     textTransform: 'uppercase',
     color: C.label,

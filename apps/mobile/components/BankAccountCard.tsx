@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import { StyleSheet, Text, View } from 'react-native';
+import { COLORS, SPACING, RADIUS, TYPOGRAPHY } from '@/constants/design-tokens';
 import {
   DASHBOARD_VALUE_GREEN,
   DASHBOARD_VALUE_RED,
@@ -15,20 +16,20 @@ import type { AccountKind, SimulatedAccount } from '@/types';
 const CARD_ASPECT_RATIO = 1.586;
 
 const CARD = {
-  fill: '#101010',
+  fill: '#101010', // keep — near COLORS.dark.surface (#111), not identical
   border: 'rgba(255, 255, 255, 0.08)',
   accentStripe: 'rgba(255, 255, 255, 0.06)',
   label: 'rgba(255, 255, 255, 0.45)',
   number: 'rgba(255, 255, 255, 0.85)',
   name: 'rgba(255, 255, 255, 0.7)',
-  text: '#ffffff',
+  text: COLORS.text,
   negative: DASHBOARD_VALUE_RED,
   positive: DASHBOARD_VALUE_GREEN,
   creditMeta: 'rgba(255, 255, 255, 0.42)',
 } as const;
 
-const CARD_RADIUS = 18;
-const CARD_PADDING = 14;
+const CARD_RADIUS = RADIUS.card;
+const CARD_PADDING = SPACING.planCardGap;
 const BANK_LOGO_SIZE = 40;
 
 function extractLast4FromName(name: string): string | null {
@@ -241,11 +242,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingTop: 4,
     paddingBottom: 2,
-    gap: 2,
+    gap: 2, // keep
   },
   balanceLabel: {
     ...jakartaMediumText,
-    fontSize: 9,
+    fontSize: 9, // keep
     letterSpacing: 1.1,
     textTransform: 'uppercase',
     color: CARD.label,
@@ -253,7 +254,7 @@ const styles = StyleSheet.create({
   balanceAmount: {
     ...moneyAmountTypography({
       tier: 'stat',
-      fontSize: 27,
+      fontSize: 27, // keep — between hero(28) and 26
       lineHeight: 31,
       letterSpacing: -0.6,
       textAlign: 'right',
@@ -261,7 +262,7 @@ const styles = StyleSheet.create({
   },
   creditMeta: {
     ...jakartaMediumText,
-    fontSize: 9,
+    fontSize: 9, // keep
     letterSpacing: 0.2,
     color: CARD.creditMeta,
     textAlign: 'right',
@@ -269,24 +270,24 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   footer: {
-    gap: 6,
+    gap: 6, // keep
   },
   footerNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: SPACING.md,
   },
   cardNumber: {
     ...jakartaSemiboldText,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.sizes.caption,
     letterSpacing: 2.2,
     color: CARD.number,
     fontVariant: ['tabular-nums'],
   },
   kindLabel: {
     ...jakartaMediumText,
-    fontSize: 9,
+    fontSize: 9, // keep
     letterSpacing: 1,
     textTransform: 'uppercase',
     color: CARD.label,
@@ -296,7 +297,7 @@ const styles = StyleSheet.create({
     ...jakartaSemiboldText,
     flex: 1,
     minWidth: 0,
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.sizes.tag,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
     color: CARD.name,

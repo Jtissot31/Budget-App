@@ -2,6 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
 
 
+import { SPACING, TYPOGRAPHY } from '@/constants/design-tokens';
 import { containerSurfaceStyle, jakartaMediumText, moneyAmountTypography, radius } from '@/constants/theme';
 
 import { typographyKit } from '@/constants/typographyKit';
@@ -314,7 +315,7 @@ const styles = StyleSheet.create({
 
     justifyContent: 'space-between',
 
-    gap: 12,
+    gap: SPACING.md,
 
   },
 
@@ -324,7 +325,7 @@ const styles = StyleSheet.create({
 
     alignItems: 'center',
 
-    gap: 12,
+    gap: SPACING.md,
 
     minHeight: ICON_WELL_SIZE,
 
@@ -338,7 +339,7 @@ const styles = StyleSheet.create({
 
     height: ICON_WELL_SIZE,
 
-    borderRadius: 14,
+    borderRadius: 14, // keep — circle half / near planCardGap
 
     borderWidth: StyleSheet.hairlineWidth,
 
@@ -358,7 +359,7 @@ const styles = StyleSheet.create({
 
     minWidth: 0,
 
-    gap: 2,
+    gap: 2, // keep
 
   },
 
@@ -368,7 +369,7 @@ const styles = StyleSheet.create({
 
     alignItems: 'center',
 
-    gap: 8,
+    gap: SPACING.sm,
 
     maxWidth: '100%',
 
@@ -402,7 +403,7 @@ const styles = StyleSheet.create({
 
     ...jakartaMediumText,
 
-    fontSize: 9,
+    fontSize: 9, // keep
 
     letterSpacing: 1,
 
@@ -426,7 +427,7 @@ const styles = StyleSheet.create({
 
     paddingBottom: 2,
 
-    gap: 2,
+    gap: 2, // keep
 
     minWidth: 0,
 
@@ -436,7 +437,7 @@ const styles = StyleSheet.create({
 
     ...jakartaMediumText,
 
-    fontSize: 9,
+    fontSize: 9, // keep
 
     letterSpacing: 1.1,
 
@@ -472,7 +473,7 @@ const styles = StyleSheet.create({
 
     ...jakartaMediumText,
 
-    fontSize: 9,
+    fontSize: 9, // keep
 
     letterSpacing: 0.2,
 

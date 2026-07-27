@@ -62,6 +62,7 @@ import {
   ghostCardShadow,
   lightGhostCardShadow,
 } from '@/constants/ghostUi';
+import { COLORS, SPACING, RADIUS, TYPOGRAPHY } from '@/constants/design-tokens';
 import {
   colors,
   FLOATING_NAV_CONTENT_PADDING,
@@ -331,13 +332,14 @@ function portfolioScrollBottomPadding(insetsBottom: number, wealthAssetCount: nu
     insetsBottom + FLOATING_NAV_CONTENT_PADDING + dynamicFabClearance
   );
 }
+/** Light-section palette — not in COLORS.light (* #F0F0F0 / #C0C0C8); keep for parity. */
 const LIGHT_SECTION_SURFACE = '#F6F8FA';
-const LIGHT_SECTION_CARD_SURFACE = '#FFFFFF';
+const LIGHT_SECTION_CARD_SURFACE = COLORS.light.surface; // #FFFFFF
 const LIGHT_SECTION_SOFT_SURFACE = '#F6F8FA';
-const LIGHT_SECTION_BORDER = '#D0D7DE';
+const LIGHT_SECTION_BORDER = '#D0D7DE'; // keep — near COLORS.light.border (#C0C0C8)
 /** Espacement vertical entre blocs majeurs (chart → comptes → patrimoine / prêts). */
-const PORTFOLIO_BLOCK_GAP = spacing.xl;
-const PORTFOLIO_BLOCK_BREAK = spacing.xxl + spacing.lg;
+const PORTFOLIO_BLOCK_GAP = SPACING.xl;
+const PORTFOLIO_BLOCK_BREAK = SPACING.xxl + SPACING.lg;
 const CHART_HUB_SCOPE_LABELS: Record<NetWorthChartScope, string> = {
   accounts_only: 'FLUX DE TRÉSORERIE',
   inclusive: 'PATRIMOINE',
@@ -2784,7 +2786,7 @@ export default function AccountsScreen() {
                             <Text style={[styles.childSupportEyebrow, formThemed.textSecondary]}>
                               Destinataire
                             </Text>
-                            <Text style={[moneyAmountTypography({ tier: 'stat', fontSize: 18, lineHeight: 22 }), formThemed.text]}>
+                            <Text style={[moneyAmountTypography({ tier: 'stat', fontSize: TYPOGRAPHY.sizes.dashboardGreeting, lineHeight: 22 }), formThemed.text]}>
                               {CHILD_SUPPORT_RECIPIENT_REVENU_QUEBEC}
                             </Text>
                             <Text style={[styles.formHint, formThemed.textMuted]}>
@@ -3864,7 +3866,7 @@ const styles = StyleSheet.create({
   sectionCountBadge: {
     minWidth: 22,
     height: 22,
-    borderRadius: 11,
+    borderRadius: 11, // keep — near RADIUS.md(12)
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.xs,
@@ -3969,7 +3971,7 @@ const styles = StyleSheet.create({
   wealthToggleBadge: {
     minWidth: 22,
     height: 22,
-    borderRadius: 11,
+    borderRadius: 11, // keep — near RADIUS.md(12)
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.xs,
@@ -4003,13 +4005,13 @@ const styles = StyleSheet.create({
     height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 16,
+    borderRadius: RADIUS.lg,
   },
   wealthGainBadge: {
     flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: SPACING.tagPaddingVertical,
     borderRadius: radius.pill,
     paddingHorizontal: 9,
     paddingVertical: 5,
@@ -4048,7 +4050,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   wealthValue: {
-    fontSize: 28,
+    fontSize: TYPOGRAPHY.moneyTiers.hero,
     fontWeight: '900',
     letterSpacing: -0.8,
     lineHeight: 33,
@@ -4071,7 +4073,7 @@ const styles = StyleSheet.create({
   },
   wealthGainLabel: {
     marginTop: 2,
-    fontSize: 9,
+    fontSize: 9, // keep — below tag(10)
     fontWeight: '900',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
@@ -4083,7 +4085,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   wealthSourceText: {
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.sizes.tag,
     fontWeight: '800',
     letterSpacing: 0.2,
     textTransform: 'uppercase',
@@ -4191,7 +4193,7 @@ const styles = StyleSheet.create({
   certificateMeta: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: 2, // keep — portfolio density
   },
   certificateFileName: {
     ...jakartaSemiboldText,
@@ -4229,14 +4231,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: SPACING.sm,
   },
   accountVisualIdentity: {
     flex: 1,
     minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: SPACING.sm,
   },
   accountVisualIcon: {
     width: 40,
@@ -4253,7 +4255,7 @@ const styles = StyleSheet.create({
   accountVisualNameGroup: {
     flex: 1,
     minWidth: 0,
-    gap: 1,
+    gap: 1, // keep — optical
   },
   accountVisualName: {
     ...jakartaBoldText,
@@ -4273,7 +4275,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     maxWidth: '40%',
     alignItems: 'flex-end',
-    gap: 2,
+    gap: 2, // keep — portfolio density
   },
   accountVisualAmount: {
     ...dashboardPaymentAmount,
@@ -4295,7 +4297,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     minHeight: ACCOUNT_VISUAL_LOWER_SECTION_MIN_HEIGHT,
     justifyContent: 'center',
-    gap: 8,
+    gap: SPACING.sm,
   },
   accountVisualTrackGroup: {
     minWidth: 0,
@@ -4316,35 +4318,35 @@ const styles = StyleSheet.create({
     width: '100%',
     justifyContent: 'center',
     minHeight: 36,
-    gap: 7,
+    gap: 7, // keep — no 7px token
   },
   accountVisualFlowSplit: {
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 0,
-    gap: 14,
+    gap: SPACING.planCardGap,
   },
   accountVisualFlowItem: {
     flex: 1,
     minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 6, // keep — no 6px token
   },
   accountVisualFlowTextStack: {
     flex: 1,
     minWidth: 0,
-    gap: 1,
+    gap: 1, // keep — optical
   },
   accountVisualFlowColumnLabel: {
-    fontSize: 9,
+    fontSize: 9, // keep — below tag(10)
     fontWeight: '800',
     letterSpacing: 0.35,
     textTransform: 'uppercase',
   },
   accountVisualFlowColumnAmount: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.sizes.caption,
     fontWeight: '800',
     letterSpacing: -0.35,
   },
@@ -4368,14 +4370,14 @@ const styles = StyleSheet.create({
   },
   accountVisualDetailText: {
     color: colors.textMuted,
-    fontSize: 9,
+    fontSize: 9, // keep — below tag(10)
     fontWeight: '700',
     letterSpacing: 0.2,
     textTransform: 'uppercase',
   },
   accountVisualDetailValue: {
     color: colors.text,
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.sizes.tag,
     fontWeight: '900',
     letterSpacing: -0.1,
   },
@@ -4383,7 +4385,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'stretch',
-    gap: 6,
+    gap: 6, // keep — no 6px token
     borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.sm,
@@ -4460,7 +4462,7 @@ const styles = StyleSheet.create({
   legendDot: {
     width: 7,
     height: 7,
-    borderRadius: 4,
+    borderRadius: 4, // keep — micro
   },
   legendLabel: {
     color: colors.textMuted,
@@ -4485,7 +4487,7 @@ const styles = StyleSheet.create({
   accountBarCopy: {
     flex: 0.92,
     minWidth: 0,
-    gap: 2,
+    gap: 2, // keep — portfolio density
   },
   accountBarName: {
     color: colors.text,
@@ -4565,7 +4567,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.containerBackground,
     borderWidth: 1,
     borderColor: colors.containerBorder,
-    borderRadius: 30,
+    borderRadius: 30, // keep — sheet chrome
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.lg,
     ...ghostCardShadow,
@@ -4603,7 +4605,7 @@ const styles = StyleSheet.create({
   closeBtn: {
     width: 34,
     height: 34,
-    borderRadius: 17,
+    borderRadius: 17, // keep — near RADIUS.card(18)
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -4636,7 +4638,7 @@ const styles = StyleSheet.create({
   accountManagerIdentity: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: 2, // keep — portfolio density
   },
   accountManagerName: {
     ...rowLabel,
@@ -4656,7 +4658,7 @@ const styles = StyleSheet.create({
     height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 17,
+    borderRadius: 17, // keep — near RADIUS.card(18)
     borderWidth: StyleSheet.hairlineWidth,
   },
   accountVisibilityButton: {
@@ -4664,7 +4666,7 @@ const styles = StyleSheet.create({
     height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 17,
+    borderRadius: 17, // keep — near RADIUS.card(18)
     borderWidth: StyleSheet.hairlineWidth,
   },
   accountDetailSheet: {
@@ -4672,7 +4674,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.containerBackground,
     borderWidth: 1,
     borderColor: colors.containerBorder,
-    borderRadius: 30,
+    borderRadius: 30, // keep — sheet chrome
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.lg,
     ...ghostCardShadow,
@@ -4696,12 +4698,12 @@ const styles = StyleSheet.create({
   accountDetailTitleCopy: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: 2, // keep — portfolio density
   },
   accountDetailEditButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 5, // keep — no 5px token
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.sm,
@@ -4780,7 +4782,7 @@ const styles = StyleSheet.create({
   recurringPaymentCopy: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: 2, // keep — portfolio density
   },
   recurringPaymentName: {
     color: colors.text,
@@ -4833,7 +4835,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   formHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  formHeadCopy: { flex: 1, minWidth: 0, gap: 4 },
+  formHeadCopy: { flex: 1, minWidth: 0, gap: SPACING.xs },
   formTitle: {
     flex: 1,
     ...jakartaExtraBoldText,
@@ -4866,7 +4868,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: 30,
     height: 30,
-    borderRadius: 15,
+    borderRadius: 15, // keep — near RADIUS.lg(16)
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
@@ -4958,7 +4960,7 @@ const styles = StyleSheet.create({
   },
   typePickerCopy: {
     flex: 1,
-    gap: 2,
+    gap: 2, // keep — portfolio density
     minWidth: 0,
   },
   typePickerLabel: {
@@ -4973,7 +4975,7 @@ const styles = StyleSheet.create({
   typeChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 6, // keep — no 6px token
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
@@ -5025,12 +5027,12 @@ const styles = StyleSheet.create({
   suggestionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 7,
+    gap: 7, // keep — no 7px token
   },
   suggestionChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 5, // keep — no 5px token
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 10,

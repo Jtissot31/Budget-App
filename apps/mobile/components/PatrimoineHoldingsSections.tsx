@@ -15,6 +15,7 @@ import {
   mockStockPortfolioTotalValue,
   type MockStockHolding,
 } from '@/constants/mockStockPortfolio';
+import { TYPOGRAPHY } from '@/constants/design-tokens';
 import {
   DASHBOARD_VALUE_GREEN,
   moneyAmountTypography,
@@ -101,7 +102,7 @@ function PatrimoineSectionHeader({
           style={[
             isHero
               ? moneyAmountTypography({ tier: 'hero' })
-              : moneyAmountTypography({ fontSize: 24, lineHeight: 28 }),
+              : moneyAmountTypography({ fontSize: TYPOGRAPHY.moneyTiers.stat, lineHeight: 28 }),
             styles.sectionTotal,
             { color: colors.text },
           ]}
@@ -599,7 +600,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     justifyContent: 'center',
-    gap: 2,
+    gap: 2, // keep
   },
   assetName: {
     flexShrink: 1,
@@ -625,7 +626,7 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   wealthGainCaption: {
-    fontSize: 11,
+    fontSize: 11, // keep
     letterSpacing: 0.2,
     fontVariant: ['tabular-nums'],
   },
