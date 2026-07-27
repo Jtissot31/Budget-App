@@ -13,6 +13,7 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PageTransition } from '@/components/PageTransition';
+import { COLORS, RADIUS, TYPOGRAPHY } from '@/constants/design-tokens';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   jakartaExtraBoldText,
@@ -33,7 +34,6 @@ import { useAppTheme } from '@/lib/themeContext';
 
 const GRID_COLUMNS = 4;
 const GRID_GAP = spacing.sm;
-const AVAILABLE_GREEN = '#4ADE80';
 
 function CatalogLucideIcon({
   icon,
@@ -211,7 +211,7 @@ export function LucideIconPickerScreen() {
               hitSlop={8}
               style={({ pressed }) => [styles.exportHit, pressed && styles.pressed]}
             >
-              <Text style={[styles.exportLabel, { color: AVAILABLE_GREEN }, jakartaMediumText]}>
+              <Text style={[styles.exportLabel, { color: COLORS.green }, jakartaMediumText]}>
                 Exporter vers le projet
               </Text>
             </Pressable>
@@ -240,7 +240,7 @@ export function LucideIconPickerScreen() {
                       styles.selectedChip,
                       {
                         backgroundColor: colors.containerBackground,
-                        borderColor: isLast ? AVAILABLE_GREEN : colors.containerBorder,
+                        borderColor: isLast ? COLORS.green : colors.containerBorder,
                       },
                       pressed && styles.pressed,
                     ]}
@@ -288,14 +288,14 @@ export function LucideIconPickerScreen() {
                   {
                     width: cellWidth,
                     backgroundColor: colors.containerBackground,
-                    borderColor: isSelected ? AVAILABLE_GREEN : colors.containerBorder,
+                    borderColor: isSelected ? COLORS.green : colors.containerBorder,
                   },
                   pressed && styles.pressed,
                 ]}
               >
                 {isSelected ? (
                   <View style={[styles.checkBadge, { backgroundColor: 'rgba(74,222,128,0.15)' }]}>
-                    <AppIcon family="ionicons" name="checkmark" size={12} color={AVAILABLE_GREEN} />
+                    <AppIcon family="ionicons" name="checkmark" size={12} color={COLORS.green} />
                   </View>
                 ) : null}
                 <CatalogLucideIcon icon={item.Icon} size={22} color={colors.text} />
@@ -330,14 +330,14 @@ const styles = StyleSheet.create({
   backButton: {
     width: 38,
     height: 38,
-    borderRadius: 8,
+    borderRadius: RADIUS.sm,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
     flex: 1,
-    fontSize: 20,
+    fontSize: TYPOGRAPHY.sizes.sectionTitle,
     letterSpacing: -0.3,
   },
   headerSpacer: { width: 52 },
@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   searchInput: {
-    borderRadius: 8,
+    borderRadius: RADIUS.sm,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -391,7 +391,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    borderRadius: 8,
+    borderRadius: RADIUS.sm,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
     gap: GRID_GAP,
   },
   cell: {
-    borderRadius: 8,
+    borderRadius: RADIUS.sm,
     borderWidth: StyleSheet.hairlineWidth,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.xs,
@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cellLabel: {
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.sizes.tag,
     lineHeight: 12,
     textAlign: 'center',
   },
