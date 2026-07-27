@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AppIcon } from '@/components/icons/AppIcon';
@@ -7,7 +8,11 @@ import { planFinanceContainerPressedStyle } from '@/constants/planFinanceKit';
 import { moneyAmountTypography, radius, spacing, typographyKit } from '@/constants/theme';
 import { planHeroAmountLine } from '@/lib/dashboardPlanPresentation';
 import { MOCK_DASHBOARD_PLANS, type DashboardPlanDetail } from '@/lib/dashboardPlansMock';
+import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
+import { dataEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
+import { planToDashboardDetail } from '@/lib/plans/planDashboardAdapter';
+import { loadUserPlans } from '@/lib/plans/plansStore';
 import { useAppTheme } from '@/lib/themeContext';
 
 /** Home preview — short stack of plans. */
@@ -118,7 +123,29 @@ function HomePlanRow({ plan, onPress }: PlanRowProps) {
 
 export function HomePlansCarousel() {
   const router = useRouter();
-  const plans = MOCK_DASHBOARD_PLANS.slice(0, HOME_PLANS_PREVIEW_LIMIT);
+  const [plans, setPlans] = useState<DashboardPlanDetail[]>([]);
+
+  const refresh = useCallback(async () => {
+    if (isDemoSeedEnabled()) {
+      setPlans(MOCK_DASHBOARD_PLANS.slice(0, HOME_PLANS_PREVIEW_LIMIT));
+      return;
+    }
+    const stored = await loadUserPlans();
+    const active = stored
+      .filter((plan) => plan.statut === 'actif' || plan.statut === 'en_pause')
+      .slice(0, HOME_PLANS_PREVIEW_LIMIT)
+      .map(planToDashboardDetail);
+    setPlans(active);
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    return dataEvents.subscribe(() => {
+      void refresh();
+    });
+  }, [refresh]);
+
+  if (plans.length === 0) return null;
 
   return (
     <View style={styles.section}>

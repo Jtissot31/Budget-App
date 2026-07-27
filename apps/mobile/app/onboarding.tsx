@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -10,12 +9,15 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MotiView } from 'moti';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { FynAvatar } from '@/components/ai-chat/FynAvatar';
 import { FynApiKeySheet } from '@/components/ai-chat/FynApiKeySheet';
+import { DatePickerField } from '@/components/MinimalDatePicker';
+import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { OnyxContainer } from '@/components/OnyxContainer';
 import {
   ONYX_CONTAINER,
@@ -29,7 +31,6 @@ import {
   jakartaRegularText,
   PAGE_PADDING_HORIZONTAL,
   spacing,
-  typography,
 } from '@/constants/theme';
 import {
   getGeminiApiKeySource,
@@ -38,16 +39,31 @@ import {
 import { clearUserGeminiApiKey, setUserGeminiApiKey } from '@/lib/ai/userApiKeys';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { setOnboardingCompleted } from '@/lib/onboarding';
-import { resetAppTour } from '@/lib/appTour';
+import { applyOnboardingMoneyAnswers } from '@/lib/onboardingMoney';
+import { setAppTourCompleted } from '@/lib/appTour';
+import {
+  PAY_ESTIMATION_FREQUENCY_OPTIONS,
+  type PayEstimationFrequency,
+} from '@/lib/payEstimationSettings';
 import { useAppTheme } from '@/lib/themeContext';
 import { getUserDisplayName, setUserDisplayName } from '@/lib/userDisplay';
 
-const APP_ICON = require('@/assets/images/icon.png');
+type StepId = 'welcome' | 'features' | 'name' | 'pay' | 'housing' | 'fyn';
 
-type StepId = 'welcome' | 'features' | 'name' | 'fyn';
+/** Intro wizard only — no in-app guided tab tour afterwards. */
+const STEPS: StepId[] = ['welcome', 'features', 'name', 'pay', 'housing', 'fyn'];
 
-/** Intro only — guided tab tour runs inside the real app after this. */
-const STEPS: StepId[] = ['welcome', 'features', 'name', 'fyn'];
+/** Fully pitch-black onboarding canvas — ambient green via soft edge washes only. */
+const ONBOARDING_PITCH = '#000000';
+const ONBOARDING_GLOW = 'rgba(74, 222, 128, 0.14)';
+const ONBOARDING_GLOW_SOFT = 'rgba(74, 222, 128, 0.07)';
+
+/**
+ * Former welcome icon (88) + brand block height, so headline sits where it did
+ * when the logo/name stack was above it (centered column).
+ */
+const WELCOME_TOP_SPACER =
+  88 + spacing.sm + 20 + spacing.md;
 
 const FEATURES: {
   icon: 'wallet-outline' | 'pie-chart-outline' | 'map-outline' | 'sparkles-outline';
@@ -82,6 +98,10 @@ export default function OnboardingScreen() {
   const { colors } = useAppTheme();
   const [stepIndex, setStepIndex] = useState(0);
   const [displayName, setDisplayName] = useState('');
+  const [averageSalary, setAverageSalary] = useState('');
+  const [payFrequency, setPayFrequency] = useState<PayEstimationFrequency | null>(null);
+  const [lastPayday, setLastPayday] = useState('');
+  const [monthlyRent, setMonthlyRent] = useState('');
   const [finishing, setFinishing] = useState(false);
   const [apiKeySheetOpen, setApiKeySheetOpen] = useState(false);
   const [geminiConfigured, setGeminiConfigured] = useState(isGeminiApiKeyConfigured());
@@ -110,6 +130,17 @@ export default function OnboardingScreen() {
     setStepIndex((current) => Math.max(current - 1, 0));
   }, []);
 
+  const persistMoneyAnswers = useCallback(async () => {
+    const salary = Number(averageSalary);
+    const rent = Number(monthlyRent);
+    await applyOnboardingMoneyAnswers({
+      payFrequency,
+      lastPayday,
+      averageSalary: Number.isFinite(salary) && salary > 0 ? salary : null,
+      monthlyRent: Number.isFinite(rent) && rent > 0 ? rent : null,
+    });
+  }, [averageSalary, lastPayday, monthlyRent, payFrequency]);
+
   const finish = useCallback(async () => {
     if (finishing) return;
     setFinishing(true);
@@ -118,8 +149,9 @@ export default function OnboardingScreen() {
       if (trimmed) {
         await setUserDisplayName(trimmed);
       }
-      // Ensure the in-app tour runs once after this intro (incl. replay from Réglages).
-      await resetAppTour();
+      await persistMoneyAnswers();
+      // Mark guided tour completed so it never auto-starts on the main tabs.
+      await setAppTourCompleted(true);
       await setOnboardingCompleted(true);
       successHaptic();
       router.replace('/(tabs)');
@@ -127,12 +159,13 @@ export default function OnboardingScreen() {
       console.warn('[Onboarding] finish failed', error);
       setFinishing(false);
     }
-  }, [displayName, finishing, router]);
+  }, [displayName, finishing, persistMoneyAnswers, router]);
 
   const primaryLabel = useMemo(() => {
     if (step === 'welcome') return 'Commencer';
-    if (step === 'features') return 'Continuer';
-    if (step === 'name') return 'Continuer';
+    if (step === 'features' || step === 'name' || step === 'pay' || step === 'housing') {
+      return 'Continuer';
+    }
     return geminiConfigured ? 'Entrer dans l’app' : 'Passer et entrer';
   }, [geminiConfigured, step]);
 
@@ -146,17 +179,29 @@ export default function OnboardingScreen() {
       goNext();
       return;
     }
+    if (step === 'pay' || step === 'housing') {
+      tapHaptic();
+      void persistMoneyAnswers().then(() => {
+        if (isLast) {
+          void finish();
+          return;
+        }
+        goNext();
+      });
+      return;
+    }
     if (isLast) {
       void finish();
       return;
     }
     goNext();
-  }, [displayName, finish, goNext, isLast, step]);
+  }, [displayName, finish, goNext, isLast, persistMoneyAnswers, step]);
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+    <View style={[styles.screen, { backgroundColor: ONBOARDING_PITCH, paddingTop: insets.top }]}>
+      <OnboardingAtmosphere />
       <KeyboardAvoidingView
-        style={styles.flex}
+        style={[styles.flex, styles.contentLayer]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={8}
       >
@@ -198,12 +243,12 @@ export default function OnboardingScreen() {
           {!isLast ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Passer"
-              hitSlop={12}
+              accessibilityLabel="Fermer l'introduction"
+              hitSlop={8}
               onPress={() => void finish()}
               style={({ pressed }) => [styles.skipBtn, pressed && { opacity: 0.7 }]}
             >
-              <Text style={[styles.skipText, { color: colors.textMuted }]}>Passer</Text>
+              <AppIcon family="ionicons" name="close" size={22} color={colors.textMuted} />
             </Pressable>
           ) : (
             <View style={styles.skipBtn} />
@@ -220,7 +265,10 @@ export default function OnboardingScreen() {
           >
             <ScrollView
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.scrollContent}
+              contentContainerStyle={[
+                styles.scrollContent,
+                { paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.lg },
+              ]}
               keyboardShouldPersistTaps="handled"
               bounces={false}
             >
@@ -228,12 +276,44 @@ export default function OnboardingScreen() {
                 <WelcomeStep accent={colors.accentGreen} text={colors.text} muted={colors.textMuted} />
               ) : null}
               {step === 'features' ? (
-                <FeaturesStep text={colors.text} muted={colors.textMuted} iconBg={colors.input} />
+                <FeaturesStep
+                  accent={colors.accentGreen}
+                  text={colors.text}
+                  muted={colors.textMuted}
+                  iconBg={colors.input}
+                />
               ) : null}
               {step === 'name' ? (
                 <NameStep
                   value={displayName}
                   onChange={setDisplayName}
+                  accent={colors.accentGreen}
+                  text={colors.text}
+                  muted={colors.textMuted}
+                  inputBg={colors.input}
+                  border={colors.containerBorder}
+                />
+              ) : null}
+              {step === 'pay' ? (
+                <PayStep
+                  salary={averageSalary}
+                  onChangeSalary={setAverageSalary}
+                  frequency={payFrequency}
+                  onChangeFrequency={setPayFrequency}
+                  lastPayday={lastPayday}
+                  onChangeLastPayday={setLastPayday}
+                  accent={colors.accentGreen}
+                  text={colors.text}
+                  muted={colors.textMuted}
+                  inputBg={colors.input}
+                  border={colors.containerBorder}
+                />
+              ) : null}
+              {step === 'housing' ? (
+                <HousingStep
+                  rent={monthlyRent}
+                  onChangeRent={setMonthlyRent}
+                  accent={colors.accentGreen}
                   text={colors.text}
                   muted={colors.textMuted}
                   inputBg={colors.input}
@@ -252,33 +332,26 @@ export default function OnboardingScreen() {
                   }}
                 />
               ) : null}
+
+              {/* CTA scrolls with content — not a sticky overlay footer */}
+              <View style={styles.ctaBlock}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={primaryLabel}
+                  disabled={finishing}
+                  onPress={onPrimary}
+                  style={({ pressed }) => [
+                    styles.primaryBtn,
+                    { backgroundColor: colors.accentGreen },
+                    pressed && { opacity: 0.82 },
+                    finishing && { opacity: 0.45 },
+                  ]}
+                >
+                  <Text style={[styles.primaryLabel, { color: colors.background }]}>{primaryLabel}</Text>
+                </Pressable>
+              </View>
             </ScrollView>
           </MotiView>
-        </View>
-
-        <View
-          style={[
-            styles.footer,
-            {
-              paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-              paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm,
-            },
-          ]}
-        >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={primaryLabel}
-            disabled={finishing}
-            onPress={onPrimary}
-            style={({ pressed }) => [
-              styles.primaryBtn,
-              { backgroundColor: colors.accentGreen },
-              pressed && { opacity: 0.82 },
-              finishing && { opacity: 0.45 },
-            ]}
-          >
-            <Text style={[styles.primaryLabel, { color: colors.background }]}>{primaryLabel}</Text>
-          </Pressable>
         </View>
       </KeyboardAvoidingView>
 
@@ -303,6 +376,31 @@ export default function OnboardingScreen() {
   );
 }
 
+/** Pitch black + soft edge green light only — no circular blobs or teal washes. */
+function OnboardingAtmosphere() {
+  return (
+    <View style={styles.atmosphere} pointerEvents="none">
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: ONBOARDING_PITCH }]} />
+      {/* Top edge — soft ambient wash into transparent */}
+      <LinearGradient
+        colors={[ONBOARDING_GLOW, ONBOARDING_GLOW_SOFT, 'transparent']}
+        locations={[0, 0.35, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.glowTop}
+      />
+      {/* Bottom-left corner light */}
+      <LinearGradient
+        colors={[ONBOARDING_GLOW_SOFT, 'transparent']}
+        locations={[0, 1]}
+        start={{ x: 0, y: 1 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.glowCorner}
+      />
+    </View>
+  );
+}
+
 function WelcomeStep({
   accent,
   text,
@@ -314,10 +412,8 @@ function WelcomeStep({
 }) {
   return (
     <View style={styles.welcome}>
-      <View style={[styles.iconHalo, { borderColor: 'rgba(74, 222, 128, 0.22)' }]}>
-        <Image source={APP_ICON} style={styles.appIcon} accessibilityLabel="Budget Tracker" />
-      </View>
-      <Text style={[styles.brand, { color: text }]}>Budget Tracker</Text>
+      {/* Keeps headline at former mid-lower height after icon/name removal */}
+      <View style={styles.welcomeTopSpacer} />
       <Text style={[styles.headline, { color: text }]}>
         Ton argent,{'\n'}
         <Text style={{ color: accent }}>enfin lisible.</Text>
@@ -330,17 +426,19 @@ function WelcomeStep({
 }
 
 function FeaturesStep({
+  accent,
   text,
   muted,
   iconBg,
 }: {
+  accent: string;
   text: string;
   muted: string;
   iconBg: string;
 }) {
   return (
     <View style={styles.features}>
-      <Text style={[styles.stepEyebrow, { color: muted }]}>Ce que tu peux faire</Text>
+      <Text style={[styles.stepEyebrow, { color: accent }]}>Ce que tu peux faire</Text>
       <Text style={[styles.stepTitle, { color: text }]}>Tout ce qu’il faut,{'\n'}rien de superflu.</Text>
       <View style={styles.featureList}>
         {FEATURES.map((feature) => (
@@ -362,6 +460,7 @@ function FeaturesStep({
 function NameStep({
   value,
   onChange,
+  accent,
   text,
   muted,
   inputBg,
@@ -369,6 +468,7 @@ function NameStep({
 }: {
   value: string;
   onChange: (next: string) => void;
+  accent: string;
   text: string;
   muted: string;
   inputBg: string;
@@ -376,7 +476,7 @@ function NameStep({
 }) {
   return (
     <View style={styles.nameStep}>
-      <Text style={[styles.stepEyebrow, { color: muted }]}>Personnalisation</Text>
+      <Text style={[styles.stepEyebrow, { color: accent }]}>Personnalisation</Text>
       <Text style={[styles.stepTitle, { color: text }]}>Comment t’appeler ?</Text>
       <Text style={[styles.subhead, { color: muted, marginTop: spacing.sm }]}>
         On l’utilise pour le bonjour sur l’accueil. Tu pourras le changer plus tard.
@@ -405,6 +505,158 @@ function NameStep({
   );
 }
 
+function PayStep({
+  salary,
+  onChangeSalary,
+  frequency,
+  onChangeFrequency,
+  lastPayday,
+  onChangeLastPayday,
+  accent,
+  text,
+  muted,
+  inputBg,
+  border,
+}: {
+  salary: string;
+  onChangeSalary: (next: string) => void;
+  frequency: PayEstimationFrequency | null;
+  onChangeFrequency: (next: PayEstimationFrequency) => void;
+  lastPayday: string;
+  onChangeLastPayday: (next: string) => void;
+  accent: string;
+  text: string;
+  muted: string;
+  inputBg: string;
+  border: string;
+}) {
+  return (
+    <View style={styles.moneyStep}>
+      <Text style={[styles.stepEyebrow, { color: accent }]}>Cashflow</Text>
+      <Text style={[styles.stepTitle, { color: text }]}>Tes jours de paie</Text>
+      <Text style={[styles.subhead, { color: muted, marginTop: spacing.sm }]}>
+        Salaire, fréquence et dernière paie — pour l’agenda, les alertes et les estimations.
+      </Text>
+
+      <OnyxContainer style={styles.moneyCard}>
+        <Text style={[styles.fieldLabel, { color: muted }]}>Salaire moyen (par paie)</Text>
+        <NumericAmountInput
+          value={salary}
+          onChangeText={onChangeSalary}
+          placeholder="Ex. 2 450"
+          placeholderTextColor={muted}
+          style={[
+            styles.nameInput,
+            {
+              color: text,
+              backgroundColor: inputBg,
+              borderColor: border,
+            },
+          ]}
+        />
+
+        <Text style={[styles.fieldLabel, { color: muted, marginTop: spacing.md }]}>
+          Fréquence de paie
+        </Text>
+        <View style={styles.freqGrid}>
+          {PAY_ESTIMATION_FREQUENCY_OPTIONS.map((option) => {
+            const selected = frequency === option.id;
+            return (
+              <Pressable
+                key={option.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => {
+                  tapHaptic();
+                  onChangeFrequency(option.id);
+                }}
+                style={({ pressed }) => [
+                  styles.freqChip,
+                  {
+                    backgroundColor: selected ? accent : inputBg,
+                    borderColor: selected ? accent : border,
+                  },
+                  pressed && { opacity: 0.82 },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.freqChipLabel,
+                    { color: selected ? ONBOARDING_PITCH : text },
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={[styles.fieldLabel, { color: muted, marginTop: spacing.md }]}>
+          Date de la dernière paie
+        </Text>
+        <DatePickerField
+          label="Dernière paie"
+          value={lastPayday}
+          placeholder="Choisir une date"
+          variant="sheet"
+          onChangeDate={onChangeLastPayday}
+          labelStyle={styles.hiddenLabel}
+        />
+      </OnyxContainer>
+    </View>
+  );
+}
+
+function HousingStep({
+  rent,
+  onChangeRent,
+  accent,
+  text,
+  muted,
+  inputBg,
+  border,
+}: {
+  rent: string;
+  onChangeRent: (next: string) => void;
+  accent: string;
+  text: string;
+  muted: string;
+  inputBg: string;
+  border: string;
+}) {
+  return (
+    <View style={styles.moneyStep}>
+      <Text style={[styles.stepEyebrow, { color: accent }]}>Budget</Text>
+      <Text style={[styles.stepTitle, { color: text }]}>Ton logement</Text>
+      <Text style={[styles.subhead, { color: muted, marginTop: spacing.sm }]}>
+        On crée une catégorie Logement sur Budgets avec ce plafond mensuel.
+      </Text>
+
+      <OnyxContainer style={styles.moneyCard}>
+        <Text style={[styles.fieldLabel, { color: muted }]}>Loyer / coût appart par mois</Text>
+        <NumericAmountInput
+          value={rent}
+          onChangeText={onChangeRent}
+          placeholder="Ex. 1 250"
+          placeholderTextColor={muted}
+          style={[
+            styles.nameInput,
+            {
+              color: text,
+              backgroundColor: inputBg,
+              borderColor: border,
+            },
+          ]}
+        />
+        <Text style={[styles.fieldHint, { color: muted }]}>
+          Optionnel — tu pourras l’ajuster plus tard dans Budgets ou Réglages.
+        </Text>
+      </OnyxContainer>
+    </View>
+  );
+}
+
 function FynStep({
   configured,
   text,
@@ -420,7 +672,7 @@ function FynStep({
 }) {
   return (
     <View style={styles.fynStep}>
-      <Text style={[styles.stepEyebrow, { color: muted }]}>Optionnel</Text>
+      <Text style={[styles.stepEyebrow, { color: accent }]}>Optionnel</Text>
       <Text style={[styles.stepTitle, { color: text }]}>Activer Fyn</Text>
       <Text style={[styles.subhead, { color: muted, marginTop: spacing.sm }]}>
         Fyn utilise ta propre clé Gemini (BYOK). Tu peux aussi le faire plus tard dans Réglages.
@@ -471,6 +723,28 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
+  contentLayer: {
+    zIndex: 1,
+  },
+  atmosphere: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+    backgroundColor: ONBOARDING_PITCH,
+  },
+  glowTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '42%',
+  },
+  glowCorner: {
+    position: 'absolute',
+    left: 0,
+    bottom: 0,
+    width: '70%',
+    height: '38%',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -486,13 +760,9 @@ const styles = StyleSheet.create({
   },
   skipBtn: {
     width: 56,
-    height: 36,
+    height: 40,
     alignItems: 'flex-end',
     justifyContent: 'center',
-  },
-  skipText: {
-    ...jakartaMediumText,
-    fontSize: 14,
   },
   dots: {
     flexDirection: 'row',
@@ -512,20 +782,24 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: spacing.md,
   },
-  footer: {
-    paddingTop: spacing.md,
+  ctaBlock: {
+    marginTop: 'auto',
+    paddingTop: spacing.xl,
+    alignItems: 'center',
   },
   primaryBtn: {
+    alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: ONYX_CONTAINER.borderRadius,
-    paddingVertical: 16,
+    minHeight: 40,
+    paddingHorizontal: 28,
+    paddingVertical: 8,
+    borderRadius: 999,
   },
   primaryLabel: {
-    ...jakartaExtraBoldText,
-    fontSize: typography.body,
+    ...jakartaBoldText,
+    fontSize: 14,
   },
   welcome: {
     flex: 1,
@@ -533,26 +807,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     gap: spacing.md,
   },
-  iconHalo: {
-    width: 88,
-    height: 88,
-    borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-    backgroundColor: '#111111',
-  },
-  appIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 16,
-  },
-  brand: {
-    ...jakartaBoldText,
-    fontSize: 15,
-    letterSpacing: 0.2,
-    opacity: 0.9,
+  welcomeTopSpacer: {
+    height: WELCOME_TOP_SPACER,
   },
   headline: {
     ...jakartaExtraBoldText,
@@ -614,7 +870,16 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: spacing.xs,
   },
+  moneyStep: {
+    flex: 1,
+    gap: spacing.xs,
+  },
   nameCard: {
+    marginTop: spacing.lg,
+    padding: ONYX_CONTAINER.padding.card,
+    gap: spacing.sm,
+  },
+  moneyCard: {
     marginTop: spacing.lg,
     padding: ONYX_CONTAINER.padding.card,
     gap: spacing.sm,
@@ -623,6 +888,18 @@ const styles = StyleSheet.create({
     ...jakartaMediumText,
     fontSize: 13,
   },
+  fieldHint: {
+    ...jakartaRegularText,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: spacing.xs,
+  },
+  hiddenLabel: {
+    height: 0,
+    marginBottom: 0,
+    opacity: 0,
+    overflow: 'hidden',
+  },
   nameInput: {
     ...jakartaMediumText,
     fontSize: 17,
@@ -630,6 +907,21 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+  },
+  freqGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  freqChip: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  freqChipLabel: {
+    ...jakartaMediumText,
+    fontSize: 13,
   },
   fynStep: {
     flex: 1,

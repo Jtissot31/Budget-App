@@ -8,6 +8,8 @@ export type TourTargetRect = {
 type MeasureFn = () => Promise<TourTargetRect | null>;
 
 const measures = new Map<string, MeasureFn>();
+/** Last successful window rect per target — used when a live measure races layout. */
+const lastRects = new Map<string, TourTargetRect>();
 const measureListeners = new Set<() => void>();
 
 function emitMeasureChange(): void {
@@ -26,9 +28,16 @@ export function registerAppTourTarget(id: string, measure: MeasureFn): () => voi
   return () => {
     if (measures.get(id) === measure) {
       measures.delete(id);
+      lastRects.delete(id);
       emitMeasureChange();
     }
   };
+}
+
+/** Call from target `onLayout` so the tour re-measures after real layout settles. */
+export function notifyAppTourTargetLayout(id?: string): void {
+  if (id && !measures.has(id)) return;
+  emitMeasureChange();
 }
 
 export function subscribeAppTourTargets(listener: () => void): () => void {
@@ -38,14 +47,23 @@ export function subscribeAppTourTargets(listener: () => void): () => void {
   };
 }
 
+export function getCachedAppTourTargetRect(id: string): TourTargetRect | null {
+  return lastRects.get(id) ?? null;
+}
+
 export async function measureAppTourTarget(id: string): Promise<TourTargetRect | null> {
   const measure = measures.get(id);
-  if (!measure) return null;
+  if (!measure) return lastRects.get(id) ?? null;
   try {
-    return await measure();
+    const rect = await measure();
+    if (rect && rect.width > 0 && rect.height > 0) {
+      lastRects.set(id, rect);
+      return rect;
+    }
+    return lastRects.get(id) ?? null;
   } catch (error) {
     console.warn('[AppTourTargets] measure failed', id, error);
-    return null;
+    return lastRects.get(id) ?? null;
   }
 }
 

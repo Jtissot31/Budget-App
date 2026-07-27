@@ -49,20 +49,26 @@ export type FormatNumberDisplayOptions = {
   maximumFractionDigits?: number;
 };
 
-/** Narrow no-break space — preferred fr-CA thousands separator. */
-const FR_CA_GROUP_SEP = '\u202f';
+/**
+ * fr-CA thousands separator — no-break space (U+00A0).
+ * Prefer NBSP over narrow NNBSP (U+202F): Inter ExtraBold + tight money
+ * letter-spacing collapses NNBSP so `1 500` can look like `1500` on screen
+ * while still appearing spaced in the DOM/a11y tree.
+ */
+export const FR_CA_GROUP_SEP = '\u00a0';
 
-/** Insert fr-CA grouping into an integer digit string (e.g. `1200` → `1 200`). */
-function groupIntegerDigits(intDigits: string): string {
+/** Insert fr-CA grouping into an integer digit string (e.g. `1200` → `1 200`). */
+export function groupIntegerDigits(intDigits: string): string {
   const digits = intDigits.replace(/\D/g, '') || '0';
   if (digits.length < THOUSANDS_MIN_DIGITS) return digits;
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, FR_CA_GROUP_SEP);
 }
 
 /**
- * Display a numeric value with fr-CA grouping (e.g. `1 234`, `1 234,56`).
- * Always inserts a narrow no-break space from 1 000+ so Hermes / RN Web
+ * Display a numeric value with fr-CA grouping (e.g. `1 234`, `1 234,56`).
+ * Always inserts a no-break space from 1 000+ so Hermes / RN Web
  * cannot drop the separator the way `toLocaleString('fr-CA')` sometimes does.
+ * Absolute magnitude only — callers add +/− when needed.
  */
 export function formatNumberDisplay(value: number, options?: FormatNumberDisplayOptions): string {
   if (!Number.isFinite(value)) {

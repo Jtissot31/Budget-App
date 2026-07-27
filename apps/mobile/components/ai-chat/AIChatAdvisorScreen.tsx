@@ -78,11 +78,18 @@ const INITIAL_ACTIVITY_STATE: ActivityState = {
 };
 
 /** Conservative heights until `onLayout` measures the floating input overlay. */
-const CHAT_INPUT_ROW_ESTIMATED_HEIGHT = 96;
+const CHAT_INPUT_ROW_ESTIMATED_HEIGHT = 112;
 const CHAT_QUICK_CHIPS_ESTIMATED_HEIGHT = 64;
 const CHAT_ACTIVITY_INDICATOR_ESTIMATED_HEIGHT = 96;
-const LIST_BOTTOM_CLEARANCE_GAP = spacing.xl;
-const AUTO_SCROLL_THRESHOLD_PX = 50;
+/** Extra air above the floating composer so tall confirmation cards clear it. */
+const LIST_BOTTOM_CLEARANCE_GAP = spacing.xxl;
+/** Floor so list never ends under the composer when measurement lags. */
+const MIN_LIST_BOTTOM_PADDING = 180;
+/**
+ * Near-bottom window for Claude-style stickiness. Must stay above residual
+ * scroll error so a short scrollToEnd does not disable auto-scroll.
+ */
+const AUTO_SCROLL_THRESHOLD_PX = 160;
 const TYPEWRITER_MS_PER_CHAR = 15;
 
 function toListItems(messages: AIChatUiMessage[]): ListItem[] {
@@ -150,13 +157,21 @@ export function AIChatAdvisorScreen({
     }
   }, []);
 
-  const scrollToBottom = useCallback(() => {
-    listRef.current?.scrollToEnd({ animated: true });
+  const scrollToBottom = useCallback((animated = true) => {
+    const list = listRef.current;
+    if (!list) return;
+    // Double rAF: wait for footer spacer / new message layout before scrolling.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        list.scrollToEnd({ animated });
+      });
+    });
   }, []);
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+    // Claude-style: stick to bottom while near end; detach when user scrolls up.
     if (distanceFromBottom < AUTO_SCROLL_THRESHOLD_PX) {
       setAutoScroll(true);
     } else {
@@ -220,13 +235,9 @@ export function AIChatAdvisorScreen({
 
   const runScrollToEndAfterLayout = useCallback((animated: boolean) => {
     InteractionManager.runAfterInteractions(() => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          listRef.current?.scrollToEnd({ animated });
-        });
-      });
+      scrollToBottom(animated);
     });
-  }, []);
+  }, [scrollToBottom]);
 
   const requestInstantScrollToBottom = useCallback(() => {
     pendingInstantBottomScrollRef.current = true;
@@ -794,12 +805,19 @@ export function AIChatAdvisorScreen({
     (showActivity ? CHAT_ACTIVITY_INDICATOR_ESTIMATED_HEIGHT : 0) +
     chatInputBottomInset;
   const showBottomOverlay = showInlineComposer || showActivity || (showQuickChips && tabBarVisible);
-  const listBottomPadding =
-    (showBottomOverlay
-      ? Math.max(inputOverlayHeight, estimatedInputOverlayHeight)
-      : estimatedInputOverlayHeight) +
-    LIST_BOTTOM_CLEARANCE_GAP +
-    insets.bottom;
+  // Overlay onLayout already includes safe-area padding inside the composer — do not
+  // add insets.bottom again. Floor + clearance keep tall confirmation widgets readable.
+  const composerReserveHeight = showBottomOverlay
+    ? Math.max(inputOverlayHeight, estimatedInputOverlayHeight)
+    : estimatedInputOverlayHeight;
+  const listBottomPadding = Math.max(
+    MIN_LIST_BOTTOM_PADDING,
+    composerReserveHeight + LIST_BOTTOM_CLEARANCE_GAP,
+  );
+  const listFooterSpacer = useMemo(
+    () => <View style={{ height: listBottomPadding }} collapsable={false} />,
+    [listBottomPadding],
+  );
 
   const handleChatScrollBeginDrag = useCallback(() => {
     Keyboard.dismiss();
@@ -817,13 +835,13 @@ export function AIChatAdvisorScreen({
 
   const handleListContentSizeChange = useCallback(() => {
     if (autoScroll) {
-      scrollToBottom();
+      scrollToBottom(true);
     }
   }, [autoScroll, scrollToBottom]);
 
   useEffect(() => {
     if (autoScroll) {
-      scrollToBottom();
+      scrollToBottom(true);
     }
   }, [messages, autoScroll, scrollToBottom]);
 
@@ -908,9 +926,11 @@ export function AIChatAdvisorScreen({
             style={styles.list}
             contentContainerStyle={[
               styles.listContent,
-              { paddingBottom: listBottomPadding },
               listData.length > 0 && styles.listContentGrow,
             ]}
+            // Footer spacer (not paddingBottom): FlatList scrollToEnd often ignores
+            // contentContainerStyle padding, leaving the last message under the composer.
+            ListFooterComponent={listFooterSpacer}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             removeClippedSubviews={Platform.OS === 'android'}

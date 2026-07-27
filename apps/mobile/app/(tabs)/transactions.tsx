@@ -38,6 +38,7 @@ import {
 import { PageTransition } from '@/components/PageTransition';
 import { TransactionRow } from '@/components/TransactionRow';
 import {
+  TransactionsHistoryToolbar,
   TransactionsViewHeader,
   type HistoryTypeFilter,
   type TransactionsViewTab,
@@ -53,7 +54,8 @@ import {
   typography,
   typographyKit,
 } from '@/constants/theme';
-import { getContacts, getMerchantOverrides, getTransactions, sortTransactionsNewestFirst, getCategories, getCategoryBudgets, getSimulatedAccounts } from '@/lib/db';
+import { getContacts, getMerchantOverrides, getTransactions, sortTransactionsNewestFirst, getCategoryBudgets, getSimulatedAccounts } from '@/lib/db';
+import { loadRecurringPickerCategories } from '@/lib/budgetCategories';
 import { ensureDbReady } from '@/lib/init';
 import { isContactTransferTx, parseAccountIdFromNote } from '@/lib/accountTransactionFlow';
 import { buildContactDirectoryRows } from '@/lib/contactHistory';
@@ -277,7 +279,7 @@ export default function TransactionsScreen() {
 
   const prepareRecurringFormContext = useCallback(async () => {
     const [categories, categoryBudgets, simulatedAccounts] = await Promise.all([
-      getCategories(),
+      loadRecurringPickerCategories(),
       getCategoryBudgets(),
       getSimulatedAccounts(),
     ]);
@@ -491,14 +493,9 @@ export default function TransactionsScreen() {
     [contactPhotoByKey, contentGutter, handlePressTransaction, merchantOverrideMap, savingsGoals, simulatedAccounts],
   );
 
-  const renderScrollHeader = useCallback(
-    (showHistoryToolbar: boolean) => (
-      <TransactionsViewHeader
-        topInset={insets.top}
-        titleColor={colors.text}
-        activeView={activeView}
-        onChangeView={setCurrentView}
-        showHistoryToolbar={showHistoryToolbar}
+  const historyListHeader = useMemo(
+    () => (
+      <TransactionsHistoryToolbar
         search={search}
         onSearchChange={setSearch}
         historyFiltersExpanded={historyFiltersExpanded}
@@ -507,23 +504,19 @@ export default function TransactionsScreen() {
         onHistoryTypeFilterChange={setHistoryTypeFilter}
       />
     ),
-    [
-      activeView,
-      colors.text,
-      historyFiltersExpanded,
-      historyTypeFilter,
-      insets.top,
-      search,
-      setCurrentView,
-    ],
+    [historyFiltersExpanded, historyTypeFilter, search],
   );
-
-  const historyListHeader = useMemo(() => renderScrollHeader(true), [renderScrollHeader]);
-  const agendaMerchantsListHeader = useMemo(() => renderScrollHeader(false), [renderScrollHeader]);
 
   return (
     <PageTransition>
     <View style={[styles.screen, { backgroundColor: contentCanvas }]}>
+      <TransactionsViewHeader
+        topInset={insets.top}
+        titleColor={colors.text}
+        activeView={activeView}
+        onChangeView={setCurrentView}
+      />
+
       <View
         style={[
           styles.flex,
@@ -544,7 +537,7 @@ export default function TransactionsScreen() {
             ListHeaderComponent={historyListHeader}
             contentContainerStyle={[
               styles.listWithHeader,
-              { backgroundColor: contentCanvas, paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING, paddingTop: spacing.xl },
+              { backgroundColor: contentCanvas, paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING },
             ]}
             refreshControl={
               <RefreshControl
@@ -606,7 +599,6 @@ export default function TransactionsScreen() {
         >
           <AgendaView
             ref={agendaRef}
-            headerComponent={agendaMerchantsListHeader}
             onEditRecurring={(payment) => void openEditRecurringPayment(payment)}
           />
         </View>
@@ -622,7 +614,6 @@ export default function TransactionsScreen() {
         >
           <MerchantDirectory
             listRef={merchantsListRef}
-            headerComponent={agendaMerchantsListHeader}
             merchants={merchants}
             contacts={contacts}
             contentPaddingBottom={insets.bottom + FLOATING_NAV_CONTENT_PADDING}

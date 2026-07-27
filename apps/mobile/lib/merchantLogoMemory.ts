@@ -24,6 +24,7 @@ import {
   upsertMerchantOverride,
 } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
+import { yieldEvery } from '@/lib/yieldToEventLoop';
 import type { MerchantOverride } from '@/types';
 
 const MEMORY_SEED_SETTING_KEY = 'merchant_logo_memory_seed_v1';
@@ -188,6 +189,7 @@ export async function ensureMerchantLogoMemory(): Promise<void> {
   }
 
   let wrote = false;
+  let i = 0;
   for (const [key, name] of namesByKey) {
     const existing = overrideByKey.get(key);
     if (existing?.useAutoLogo === false || existing?.hidden) continue;
@@ -202,6 +204,7 @@ export async function ensureMerchantLogoMemory(): Promise<void> {
     await upsertMerchantOverride(next, { emit: false });
     overrideByKey.set(key, next);
     wrote = true;
+    await yieldEvery(i++);
   }
 
   if (!alreadySeeded) {

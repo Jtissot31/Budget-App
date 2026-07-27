@@ -89,13 +89,18 @@ import {
 import {
   adjustSimulatedAccountBalance,
   deleteTransactionById,
-  getCategories,
   getSavingsGoals,
   getSimulatedAccounts,
   getTransactionById,
   getTransactions,
   insertTransaction,
 } from '@/lib/db';
+import {
+  BUDGET_CATEGORY_PICKER_EMPTY_HINT,
+  ensureCategoryInPickerList,
+  loadBudgetCategoriesForPicker,
+} from '@/lib/budgetCategories';
+import { INCOME_CATEGORY, TRANSFER_CATEGORY } from '@/constants/categoryOptions';
 import { detailRowEditableContainer, detailRowValueMoney, detailRowSelectValueText } from '@/lib/textLayout';
 import { receiptDownloadErrorMessage, saveReceiptToPhotos, shareReceiptImage } from '@/lib/receiptDownload';
 import { EMPTY_DETAIL_VALUE } from '@/lib/detailDisplay';
@@ -319,8 +324,17 @@ function EditableCategoryDetailValue({
   onSaveCategory: (categoryId: string) => Promise<void>;
   derivedChips: DerivedArticleCategory[] | null;
 }) {
+  const { colors } = useAppTheme();
   const editHandleRef = useRef<EditableFieldHandle>(null);
   const showDerivedChips = derivedChips != null && derivedChips.length > 1;
+
+  if (categoryOptions.length === 0) {
+    return (
+      <Text style={[detailRowSelectTextStyle, { color: colors.textMuted, textAlign: 'right' }]}>
+        {BUDGET_CATEGORY_PICKER_EMPTY_HINT}
+      </Text>
+    );
+  }
 
   const pickerField = (
     <EditableField
@@ -1290,17 +1304,32 @@ export default function TransactionDetailScreen() {
       setPaymentAccountUsageCounts(new Map());
       return;
     }
-    const [nextTransaction, nextAccounts, nextCategories, nextSavingsGoals, nextTransactions] =
+    const [nextTransaction, nextAccounts, nextBudgetCategories, nextSavingsGoals, nextTransactions] =
       await Promise.all([
         getTransactionById(transactionId),
         getSimulatedAccounts(),
-        getCategories(),
+        loadBudgetCategoriesForPicker(),
         getSavingsGoals(),
         getTransactions(),
       ]);
     setTransaction(nextTransaction);
     setAccounts(nextAccounts);
-    setCategories(nextCategories);
+    const pickerCategories = ensureCategoryInPickerList(nextBudgetCategories, nextTransaction
+      ? {
+          id: nextTransaction.categoryId,
+          name: nextTransaction.categoryName ?? '',
+          icon: nextTransaction.categoryIcon,
+          color: nextTransaction.categoryColor,
+        }
+      : null);
+    // Income / transfer keep system categories available for display & edit.
+    const withSystem =
+      nextTransaction?.type === 'income'
+        ? ensureCategoryInPickerList(pickerCategories, INCOME_CATEGORY)
+        : nextTransaction?.type === 'transfer'
+          ? ensureCategoryInPickerList(pickerCategories, TRANSFER_CATEGORY)
+          : pickerCategories;
+    setCategories(withSystem);
     setSavingsGoals(nextSavingsGoals);
     setPaymentAccountUsageCounts(countPaymentAccountUsage(nextTransactions));
   }, [transactionId]);

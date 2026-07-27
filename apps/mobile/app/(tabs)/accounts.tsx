@@ -34,7 +34,7 @@ import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { PageTransition } from '@/components/PageTransition';
 import { PatrimoineHoldingsSections } from '@/components/PatrimoineHoldingsSections';
 import { ReorderableAccountBalanceList } from '@/components/ReorderableAccountBalanceList';
-import { MOCK_STOCK_HOLDINGS } from '@/constants/mockStockPortfolio';
+import { getDemoStockHoldings } from '@/lib/mockStockHoldingsOrder';
 import { WealthMaterialIcon } from '@/components/WealthMaterialIcon';
 import { GlassContainer } from '@/components/GlassContainer';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
@@ -205,40 +205,6 @@ import type {
 } from '@/types';
 
 type GhostCardShadowStyle = typeof darkGhostCardShadow | typeof lightGhostCardShadow;
-
-const ACCOUNT_TYPES: Array<{
-  id: AccountKind;
-  label: string;
-  icon: string;
-}> = [
-  { id: 'credit', label: 'Crédit', icon: 'card-outline' },
-  { id: 'checking', label: 'Compte chèque', icon: 'wallet-outline' },
-  { id: 'savings', label: 'Épargne', icon: 'cash-outline' },
-  { id: 'cash', label: 'Argent Cash', icon: 'cash-banknotes-outline' },
-];
-
-const INSTITUTION_LOGO_OPTIONS = [
-  { id: 'desjardins', label: 'Desjardins', institution: 'Desjardins' },
-  { id: 'rbc', label: 'RBC', institution: 'RBC' },
-  { id: 'td', label: 'TD', institution: 'TD' },
-  { id: 'bmo', label: 'BMO', institution: 'BMO' },
-  { id: 'scotiabank', label: 'Scotiabank', institution: 'Scotiabank' },
-  { id: 'cibc', label: 'CIBC', institution: 'CIBC' },
-  { id: 'banque-nationale', label: 'Banque Nationale', institution: 'Banque Nationale' },
-  { id: 'tangerine', label: 'Tangerine', institution: 'Tangerine' },
-  { id: 'wealthsimple', label: 'Wealthsimple', institution: 'Wealthsimple' },
-  { id: 'koho', label: 'KOHO', institution: 'KOHO' },
-  { id: 'neo-financial', label: 'Neo', institution: 'Neo Financial' },
-  { id: 'eq-bank', label: 'EQ Bank', institution: 'EQ Bank' },
-  { id: 'simplii', label: 'Simplii', institution: 'Simplii' },
-  { id: 'pc-financial', label: 'PC Financial', institution: 'PC Financial' },
-  { id: 'visa', label: 'Visa', institution: 'Visa' },
-  { id: 'mastercard', label: 'Mastercard', institution: 'Mastercard' },
-  { id: 'amex', label: 'Amex', institution: 'American Express' },
-].map((option) => ({
-  ...option,
-  logoUrl: getAccountLogoUrl(option.institution),
-}));
 
 const WEALTH_ASSET_TYPES: Array<{ id: WealthAssetType; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
   { id: 'precious_material', label: 'Matériau précieux', icon: 'diamond-outline' },
@@ -540,8 +506,6 @@ export default function AccountsScreen() {
   const [creditLimit, setCreditLimit] = useState('');
   const [dueDay, setDueDay] = useState('');
   const [interestRate, setInterestRate] = useState('');
-  const [selectedInstitutionLogoId, setSelectedInstitutionLogoId] = useState<string | null>(null);
-  const [showLogoPicker, setShowLogoPicker] = useState(false);
   const [portfolioScrollStage, setPortfolioScrollStage] = useState<PortfolioScrollStage>('top');
   const [wealthAssets, setWealthAssets] = useState<WealthAsset[]>([]);
   const [showWealthForm, setShowWealthForm] = useState(false);
@@ -772,7 +736,7 @@ export default function AccountsScreen() {
     setShowWealthForm(true);
   }, [editWealthAssetId, populateWealthFromAsset, showWealthForm, wealthAssets]);
 
-  useRefreshOnFocus(load);
+  useRefreshOnFocus(load, { minIntervalMs: 8_000 });
   useScrollToTopOnFocus(
     useCallback(() => {
       if (portfolioProgrammaticScrollTimeoutRef.current) {
@@ -802,7 +766,7 @@ export default function AccountsScreen() {
   );
   const loansById = useMemo(() => new Map(loans.map((loan) => [loan.id, loan])), [loans]);
   const chartPatrimoineTotal = useMemo(
-    () => getCurrentPatrimoineTotalFromMockStocks(MOCK_STOCK_HOLDINGS),
+    () => getCurrentPatrimoineTotalFromMockStocks(getDemoStockHoldings()),
     [],
   );
   const chartCashflowTotal = useMemo(
@@ -821,7 +785,7 @@ export default function AccountsScreen() {
   const portfolioChartPoints = useMemo(
     () =>
       netWorthChartScope === 'inclusive'
-        ? buildPatrimoineTrendFromMockStocks(MOCK_STOCK_HOLDINGS)
+        ? buildPatrimoineTrendFromMockStocks(getDemoStockHoldings())
         : buildCashflowTrendFromTransactions(accounts, transactions),
     [netWorthChartScope, accounts, transactions],
   );
@@ -842,12 +806,7 @@ export default function AccountsScreen() {
     [netWorthChartScope],
   );
   const logoSourceName = institution.trim() || name.trim();
-  const selectedInstitutionLogo = useMemo(
-    () => INSTITUTION_LOGO_OPTIONS.find((option) => option.id === selectedInstitutionLogoId) ?? null,
-    [selectedInstitutionLogoId],
-  );
-  const autoPreviewLogo = useMemo(() => getAccountLogoUrl(logoSourceName), [logoSourceName]);
-  const previewLogo = selectedInstitutionLogo?.logoUrl ?? autoPreviewLogo;
+  const previewLogo = useMemo(() => getAccountLogoUrl(logoSourceName), [logoSourceName]);
   const computedLoanEndDate = useMemo(
     () => computeLoanEndDate(
       loanStartDate,
@@ -871,8 +830,6 @@ export default function AccountsScreen() {
     setCreditLimit('');
     setDueDay('');
     setInterestRate('');
-    setSelectedInstitutionLogoId(null);
-    setShowLogoPicker(false);
   };
 
   const openNewAccountForm = () => {
@@ -883,12 +840,15 @@ export default function AccountsScreen() {
   const handleAccountTypeSelect = (selectedKind: AccountKind) => {
     tapHaptic();
     setShowAccountTypePicker(false);
-    resetForm();
-    setKind(selectedKind);
-    if (selectedKind === 'cash') {
-      setName('Argent Cash');
-    }
-    setShowForm(true);
+    // Open the heavy create form after the lightweight type sheet can paint/close.
+    requestAnimationFrame(() => {
+      resetForm();
+      setKind(selectedKind);
+      if (selectedKind === 'cash') {
+        setName('Argent Cash');
+      }
+      setShowForm(true);
+    });
   };
 
   const closeForm = () => {
@@ -1171,18 +1131,12 @@ export default function AccountsScreen() {
       name: name.trim(),
       kind,
       balance: kind === 'credit' ? -Math.abs(parsedBalance) : parsedBalance,
-      institution:
-        kind === 'cash'
-          ? undefined
-          : selectedInstitutionLogo?.institution ?? (institution.trim() || undefined),
+      institution: kind === 'cash' ? undefined : institution.trim() || undefined,
       last4: kind === 'credit' ? (last4.trim() || editingAccount?.last4) : undefined,
       creditLimit: kind === 'credit' ? parseOptionalMoney(creditLimit) : undefined,
       dueDay: kind === 'credit' ? parseOptionalInt(dueDay) : undefined,
       interestRate: kind === 'savings' ? parseOptionalMoney(interestRate) : undefined,
-      logoUrl:
-        kind === 'cash'
-          ? undefined
-          : selectedInstitutionLogo?.logoUrl ?? getAccountLogoUrl(logoSourceName) ?? undefined,
+      logoUrl: kind === 'cash' ? undefined : getAccountLogoUrl(logoSourceName) ?? undefined,
       linkedSavingsGoalId: editingAccount?.linkedSavingsGoalId ?? null,
       hidden: editingAccount?.hidden ?? false,
       displayOrder: editingAccount?.displayOrder ?? accounts.length,
@@ -1232,9 +1186,11 @@ export default function AccountsScreen() {
     tapHaptic();
     setShowWealthTypePicker(false);
     clearWealthEditRouteParam();
-    resetWealthForm();
-    setWealthType(selectedType);
-    setShowWealthForm(true);
+    requestAnimationFrame(() => {
+      resetWealthForm();
+      setWealthType(selectedType);
+      setShowWealthForm(true);
+    });
   };
 
   const closeWealthForm = () => {
@@ -1393,8 +1349,10 @@ export default function AccountsScreen() {
   const handleLoanTypeSelect = (type: LoanType) => {
     tapHaptic();
     setShowLoanTypePicker(false);
-    resetLoanForm(type);
-    setShowLoanForm(true);
+    requestAnimationFrame(() => {
+      resetLoanForm(type);
+      setShowLoanForm(true);
+    });
   };
 
   const openEditLoanForm = (loan: Loan) => {
@@ -1714,7 +1672,7 @@ export default function AccountsScreen() {
     () =>
       portfolioScrollBottomPadding(
         insets.bottom,
-        MOCK_STOCK_HOLDINGS.length + patrimoineWealthAssets.length,
+        getDemoStockHoldings().length + patrimoineWealthAssets.length,
       ),
     [insets.bottom, patrimoineWealthAssets.length],
   );
@@ -1984,181 +1942,64 @@ export default function AccountsScreen() {
         </View>
       </Modal>
 
+      {showAccountTypePicker ? (
       <PortfolioTypePickerSheet
-        visible={showAccountTypePicker}
+        visible
         title="Ajouter un compte"
         subtitle="Choisis le type de compte à ajouter."
         options={ACCOUNT_TYPE_PICKER_OPTIONS}
         onClose={() => setShowAccountTypePicker(false)}
         onSelect={handleAccountTypeSelect}
       />
+      ) : null}
 
+      {showLoanTypePicker ? (
       <PortfolioTypePickerSheet
-        visible={showLoanTypePicker}
+        visible
         title="Ajouter une obligation"
         options={LOAN_TYPE_PICKER_OPTIONS}
         onClose={() => setShowLoanTypePicker(false)}
         onSelect={handleLoanTypeSelect}
       />
+      ) : null}
 
+      {showWealthTypePicker ? (
       <PortfolioTypePickerSheet
-        visible={showWealthTypePicker}
+        visible
         title="Ajouter au patrimoine"
         subtitle="Choisis le type d’actif hors compte."
         options={WEALTH_TYPE_PICKER_OPTIONS}
         onClose={() => setShowWealthTypePicker(false)}
         onSelect={handleWealthTypeSelect}
       />
+      ) : null}
 
+      {showForm ? (
       <PortfolioFormSheetModal
-        visible={showForm}
+        visible
         title={accountFormTitle(kind, Boolean(editingAccount))}
         onClose={closeForm}
       >
-          {kind === 'cash' ? (
-            <View style={styles.formHead}>
-              <View style={styles.logoPreviewWrap}>
+          <View style={styles.formHead}>
+            <View style={styles.logoPreviewWrap}>
+              {kind === 'cash' ? (
                 <LogoIconFrame uri={cashBanknotesLogoUri()} size={52} />
-              </View>
-              <View style={styles.formHeadCopy}>
-                <Text style={[styles.formHint, formThemed.textMuted]}>
-                  Solde manuel — pas de synchronisation bancaire.
-                </Text>
-              </View>
+              ) : previewLogo ? (
+                <LogoIconFrame uri={previewLogo} size={52} />
+              ) : (
+                <IconFrame size={52}>
+                  <AppIcon family="ionicons" name="business-outline" size={22} color={colors.textMuted} />
+                </IconFrame>
+              )}
             </View>
-          ) : (
-            <View style={styles.formHead}>
-              <View style={styles.logoPreviewWrap}>
-                {previewLogo ? (
-                  <LogoIconFrame uri={previewLogo} size={52} />
-                ) : (
-                  <IconFrame size={52}>
-                    <AppIcon family="ionicons" name="business-outline" size={22} color={colors.textMuted} />
-                  </IconFrame>
-                )}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Modifier le logo"
-                  style={({ pressed }) => [
-                    styles.logoEditButton,
-                    { backgroundColor: colors.primary, borderColor: colors.surfaceSolid, shadowColor: colors.primary },
-                    pressed && styles.pressed,
-                  ]}
-                  onPress={() => {
-                    tapHaptic();
-                    setShowLogoPicker((visible) => !visible);
-                  }}
-                >
-                  <AppIcon family="ionicons" name="pencil-outline" size={15} color={isLight ? colors.text : ghost.void} />
-                </Pressable>
-              </View>
-              <View style={styles.formHeadCopy}>
-                <Text style={[styles.formHint, formThemed.textMuted]}>
-                  {selectedInstitutionLogo
-                    ? 'Logo manuel sélectionné.'
-                    : 'Le logo se déduit du nom. Exemple : Visa Desjardins -> Desjardins.'}
-                </Text>
-              </View>
+            <View style={styles.formHeadCopy}>
+              <Text style={[styles.formHint, formThemed.textMuted]}>
+                {kind === 'cash'
+                  ? 'Solde manuel — pas de synchronisation bancaire.'
+                  : 'Le logo se déduit du nom. Exemple : Visa Desjardins -> Desjardins.'}
+              </Text>
             </View>
-          )}
-
-          {kind !== 'cash' && showLogoPicker ? (
-            <View style={styles.logoPickerGroup}>
-              <View style={styles.logoPickerTitleRow}>
-                <Text style={[styles.label, { color: colors.textMuted }]}>Logo</Text>
-                <Text style={[styles.logoPickerHint, { color: colors.textMuted }]}>Auto par défaut</Text>
-              </View>
-              <View style={styles.logoOptionRow}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Utiliser le logo automatique"
-                  onPress={() => {
-                    tapHaptic();
-                    setSelectedInstitutionLogoId(null);
-                    setShowLogoPicker(false);
-                  }}
-                  style={[
-                    styles.logoOption,
-                    !selectedInstitutionLogoId && styles.logoOptionActive,
-                    { borderColor: !selectedInstitutionLogoId ? colors.primary : colors.border },
-                  ]}
-                >
-                  {autoPreviewLogo ? (
-                    <LogoIconFrame uri={autoPreviewLogo} size={ICON_WELL_SIZE} />
-                  ) : (
-                    <IconFrame size={ICON_WELL_SIZE}>
-                      <AppIcon family="ionicons" name="sparkles-outline" size={17} color={colors.textMuted} />
-                    </IconFrame>
-                  )}
-                </Pressable>
-
-                {INSTITUTION_LOGO_OPTIONS.map((option) => {
-                  const selected = selectedInstitutionLogoId === option.id;
-                  return (
-                    <Pressable
-                      key={option.id}
-                      accessibilityRole="button"
-                      accessibilityLabel="Choisir ce logo"
-                      onPress={() => {
-                        tapHaptic();
-                        setSelectedInstitutionLogoId(option.id);
-                        setShowLogoPicker(false);
-                      }}
-                      style={[
-                        styles.logoOption,
-                        selected && styles.logoOptionActive,
-                        { borderColor: selected ? colors.primary : colors.border },
-                      ]}
-                    >
-                      {option.logoUrl ? (
-                        <LogoIconFrame uri={option.logoUrl} size={ICON_WELL_SIZE} />
-                      ) : (
-                        <IconFrame size={ICON_WELL_SIZE}>
-                          <AppIcon family="ionicons" name="business-outline" size={17} color={colors.textMuted} />
-                        </IconFrame>
-                      )}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-          ) : null}
-
-          {!editingAccount ? (
-            <>
-              <Text style={[styles.label, formThemed.textSecondary]}>Type de compte</Text>
-              <View style={styles.typeRow}>
-                {ACCOUNT_TYPES.map((t) => {
-                  const selected = kind === t.id;
-                  return (
-                    <Pressable
-                      key={t.id}
-                      onPress={() => {
-                        tapHaptic();
-                        setKind(t.id);
-                        if (t.id === 'cash' && !name.trim()) {
-                          setName('Argent Cash');
-                        }
-                      }}
-                      style={[
-                        styles.typeChip,
-                        selected ? formThemed.selected : formThemed.control,
-                      ]}
-                    >
-                      <AppIcon family="ionicons"
-                        name={t.icon}
-                        size={16}
-                        color={selected ? colors.primary : colors.textSecondary}
-                      />
-                      <Text style={[styles.typeChipText, selected ? formThemed.selectedText : formThemed.textSecondary]}>
-                        {t.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </>
-          ) : null}
+          </View>
 
           <AccountInput
             label="Nom du compte"
@@ -2169,7 +2010,9 @@ export default function AccountsScreen() {
                 ? 'Visa Desjardins'
                 : kind === 'cash'
                   ? 'Argent Cash'
-                  : 'Tangerine chèque'
+                  : kind === 'savings'
+                    ? 'CELI Tangerine'
+                    : 'Tangerine chèque'
             }
           />
           {kind !== 'cash' ? (
@@ -2248,9 +2091,11 @@ export default function AccountsScreen() {
             onPress={() => void saveAccount()}
           />
       </PortfolioFormSheetModal>
+      ) : null}
 
+      {showWealthForm ? (
       <PortfolioFormSheetModal
-        visible={showWealthForm}
+        visible
         title={wealthFormTitle(wealthType, Boolean(wealthEditingAsset))}
         onClose={closeWealthForm}
       >
@@ -2641,9 +2486,11 @@ export default function AccountsScreen() {
                 loading={isSavingWealth}
               />
       </PortfolioFormSheetModal>
+      ) : null}
 
+      {showLoanForm ? (
       <PortfolioFormSheetModal
-        visible={showLoanForm}
+        visible
         title={loanFormTitle(loanType, Boolean(editingLoan))}
         onClose={closeLoanForm}
       >
@@ -3311,6 +3158,7 @@ export default function AccountsScreen() {
                 onPress={() => void saveLoan()}
               />
       </PortfolioFormSheetModal>
+      ) : null}
 
       <ConfirmDeleteModal
         visible={confirmLoanDeleteVisible}
@@ -3368,7 +3216,12 @@ function usePortfolioFormTheme() {
 }
 
 function accountFormTitle(kind: AccountKind, editing: boolean) {
-  if (editing) return 'Modifier le compte';
+  if (editing) {
+    if (kind === 'credit') return 'Modifier la carte de crédit';
+    if (kind === 'savings') return 'Modifier le compte épargne';
+    if (kind === 'cash') return 'Modifier Argent Cash';
+    return 'Modifier le compte chèque';
+  }
   if (kind === 'credit') return 'Carte de crédit';
   if (kind === 'savings') return 'Compte épargne';
   if (kind === 'cash') return 'Argent Cash';
@@ -3455,6 +3308,16 @@ function PortfolioFormSheetModal({
   const sheetHeight = Math.round(windowHeight * 0.92);
   const { colors, ghostCardShadow } = useAppTheme();
   const formThemed = usePortfolioFormTheme();
+  /** Keep body through slide-out; mount immediately when opening (no post-paint delay). */
+  const [bodyMounted, setBodyMounted] = useState(visible);
+  if (visible && !bodyMounted) {
+    setBodyMounted(true);
+  }
+  useEffect(() => {
+    if (visible) return;
+    const timer = setTimeout(() => setBodyMounted(false), 320);
+    return () => clearTimeout(timer);
+  }, [visible]);
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -3489,7 +3352,7 @@ function PortfolioFormSheetModal({
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.modalContent}
             >
-              {children}
+              {bodyMounted ? children : null}
             </ScrollView>
             </DraggableSheetSurface>
           </KeyboardAvoidingView>
@@ -3905,21 +3768,6 @@ function materialLabel(material: WealthMaterial) {
 function defaultWealthName(type: WealthAssetType, material: WealthMaterial, propertyType: string) {
   if (type === 'real_estate') return realEstateAssetName(propertyType);
   return materialLabel(material);
-}
-
-function getSimulatedAccountLogoUrl(account: SimulatedAccount) {
-  return account.logoUrl ?? getAccountLogoUrl(account.institution?.trim() || account.name) ?? getAccountLogoUrl(account.name);
-}
-
-function findInstitutionLogoId(account: SimulatedAccount) {
-  const byLogo = account.logoUrl
-    ? INSTITUTION_LOGO_OPTIONS.find((option) => option.logoUrl === account.logoUrl)
-    : undefined;
-  if (byLogo) return byLogo.id;
-
-  const institution = account.institution?.trim().toLowerCase();
-  if (!institution) return null;
-  return INSTITUTION_LOGO_OPTIONS.find((option) => option.institution.toLowerCase() === institution)?.id ?? null;
 }
 
 function sortAccountsForDisplay(accounts: SimulatedAccount[]) {

@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { getCategoryIconName } from '@/constants/categoryOptions';
 import { containerSurfaceStyle, jakartaExtraBoldText, radius, spacing, typography } from '@/constants/theme';
 import { typographyKit } from '@/constants/typographyKit';
+import { BUDGET_CATEGORY_PICKER_EMPTY_HINT } from '@/lib/budgetCategories';
 import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
 import { getCategorySearchChoices, inferCategoryId } from '@/lib/categoryInference';
 import { tapHaptic } from '@/lib/haptics';
@@ -233,38 +234,44 @@ export function ItemizedArticlesEditor({
                   onChangeText={setItemCategoryQuery}
                 />
                 <View style={styles.pickerChips}>
-                  {getCategorySearchChoices(itemCategoryQuery, categories, item.detectedCategoryId).map((category) => {
-                    const selected = item.detectedCategoryId === category.id;
-                    return (
-                      <Pressable
-                        key={category.id}
-                        onPress={() => {
-                          tapHaptic();
-                          updateItem(item.id, { categoryId: category.id });
-                          setCategoryPickerItemId(null);
-                          setItemCategoryQuery('');
-                        }}
-                        style={({ pressed }) => [
-                          styles.categoryChip,
-                          { backgroundColor: colors.input, borderColor: selected ? colors.primary : colors.border },
-                          selected && { backgroundColor: colors.successMuted },
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <AppIcon family="ionicons" 
-                          name={getCategoryIconName(category)}
-                          size={12}
-                          color={selected ? colors.primary : colors.textSecondary}
-                        />
-                        <Text
-                          style={[styles.categoryChipText, singleLineLabelStyle, { color: selected ? colors.primary : colors.text }]}
-                          {...chipLabelTextProps()}
+                  {categories.length === 0 ? (
+                    <Text style={[styles.categoryEmptyHint, { color: colors.textMuted }]}>
+                      {BUDGET_CATEGORY_PICKER_EMPTY_HINT}
+                    </Text>
+                  ) : (
+                    getCategorySearchChoices(itemCategoryQuery, categories, item.detectedCategoryId).map((category) => {
+                      const selected = item.detectedCategoryId === category.id;
+                      return (
+                        <Pressable
+                          key={category.id}
+                          onPress={() => {
+                            tapHaptic();
+                            updateItem(item.id, { categoryId: category.id });
+                            setCategoryPickerItemId(null);
+                            setItemCategoryQuery('');
+                          }}
+                          style={({ pressed }) => [
+                            styles.categoryChip,
+                            { backgroundColor: colors.input, borderColor: selected ? colors.primary : colors.border },
+                            selected && { backgroundColor: colors.successMuted },
+                            pressed && styles.pressed,
+                          ]}
                         >
-                          {category.name}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+                          <AppIcon family="ionicons" 
+                            name={getCategoryIconName(category)}
+                            size={12}
+                            color={selected ? colors.primary : colors.textSecondary}
+                          />
+                          <Text
+                            style={[styles.categoryChipText, singleLineLabelStyle, { color: selected ? colors.primary : colors.text }]}
+                            {...chipLabelTextProps()}
+                          >
+                            {category.name}
+                          </Text>
+                        </Pressable>
+                      );
+                    })
+                  )}
                 </View>
               </View>
             ) : null}
@@ -409,6 +416,11 @@ const styles = StyleSheet.create({
   categoryChipText: {
     ...typographyKit.micro,
     flexShrink: 1,
+  },
+  categoryEmptyHint: {
+    ...typographyKit.microMedium,
+    flex: 1,
+    paddingVertical: 4,
   },
   noCategory: {
     ...typographyKit.microMedium,

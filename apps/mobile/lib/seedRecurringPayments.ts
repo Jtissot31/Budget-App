@@ -1,4 +1,5 @@
 import { dataEvents } from '@/lib/events';
+import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 import {
   getRecurringPayments,
   getSetting,
@@ -94,6 +95,8 @@ function buildMockRecurringPayments(now: Date): RecurringPayment[] {
  * sur le calendrier (lignes ambre) + dans « À venir ».
  */
 export async function seedRecurringPaymentsIfMissing(): Promise<boolean> {
+  if (!isDemoSeedEnabled()) return false;
+
   const version = await getSetting(RECURRING_PAYMENTS_SEED_KEY, '0');
   if (version === RECURRING_PAYMENTS_SEED_VERSION) return false;
 

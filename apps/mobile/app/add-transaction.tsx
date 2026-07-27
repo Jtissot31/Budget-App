@@ -82,9 +82,6 @@ import { useAppTheme } from '@/lib/themeContext';
 import {
   adjustSavingsGoalCurrentAmount,
   adjustSimulatedAccountBalance,
-  filterActiveCategoryBudgets,
-  getCategories,
-  getCategoryBudgets,
   getContacts,
   getLoans,
   getMerchantOverrides,
@@ -96,6 +93,11 @@ import {
   upsertCategory,
   upsertContactByName,
 } from '@/lib/db';
+import {
+  ensureCategoryInPickerList,
+  loadBudgetCategoriesForPicker,
+} from '@/lib/budgetCategories';
+import { dataEvents } from '@/lib/events';
 import {
   buildAutoTransferLabel,
   findInsufficientFundsViolation,
@@ -416,8 +418,32 @@ export default function AddTransactionScreen() {
   useEffect(() => {
     if (editId && prefilledEditId !== editId) return;
 
-    void getCategories().then((cats) => {
+    let cancelled = false;
+
+    const loadPickerCategories = async () => {
+      const budgetCats = await loadBudgetCategoriesForPicker();
+      if (cancelled) return;
+
+      let pickerBudgetCats = budgetCats;
+      if (editId && editingTransaction?.categoryId && editingTransaction.categoryName) {
+        pickerBudgetCats = ensureCategoryInPickerList(budgetCats, {
+          id: editingTransaction.categoryId,
+          name: editingTransaction.categoryName,
+          icon: editingTransaction.categoryIcon,
+          color: editingTransaction.categoryColor,
+        });
+      }
+
+      const budgetIds = new Set(pickerBudgetCats.map((c) => c.id));
+      setBudgetCategoryIds(budgetIds);
+
+      const byId = new Map<string, Category>();
+      for (const category of [...pickerBudgetCats, INCOME_CATEGORY, TRANSFER_CATEGORY]) {
+        byId.set(category.id, category);
+      }
+      const cats = [...byId.values()];
       setCategories(cats);
+
       if (editId && editingTransaction) {
         const isPersonTransferEdit =
           Boolean(parseDestinataireFromNote(editingTransaction.note)) ||
@@ -425,10 +451,10 @@ export default function AddTransactionScreen() {
         if (editingTransaction.type === type || (isPersonTransferEdit && type === 'transfer')) return;
       }
       if (type === 'transfer' && (transferMode === 'person' || transferMode === 'person_from')) {
-        const budgetCats = cats.filter(
-          (c) => c.name !== 'Revenus' && c.id !== TRANSFER_CATEGORY.id && budgetCategoryIds.has(c.id),
+        const budgetOnly = cats.filter(
+          (c) => c.name !== 'Revenus' && c.id !== TRANSFER_CATEGORY.id && budgetIds.has(c.id),
         );
-        const defaultCat = budgetCats[0] ?? null;
+        const defaultCat = budgetOnly[0] ?? null;
         setCategoryManuallySelected(false);
         setCategoryId(defaultCat?.id ?? null);
         return;
@@ -438,11 +464,21 @@ export default function AddTransactionScreen() {
           ? cats.find((c) => c.id === TRANSFER_CATEGORY.id) ?? TRANSFER_CATEGORY
           : type === 'income'
             ? cats.find((c) => c.id === INCOME_CATEGORY.id || c.name === 'Revenus') ?? INCOME_CATEGORY
-            : cats.find((c) => c.name !== 'Revenus') ?? cats[0];
+            : cats.find((c) => c.name !== 'Revenus' && budgetIds.has(c.id)) ?? null;
       setCategoryManuallySelected(false);
       setCategoryId(defaultCat?.id ?? null);
+    };
+
+    void loadPickerCategories();
+    const unsubscribe = dataEvents.subscribe(() => {
+      void loadPickerCategories();
     });
-  }, [budgetCategoryIds, editId, editingTransaction, prefilledEditId, transferMode, type]);
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [editId, editingTransaction, prefilledEditId, transferMode, type]);
 
   useEffect(() => {
     if (editId) return;
@@ -478,12 +514,6 @@ export default function AddTransactionScreen() {
 
   useEffect(() => {
     void getSimulatedAccounts().then(setSimulatedAccounts);
-  }, []);
-
-  useEffect(() => {
-    void getCategoryBudgets().then((budgets) => {
-      setBudgetCategoryIds(new Set(filterActiveCategoryBudgets(budgets).map((b) => b.categoryId)));
-    });
   }, []);
 
   useEffect(() => {
@@ -1717,6 +1747,16 @@ export default function AddTransactionScreen() {
     ) {
       await upsertCategory(UNCATEGORIZED_TRANSACTION_CATEGORY);
     }
+    if (
+      (isExpenseSave || saveAsPersonTransferTo) &&
+      resolvedCategoryId &&
+      resolvedCategoryId !== UNCATEGORIZED_TRANSACTION_CATEGORY.id
+    ) {
+      const selected = categoryById.get(resolvedCategoryId);
+      if (selected) {
+        await upsertCategory(selected);
+      }
+    }
 
     setSaving(true);
     const balanceEmit = { emit: false as const };
@@ -1869,12 +1909,18 @@ export default function AddTransactionScreen() {
     scrollHandler,
     sheetAnimatedStyle,
     backdropAnimatedStyle,
+    resetSheetPosition,
     requestClose,
   } = useDraggableSheetGesture({
     onClose: closeSheet,
     sheetHeight: sheetDragHeight,
     scrollable: true,
   });
+
+  // transparentModal route owns its own mount — must animate sheet up (BottomSheet / DraggableSheetSurface do this).
+  useEffect(() => {
+    resetSheetPosition('expanded');
+  }, [resetSheetPosition]);
 
   return (
     <GestureHandlerRootView style={[styles.screen, styles.modalBackdrop]}>

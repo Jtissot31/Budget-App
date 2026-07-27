@@ -201,7 +201,7 @@ export default function SettingsScreen() {
     );
   }, []);
 
-  useRefreshOnFocus(load);
+  useRefreshOnFocus(load, { minIntervalMs: 8_000 });
   useScrollToTopOnFocus(
     useCallback(() => {
       scrollRef.current?.scrollTo({ y: 0, animated: false });

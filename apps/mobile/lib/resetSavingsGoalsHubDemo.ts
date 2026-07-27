@@ -1,14 +1,18 @@
 import { deleteAllSavingsGoals, getSetting, setSetting } from '@/lib/db';
+import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 
 /**
  * One-time migration: wipe persisted savings goals so Plan Hub shows the
  * suggestions empty state (Fonds d'urgence, Vacances, etc.).
  * Bump SAVINGS_GOALS_HUB_DEMO_VERSION to re-run on all devices.
+ * Skipped for release APKs (demo seed off).
  */
 export const SAVINGS_GOALS_HUB_DEMO_VERSION = '1';
 const SAVINGS_GOALS_HUB_DEMO_KEY = 'savings_goals_hub_demo_version';
 
 export async function resetSavingsGoalsForHubDemoIfNeeded(): Promise<boolean> {
+  if (!isDemoSeedEnabled()) return false;
+
   const version = await getSetting(SAVINGS_GOALS_HUB_DEMO_KEY, '0');
   if (version === SAVINGS_GOALS_HUB_DEMO_VERSION) return false;
 

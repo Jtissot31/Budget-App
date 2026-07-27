@@ -318,6 +318,24 @@ export const AVERAGE_USER_MONTHLY_BUDGET_TOTAL = AVERAGE_USER_BUDGET_PRESETS.red
   0,
 );
 
+/** Empty Budgets tab — taxonomy suggestions (name + icon only, no amounts). */
+export type BudgetCategorySuggestion = {
+  id: string;
+  name: string;
+  icon: IconName;
+};
+
+export const BUDGET_CATEGORY_SUGGESTIONS: readonly BudgetCategorySuggestion[] =
+  AVERAGE_USER_BUDGET_IDS.map((id) => {
+    const preset = BUDGET_PRESETS.find((entry) => entry.id === id);
+    if (!preset) throw new Error(`Missing budget suggestion preset: ${id}`);
+    return {
+      id: preset.id,
+      name: preset.name,
+      icon: preset.icon,
+    };
+  });
+
 export const DEFAULT_CATEGORIES: Category[] = [
   ...BUDGET_PRESETS.map(({ id, name, icon, color }) => ({ id, name, icon, color })),
   INCOME_CATEGORY,
@@ -340,6 +358,313 @@ export function isIconName(name?: string | null): name is IconName {
   return Boolean(name && Object.prototype.hasOwnProperty.call(Ionicons.glyphMap, name));
 }
 
+/** Curated category glyphs for stable hash fallback (never raw pricetag-only). */
+const STABLE_CATEGORY_ICON_FALLBACKS: IconName[] = [
+  'home-outline',
+  'basket-outline',
+  'restaurant-outline',
+  'car-sport-outline',
+  'bus-outline',
+  'bag-handle-outline',
+  'shirt-outline',
+  'medkit-outline',
+  'game-controller-outline',
+  'airplane-outline',
+  'school-outline',
+  'gift-outline',
+  'paw-outline',
+  'flash-outline',
+  'phone-portrait-outline',
+  'shield-checkmark-outline',
+  'cash-outline',
+  'wallet-outline',
+  'receipt-outline',
+  'people-outline',
+];
+
+type IconKeywordBucket = {
+  icon: IconName;
+  keywords: string[];
+};
+
+/** Semantic synonym buckets (FR / EN / common variants) → picker icons. */
+const CATEGORY_ICON_KEYWORD_BUCKETS: IconKeywordBucket[] = [
+  {
+    icon: 'home-outline',
+    keywords: [
+      'loyer', 'rent', 'logement', 'maison', 'appartement', 'apartment', 'house', 'home',
+      'hypotheque', 'mortgage', 'miete', 'haus', 'condo', 'habitation', 'housing', 'immo',
+    ],
+  },
+  {
+    icon: 'flash-outline',
+    keywords: [
+      'electricite', 'electricity', 'hydro', 'energie', 'energy', 'utilities', 'services publics',
+      'chauffage', 'heating', 'gaz', 'utility', 'strom',
+    ],
+  },
+  {
+    icon: 'water-outline',
+    keywords: ['eau', 'water', 'aqueduc', 'plumbing'],
+  },
+  {
+    icon: 'phone-portrait-outline',
+    keywords: [
+      'telephone', 'phone', 'cellulaire', 'mobile', 'internet', 'wifi', 'forfait', 'telecom',
+    ],
+  },
+  {
+    icon: 'wifi-outline',
+    keywords: ['wifi', 'internet', 'fibre', 'broadband'],
+  },
+  {
+    icon: 'basket-outline',
+    keywords: [
+      'epicerie', 'grocery', 'groceries', 'alimentation', 'food', 'courses', 'supermarche',
+      'supermarket', 'lebensmittel', 'comida',
+    ],
+  },
+  {
+    icon: 'restaurant-outline',
+    keywords: [
+      'restaurant', 'resto', 'cafe', 'coffee', 'livraison', 'delivery', 'takeout', 'ubereats',
+      'doordash', 'fastfood', 'diner',
+    ],
+  },
+  {
+    icon: 'cafe-outline',
+    keywords: ['cafe', 'coffee', 'starbucks', 'espresso', 'tea', 'theiere'],
+  },
+  {
+    icon: 'beer-outline',
+    keywords: ['bar', 'sortie', 'nightout', 'alcool', 'alcohol', 'biere', 'beer', 'pub'],
+  },
+  {
+    icon: 'flame-outline',
+    keywords: ['essence', 'gas', 'gasoline', 'fuel', 'carburant', 'petrol', 'diesel', 'recharge'],
+  },
+  {
+    icon: 'train-outline',
+    keywords: [
+      'transport', 'transit', 'metro', 'bus', 'train', 'taxi', 'uber', 'lyft', 'commute',
+      'stationnement', 'parking', 'opus',
+    ],
+  },
+  {
+    icon: 'bus-outline',
+    keywords: ['bus', 'transit', 'navette', 'shuttle'],
+  },
+  {
+    icon: 'car-sport-outline',
+    keywords: [
+      'auto', 'car', 'voiture', 'vehicle', 'vehicule', 'automobile', 'lease', 'leasing',
+      'paiement auto', 'car payment',
+    ],
+  },
+  {
+    icon: 'construct-outline',
+    keywords: ['entretien', 'maintenance', 'reparation', 'repair', 'pneus', 'tires', 'mecanique'],
+  },
+  {
+    icon: 'bag-handle-outline',
+    keywords: [
+      'magasinage', 'shopping', 'boutique', 'achats', 'retail', 'amazon', 'commerce', 'store',
+    ],
+  },
+  {
+    icon: 'shirt-outline',
+    keywords: ['vetement', 'clothing', 'clothes', 'chaussure', 'shoes', 'mode', 'fashion', 'apparel'],
+  },
+  {
+    icon: 'cut-outline',
+    keywords: ['beaute', 'beauty', 'coiffure', 'salon', 'spa', 'cosmetics', 'makeup'],
+  },
+  {
+    icon: 'medkit-outline',
+    keywords: [
+      'sante', 'health', 'pharmacie', 'pharmacy', 'medical', 'medecin', 'doctor', 'dentiste',
+      'dental', 'hopital', 'hospital', 'clinique',
+    ],
+  },
+  {
+    icon: 'shield-checkmark-outline',
+    keywords: ['assurance', 'insurance', 'prime', 'coverage', 'protection'],
+  },
+  {
+    icon: 'game-controller-outline',
+    keywords: [
+      'loisir', 'loisirs', 'divertissement', 'fun', 'entertainment', 'jeux', 'gaming', 'hobby',
+      'hobbies', 'activite',
+    ],
+  },
+  {
+    icon: 'tv-outline',
+    keywords: ['abonnement', 'subscription', 'netflix', 'spotify', 'streaming', 'disney'],
+  },
+  {
+    icon: 'musical-notes-outline',
+    keywords: ['musique', 'music', 'concert', 'audio'],
+  },
+  {
+    icon: 'film-outline',
+    keywords: ['cinema', 'movie', 'film', 'theatre', 'theater'],
+  },
+  {
+    icon: 'barbell-outline',
+    keywords: ['gym', 'fitness', 'sport', 'workout', 'musculation'],
+  },
+  {
+    icon: 'airplane-outline',
+    keywords: ['voyage', 'travel', 'vacances', 'vacation', 'trip', 'flight', 'avion', 'billet'],
+  },
+  {
+    icon: 'bed-outline',
+    keywords: ['hotel', 'airbnb', 'hebergement', 'lodging'],
+  },
+  {
+    icon: 'school-outline',
+    keywords: [
+      'education', 'etudes', 'school', 'universite', 'university', 'cours', 'formation', 'tuition',
+      'livre', 'books',
+    ],
+  },
+  {
+    icon: 'gift-outline',
+    keywords: ['cadeau', 'gift', 'don', 'donation', 'charity', 'present'],
+  },
+  {
+    icon: 'paw-outline',
+    keywords: ['animal', 'animaux', 'pet', 'pets', 'chien', 'dog', 'chat', 'cat', 'veterinaire'],
+  },
+  {
+    icon: 'cash-outline',
+    keywords: ['revenu', 'income', 'salaire', 'salary', 'paie', 'paycheck', 'prime', 'bonus'],
+  },
+  {
+    icon: 'briefcase-outline',
+    keywords: ['travail', 'work', 'emploi', 'job', 'bureau', 'office', 'freelance'],
+  },
+  {
+    icon: 'trending-up-outline',
+    keywords: ['placement', 'investissement', 'invest', 'investment', 'bourse', 'stocks', 'crypto'],
+  },
+  {
+    icon: 'wallet-outline',
+    keywords: ['epargne', 'savings', 'portefeuille', 'wallet', 'fonds'],
+  },
+  {
+    icon: 'receipt-outline',
+    keywords: ['facture', 'bill', 'bills', 'invoice', 'impot', 'tax', 'frais', 'fee'],
+  },
+  {
+    icon: 'card-outline',
+    keywords: ['carte', 'card', 'credit', 'debit'],
+  },
+  {
+    icon: 'people-outline',
+    keywords: ['famille', 'family', 'enfant', 'kids', 'child', 'garde', 'daycare'],
+  },
+  {
+    icon: 'swap-horizontal-outline',
+    keywords: ['transfert', 'transfer', 'virement'],
+  },
+  {
+    icon: 'laptop-outline',
+    keywords: ['techno', 'tech', 'informatique', 'software', 'ordinateur', 'computer', 'electronique'],
+  },
+  {
+    icon: 'build-outline',
+    keywords: ['bricolage', 'diy', 'tools', 'outils', 'renovation'],
+  },
+];
+
+function normalizeLabel(value: string): string {
+  return value.normalize('NFD').replace(/\p{M}/gu, '').trim().toLowerCase();
+}
+
+function tokenizeLabel(value: string): string[] {
+  return normalizeLabel(value)
+    .split(/[^a-z0-9]+/u)
+    .filter((token) => token.length > 1);
+}
+
+function stableCategoryIconFromName(normalizedName: string): IconName {
+  const source = normalizedName || 'category';
+  let hash = 0;
+  for (let i = 0; i < source.length; i += 1) {
+    hash = (hash * 31 + source.charCodeAt(i)) >>> 0;
+  }
+  return STABLE_CATEGORY_ICON_FALLBACKS[hash % STABLE_CATEGORY_ICON_FALLBACKS.length]!;
+}
+
+function scoreKeywordHit(normalizedName: string, tokens: string[], keyword: string): number {
+  const kw = normalizeLabel(keyword);
+  if (!kw) return 0;
+  if (normalizedName === kw) return 100 + kw.length;
+  // Short keywords only match whole tokens (avoid "the" in "clothes", "gas" in longer words).
+  if (kw.length <= 3) {
+    if (tokens.includes(kw)) return 80 + kw.length;
+    return 0;
+  }
+  if (normalizedName.includes(kw)) return 60 + kw.length;
+  for (const token of tokens) {
+    if (token === kw) return 80 + kw.length;
+    if (token.startsWith(kw) || kw.startsWith(token)) return 40 + Math.min(token.length, kw.length);
+    if (token.includes(kw) || kw.includes(token)) return 25 + Math.min(token.length, kw.length);
+  }
+  return 0;
+}
+
+/**
+ * Infer a category-style icon from any free-text name (FR/EN/synonyms/fuzzy).
+ * Always returns a curated category glyph — never sticks on a bare generic without
+ * trying semantic buckets + stable hash into the curated set.
+ */
+export function inferCategoryIconFromName(rawName?: string | null): IconName {
+  const normalizedName = normalizeLabel(rawName ?? '');
+  if (!normalizedName) return stableCategoryIconFromName('');
+
+  for (const preset of BUDGET_PRESETS) {
+    if (normalizeLabel(preset.name) === normalizedName) return preset.icon;
+  }
+
+  const tokens = tokenizeLabel(normalizedName);
+  let bestIcon: IconName | null = null;
+  let bestScore = 0;
+
+  for (const bucket of CATEGORY_ICON_KEYWORD_BUCKETS) {
+    for (const keyword of bucket.keywords) {
+      const score = scoreKeywordHit(normalizedName, tokens, keyword);
+      if (score > bestScore) {
+        bestScore = score;
+        bestIcon = bucket.icon;
+      }
+    }
+  }
+
+  if (bestIcon && bestScore > 0) return bestIcon;
+
+  for (const preset of BUDGET_PRESETS) {
+    const presetName = normalizeLabel(preset.name);
+    const helper = normalizeLabel(preset.helper);
+    const nameScore = scoreKeywordHit(normalizedName, tokens, presetName);
+    const helperTokens = tokenizeLabel(helper);
+    let helperScore = 0;
+    for (const helperToken of helperTokens) {
+      helperScore = Math.max(helperScore, scoreKeywordHit(normalizedName, tokens, helperToken));
+    }
+    const score = Math.max(nameScore, helperScore > 0 ? helperScore - 5 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      bestIcon = preset.icon;
+    }
+  }
+
+  if (bestIcon && bestScore > 0) return bestIcon;
+
+  return stableCategoryIconFromName(normalizedName);
+}
+
 export function getCategoryIconName(category?: CategoryIconSource | null): IconName {
   const icon = category?.icon ?? category?.categoryIcon;
   if (isIconName(icon)) return icon;
@@ -347,21 +672,7 @@ export function getCategoryIconName(category?: CategoryIconSource | null): IconN
   const id = category?.id ?? category?.categoryId;
   if (id && CATEGORY_ICON_BY_ID[id]) return CATEGORY_ICON_BY_ID[id];
 
-  const name = normalizeLabel(category?.name ?? category?.categoryName ?? '');
-  if (name.includes('revenu') || name.includes('salaire') || name.includes('paie')) return INCOME_CATEGORY.icon as IconName;
-  if (name.includes('transfert')) return TRANSFER_CATEGORY.icon as IconName;
-  if (name.includes('epicerie') || name.includes('alimentation')) return 'basket-outline';
-  if (name.includes('restaurant') || name.includes('cafe')) return 'restaurant-outline';
-  if (name.includes('essence') || name.includes('gas')) return 'flame-outline';
-  if (name.includes('transport')) return 'train-outline';
-  if (name.includes('logement') || name.includes('maison') || name.includes('appartement')) return 'home-outline';
-  if (name.includes('loisir') || name.includes('divertissement')) return 'game-controller-outline';
-
-  return 'pricetag-outline';
-}
-
-function normalizeLabel(value: string): string {
-  return value.normalize('NFD').replace(/\p{M}/gu, '').trim().toLowerCase();
+  return inferCategoryIconFromName(category?.name ?? category?.categoryName ?? '');
 }
 
 export type IconPickerOption = {

@@ -28,7 +28,6 @@ export const PLAN_HUB = {
   border: 'rgba(255, 255, 255, 0.12)',
   radiusCard: 13,
   radiusSmall: 8,
-  activeEdgeWidth: 2,
 } as const;
 
 type PlanCardChromeColors = {
@@ -59,11 +58,10 @@ export function planCardSuggestedAccent(colors: PlanCardChromeColors) {
   } as const;
 }
 
-/** Active hub strategy — thin accent rail + glyph (well stays neutral). */
+/** Active hub strategy — accent glyph (well stays neutral). */
 export function planCardActiveStrategyAccent(colors: PlanCardChromeColors) {
   const accent = planHubAccent(colors);
   return {
-    edge: accent,
     iconGlyph: accent,
   } as const;
 }

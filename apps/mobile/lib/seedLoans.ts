@@ -1,4 +1,5 @@
 import { dataEvents } from '@/lib/events';
+import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 import { formatLoanDisplayTitle } from '@/lib/loanPresentation';
 import { syncMortgageWealthAsset } from '@/lib/mortgageWealthSync';
 import { getLoans, getSetting, setSetting, upsertLoan } from '@/lib/db';
@@ -142,6 +143,8 @@ function buildDemoLoans(now: Date): Loan[] {
  * Idempotent via version key — never clobbers user-created loans.
  */
 export async function seedLoansIfMissing(): Promise<boolean> {
+  if (!isDemoSeedEnabled()) return false;
+
   const version = await getSetting(LOANS_SEED_KEY, '0');
   if (version === LOANS_SEED_VERSION) return false;
 

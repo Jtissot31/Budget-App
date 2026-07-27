@@ -5,7 +5,10 @@ import type { FontSource } from 'expo-font';
 
 async function fontsAppearReady(fontNames: string[]): Promise<boolean> {
   if (typeof document === 'undefined' || !document.fonts) return false;
-  await document.fonts.ready;
+  await Promise.race([
+    document.fonts.ready,
+    new Promise<void>((resolve) => setTimeout(resolve, 1_500)),
+  ]);
   const loaded = new Set<string>();
   document.fonts.forEach((face) => loaded.add(face.family));
   return fontNames.every((name) => loaded.has(name));
@@ -40,8 +43,14 @@ export function useAppFonts(map: Record<string, FontSource>): [boolean, Error | 
       setWebRecovered(true);
     }
 
+    // Absolute cap — never wait on FontFaceObserver forever.
+    const failOpen = setTimeout(() => {
+      if (!cancelled) setWebRecovered(true);
+    }, 2_000);
+
     return () => {
       cancelled = true;
+      clearTimeout(failOpen);
     };
   }, [loaded, map, timeoutOnly, webRecovered]);
 

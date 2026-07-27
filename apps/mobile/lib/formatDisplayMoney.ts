@@ -1,6 +1,4 @@
-import { FR_CA_NUMBER_LOCALE, formatNumberDisplay } from '@/lib/formatNumber';
-
-const LOCALE = FR_CA_NUMBER_LOCALE;
+import { formatNumberDisplay } from '@/lib/formatNumber';
 
 /** Full fr-CA amounts below this use space thousands and comma decimals. */
 export const COMPACT_K_THRESHOLD = 100_000;
@@ -29,28 +27,27 @@ function formatFullFrCaAmount(abs: number): string {
   });
 }
 
+/** Compact K/M coefficient — always via formatNumberDisplay (never toLocaleString). */
+function formatCompactCoefficient(value: number, whole: boolean): string {
+  if (whole) {
+    return formatNumberDisplay(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+  return formatNumberDisplay(roundToNearestTenth(value), {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+}
+
 function formatCompactKAmount(abs: number): string {
   const k = abs / 1000;
   const isWholeK = Math.abs(k - Math.round(k)) < 1e-6;
-  const numPart = isWholeK
-    ? Math.round(k).toLocaleString(LOCALE, { maximumFractionDigits: 0 })
-    : roundToNearestTenth(k).toLocaleString(LOCALE, {
-        minimumFractionDigits: 1,
-        maximumFractionDigits: 1,
-      });
-  return `${numPart}K`;
+  return `${formatCompactCoefficient(isWholeK ? Math.round(k) : k, isWholeK)}K`;
 }
 
 function formatCompactMAmount(abs: number): string {
   const m = abs / COMPACT_M_THRESHOLD;
   const isWholeM = Math.abs(m - Math.round(m)) < 1e-6;
-  const numPart = isWholeM
-    ? Math.round(m).toLocaleString(LOCALE, { maximumFractionDigits: 0 })
-    : roundToNearestTenth(m).toLocaleString(LOCALE, {
-        minimumFractionDigits: 1,
-        maximumFractionDigits: 1,
-      });
-  return `${numPart}M`;
+  return `${formatCompactCoefficient(isWholeM ? Math.round(m) : m, isWholeM)}M`;
 }
 
 /**

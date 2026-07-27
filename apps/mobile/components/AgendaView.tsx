@@ -1305,7 +1305,8 @@ function createStyles(colors: AppColors): AgendaViewStyles {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacing.xl,
+    // Shared Transactions chrome already provides spacing.md below the tabs.
+    marginTop: spacing.sm,
     position: 'relative',
     minHeight: 34,
   },

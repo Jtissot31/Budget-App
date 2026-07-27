@@ -6,7 +6,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { loadAsync as loadFontAsync } from 'expo-font';
 import { useEffect, useState } from 'react';
-import { InteractionManager, View } from 'react-native';
+import { InteractionManager, Platform, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DMMono_400Regular, DMMono_500Medium } from '@expo-google-fonts/dm-mono';
@@ -110,7 +110,9 @@ function RootLayoutContent() {
     const timer = setTimeout(() => {
       console.log('[Boot] bootstrap safety tick');
       setReady(true);
-    }, BOOTSTRAP_MAX_MS);
+      // Absolute fallback — never leave the user on a blank gradient.
+      setNeedsOnboarding((prev) => (prev === null ? false : prev));
+    }, Platform.OS === 'web' ? 1_200 : BOOTSTRAP_MAX_MS || 3_000);
     return () => {
       unsub();
       idle.cancel();
@@ -171,6 +173,15 @@ function RootLayoutContent() {
             />
             <Stack.Screen
               name="add-transaction"
+              options={{
+                headerShown: false,
+                presentation: 'transparentModal',
+                animation: 'fade_from_bottom',
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
+            <Stack.Screen
+              name="add-budget-category"
               options={{
                 headerShown: false,
                 presentation: 'transparentModal',

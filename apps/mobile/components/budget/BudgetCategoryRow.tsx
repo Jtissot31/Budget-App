@@ -125,7 +125,7 @@ export function BudgetCategoryRow({ category, selected = false, onPress }: Props
 
 const styles = StyleSheet.create({
   card: {
-    flex: 1,
+    width: '100%',
     minWidth: 0,
     padding: 14,
     borderRadius: radius.lg,

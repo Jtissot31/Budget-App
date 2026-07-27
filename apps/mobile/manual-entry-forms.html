@@ -1,0 +1,1934 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Budget Tracker — Formulaires d’entrée manuelle</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --card: #111111;
+      --card-elevated: #161616;
+      --input: #1a1a1a;
+      --border: rgba(255, 255, 255, 0.12);
+      --border-strong: rgba(255, 255, 255, 0.18);
+      --text: #f5f5f5;
+      --text-secondary: #a3a3a3;
+      --text-muted: #737373;
+      --accent: #4ADE80;
+      --accent-muted: rgba(74, 222, 128, 0.14);
+      --danger: #f87171;
+      --warning: #ffb15c;
+      --radius: 13px;
+      --page-pad: 24px;
+      --phone-w: 390px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: Inter, "Plus Jakarta Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .page-header {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      backdrop-filter: blur(16px);
+      background: rgba(10, 10, 10, 0.88);
+      border-bottom: 1px solid var(--border);
+      padding: 16px var(--page-pad);
+    }
+    .page-header-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 24px;
+      align-items: baseline;
+      justify-content: space-between;
+    }
+    .brand {
+      font-family: "Plus Jakarta Sans", Inter, sans-serif;
+      font-weight: 800;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+    }
+    .brand span { color: var(--accent); }
+    .page-header p {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 28px var(--page-pad) 80px;
+    }
+
+    .intro {
+      margin-bottom: 28px;
+      padding: 20px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .intro h1 {
+      margin: 0 0 8px;
+      font-family: "Plus Jakarta Sans", Inter, sans-serif;
+      font-size: 1.65rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .intro p { margin: 0; color: var(--text-secondary); max-width: 70ch; }
+    .intro .meta {
+      margin-top: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card-elevated);
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .badge.accent {
+      border-color: rgba(74, 222, 128, 0.35);
+      background: var(--accent-muted);
+      color: var(--accent);
+    }
+
+    .toc {
+      margin-bottom: 40px;
+      padding: 20px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .toc h2 {
+      margin: 0 0 14px;
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .toc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 8px;
+    }
+    .toc a {
+      display: block;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--card-elevated);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .toc a:hover {
+      border-color: rgba(74, 222, 128, 0.4);
+      background: var(--accent-muted);
+      text-decoration: none;
+    }
+    .toc a small {
+      display: block;
+      margin-top: 2px;
+      color: var(--text-muted);
+      font-weight: 400;
+      font-size: 0.72rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .screen-section {
+      margin-bottom: 56px;
+      scroll-margin-top: 72px;
+    }
+    .screen-head {
+      margin-bottom: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      align-items: flex-end;
+      justify-content: space-between;
+    }
+    .screen-head h2 {
+      margin: 0;
+      font-family: "Plus Jakarta Sans", Inter, sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .screen-head .route {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 8px;
+    }
+    .screen-note {
+      margin: 0 0 18px;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      max-width: 72ch;
+    }
+
+    .phones {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    .phone {
+      width: var(--phone-w);
+      max-width: 100%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      overflow: hidden;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+    }
+    .phone-caption {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      font-weight: 600;
+      background: #0d0d0d;
+    }
+    .phone-body {
+      padding: 12px 14px 18px;
+      min-height: 520px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      background: linear-gradient(180deg, #0c0c0c 0%, #0a0a0a 100%);
+    }
+    .phone-body.sheet-mode {
+      background: rgba(0, 0, 0, 0.55);
+      justify-content: flex-end;
+      min-height: 560px;
+    }
+
+    .handle {
+      width: 40px;
+      height: 4px;
+      border-radius: 99px;
+      background: rgba(255, 255, 255, 0.22);
+      margin: 4px auto 2px;
+    }
+
+    .sheet {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px 20px 18px 18px;
+      padding: 10px 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-height: 100%;
+    }
+
+    .form-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .form-title {
+      margin: 0;
+      font-family: "Plus Jakarta Sans", Inter, sans-serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .form-eyebrow {
+      margin: 0 0 2px;
+      font-size: 0.68rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .form-hint {
+      margin: 4px 0 0;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .icon-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--card-elevated);
+      color: var(--text-muted);
+      display: grid;
+      place-items: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .label {
+      font-size: 0.68rem;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .input, .select-like {
+      background: var(--input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 11px 12px;
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+    .input.placeholder, .select-like.placeholder { color: var(--text-muted); }
+    .input.row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .input .suffix { color: var(--text-muted); font-weight: 600; }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card-elevated);
+      color: var(--text);
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .chip.on {
+      background: var(--accent-muted);
+      border-color: rgba(74, 222, 128, 0.45);
+      color: var(--accent);
+    }
+
+    .amount-hero {
+      text-align: center;
+      padding: 8px 0 4px;
+    }
+    .amount-hero .value {
+      font-family: "Plus Jakarta Sans", Inter, sans-serif;
+      font-weight: 800;
+      font-size: 2.35rem;
+      letter-spacing: -0.04em;
+      color: var(--text);
+    }
+    .amount-hero .value.expense { color: #f5f5f5; }
+    .amount-hero .value.income { color: var(--accent); }
+    .amount-hero .hint {
+      margin-top: 4px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .numpad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .numpad span {
+      text-align: center;
+      padding: 10px 0;
+      border-radius: 10px;
+      background: var(--card-elevated);
+      border: 1px solid var(--border);
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .card-block {
+      background: var(--card-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .card-block.row {
+      flex-direction: row;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-well {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: #1c1c1c;
+      display: grid;
+      place-items: center;
+      font-size: 1.25rem;
+      flex-shrink: 0;
+    }
+
+    .switch-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px;
+      background: var(--card-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .switch-row .copy strong {
+      display: block;
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+    .switch-row .copy span {
+      display: block;
+      margin-top: 2px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+    .switch {
+      width: 44px;
+      height: 26px;
+      border-radius: 999px;
+      background: #2a2a2a;
+      border: 1px solid var(--border);
+      position: relative;
+      flex-shrink: 0;
+    }
+    .switch::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #888;
+    }
+    .switch.on {
+      background: var(--accent-muted);
+      border-color: rgba(74, 222, 128, 0.4);
+    }
+    .switch.on::after {
+      left: 21px;
+      background: var(--accent);
+    }
+
+    .btn-primary {
+      margin-top: 2px;
+      width: 100%;
+      border: none;
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      background: var(--accent);
+      color: #052e16;
+      font-weight: 700;
+      font-size: 0.95rem;
+      font-family: inherit;
+      letter-spacing: -0.01em;
+      text-align: center;
+    }
+    .btn-secondary {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      background: transparent;
+      color: var(--text-secondary);
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-align: center;
+    }
+
+    .picker-option {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--card-elevated);
+    }
+    .picker-option .ico {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: #1c1c1c;
+      border: 1px solid var(--border);
+      display: grid;
+      place-items: center;
+      font-size: 1.1rem;
+    }
+    .picker-option strong {
+      display: block;
+      font-size: 0.95rem;
+    }
+    .picker-option span {
+      display: block;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    .articles-empty {
+      border: 1px dashed var(--border-strong);
+      border-radius: var(--radius);
+      padding: 16px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+    .articles-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    .articles-table th {
+      text-align: left;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.68rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0 0 8px;
+    }
+    .articles-table td {
+      padding: 8px 0;
+      border-top: 1px solid var(--border);
+    }
+    .articles-table td:last-child,
+    .articles-table th:last-child { text-align: right; }
+
+    .projection {
+      border: 1px solid rgba(74, 222, 128, 0.25);
+      background: var(--accent-muted);
+      border-radius: var(--radius);
+      padding: 12px;
+    }
+    .projection .title {
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .projection .rows {
+      display: grid;
+      gap: 6px;
+      font-size: 0.85rem;
+    }
+    .projection .rows div {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--text-secondary);
+    }
+    .projection .rows strong { color: var(--text); font-weight: 600; }
+
+    .stepper {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .stepper i {
+      flex: 1;
+      height: 3px;
+      border-radius: 99px;
+      background: #2a2a2a;
+    }
+    .stepper i.on { background: var(--accent); }
+
+    .muted { color: var(--text-muted); }
+    .stack { display: flex; flex-direction: column; gap: 12px; }
+    .gap-sm { gap: 8px; }
+    .mt-auto { margin-top: auto; }
+    .flex-1 { flex: 1; }
+
+    .variant-list {
+      margin: 0 0 16px;
+      padding: 12px 14px;
+      background: #0d0d0d;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
+    .variant-list ul {
+      margin: 8px 0 0;
+      padding-left: 1.15rem;
+    }
+    .variant-list li { margin: 4px 0; }
+    .variant-list code {
+      font-size: 0.78rem;
+      color: var(--accent);
+      background: var(--accent-muted);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+
+    footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+
+    @media (max-width: 480px) {
+      :root { --page-pad: 14px; }
+      .phone { border-radius: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <div class="page-header-inner">
+      <div class="brand">Budget<span>Tracker</span> · Entrée manuelle</div>
+      <p>Inventaire des écrans de saisie — thème dark app</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="intro">
+      <h1>Formulaires d’entrée manuelle</h1>
+      <p>
+        Recréation HTML des écrans / sheets où l’utilisateur saisit des données
+        (transactions, comptes, dettes, patrimoine, plans, objectifs, etc.).
+        Libellés et champs tirés du code React Native — pas de formulaires inventés.
+      </p>
+      <div class="meta">
+        <span class="badge accent">14 surfaces de saisie</span>
+        <span class="badge">Fond #0a0a0a · cartes #111111 · accent #4ADE80</span>
+        <span class="badge">apps/mobile</span>
+      </div>
+    </section>
+
+    <nav class="toc" aria-label="Sommaire">
+      <h2>Sommaire</h2>
+      <div class="toc-grid">
+        <a href="#tx">1. Nouvelle transaction<small>app/add-transaction.tsx</small></a>
+        <a href="#account-picker">2. Ajouter un compte (picker)<small>accounts.tsx</small></a>
+        <a href="#account-form">3. Créer / modifier un compte<small>accounts.tsx · account-detail.tsx</small></a>
+        <a href="#wealth">4. Ajouter au patrimoine<small>accounts.tsx</small></a>
+        <a href="#loan">5. Ajouter une obligation<small>accounts.tsx · loan-detail</small></a>
+        <a href="#plan">6. Créer un plan<small>plans/create.tsx</small></a>
+        <a href="#debt-wizard">7. Assistant plan dette<small>DebtPlanWizard.tsx</small></a>
+        <a href="#recurring">8. Paiement / revenu récurrent<small>RecurringPaymentsForm.tsx</small></a>
+        <a href="#goal">9. Objectif d’épargne<small>SavingsGoalsForm.tsx</small></a>
+        <a href="#contact">10. Ajouter un contact<small>ContactFormModal.tsx</small></a>
+        <a href="#merchant">11. Marchand<small>MerchantEditModal.tsx</small></a>
+        <a href="#budget-cat">12. Catégorie budget<small>AddBudgetCategoryModal.tsx</small></a>
+        <a href="#article">13. Ajouter un article<small>AddArticleSheet.tsx</small></a>
+        <a href="#budget-edit">14. Édition catégorie (inline)<small>BudgetCategoryDetailSheet.tsx</small></a>
+      </div>
+    </nav>
+
+    <!-- 1. Transaction -->
+    <section class="screen-section" id="tx">
+      <div class="screen-head">
+        <h2>1. Nouvelle / modifier transaction</h2>
+        <span class="route">app/add-transaction.tsx</span>
+      </div>
+      <p class="screen-note">
+        Route plein écran (style bottom sheet). Variantes selon le type :
+        <strong>Nouvelle dépense</strong>, <strong>Nouveau revenu</strong>,
+        <strong>Nouveau virement</strong> — édition : <strong>Modifier la transaction</strong>.
+        CTA : Enregistrer / Enregistrer les modifications.
+      </p>
+      <div class="phones">
+        <!-- Expense -->
+        <article class="phone">
+          <div class="phone-caption">Dépense</div>
+          <div class="phone-body">
+            <div class="handle"></div>
+            <div class="form-header">
+              <h3 class="form-title">Nouvelle dépense</h3>
+              <div class="icon-btn">×</div>
+            </div>
+            <div class="field">
+              <div class="label">Type</div>
+              <div class="chips">
+                <span class="chip on">Dépense</span>
+                <span class="chip">Revenu</span>
+                <span class="chip">Virement</span>
+              </div>
+            </div>
+            <div class="amount-hero">
+              <div class="value expense">42,50 $</div>
+              <div class="hint">Pavé numérique</div>
+            </div>
+            <div class="field">
+              <div class="label">Marchand / paiement</div>
+              <div class="input placeholder">Ex. Starbucks, loyer, épicerie...</div>
+            </div>
+            <div class="field">
+              <div class="label">Méthode de paiement</div>
+              <div class="select-like row">Chèques <span class="muted">›</span></div>
+            </div>
+            <div class="field">
+              <div class="label">Date</div>
+              <div class="select-like placeholder">Choisir une date</div>
+            </div>
+            <div class="field">
+              <div class="label">Catégorie</div>
+              <div class="chips">
+                <span class="chip on">Épicerie</span>
+                <span class="chip">Restaurants</span>
+                <span class="chip">Transport</span>
+              </div>
+            </div>
+            <div class="field">
+              <div class="label">Articles</div>
+              <div class="articles-empty">Détaillez votre achat article par article</div>
+              <div class="btn-secondary" style="margin-top:8px">Ajouter un article</div>
+            </div>
+            <div class="btn-primary mt-auto">Enregistrer</div>
+          </div>
+        </article>
+
+        <!-- Income -->
+        <article class="phone">
+          <div class="phone-caption">Revenu</div>
+          <div class="phone-body">
+            <div class="handle"></div>
+            <div class="form-header">
+              <h3 class="form-title">Nouveau revenu</h3>
+              <div class="icon-btn">×</div>
+            </div>
+            <div class="amount-hero">
+              <div class="value income">+2 450,00 $</div>
+            </div>
+            <div class="field">
+              <div class="label">Employeur / Client</div>
+              <div class="input placeholder">Ex. Desjardins, Employeur Inc....</div>
+            </div>
+            <div class="chips">
+              <span class="chip">+ Ajouter un employeur</span>
+              <span class="chip">+ Ajouter un contact</span>
+            </div>
+            <div class="field">
+              <div class="label">Raison du revenu</div>
+              <div class="input placeholder">Ex. travail, vente, don, prime...</div>
+            </div>
+            <div class="field">
+              <div class="label">Compte de dépôt</div>
+              <div class="select-like row">Chèques <span class="muted">›</span></div>
+            </div>
+            <div class="field">
+              <div class="label">Date</div>
+              <div class="select-like">22 juil. 2026</div>
+            </div>
+            <div class="field">
+              <div class="label">Catégorie</div>
+              <div class="chips"><span class="chip on">Salaire</span><span class="chip">Autre</span></div>
+            </div>
+            <div class="btn-primary mt-auto">Enregistrer</div>
+          </div>
+        </article>
+
+        <!-- Transfer -->
+        <article class="phone">
+          <div class="phone-caption">Virement · Mes comptes</div>
+          <div class="phone-body">
+            <div class="handle"></div>
+            <div class="form-header">
+              <h3 class="form-title">Nouveau virement</h3>
+              <div class="icon-btn">×</div>
+            </div>
+            <div class="amount-hero">
+              <div class="value">200,00 $</div>
+            </div>
+            <div class="field">
+              <div class="label">Provenance</div>
+              <div class="chips">
+                <span class="chip on">Mes comptes</span>
+                <span class="chip">Vers contact</span>
+                <span class="chip">Depuis contact</span>
+              </div>
+            </div>
+            <div class="field">
+              <div class="label">Raison du virement</div>
+              <div class="input placeholder">Motif (optionnel)</div>
+            </div>
+            <div class="field">
+              <div class="label">De</div>
+              <div class="select-like row">Chèques · Comptes <span class="muted">›</span></div>
+            </div>
+            <div class="field">
+              <div class="label">Vers</div>
+              <div class="select-like row">Épargne · Comptes <span class="muted">›</span></div>
+            </div>
+            <div class="field">
+              <div class="label">Date</div>
+              <div class="select-like">22 juil. 2026</div>
+            </div>
+            <div class="btn-primary mt-auto">Enregistrer</div>
+          </div>
+        </article>
+      </div>
+      <div class="variant-list" style="margin-top:16px">
+        <strong>Autres modes virement</strong>
+        <ul>
+          <li><strong>Vers contact</strong> — Contact · Raison du virement · Catégorie · Compte source</li>
+          <li><strong>Depuis contact</strong> — Contact (expéditeur) · Description (optionnel) · Compte de dépôt · Catégorie</li>
+          <li>Sélecteurs <strong>De / Vers</strong> : sous-sections Comptes et Objectifs d’épargne</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 2. Account type picker -->
+    <section class="screen-section" id="account-picker">
+      <div class="screen-head">
+        <h2>2. Ajouter un compte — choix du type</h2>
+        <span class="route">app/(tabs)/accounts.tsx</span>
+      </div>
+      <p class="screen-note">Sheet précurseur (sélection seule) avant le formulaire de création.</p>
+      <div class="phones">
+        <article class="phone">
+          <div class="phone-caption">Picker type compte</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Ajouter un compte</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="stack gap-sm">
+                <div class="picker-option">
+                  <div class="ico">💳</div>
+                  <div>
+                    <strong>Carte de crédit</strong>
+                    <span>Limite, solde dû, institution</span>
+                  </div>
+                </div>
+                <div class="picker-option">
+                  <div class="ico">👛</div>
+                  <div>
+                    <strong>Compte chèque</strong>
+                    <span>Solde et institution</span>
+                  </div>
+                </div>
+                <div class="picker-option">
+                  <div class="ico">🏦</div>
+                  <div>
+                    <strong>Compte épargne</strong>
+                    <span>Solde, taux, institution</span>
+                  </div>
+                </div>
+                <div class="picker-option">
+                  <div class="ico">💵</div>
+                  <div>
+                    <strong>Argent Cash</strong>
+                    <span>Solde manuel — pas de sync bancaire</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- 3. Account form -->
+    <section class="screen-section" id="account-form">
+      <div class="screen-head">
+        <h2>3. Créer / modifier un compte</h2>
+        <span class="route">accounts.tsx · account-detail.tsx</span>
+      </div>
+      <p class="screen-note">
+        Modal bottom sheet. Titres create : Carte de crédit / Compte chèque / Compte épargne / Argent Cash.
+        Édition : <strong>Modifier le compte</strong>. CTA : Créer le compte / Enregistrer.
+      </p>
+      <div class="phones">
+        <article class="phone">
+          <div class="phone-caption">Crédit · création</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Carte de crédit</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="card-block row">
+                <div class="logo-well">✨</div>
+                <div>
+                  <div class="label">Logo</div>
+                  <div class="muted" style="font-size:0.8rem">Auto par défaut</div>
+                </div>
+              </div>
+              <div class="field">
+                <div class="label">Type de compte</div>
+                <div class="chips">
+                  <span class="chip on">Crédit</span>
+                  <span class="chip">Compte chèque</span>
+                  <span class="chip">Épargne</span>
+                  <span class="chip">Argent Cash</span>
+                </div>
+              </div>
+              <div class="field">
+                <div class="label">Nom du compte</div>
+                <div class="input placeholder">Visa Desjardins</div>
+              </div>
+              <div class="field">
+                <div class="label">Institution</div>
+                <div class="input placeholder">Desjardins, Tangerine, BMO…</div>
+              </div>
+              <div class="field">
+                <div class="label">Solde dû actuel</div>
+                <div class="input row placeholder">580.42 <span class="suffix">$</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Limite de crédit</div>
+                <div class="input row placeholder">5000 <span class="suffix">$</span></div>
+              </div>
+              <div class="two-col">
+                <div class="field">
+                  <div class="label">4 derniers chiffres</div>
+                  <div class="input placeholder">1234</div>
+                </div>
+                <div class="field">
+                  <div class="label">Jour d’échéance</div>
+                  <div class="input placeholder">15</div>
+                </div>
+              </div>
+              <div class="field">
+                <div class="label">Taux d’intérêt (%)</div>
+                <div class="input placeholder">19.99</div>
+              </div>
+              <div class="btn-primary">Créer le compte</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="phone">
+          <div class="phone-caption">Épargne · création</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Compte épargne</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="field">
+                <div class="label">Nom du compte</div>
+                <div class="input placeholder">Tangerine épargne</div>
+              </div>
+              <div class="field">
+                <div class="label">Institution</div>
+                <div class="input placeholder">Desjardins, Tangerine, BMO…</div>
+              </div>
+              <div class="field">
+                <div class="label">Solde actuel</div>
+                <div class="input row placeholder">3240.50 <span class="suffix">$</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Taux d’intérêt (%)</div>
+                <div class="input placeholder">3.25</div>
+              </div>
+              <div class="btn-primary">Créer le compte</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="phone">
+          <div class="phone-caption">Cash · création</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Argent Cash</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <p class="form-hint" style="margin:0">Solde manuel — pas de synchronisation bancaire.</p>
+              <div class="field">
+                <div class="label">Nom du compte</div>
+                <div class="input placeholder">Argent Cash</div>
+              </div>
+              <div class="field">
+                <div class="label">Solde actuel</div>
+                <div class="input row placeholder">120.00 <span class="suffix">$</span></div>
+              </div>
+              <div class="btn-primary">Créer le compte</div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- 4. Wealth -->
+    <section class="screen-section" id="wealth">
+      <div class="screen-head">
+        <h2>4. Ajouter au patrimoine</h2>
+        <span class="route">app/(tabs)/accounts.tsx</span>
+      </div>
+      <p class="screen-note">
+        Picker <strong>Ajouter au patrimoine</strong> puis formulaire
+        Métaux précieux / Bien immobilier. CTA : Ajouter au patrimoine / Enregistrer.
+      </p>
+      <div class="phones">
+        <article class="phone">
+          <div class="phone-caption">Picker patrimoine</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Ajouter au patrimoine</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="stack gap-sm">
+                <div class="picker-option">
+                  <div class="ico">💎</div>
+                  <div>
+                    <strong>Métaux précieux</strong>
+                    <span>Or, argent, platine, diamant</span>
+                  </div>
+                </div>
+                <div class="picker-option">
+                  <div class="ico">🏠</div>
+                  <div>
+                    <strong>Bien immobilier</strong>
+                    <span>Prix payé, date, valeur actuelle</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="phone">
+          <div class="phone-caption">Métaux précieux</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Métaux précieux</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="field">
+                <div class="label">Type de métal</div>
+                <div class="chips">
+                  <span class="chip on">Or</span>
+                  <span class="chip">Argent</span>
+                  <span class="chip">Platine</span>
+                  <span class="chip">Diamant</span>
+                </div>
+              </div>
+              <div class="two-col">
+                <div class="field">
+                  <div class="label">Quantité</div>
+                  <div class="input placeholder">25</div>
+                </div>
+                <div class="field">
+                  <div class="label">Unité</div>
+                  <div class="chips"><span class="chip on">g</span><span class="chip">oz troy</span></div>
+                </div>
+              </div>
+              <div class="field">
+                <div class="label">Valeur actuelle estimée</div>
+                <div class="input row placeholder">2500 <span class="suffix">$</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Description (optionnel)</div>
+                <div class="input placeholder">Certification, détails utiles</div>
+              </div>
+              <div class="field">
+                <div class="label">Certificat d’authenticité</div>
+                <div class="btn-secondary">Joindre un certificat</div>
+              </div>
+              <div class="btn-primary">Ajouter au patrimoine</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="phone">
+          <div class="phone-caption">Bien immobilier</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Bien immobilier</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="field">
+                <div class="label">Type de bien</div>
+                <div class="chips">
+                  <span class="chip on">Maison</span>
+                  <span class="chip">Condo</span>
+                  <span class="chip">Duplex</span>
+                  <span class="chip">Studio</span>
+                </div>
+              </div>
+              <div class="field">
+                <div class="label">Coût d’achat</div>
+                <div class="input row placeholder">350000 <span class="suffix">$</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Date d’achat</div>
+                <div class="select-like placeholder">Choisir une date</div>
+              </div>
+              <div class="field">
+                <div class="label">Valeur actuelle</div>
+                <div class="input row placeholder">425000 <span class="suffix">$</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Photo (optionnel)</div>
+                <div class="btn-secondary">Galerie ou caméra</div>
+              </div>
+              <div class="field">
+                <div class="label">Description (optionnel)</div>
+                <div class="input placeholder">Condo, courtier, détails utiles</div>
+              </div>
+              <div class="btn-primary">Ajouter au patrimoine</div>
+            </div>
+          </div>
+        </article>
+      </div>
+      <div class="variant-list">
+        <strong>Champs édition supplémentaires</strong>
+        <ul>
+          <li>Métaux : Nom, Karats / Pureté (%), Coût à l’achat, Date d’achat</li>
+          <li>Immo : Adresse (ex. 123 rue des Érables, Montréal)</li>
+          <li>Chips Type de patrimoine : Matériau précieux | Bien immobilier</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 5. Loan -->
+    <section class="screen-section" id="loan">
+      <div class="screen-head">
+        <h2>5. Ajouter une obligation / dette</h2>
+        <span class="route">accounts.tsx · loan-detail (editLoanId)</span>
+      </div>
+      <p class="screen-note">
+        Picker <strong>Ajouter une obligation</strong> puis formulaires selon le type.
+        CTA : Ajouter / Enregistrer.
+      </p>
+      <div class="phones">
+        <article class="phone">
+          <div class="phone-caption">Picker obligation</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Ajouter une obligation</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="stack gap-sm">
+                <div class="picker-option">
+                  <div class="ico">👥</div>
+                  <div><strong>Dette à un particulier</strong><span>Créancier, raison, montant, échéance</span></div>
+                </div>
+                <div class="picker-option">
+                  <div class="ico">💵</div>
+                  <div><strong>Prêt personnel</strong><span>Raison, prêteur, solde, taux, mensualité</span></div>
+                </div>
+                <div class="picker-option">
+                  <div class="ico">💳</div>
+                  <div><strong>Marge de crédit</strong><span>Institution, limite, solde utilisé</span></div>
+                </div>
+                <div class="picker-option">
+                  <div class="ico">🏠</div>
+                  <div><strong>Hypothèque</strong><span>Emprunt, amortissement, taux, paiements</span></div>
+                </div>
+                <div class="picker-option">
+                  <div class="ico">⚖️</div>
+                  <div><strong>Pension alimentaire</strong><span>Base, frais, jour de paiement</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="phone">
+          <div class="phone-caption">Prêt personnel</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Prêt personnel</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="field">
+                <div class="label">Raison</div>
+                <div class="input placeholder">Ex. Consolidation</div>
+              </div>
+              <div class="field">
+                <div class="label">Prêteur</div>
+                <div class="input placeholder">Institution / prêteur</div>
+              </div>
+              <div class="field">
+                <div class="label">Montant emprunté</div>
+                <div class="input row placeholder">15000 <span class="suffix">$</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Solde restant</div>
+                <div class="input row placeholder">12800 <span class="suffix">$</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Taux d’intérêt</div>
+                <div class="input placeholder">7,99</div>
+              </div>
+              <div class="field">
+                <div class="label">Paiement mensuel</div>
+                <div class="input row placeholder">420 <span class="suffix">$</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Date du prochain paiement</div>
+                <div class="select-like placeholder">Choisir une date</div>
+              </div>
+              <div class="btn-primary">Ajouter</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="phone">
+          <div class="phone-caption">Hypothèque (extrait)</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Hypothèque</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="field">
+                <div class="label">Mise de fonds</div>
+                <div class="input row placeholder">70000 <span class="suffix">$</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Montant emprunté</div>
+                <div class="input row placeholder">380000 <span class="suffix">$</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Temps d’amortissement</div>
+                <div class="chips">
+                  <span class="chip">15</span><span class="chip">20</span>
+                  <span class="chip on">25</span><span class="chip">30 ans</span>
+                  <span class="chip">Durée personnalisée</span>
+                </div>
+              </div>
+              <div class="field">
+                <div class="label">Taux d’intérêt</div>
+                <div class="input placeholder">4,49</div>
+              </div>
+              <div class="field">
+                <div class="label">Type de taux</div>
+                <div class="chips"><span class="chip on">Fixe</span><span class="chip">Variable</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Fréquence des paiements</div>
+                <div class="chips"><span class="chip on">Mensuel</span><span class="chip">Aux 2 semaines</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Montant du paiement</div>
+                <div class="input row placeholder">1850 <span class="suffix">$</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Prélèvement</div>
+                <div class="chips"><span class="chip on">Automatique</span><span class="chip">Manuel</span></div>
+              </div>
+              <div class="btn-primary">Ajouter</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="phone">
+          <div class="phone-caption">Pension alimentaire</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Pension alimentaire</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="field">
+                <div class="label">Mode de paiement</div>
+                <div class="chips">
+                  <span class="chip on">Revenu Québec</span>
+                  <span class="chip">Accord privé</span>
+                </div>
+              </div>
+              <div class="field">
+                <div class="label">Bénéficiaire</div>
+                <div class="chips"><span class="chip on">Mère</span><span class="chip">Père</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Montant de base (mensuel)</div>
+                <div class="input row placeholder">650 <span class="suffix">$</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Total des frais particuliers</div>
+                <div class="input row placeholder">120 <span class="suffix">$</span></div>
+              </div>
+              <div class="card-block">
+                <div class="label">Total mensuel</div>
+                <strong style="font-size:1.2rem">770,00 $</strong>
+              </div>
+              <div class="field">
+                <div class="label">Jour du paiement</div>
+                <div class="chips"><span class="chip">1</span><span class="chip on">15</span><span class="chip">28</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Compte de paiement</div>
+                <div class="select-like row">Chèques <span class="muted">›</span></div>
+              </div>
+              <div class="btn-primary">Ajouter</div>
+            </div>
+          </div>
+        </article>
+      </div>
+      <div class="variant-list">
+        <strong>Autres variantes</strong>
+        <ul>
+          <li><strong>Dette à un particulier</strong> — Créancier · Montant dû · Date d’échéance (optionnel)</li>
+          <li><strong>Marge de crédit</strong> — Institution · Limite · Solde utilisé · Taux</li>
+          <li>Édition : Date de début · Durée · Fréquence · Méthode de paiement · titres « Modifier le/la… »</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 6. Plan create -->
+    <section class="screen-section" id="plan">
+      <div class="screen-head">
+        <h2>6. Créer / modifier un plan</h2>
+        <span class="route">app/plans/create.tsx · planTypeFormConfig.ts</span>
+      </div>
+      <p class="screen-note">
+        Plein écran. Titre = nom du template ou <strong>Nouveau plan</strong>.
+        Édition : eyebrow MODIFIER LE PLAN. CTA : Créer le plan / Enregistrer / Continuer.
+      </p>
+      <div class="phones">
+        <article class="phone">
+          <div class="phone-caption">Épargne (ex. Fonds d’urgence)</div>
+          <div class="phone-body">
+            <div class="form-header">
+              <div>
+                <p class="form-eyebrow">Nouveau plan</p>
+                <h3 class="form-title">Fonds d’urgence</h3>
+              </div>
+              <div class="icon-btn">×</div>
+            </div>
+            <div class="field">
+              <div class="label">Montant cible</div>
+              <div class="input placeholder">Ex. 10 000</div>
+            </div>
+            <div class="field">
+              <div class="label">Compte lié</div>
+              <div class="select-like placeholder">Choisir un compte</div>
+            </div>
+            <div class="field">
+              <div class="label">Cadence</div>
+              <div class="two-col">
+                <div class="input placeholder">150</div>
+                <div class="chips"><span class="chip on">Semaine</span><span class="chip">Mois</span></div>
+              </div>
+            </div>
+            <div class="field">
+              <div class="label">Date cible</div>
+              <div class="select-like placeholder">Choisir une date</div>
+            </div>
+            <div class="btn-primary mt-auto">Créer le plan</div>
+            <div class="btn-secondary">Annuler</div>
+          </div>
+        </article>
+
+        <article class="phone">
+          <div class="phone-caption">Investissement</div>
+          <div class="phone-body">
+            <div class="form-header">
+              <h3 class="form-title">Cotisation REER</h3>
+              <div class="icon-btn">×</div>
+            </div>
+            <div class="field">
+              <div class="label">Objectif de cotisation</div>
+              <div class="input placeholder">Ex. 7 000</div>
+            </div>
+            <div class="field">
+              <div class="label">Compte enregistré</div>
+              <div class="select-like placeholder">Choisir un compte</div>
+            </div>
+            <div class="field">
+              <div class="label">Cotisation</div>
+              <div class="two-col">
+                <div class="input placeholder">300</div>
+                <div class="chips"><span class="chip on">Mois</span><span class="chip">Année</span></div>
+              </div>
+            </div>
+            <div class="field">
+              <div class="label">Date cible</div>
+              <div class="select-like placeholder">Choisir une date</div>
+            </div>
+            <div class="btn-primary mt-auto">Créer le plan</div>
+          </div>
+        </article>
+
+        <article class="phone">
+          <div class="phone-caption">Fiscal / Budget / Comportemental</div>
+          <div class="phone-body">
+            <div class="form-header">
+              <h3 class="form-title">Réserve fiscale</h3>
+              <div class="icon-btn">×</div>
+            </div>
+            <div class="field">
+              <div class="label">Montant à réserver</div>
+              <div class="input placeholder">Ex. 6 000</div>
+            </div>
+            <div class="field">
+              <div class="label">% de chaque entrée</div>
+              <div class="input placeholder">Ex. 25</div>
+            </div>
+            <div class="field">
+              <div class="label">Compte de réserve</div>
+              <div class="select-like placeholder">Choisir un compte</div>
+            </div>
+            <div class="field">
+              <div class="label">Échéance</div>
+              <div class="select-like placeholder">Choisir une date</div>
+            </div>
+            <div class="btn-primary mt-auto">Créer le plan</div>
+          </div>
+        </article>
+      </div>
+      <div class="variant-list">
+        <strong>Champs par catégorie / overrides</strong> (<code>planTypeFormConfig.ts</code>)
+        <ul>
+          <li><strong>Dette (simple)</strong> — Solde actuel · Taux · Paiement mensuel · Dette/compte lié · Date cible</li>
+          <li><strong>Budget</strong> — Budget mensuel · Comptes suivis</li>
+          <li><strong>Risque</strong> — Montant cible · Compte lié · Cadence · Date cible</li>
+          <li><strong>Comportemental</strong> — Date de début</li>
+          <li>Overrides : Échéance de la revue · Durée du défi (jours) · Économie mensuelle visée · Plafond de la catégorie</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 7. Debt wizard -->
+    <section class="screen-section" id="debt-wizard">
+      <div class="screen-head">
+        <h2>7. Assistant plan dette (wizard)</h2>
+        <span class="route">components/plans/DebtPlanWizard.tsx</span>
+      </div>
+      <p class="screen-note">
+        Multi-étapes embarqué dans la création de plan (avalanche / snowball).
+        Saisie manuelle si aucune dette n’existe encore.
+      </p>
+      <div class="phones">
+        <article class="phone">
+          <div class="phone-caption">Étape · dette manuelle</div>
+          <div class="phone-body">
+            <div class="stepper"><i class="on"></i><i class="on"></i><i></i><i></i></div>
+            <div class="form-header">
+              <div>
+                <p class="form-eyebrow">Étape 1</p>
+                <h3 class="form-title">Quelles dettes inclure ?</h3>
+              </div>
+            </div>
+            <p class="form-hint" style="margin:0">
+              Aucune dette trouvée — saisis manuellement ci-dessous pour démarrer le plan.
+            </p>
+            <div class="field">
+              <div class="label">Libellé</div>
+              <div class="input placeholder">Ex. Visa</div>
+            </div>
+            <div class="field">
+              <div class="label">Solde actuel</div>
+              <div class="input placeholder">Ex. 2 400</div>
+            </div>
+            <div class="field">
+              <div class="label">Taux d’intérêt (%)</div>
+              <div class="input placeholder">Ex. 19,99</div>
+            </div>
+            <div class="field">
+              <div class="label">Paiement minimum / mois</div>
+              <div class="input placeholder">Ex. 75 (sinon ~3 % du solde)</div>
+            </div>
+            <div class="btn-primary mt-auto">Continuer</div>
+          </div>
+        </article>
+
+        <article class="phone">
+          <div class="phone-caption">Combien d’extra ?</div>
+          <div class="phone-body">
+            <div class="stepper"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+            <div class="form-header">
+              <h3 class="form-title">Combien d’extra ?</h3>
+            </div>
+            <div class="field">
+              <div class="label">Montant supplémentaire</div>
+              <div class="input placeholder">0</div>
+            </div>
+            <div class="field">
+              <div class="label">Cadence</div>
+              <div class="chips"><span class="chip">Semaine</span><span class="chip on">Mois</span></div>
+            </div>
+            <div class="btn-primary mt-auto">Continuer</div>
+          </div>
+        </article>
+
+        <article class="phone">
+          <div class="phone-caption">Projection</div>
+          <div class="phone-body">
+            <div class="stepper"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
+            <div class="form-header">
+              <h3 class="form-title">Projection et budget</h3>
+            </div>
+            <div class="projection">
+              <div class="title">Projection</div>
+              <div class="rows">
+                <div><span>Libéré en</span><strong>18 mois</strong></div>
+                <div><span>Intérêts estimés</span><strong>642 $</strong></div>
+                <div><span>Paiement total / mois</span><strong>275 $</strong></div>
+              </div>
+            </div>
+            <div class="btn-primary mt-auto">Créer le plan</div>
+          </div>
+        </article>
+      </div>
+      <div class="variant-list">
+        Étapes typiques : Quelles dettes inclure/regrouper ? → Ordre avalanche / boule de neige → Combien d’extra ? → Projection et budget
+      </div>
+    </section>
+
+    <!-- 8. Recurring -->
+    <section class="screen-section" id="recurring">
+      <div class="screen-head">
+        <h2>8. Paiement / revenu récurrent</h2>
+        <span class="route">RecurringPaymentsForm.tsx</span>
+      </div>
+      <p class="screen-note">
+        Modal sheet. Hosts : transactions, account-detail, PaymentDetailSheet.
+        Variantes FAB : abonnement / facture / revenu. CTA : Enregistrer.
+      </p>
+      <div class="phones">
+        <article class="phone">
+          <div class="phone-caption">Paiement récurrent</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Paiement récurrent</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="field">
+                <div class="label">Type</div>
+                <div class="chips"><span class="chip on">Paiement</span><span class="chip">Revenu</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Marchand / paiement</div>
+                <div class="input placeholder">Ex. Loyer, Netflix, Hydro...</div>
+              </div>
+              <div class="card-block row">
+                <div class="logo-well">📺</div>
+                <div>
+                  <div class="label">Logo</div>
+                  <div class="muted" style="font-size:0.8rem">Auto ou manuel · Services · Icônes MDI</div>
+                </div>
+              </div>
+              <div class="amount-hero">
+                <div class="value">89,99 $</div>
+              </div>
+              <div class="projection">
+                <div class="title">Impact budget</div>
+                <div class="rows">
+                  <div><span>Épicerie</span><strong>+89,99 $ / mois</strong></div>
+                </div>
+              </div>
+              <div class="field">
+                <div class="label">Fréquence</div>
+                <div class="chips">
+                  <span class="chip">Hebdo</span>
+                  <span class="chip">Bihebdo</span>
+                  <span class="chip on">Mensuel</span>
+                  <span class="chip">Annuel</span>
+                </div>
+              </div>
+              <div class="field">
+                <div class="label">Prochaine date</div>
+                <div class="select-like">1 août 2026</div>
+              </div>
+              <div class="field">
+                <div class="label">Date de fin (optionnelle)</div>
+                <div class="select-like placeholder">Aucune date de fin</div>
+              </div>
+              <div class="field">
+                <div class="label">Méthode de paiement</div>
+                <div class="select-like row">Chèques <span class="muted">›</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Catégorie</div>
+                <div class="chips"><span class="chip on">Abonnements</span><span class="chip">Logement</span></div>
+              </div>
+              <div class="btn-primary">Enregistrer</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="phone">
+          <div class="phone-caption">Revenu récurrent</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Revenu récurrent</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="field">
+                <div class="label">Type</div>
+                <div class="chips"><span class="chip">Paiement</span><span class="chip on">Revenu</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Source du revenu</div>
+                <div class="input placeholder">Ex. Paie, pension, allocation...</div>
+              </div>
+              <div class="amount-hero">
+                <div class="value income">+2 450,00 $</div>
+              </div>
+              <div class="projection">
+                <div class="title">Projection revenu</div>
+                <div class="rows">
+                  <div><span>Par mois</span><strong>~4 900 $</strong></div>
+                </div>
+              </div>
+              <div class="field">
+                <div class="label">Fréquence</div>
+                <div class="chips"><span class="chip">Hebdo</span><span class="chip on">Bihebdo</span><span class="chip">Mensuel</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Compte de dépôt</div>
+                <div class="select-like row">Chèques <span class="muted">›</span></div>
+              </div>
+              <div class="field">
+                <div class="label">Catégorie</div>
+                <div class="chips"><span class="chip on">Salaire</span></div>
+              </div>
+              <div class="btn-primary">Enregistrer</div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- 9. Savings goal -->
+    <section class="screen-section" id="goal">
+      <div class="screen-head">
+        <h2>9. Objectif d’épargne</h2>
+        <span class="route">SavingsGoalsForm.tsx</span>
+      </div>
+      <p class="screen-note">
+        Modal sheet. Hosts : HubSavingsGoalsSection, goal-detail (édition).
+        Titres : <strong>Nouvel objectif</strong> / <strong>Modifier</strong>. CTA : Enregistrer.
+      </p>
+      <div class="phones">
+        <article class="phone">
+          <div class="phone-caption">Nouvel objectif</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Nouvel objectif</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="card-block row">
+                <div class="logo-well">🎯</div>
+                <div class="input placeholder flex-1" style="border:none;background:transparent;padding:0">Ex. Fonds d'urgence</div>
+              </div>
+              <div class="two-col">
+                <div class="field">
+                  <div class="label">Cible</div>
+                  <div class="input placeholder">5 000</div>
+                </div>
+                <div class="field">
+                  <div class="label">Épargné</div>
+                  <div class="input placeholder">0</div>
+                </div>
+              </div>
+              <div class="field">
+                <div class="label">Date cible (optionnelle)</div>
+                <div class="select-like placeholder">Aucune date maximale</div>
+              </div>
+              <div class="field">
+                <div class="label">Montant des versements</div>
+                <div class="input placeholder">75</div>
+              </div>
+              <div class="field">
+                <div class="label">Fréquence des versements</div>
+                <div class="chips">
+                  <span class="chip on">Par semaine</span>
+                  <span class="chip">Bihebdo</span>
+                  <span class="chip">Par mois</span>
+                </div>
+              </div>
+              <div class="projection">
+                <div class="title">Projection</div>
+                <div class="rows">
+                  <div><span>Progression</span><strong>0 %</strong></div>
+                  <div><span>Reste à épargner</span><strong>5 000 $</strong></div>
+                </div>
+              </div>
+              <div class="btn-primary">Enregistrer</div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- 10. Contact -->
+    <section class="screen-section" id="contact">
+      <div class="screen-head">
+        <h2>10. Ajouter un contact</h2>
+        <span class="route">components/ContactFormModal.tsx</span>
+      </div>
+      <p class="screen-note">Modal sheet depuis Marchands / Contacts. CTA : Créer le contact.</p>
+      <div class="phones">
+        <article class="phone">
+          <div class="phone-caption">Contact</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Ajouter un contact</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="field">
+                <div class="label">Nom</div>
+                <div class="input placeholder">Ex. Marie, Employeur Inc.</div>
+              </div>
+              <div class="switch-row">
+                <div class="copy">
+                  <strong>Employeur</strong>
+                  <span>Suggéré en priorité lors de la saisie d'un revenu.</span>
+                </div>
+                <div class="switch on" aria-hidden="true"></div>
+              </div>
+              <div class="btn-primary">Créer le contact</div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- 11. Merchant -->
+    <section class="screen-section" id="merchant">
+      <div class="screen-head">
+        <h2>11. Ajouter / modifier un marchand</h2>
+        <span class="route">components/MerchantEditModal.tsx</span>
+      </div>
+      <p class="screen-note">Modal sheet. Titres : Ajouter un marchand / Modifier le marchand. CTA : Enregistrer.</p>
+      <div class="phones">
+        <article class="phone">
+          <div class="phone-caption">Création</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Ajouter un marchand</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="field">
+                <div class="label">Nom du marchand</div>
+                <div class="input placeholder">IGA, Metro, Tim Hortons...</div>
+              </div>
+              <div class="card-block">
+                <div class="card-block row" style="padding:0;border:none;background:transparent">
+                  <div class="logo-well">🏪</div>
+                  <div>
+                    <div class="label">Logo</div>
+                    <div class="muted" style="font-size:0.8rem">Auto · populaires · MDI</div>
+                  </div>
+                </div>
+                <div class="btn-secondary">Importer un logo</div>
+              </div>
+              <div class="btn-primary">Enregistrer</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="phone">
+          <div class="phone-caption">Édition</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <div>
+                  <h3 class="form-title">Modifier le marchand</h3>
+                  <p class="form-hint">Personnalise le nom, le logo ou l'icône affichés.</p>
+                </div>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="field">
+                <div class="label">Nom du marchand</div>
+                <div class="input">Starbucks</div>
+              </div>
+              <div class="card-block row">
+                <div class="logo-well">☕</div>
+                <div>
+                  <div class="label">Logo</div>
+                  <div class="muted" style="font-size:0.8rem">Logo automatique trouvé avec le nom.</div>
+                </div>
+              </div>
+              <div class="btn-primary">Enregistrer</div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- 12. Budget category -->
+    <section class="screen-section" id="budget-cat">
+      <div class="screen-head">
+        <h2>12. Nouvelle catégorie budget</h2>
+        <span class="route">budget/AddBudgetCategoryModal.tsx</span>
+      </div>
+      <p class="screen-note">BottomSheet depuis l’onglet Budgets. Max 10 catégories. CTA : Ajouter.</p>
+      <div class="phones">
+        <article class="phone">
+          <div class="phone-caption">Nouvelle catégorie</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <h3 class="form-title">Nouvelle catégorie</h3>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="field">
+                <div class="label">Nom</div>
+                <div class="input placeholder">Ex. Épicerie</div>
+              </div>
+              <div class="field">
+                <div class="label">Limite mensuelle</div>
+                <div class="input row placeholder">600 <span class="suffix">$</span></div>
+              </div>
+              <div class="btn-primary">Ajouter</div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- 13. Article -->
+    <section class="screen-section" id="article">
+      <div class="screen-head">
+        <h2>13. Ajouter un article</h2>
+        <span class="route">components/AddArticleSheet.tsx</span>
+      </div>
+      <p class="screen-note">
+        Sheet modal (transaction-detail) ou formulaire inline (add-transaction).
+        Steps sheet : Suivant puis Ajouter. Inline : Ajouter.
+      </p>
+      <div class="phones">
+        <article class="phone">
+          <div class="phone-caption">Sheet ARTICLE</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div>
+                <p class="form-eyebrow">Article</p>
+                <h3 class="form-title">Ajouter un article</h3>
+              </div>
+              <div class="field">
+                <div class="label">Nom</div>
+                <div class="input placeholder">Nom de l'article…</div>
+              </div>
+              <div class="field">
+                <div class="label">Catégorie</div>
+                <div class="select-like placeholder">Choisir une catégorie</div>
+              </div>
+              <div class="field">
+                <div class="label">Prix</div>
+                <div class="input row placeholder">0,00 <span class="suffix">$</span></div>
+              </div>
+              <div class="btn-primary">Ajouter</div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- 14. Budget category inline edit -->
+    <section class="screen-section" id="budget-edit">
+      <div class="screen-head">
+        <h2>14. Édition inline catégorie budget</h2>
+        <span class="route">budget/BudgetCategoryDetailSheet.tsx</span>
+      </div>
+      <p class="screen-note">
+        Détail bottom sheet avec champs éditables (EditableField) — pas de CTA séparé.
+        Aussi : édition inline possible dans PaymentDetailSheet (montant, date, récurrence…).
+      </p>
+      <div class="phones">
+        <article class="phone">
+          <div class="phone-caption">Détail catégorie</div>
+          <div class="phone-body sheet-mode">
+            <div class="sheet">
+              <div class="handle"></div>
+              <div class="form-header">
+                <div class="input" style="flex:1;font-size:1.1rem;font-weight:700">Épicerie</div>
+                <div class="icon-btn">×</div>
+              </div>
+              <div class="field">
+                <div class="label">Budget</div>
+                <div class="card-block row" style="justify-content:space-between">
+                  <span>Limite mensuelle</span>
+                  <strong>600,00 $</strong>
+                </div>
+              </div>
+              <div class="muted" style="font-size:0.8rem">Toucher pour éditer le nom ou la limite</div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <footer>
+      <p>
+        Fichier généré pour revue design — inventaire basé sur le code
+        <code>apps/mobile</code>. Exclus (pas de saisie libre) :
+        paycheck-allocation (confirmation mock), stock detail (lecture seule),
+        dialogs de confirmation / suppression, pickers settings / région / icônes seuls,
+        chat AI.
+      </p>
+      <p style="margin-top:8px">
+        Ouvrir ce fichier dans un navigateur :
+        <code>apps/mobile/manual-entry-forms.html</code>
+      </p>
+    </footer>
+  </main>
+</body>
+</html>

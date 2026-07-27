@@ -1,4 +1,5 @@
 import { isSameMonth, startOfMonth } from '@/lib/budgetMonth';
+import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 
 export type BudgetMonthScenario = 'over' | 'under-savings' | 'exact';
 
@@ -140,6 +141,9 @@ function getSnapshots(): Map<string, BudgetMonthSnapshot> {
 
 /** First selectable month in the mock history (3 months before current, or earliest pinned month). */
 export function getMockBudgetEarliestMonthStart(reference: Date = new Date()): Date {
+  if (!isDemoSeedEnabled()) {
+    return startOfMonth(reference);
+  }
   const current = startOfMonth(reference);
   let earliest = new Date(current.getFullYear(), current.getMonth() - 3, 1);
   for (const key of PINNED_MONTH_SNAPSHOTS.keys()) {
@@ -152,6 +156,7 @@ export function getMockBudgetEarliestMonthStart(reference: Date = new Date()): D
 
 /** Returns mock spent/limits for historical months; null for the current month. */
 export function getMockBudgetSnapshotForMonth(monthDate: Date): BudgetMonthSnapshot | null {
+  if (!isDemoSeedEnabled()) return null;
   if (isSameMonth(monthDate, new Date())) return null;
   return getSnapshots().get(monthKey(startOfMonth(monthDate))) ?? null;
 }

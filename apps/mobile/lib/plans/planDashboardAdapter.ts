@@ -1,5 +1,6 @@
 import type { DashboardPlanDetail } from '@/lib/dashboardPlansMock';
 import { MOCK_DASHBOARD_PLANS } from '@/lib/dashboardPlansMock';
+import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 import {
   PLAN_CATEGORY_LABELS,
   PLAN_STATUT_LABELS,
@@ -33,7 +34,10 @@ export function getRegisteredPlanDetail(planId: string): DashboardPlanDetail | u
 
 export function resolveDashboardPlanById(planId: string): DashboardPlanDetail | undefined {
   if (archivedPlanIds.has(planId)) return undefined;
-  return runtimePlanDetails.get(planId) ?? MOCK_DASHBOARD_PLANS.find((plan) => plan.id === planId);
+  const runtime = runtimePlanDetails.get(planId);
+  if (runtime) return runtime;
+  if (!isDemoSeedEnabled()) return undefined;
+  return MOCK_DASHBOARD_PLANS.find((plan) => plan.id === planId);
 }
 
 const MOCK_PLAN_SUBTYPE_BY_ID: Record<string, Plan['subtype']> = {

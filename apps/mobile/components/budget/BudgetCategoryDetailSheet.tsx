@@ -22,6 +22,8 @@ import { SurfaceCard } from '@/components/SurfaceCard';
 
 import { TransactionRow } from '@/components/TransactionRow';
 
+import { BudgetCashflowImpactCard } from '@/components/budget/BudgetCashflowImpactCard';
+
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 
 import {
@@ -36,7 +38,7 @@ import {
   typographyKit,
 } from '@/constants/theme';
 
-import { deleteCategory, updateCategoryLimit, updateCategoryName } from '@/lib/budgetCategories';
+import { deleteCategory, getCategories, updateCategoryLimit, updateCategoryName } from '@/lib/budgetCategories';
 
 import type { BudgetCategoryUiModel } from '@/lib/budgetCategoryModel';
 
@@ -64,6 +66,10 @@ import { parseFormattedNumber } from '@/lib/formatNumber';
 
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { openTransactionDetail } from '@/lib/openTransactionDetail';
+import {
+  getPayEstimationSettings,
+  toMonthlyAveragePayAmount,
+} from '@/lib/payEstimationSettings';
 
 import {
   detailHeroAmount,
@@ -149,6 +155,8 @@ export function BudgetCategoryDetailSheet({
   const [transactionsLoading, setTransactionsLoading] = useState(false);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [otherCategoriesAllocatedTotal, setOtherCategoriesAllocatedTotal] = useState(0);
+  const [monthlyIncome, setMonthlyIncome] = useState<number | null>(null);
 
   useEffect(() => {
     if (!category) return;
@@ -163,6 +171,41 @@ export function BudgetCategoryDetailSheet({
     setConfirmDeleteVisible(false);
     setDeleting(false);
   }, [category?.id, visible, displayMonth]);
+
+  useEffect(() => {
+    if (!visible || !category) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [categories, paySettings] = await Promise.all([
+          getCategories(),
+          getPayEstimationSettings(),
+        ]);
+        if (cancelled) return;
+        setOtherCategoriesAllocatedTotal(
+          categories.reduce((sum, entry) => {
+            if (entry.id === category.id) return sum;
+            return sum + Math.max(0, entry.limit);
+          }, 0),
+        );
+        setMonthlyIncome(
+          paySettings.averageAmount != null
+            ? toMonthlyAveragePayAmount(paySettings.averageAmount, paySettings.frequency)
+            : null,
+        );
+      } catch {
+        if (!cancelled) {
+          setOtherCategoriesAllocatedTotal(0);
+          setMonthlyIncome(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, category?.id]);
 
   const usage = useMemo(() => {
     if (!category) return null;
@@ -183,6 +226,8 @@ export function BudgetCategoryDetailSheet({
     if (!category || !usage) return null;
     return getCategoryBudgetInsight(localName, category.spent, localLimit, usage);
   }, [category, localName, localLimit, usage]);
+
+  const impactCategoryLimit = localLimit > 0 ? localLimit : null;
 
   const barColor = budgetStatus?.color ?? colors.accentGreen;
   const barTrackColor = category
@@ -446,6 +491,13 @@ export function BudgetCategoryDetailSheet({
           </View>
         </SurfaceCard>
       ) : null}
+
+      <BudgetCashflowImpactCard
+        mode="edit"
+        categoryLimit={impactCategoryLimit}
+        otherCategoriesAllocatedTotal={otherCategoriesAllocatedTotal}
+        monthlyIncome={monthlyIncome}
+      />
 
       <View style={styles.transactionsSection}>
         <Pressable

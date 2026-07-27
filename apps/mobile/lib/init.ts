@@ -8,12 +8,14 @@ import { ensureDisplayLanguageFromDevice, hydrateRuntimePreferences } from './se
 import { hydrateRFAOnBoot } from './ai/rfaService';
 import { evaluateAlerts } from './ai/alertService';
 import { hydrateUserApiKeys } from './ai/userApiKeys';
+import { isDemoSeedEnabled } from './demoSeedGate';
 import { resetFinancialPlansHubIfNeeded } from './resetFinancialPlansHub';
 import { resetSavingsGoalsForHubDemoIfNeeded } from './resetSavingsGoalsHubDemo';
 import { ensureAverageUserBudgetBaseline, ensureDemoAccounts, seedDemoTransactionsIfMissing } from './seed';
 import { seedLoansIfMissing } from './seedLoans';
 import { seedRecurringPaymentsIfMissing } from './seedRecurringPayments';
 import { ensureMerchantLogoMemory } from './merchantLogoMemory';
+import { yieldToEventLoop } from './yieldToEventLoop';
 
 const INIT_SINGLETON_KEY = '__budgetTrackerDbInit__';
 
@@ -85,6 +87,9 @@ async function runSchemaInit(): Promise<void> {
 /**
  * Opens SQLite, repairs schema/orphans once, then ensures demo transactions exist.
  * Seeding runs on every call (fast no-op when Historique is already populated).
+ *
+ * On web: returns after schema only — budget baseline + optional demo seed run idle
+ * so Accueil can paint (webMemorySqlite work is sync under async and blocks timers).
  */
 export async function ensureDbReady(): Promise<void> {
   const initState = getInitSingletonState();
@@ -123,6 +128,56 @@ function scheduleDeferredBootWork(): void {
   });
 }
 
+/** Heavy catalog / demo work — must not run on the web critical path. */
+async function runHeavySeedWork(): Promise<void> {
+  await withTimeout(ensureAverageUserBudgetBaseline(), 'Budget baseline seeding', DB_INIT_TIMEOUT_MS);
+  await yieldToEventLoop();
+
+  if (isDemoSeedEnabled()) {
+    await withTimeout(
+      resetSavingsGoalsForHubDemoIfNeeded(),
+      'Savings goals hub demo reset',
+      DB_INIT_TIMEOUT_MS,
+    );
+    await yieldToEventLoop();
+    await withTimeout(
+      resetFinancialPlansHubIfNeeded(),
+      'Financial plans hub reset',
+      DB_INIT_TIMEOUT_MS,
+    );
+    await yieldToEventLoop();
+    await withTimeout(ensureDemoAccounts(), 'Demo accounts seeding', DB_INIT_TIMEOUT_MS);
+    await yieldToEventLoop();
+    await withTimeout(seedDemoTransactionsIfMissing(), 'Demo data seeding', DB_INIT_TIMEOUT_MS);
+    await yieldToEventLoop();
+    await withTimeout(seedRecurringPaymentsIfMissing(), 'Recurring payments seeding', DB_INIT_TIMEOUT_MS);
+    await yieldToEventLoop();
+    await withTimeout(seedLoansIfMissing(), 'Demo loans seeding', DB_INIT_TIMEOUT_MS);
+  } else {
+    // Still run non-destructive plan hub migration (no fake fonds goal when gated).
+    await withTimeout(
+      resetFinancialPlansHubIfNeeded(),
+      'Financial plans hub reset',
+      DB_INIT_TIMEOUT_MS,
+    );
+  }
+}
+
+function scheduleWebDeferredSeed(): void {
+  runWhenIdle(() => {
+    void (async () => {
+      try {
+        console.log('[Boot] web deferred seed starting');
+        await runHeavySeedWork();
+        console.log('[Boot] web deferred seed complete');
+      } catch (error: unknown) {
+        console.warn('[Boot] web deferred seed failed (non-blocking)', error);
+      }
+      scheduleDeferredBootWork();
+    })();
+  });
+}
+
 async function runBootSequence(initState: InitSingletonState): Promise<void> {
   if (!initState.schemaReady) {
     if (!initState.schemaInitPromise) {
@@ -153,24 +208,16 @@ async function runBootSequence(initState: InitSingletonState): Promise<void> {
     console.warn('[Boot] user API keys hydrate failed (non-blocking)', error);
   });
 
-  try {
-    // Core demo/data path — needed for Accueil / Historique correctness.
-    await withTimeout(
-      resetSavingsGoalsForHubDemoIfNeeded(),
-      'Savings goals hub demo reset',
-      DB_INIT_TIMEOUT_MS,
-    );
-    await withTimeout(
-      resetFinancialPlansHubIfNeeded(),
-      'Financial plans hub reset',
-      DB_INIT_TIMEOUT_MS,
-    );
-    await withTimeout(ensureAverageUserBudgetBaseline(), 'Budget baseline seeding', DB_INIT_TIMEOUT_MS);
-    await withTimeout(ensureDemoAccounts(), 'Demo accounts seeding', DB_INIT_TIMEOUT_MS);
-    await withTimeout(seedDemoTransactionsIfMissing(), 'Demo data seeding', DB_INIT_TIMEOUT_MS);
-    await withTimeout(seedRecurringPaymentsIfMissing(), 'Recurring payments seeding', DB_INIT_TIMEOUT_MS);
-    await withTimeout(seedLoansIfMissing(), 'Demo loans seeding', DB_INIT_TIMEOUT_MS);
+  // Web: unblock Accueil immediately after schema. Baseline + demo (if opted in)
+  // run after interactions with event-loop yields so the browser can paint.
+  if (Platform.OS === 'web') {
+    initState.bootComplete = true;
+    scheduleWebDeferredSeed();
+    return;
+  }
 
+  try {
+    await runHeavySeedWork();
     initState.bootComplete = true;
   } catch (error: unknown) {
     console.warn('[Boot] demo seed failed (non-blocking)', error);

@@ -208,10 +208,12 @@ export function resolveSimulatedAccountLogoUrl(account: SimulatedAccount): strin
   if (account.kind === 'cash') {
     return account.logoUrl?.trim() || cashBanknotesLogoUri() || null;
   }
+  // Prefer live name→logo inference so "Visa Desjardins" tracks the bank mark
+  // even when an older saved favicon pointed at the card network.
   return (
-    account.logoUrl?.trim() ||
     getAccountLogoUrl(account.institution?.trim() || account.name) ||
     getAccountLogoUrl(account.name) ||
+    account.logoUrl?.trim() ||
     null
   );
 }

@@ -61,12 +61,16 @@ const DAY_PITCH = DAY_SQUARE_WIDTH + DAY_DIVIDER_WIDTH;
 /** Timeline maps to N day columns currently visible in the strip viewport. */
 const TIMELINE_VISIBLE_DAYS = 7;
 const TIMELINE_DOT_SIZE = 8;
-/** Right-pointing chevron (`>`) marking today on the timeline track. */
-const TODAY_CURSOR_SIZE = 16;
+/** Right-pointing chevron (`>`) marking today — kept larger than payment dots. */
+const TODAY_CURSOR_ICON_SIZE = 18;
+/** Hit/ring box around the today cursor (must clear an 8px payment dot). */
+const TODAY_CURSOR_SIZE = 26;
+/** Lift cursor above the track center so same-day payment dots don’t bury it. */
+const TODAY_CURSOR_LIFT = 10;
 /** Alias kept so Fast Refresh / older evals never throw ReferenceError. */
 const TODAY_CURSOR_HEIGHT = TODAY_CURSOR_SIZE;
 const TIMELINE_SEGMENT_TICK_HEIGHT = 7;
-/** Track stays ~12px; today chevron may overflow vertically when centered. */
+/** Track stays ~12px; today chevron may overflow vertically when lifted. */
 const TIMELINE_TRACK_HEIGHT = Math.max(
   TIMELINE_DOT_SIZE,
   TIMELINE_SEGMENT_TICK_HEIGHT,
@@ -384,7 +388,7 @@ export function AgendaCashHeroCard({
 
   return (
     <DashboardCard padding={spacing.lg} innerStyle={styles.cardInner}>
-      <Text style={[typographyKit.eyebrow, { color: colors.primary }]}>Solde chèque</Text>
+      <Text style={[typographyKit.eyebrow, { color: colors.primary }]}>Prévision du solde</Text>
 
       <Text
         style={[moneyAmountTypography({ tier: 'netWorth' }), styles.amount, { color: colors.text }]}
@@ -420,25 +424,6 @@ export function AgendaCashHeroCard({
                       ]}
                     />
                   ))}
-                  {timeline.todayLeft != null ? (
-                    <View
-                      style={[
-                        styles.timelineTodayCursor,
-                        {
-                          left: timeline.todayLeft,
-                          marginLeft: -TODAY_CURSOR_SIZE / 2,
-                        },
-                      ]}
-                      accessibilityLabel="Aujourd'hui"
-                    >
-                      <AppIcon
-                        family="ionicons"
-                        name="chevron-forward"
-                        size={TODAY_CURSOR_SIZE}
-                        color={colors.primary}
-                      />
-                    </View>
-                  ) : null}
                   {timeline.paymentMarkers.map((marker, index) => (
                     <View
                       key={marker.dateKey}
@@ -469,6 +454,30 @@ export function AgendaCashHeroCard({
                       ]}
                       accessibilityLabel="Paie estimée"
                     />
+                  ) : null}
+                  {timeline.todayLeft != null ? (
+                    <View
+                      pointerEvents="none"
+                      style={[
+                        styles.timelineTodayCursor,
+                        {
+                          left: timeline.todayLeft,
+                          marginLeft: -TODAY_CURSOR_SIZE / 2,
+                          borderColor: colors.primary,
+                          backgroundColor: isLight
+                            ? 'rgba(255, 255, 255, 0.92)'
+                            : 'rgba(10, 10, 10, 0.92)',
+                        },
+                      ]}
+                      accessibilityLabel="Aujourd'hui"
+                    >
+                      <AppIcon
+                        family="ionicons"
+                        name="chevron-forward"
+                        size={TODAY_CURSOR_ICON_SIZE}
+                        color={colors.primary}
+                      />
+                    </View>
                   ) : null}
                 </View>
                 <View
@@ -623,6 +632,8 @@ const styles = StyleSheet.create({
   timelineBlock: {
     width: '100%',
     minHeight: TIMELINE_TRACK_HEIGHT + TIMELINE_AMOUNT_RESERVE,
+    // Room for the lifted today cursor above the track.
+    paddingTop: TODAY_CURSOR_LIFT + 4,
     paddingBottom: spacing.md,
     gap: 2,
   },
@@ -641,6 +652,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: TIMELINE_TRACK_HEIGHT,
     justifyContent: 'center',
+    overflow: 'visible',
   },
   timelineLine: {
     height: StyleSheet.hairlineWidth * 2,
@@ -657,12 +669,16 @@ const styles = StyleSheet.create({
   },
   timelineTodayCursor: {
     position: 'absolute',
-    top: (TIMELINE_TRACK_HEIGHT - TODAY_CURSOR_HEIGHT) / 2,
+    // Sit above the track so same-day payment/paycheck dots stay readable underneath.
+    top: (TIMELINE_TRACK_HEIGHT - TODAY_CURSOR_HEIGHT) / 2 - TODAY_CURSOR_LIFT,
     width: TODAY_CURSOR_SIZE,
     height: TODAY_CURSOR_HEIGHT,
+    borderRadius: TODAY_CURSOR_SIZE / 2,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 3,
+    zIndex: 5,
+    elevation: 5,
   },
   timelineDot: {
     position: 'absolute',

@@ -2,10 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { DashboardCard } from '@/components/DashboardCard';
 import { StockHoldingTile } from '@/components/StockHoldingTile';
-import {
-  MOCK_STOCK_HOLDINGS,
-  mockStockPortfolioTotalValue,
-} from '@/constants/mockStockPortfolio';
+import { mockStockPortfolioTotalValue } from '@/constants/mockStockPortfolio';
 import {
   moneyAmountTypography,
   PORTFOLIO_SECTION_GAP,
@@ -13,13 +10,16 @@ import {
   typographyKit,
 } from '@/constants/theme';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
+import { getDemoStockHoldings } from '@/lib/mockStockHoldingsOrder';
 import { useAppTheme } from '@/lib/themeContext';
 
 export function StockPortfolioSection() {
   const router = useRouter();
   const { colors } = useAppTheme();
-  const holdings = MOCK_STOCK_HOLDINGS;
+  const holdings = [...getDemoStockHoldings()];
   const portfolioTotal = mockStockPortfolioTotalValue(holdings);
+
+  if (holdings.length === 0) return null;
 
   return (
     <View style={styles.section}>

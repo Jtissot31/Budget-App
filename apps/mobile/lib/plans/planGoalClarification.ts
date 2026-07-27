@@ -1,4 +1,5 @@
 import type { FinancialSummaryAnonymous } from '@/lib/ai/types';
+import { formatNumberDisplay } from '@/lib/formatNumber';
 import type { PlanSuggere } from './Plan';
 import { buildPlanRecommendationContext } from './buildPlanRecommendationContext';
 import { filterRfaDebtsEligibleForAcceleratedPlan } from './debtPlanEligibility';
@@ -92,7 +93,7 @@ function normalizeUserText(text: string): string {
 }
 
 function formatSurplusFr(surplus: number): string {
-  const abs = Math.round(Math.abs(surplus)).toLocaleString('fr-CA');
+  const abs = formatNumberDisplay(Math.round(Math.abs(surplus)));
   if (surplus < 0) return `−${abs}`;
   if (surplus > 0) return `+${abs}`;
   return '0';

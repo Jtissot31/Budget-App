@@ -2,9 +2,17 @@
  * Logos marchands : assets locaux haute résolution en priorité, puis favicons publics
  * (domaine déduit du nom). Clearbit (logo.clearbit.com) est déprécié / souvent bloqué —
  * on utilise une chaîne Google s2 favicons → icône DDG en secours.
+ *
+ * Logos banques / institutions : catalogue dans `bankInstitutions.ts`.
+ * `getAccountLogoUrl` délègue à cette banque d’institutions.
  */
 
 import { Asset } from 'expo-asset';
+import {
+  getBankInstitutionLogoUrls,
+  KNOWN_BANK_INSTITUTION_LABELS,
+  matchBankInstitution,
+} from '@/lib/bankInstitutions';
 import type { MerchantOverride } from '@/types';
 
 /** Bundled merchant logos (full resolution — not downscaled favicons). */
@@ -19,7 +27,6 @@ const MAXI_LOGO = require('@/assets/merchants/maxi.png');
 const COUCHE_TARD_LOGO = require('@/assets/merchants/couche-tard.png');
 const MCDONALDS_LOGO = require('@/assets/merchants/mcdonalds.png');
 const SUPER_C_LOGO = require('@/assets/merchants/super-c.png');
-const VISA_LOGO = require('@/assets/merchants/visa.png');
 
 /** Normalized merchant key → bundled asset module id */
 const MERCHANT_LOCAL_ASSET_BY_KEY: Record<string, number> = {
@@ -76,8 +83,6 @@ const MERCHANT_DOMAIN_MAP: Record<string, string> = {
   'amazon prime': 'amazon.com',
   apple: 'apple.com',
   'apple store': 'apple.com',
-  icloud: 'icloud.com',
-  'icloud+': 'icloud.com',
   icloud: 'icloud.com',
   'icloud+': 'icloud.com',
   'disney+': 'disneyplus.com',
@@ -147,11 +152,14 @@ const MERCHANT_DOMAIN_MAP: Record<string, string> = {
   'jean coutu': 'jeancoutu.com',
   jeancoutu: 'jeancoutu.com',
   desjardins: 'desjardins.com',
+  tangerine: 'tangerine.ca',
   rbc: 'rbcroyalbank.com',
   td: 'td.com',
   bmo: 'bmo.com',
   scotiabank: 'scotiabank.com',
   cibc: 'cibc.com',
+  'banque nationale': 'bnc.ca',
+  'national bank': 'nbc.ca',
   telus: 'telus.com',
   bell: 'bell.ca',
   rogers: 'rogers.com',
@@ -255,40 +263,6 @@ const GENERIC_TRANSACTION_LABELS = new Set([
   'autre',
   'divers',
 ]);
-
-/** Partial account/institution label → bundled logo (checked before remote favicons). */
-const ACCOUNT_LOCAL_ASSET_KEYWORDS: Array<[string, number]> = [
-  ['visa', VISA_LOGO],
-];
-
-const ACCOUNT_KEYWORD_DOMAIN_MAP: Array<[string, string]> = [
-  ['desjardins', 'desjardins.com'],
-  ['tangerine', 'tangerine.ca'],
-  ['visa', 'visa.com'],
-  ['mastercard', 'mastercard.com'],
-  ['amex', 'americanexpress.com'],
-  ['american express', 'americanexpress.com'],
-  ['rbc', 'rbcroyalbank.com'],
-  ['royal bank', 'rbcroyalbank.com'],
-  ['td', 'td.com'],
-  ['bmo', 'bmo.com'],
-  ['scotia', 'scotiabank.com'],
-  ['scotiabank', 'scotiabank.com'],
-  ['cibc', 'cibc.com'],
-  ['national bank', 'nbc.ca'],
-  ['banque nationale', 'bnc.ca'],
-  ['laurentienne', 'blc.ca'],
-  ['wealthsimple', 'wealthsimple.com'],
-  ['koho', 'koho.ca'],
-  ['neo financial', 'neofinancial.com'],
-  ['neo', 'neofinancial.com'],
-  ['eq bank', 'eqbank.ca'],
-  ['simplii', 'simplii.com'],
-  ['pc financial', 'pcfinancial.ca'],
-  ['president choice financial', 'pcfinancial.ca'],
-  ['presidents choice financial', 'pcfinancial.ca'],
-  ["president's choice financial", 'pcfinancial.ca'],
-];
 
 export const KNOWN_MERCHANT_NAMES = [
   'Starbucks',
@@ -531,19 +505,6 @@ export function resolveTransactionMerchantLogo(
   return { logoUrl: null, merchantLabel: label, manualIcon: null };
 }
 
-function resolveAccountLogoDomain(name: string): string | null {
-  const key = normalizeMerchantKey(name);
-  if (!key) return null;
-
-  for (const [needle, domain] of ACCOUNT_KEYWORD_DOMAIN_MAP) {
-    if (key.includes(needle)) return domain;
-  }
-
-  const exact = MERCHANT_DOMAIN_MAP[key];
-  if (exact) return exact;
-  return domainFromDomainLikeName(name);
-}
-
 function faviconUrlsForDomain(domain: string): string[] {
   const enc = encodeURIComponent(domain);
   return [
@@ -558,15 +519,6 @@ function resolveLocalMerchantAsset(name: string): number | null {
   const direct = MERCHANT_LOCAL_ASSET_BY_KEY[key];
   if (direct) return direct;
   for (const [needle, asset] of MERCHANT_LOCAL_ASSET_KEYWORDS) {
-    if (key.includes(needle)) return asset;
-  }
-  return null;
-}
-
-function resolveLocalAccountAsset(name: string): number | null {
-  const key = normalizeMerchantKey(name);
-  if (!key) return null;
-  for (const [needle, asset] of ACCOUNT_LOCAL_ASSET_KEYWORDS) {
     if (key.includes(needle)) return asset;
   }
   return null;
@@ -599,16 +551,34 @@ export function getMerchantLogoUrl(name: string): string | null {
   return urls[0] ?? null;
 }
 
+/**
+ * Account / institution logos — prefers the bank institution catalog
+ * (`bankInstitutions.ts`), then merchant domain map / hostname fallback.
+ */
 export function getAccountLogoUrls(name: string): string[] {
-  const localAsset = resolveLocalAccountAsset(name);
-  if (localAsset) return [resolveBundledAssetUri(localAsset)];
-  const domain = resolveAccountLogoDomain(name);
-  if (!domain) return [];
-  return faviconUrlsForDomain(domain);
+  const fromBank = getBankInstitutionLogoUrls(name);
+  if (fromBank.length > 0) return fromBank;
+
+  // Fallback: merchant domain map (e.g. rare labels) or bare hostname.
+  const key = normalizeMerchantKey(name);
+  if (!key) return [];
+  const exact = MERCHANT_DOMAIN_MAP[key];
+  if (exact) return faviconUrlsForDomain(exact);
+  const host = domainFromDomainLikeName(name);
+  if (host) return faviconUrlsForDomain(host);
+  return [];
 }
 
 export function getAccountLogoUrl(name: string): string | null {
   return getAccountLogoUrls(name)[0] ?? null;
+}
+
+/** @see KNOWN_BANK_INSTITUTION_LABELS in bankInstitutions.ts */
+export const KNOWN_INSTITUTION_LOGO_LABELS = KNOWN_BANK_INSTITUTION_LABELS;
+
+/** True when the label matches a known bank / card network in the institution bank. */
+export function hasKnownInstitutionLogo(name: string): boolean {
+  return matchBankInstitution(name) != null;
 }
 
 export const POPULAR_MERCHANT_LOGO_OPTIONS = [

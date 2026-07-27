@@ -1,6 +1,6 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PageTransition } from '@/components/PageTransition';
@@ -14,17 +14,45 @@ import {
   typography,
 } from '@/constants/theme';
 import { planListSubtitle, planProgressSummary } from '@/lib/dashboardPlanPresentation';
-import { MOCK_DASHBOARD_PLANS } from '@/lib/dashboardPlansMock';
+import { MOCK_DASHBOARD_PLANS, type DashboardPlanDetail } from '@/lib/dashboardPlansMock';
+import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
+import { dataEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
+import { planToDashboardDetail } from '@/lib/plans/planDashboardAdapter';
+import { loadUserPlans } from '@/lib/plans/plansStore';
 import { useAppTheme } from '@/lib/themeContext';
 
 export default function PlansListScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useAppTheme();
+  const [plans, setPlans] = useState<DashboardPlanDetail[]>([]);
 
-  const activeCount = MOCK_DASHBOARD_PLANS.filter((plan) => plan.statusTone === 'positive').length;
-  const attentionCount = MOCK_DASHBOARD_PLANS.length - activeCount;
+  const refresh = useCallback(async () => {
+    if (isDemoSeedEnabled()) {
+      setPlans(MOCK_DASHBOARD_PLANS);
+      return;
+    }
+    const stored = await loadUserPlans();
+    setPlans(
+      stored
+        .filter((plan) => plan.statut === 'actif' || plan.statut === 'en_pause')
+        .map(planToDashboardDetail),
+    );
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    return dataEvents.subscribe(() => {
+      void refresh();
+    });
+  }, [refresh]);
+
+  const activeCount = useMemo(
+    () => plans.filter((plan) => plan.statusTone === 'positive').length,
+    [plans],
+  );
+  const attentionCount = plans.length - activeCount;
 
   return (
     <PageTransition>
@@ -50,12 +78,18 @@ export default function PlansListScreen() {
           contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom + spacing.xl, 56) }]}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={[styles.intro, { color: colors.textMuted }, interMediumText]}>
-            {MOCK_DASHBOARD_PLANS.length} plans actifs · {activeCount} en bonne voie
-            {attentionCount > 0 ? ` · ${attentionCount} à surveiller` : ''}
-          </Text>
+          {plans.length === 0 ? (
+            <Text style={[styles.intro, { color: colors.textMuted }, interMediumText]}>
+              Aucun plan actif pour le moment. Crée-en un depuis le hub Plans.
+            </Text>
+          ) : (
+            <Text style={[styles.intro, { color: colors.textMuted }, interMediumText]}>
+              {plans.length} plans actifs · {activeCount} en bonne voie
+              {attentionCount > 0 ? ` · ${attentionCount} à surveiller` : ''}
+            </Text>
+          )}
 
-          {MOCK_DASHBOARD_PLANS.map((plan) => {
+          {plans.map((plan) => {
             const progressColor = plan.progressPositive ? colors.accentGreen : colors.danger;
             const statusColor = plan.statusTone === 'positive' ? colors.accentGreen : colors.warning;
 

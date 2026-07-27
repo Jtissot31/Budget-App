@@ -1,11 +1,14 @@
 import { getSetting, setSetting } from '@/lib/db';
 import { resetAppTour } from '@/lib/appTour';
+import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
+import { Platform } from 'react-native';
 
 /**
  * Single completion flag for the first-run intro:
- * welcome → features → name → optional Fyn.
- * The in-app guided tab tour runs after this (see `appTour.ts`).
- * « Revoir l’introduction » clears intro + tour so both replay.
+ * welcome → features → name → pay → housing → optional Fyn.
+ * Pay + housing answers feed agenda estimates and Budgets (see `onboardingMoney.ts`).
+ * The in-app guided tab tour is disabled after intro (see `appTour.ts`).
+ * « Revoir l’introduction » clears intro only.
  */
 const ONBOARDING_COMPLETED_KEY = 'onboarding_completed';
 
@@ -35,8 +38,8 @@ export function subscribeOnboardingCompleted(listener: OnboardingListener): () =
 
 /**
  * One-shot: if `onboarding_completed` was never written, decide from prior seed.
- * Existing installs (seed version already present) → completed.
- * Brand-new DB (no seed yet) → show intro.
+ * Existing installs that already ran demo seed → completed.
+ * Brand-new / release APK (no demo seed) → show intro.
  * Must run before demo seed on first boot of this feature.
  */
 async function ensureOnboardingGateInitialized(): Promise<void> {
@@ -44,6 +47,19 @@ async function ensureOnboardingGateInitialized(): Promise<void> {
     gateReadyPromise = (async () => {
       const flag = await getSetting(ONBOARDING_COMPLETED_KEY, '__missing__');
       if (flag !== '__missing__') return;
+
+      // Never auto-skip onboarding on release builds — fresh APKs must see intro.
+      // Only treat prior demo seed as "already onboarded" when demo seeding is enabled.
+      if (!isDemoSeedEnabled()) {
+        // Web Metro: skip intro so Accueil cold-start isn't blocked by the wizard
+        // (demo seed is also off on web by default).
+        if (Platform.OS === 'web' && typeof __DEV__ !== 'undefined' && __DEV__) {
+          await setSetting(ONBOARDING_COMPLETED_KEY, '1', { emit: false });
+          return;
+        }
+        await setSetting(ONBOARDING_COMPLETED_KEY, '0', { emit: false });
+        return;
+      }
 
       const seedVersion = await getSetting('demo_transactions_seed_version', '');
       const completed = Boolean(seedVersion && seedVersion !== '0');
@@ -66,7 +82,7 @@ export async function setOnboardingCompleted(done: boolean): Promise<void> {
   emitOnboardingCompleted(done);
 }
 
-/** Clear intro + guided tour so both show again (Réglages → Revoir l'introduction). */
+/** Clear intro; guided tour stays marked completed (no post-onboarding overlay). */
 export async function resetOnboarding(): Promise<void> {
   await resetAppTour();
   await setOnboardingCompleted(false);

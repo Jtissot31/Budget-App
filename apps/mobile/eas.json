@@ -8,11 +8,19 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SEED_DEMO": "0",
+        "EXPO_PUBLIC_USE_MOCK_DATA": "0"
       }
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_SEED_DEMO": "0",
+        "EXPO_PUBLIC_USE_MOCK_DATA": "0"
       }
     }
   }

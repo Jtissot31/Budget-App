@@ -1,3 +1,4 @@
+import { formatNumberDisplay } from '@/lib/formatNumber';
 import type { PlanCategory, PlanSignalDeclencheur, PlanSubtype } from './Plan';
 import type { PlanRecommendationContext } from './buildPlanRecommendationContext';
 
@@ -22,8 +23,12 @@ function canRecommendAcceleratedDebtPlan(ctx: PlanRecommendationContext): boolea
   return ctx.cashflow_viable_pour_extra_dette;
 }
 
+function formatMoneyFr(value: number): string {
+  return formatNumberDisplay(Math.round(Math.abs(value)));
+}
+
 function formatSurplusFr(surplus: number): string {
-  const abs = Math.round(Math.abs(surplus)).toLocaleString('fr-CA');
+  const abs = formatMoneyFr(surplus);
   if (surplus < 0) return `−${abs}`;
   if (surplus > 0) return `+${abs}`;
   return '0';
@@ -58,7 +63,7 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
       ctx.droits_cotisation_reer_disponibles > 0 &&
       !ctx.contexte_dette_lourde,
     buildRaisonHeuristique: (ctx) =>
-      `Avec un revenu stable et environ ${ctx.droits_cotisation_reer_disponibles.toLocaleString('fr-CA')} $ de droits REER estimés, une cotisation structurée peut réduire ton impôt tout en épargnant.`,
+      `Avec un revenu stable et environ ${formatMoneyFr(ctx.droits_cotisation_reer_disponibles)} $ de droits REER estimés, une cotisation structurée peut réduire ton impôt tout en épargnant.`,
   },
   {
     id: 'rule-celi',
@@ -74,7 +79,7 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
       !ctx.objectif_court_terme_actif &&
       !ctx.contexte_dette_lourde,
     buildRaisonHeuristique: (ctx) =>
-      `Tu as de l'espace CELI estimé à ${ctx.droits_cotisation_celi_disponibles.toLocaleString('fr-CA')} $ sans objectif court terme en cours — bon moment pour automatiser une cotisation.`,
+      `Tu as de l'espace CELI estimé à ${formatMoneyFr(ctx.droits_cotisation_celi_disponibles)} $ sans objectif court terme en cours — bon moment pour automatiser une cotisation.`,
   },
   {
     id: 'rule-celiapp',
@@ -137,7 +142,7 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
       ctx.nombre_dettes_actives >= 1 &&
       ctx.liquidites_excedentaires >= Math.max(ctx.depenses_mensuelles * 0.25, 750),
     buildRaisonHeuristique: (ctx) =>
-      `Environ ${Math.round(ctx.liquidites_excedentaires).toLocaleString('fr-CA')} $ au-dessus d'un mois de sécurité — assez pour frapper fort. Tu envoies un gros paiement sur ta dette la plus chère et tu coupes des mois d'intérêts d'un coup. À envisager seulement si tu gardes une réserve d'urgence derrière.`,
+      `Environ ${formatMoneyFr(ctx.liquidites_excedentaires)} $ au-dessus d'un mois de sécurité — assez pour frapper fort. Tu envoies un gros paiement sur ta dette la plus chère et tu coupes des mois d'intérêts d'un coup. À envisager seulement si tu gardes une réserve d'urgence derrière.`,
   },
   {
     id: 'rule-consolidation',
@@ -165,7 +170,7 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
     defaultMontantCible: null,
     evaluate: (ctx) => canRecommendAcceleratedDebtPlan(ctx) && ctx.nombre_dettes_actives === 1,
     buildRaisonHeuristique: (ctx) =>
-      `Une seule dette de ${Math.round(ctx.dette_totale).toLocaleString('fr-CA')} $ — pas besoin de choisir entre avalanche et boule de neige. Tu fixes un montant mensuel au-dessus du minimum et un échéancier clair. Chaque surplus accélère directement ta date de liberté.`,
+      `Une seule dette de ${formatMoneyFr(ctx.dette_totale)} $ — pas besoin de choisir entre avalanche et boule de neige. Tu fixes un montant mensuel au-dessus du minimum et un échéancier clair. Chaque surplus accélère directement ta date de liberté.`,
   },
   {
     id: 'rule-marge-credit',
@@ -192,7 +197,7 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
     defaultMontantCible: null,
     evaluate: (ctx) => ctx.revenu_travailleur_autonome_detecte,
     buildRaisonHeuristique: (ctx) =>
-      `Avec un profil de revenus variables, une réserve d'environ ${Math.round(ctx.revenu_mensuel_net * 0.25).toLocaleString('fr-CA')} $/mois évite les surprises fiscales.`,
+      `Avec un profil de revenus variables, une réserve d'environ ${formatMoneyFr(ctx.revenu_mensuel_net * 0.25)} $/mois évite les surprises fiscales.`,
   },
   {
     id: 'rule-enveloppe',
@@ -207,7 +212,7 @@ export const PLAN_RECOMMENDATION_RULES: readonly PlanRecommendationRule[] = [
       !ctx.cashflow_viable_pour_extra_dette || ctx.categorie_depassee_mois_consecutifs >= 2,
     buildRaisonHeuristique: (ctx) =>
       !ctx.cashflow_viable_pour_extra_dette
-        ? `Tes dépenses (${Math.round(ctx.depenses_mensuelles).toLocaleString('fr-CA')} $/mois) dépassent ou serrent tes revenus (${Math.round(ctx.revenu_mensuel_net).toLocaleString('fr-CA')} $/mois) — surplus d’environ ${formatSurplusFr(ctx.surplus_mensuel)} $/mois. Des enveloppes aident à couper là où ça compte avant d’accélérer les dettes.`
+        ? `Tes dépenses (${formatMoneyFr(ctx.depenses_mensuelles)} $/mois) dépassent ou serrent tes revenus (${formatMoneyFr(ctx.revenu_mensuel_net)} $/mois) — surplus d’environ ${formatSurplusFr(ctx.surplus_mensuel)} $/mois. Des enveloppes aident à couper là où ça compte avant d’accélérer les dettes.`
         : `${ctx.categorie_depassee_mois_consecutifs} catégories dépassent leur limite — des enveloppes mensuelles clarifient où couper sans surprise.`,
   },
   {

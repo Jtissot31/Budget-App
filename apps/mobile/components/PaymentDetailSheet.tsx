@@ -46,12 +46,18 @@ import {
 import {
   deleteRecurringPayment,
   deleteTransactionById,
-  getCategories,
   getCategoryBudgets,
   getRecurringPayments,
   getSimulatedAccounts,
   upsertRecurringPayment,
 } from '@/lib/db';
+import {
+  BUDGET_CATEGORY_PICKER_EMPTY_HINT,
+  ensureCategoryInPickerList,
+  loadBudgetCategoriesForPicker,
+  loadRecurringPickerCategories,
+} from '@/lib/budgetCategories';
+import { INCOME_CATEGORY } from '@/constants/categoryOptions';
 import { dataEvents } from '@/lib/events';
 import { HandledSaveError } from '@/lib/editableSaveError';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
@@ -229,7 +235,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
       try {
         const [payments, categories, simulatedAccounts] = await Promise.all([
           getRecurringPayments(),
-          getCategories(),
+          loadBudgetCategoriesForPicker(),
           getSimulatedAccounts(),
         ]);
         if (cancelled) return;
@@ -241,8 +247,18 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
           return;
         }
 
+        const pickerCategories =
+          payment.kind === 'income'
+            ? [INCOME_CATEGORY]
+            : ensureCategoryInPickerList(categories, {
+                id: payment.categoryId ?? '',
+                name: payment.categoryName ?? '',
+                icon: payment.categoryIcon,
+                color: payment.categoryColor,
+              });
+
         setInlineAccounts(accounts);
-        setInlineCategories(categories);
+        setInlineCategories(pickerCategories);
         setInlinePayment(payment);
       } catch {
         if (!cancelled) {
@@ -600,20 +616,27 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
             icon: 'pricetag-outline',
             ...(inlineEditable
               ? {
-                  valueContent: (
-                    <EditableField
-                      type="select"
-                      value={displayCategoryName || EMPTY_DETAIL_VALUE}
-                      selectedId={displayCategoryId ?? categoryPickerOptions[0]?.id ?? ''}
-                      selectOptions={categoryPickerOptions}
-                      pickerTitle="Catégorie"
-                      onSave={handleSaveCategory}
-                      align="right"
-                      accessibilityLabel="Modifier la catégorie"
-                      containerStyle={detailRowEditableContainer}
-                      textStyle={detailRowSelectTextStyle}
-                    />
-                  ),
+                  valueContent:
+                    categoryPickerOptions.length > 0 ? (
+                      <EditableField
+                        type="select"
+                        value={displayCategoryName || EMPTY_DETAIL_VALUE}
+                        selectedId={displayCategoryId ?? categoryPickerOptions[0]?.id ?? ''}
+                        selectOptions={categoryPickerOptions}
+                        pickerTitle="Catégorie"
+                        onSave={handleSaveCategory}
+                        align="right"
+                        accessibilityLabel="Modifier la catégorie"
+                        containerStyle={detailRowEditableContainer}
+                        textStyle={detailRowSelectTextStyle}
+                      />
+                    ) : (
+                      <Text
+                        style={[detailRowSelectTextStyle, { color: colors.textMuted, textAlign: 'right' }]}
+                      >
+                        {BUDGET_CATEGORY_PICKER_EMPTY_HINT}
+                      </Text>
+                    ),
                 }
               : null),
           },
@@ -627,6 +650,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
     categoryPickerOptions,
     colors.success,
     colors.text,
+    colors.textMuted,
     detail,
     displayAccountLabel,
     displayAmount,
@@ -665,7 +689,7 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
       void (async () => {
         try {
           const [categories, categoryBudgets, simulatedAccounts] = await Promise.all([
-            getCategories(),
+            loadRecurringPickerCategories(),
             getCategoryBudgets(),
             getSimulatedAccounts(),
           ]);

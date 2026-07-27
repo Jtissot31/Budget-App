@@ -1,4 +1,5 @@
 import { DASHBOARD_ACCOUNTS } from '@/constants/dashboardMockAccounts';
+import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 import type { RecurringPayment, RecurringPaymentKind, SimulatedAccount } from '@/types';
 
 export type PaymentResolutionAccount = {
@@ -68,6 +69,7 @@ export function toPaymentResolutionAccounts(accounts: SimulatedAccount[]): Payme
       creditLimit: account.creditLimit,
     }));
   }
+  if (!isDemoSeedEnabled()) return [];
   return DASHBOARD_ACCOUNTS.map((account) => ({
     id: account.id,
     name: account.name,

@@ -3,6 +3,8 @@
  * Kept free of DB / RFA I/O so unit tests stay Node-friendly.
  */
 
+import { formatNumberDisplay } from '@/lib/formatNumber';
+
 export type PlanGoalPriorityInput = {
   cashflowViableForDebtExtra: boolean;
   surplusMensuel: number;
@@ -26,8 +28,12 @@ export type PlanGoalPriorityResult = {
   reason: string;
 };
 
+function formatMoneyFr(value: number): string {
+  return formatNumberDisplay(Math.round(Math.abs(value)));
+}
+
 function formatSurplusFr(surplus: number): string {
-  const abs = Math.round(Math.abs(surplus)).toLocaleString('fr-CA');
+  const abs = formatMoneyFr(surplus);
   if (surplus < 0) return `−${abs}`;
   if (surplus > 0) return `+${abs}`;
   return '0';
@@ -51,7 +57,7 @@ export function resolveSuggestedPlanGoal(input: PlanGoalPriorityInput): PlanGoal
   if (input.contexteDetteLourde || input.dettesAccelerablesCount >= 2) {
     return {
       suggested: 'debt_repayment',
-      reason: `tu as ${input.dettesAccelerablesCount} dettes actives (${Math.round(input.detteTotale).toLocaleString('fr-CA')} $ au total) — les rembourser en priorité libère du cashflow.`,
+      reason: `tu as ${input.dettesAccelerablesCount} dettes actives (${formatMoneyFr(input.detteTotale)} $ au total) — les rembourser en priorité libère du cashflow.`,
     };
   }
 
@@ -59,7 +65,7 @@ export function resolveSuggestedPlanGoal(input: PlanGoalPriorityInput): PlanGoal
     const label = input.singleDebtLabel ?? 'Cette dette';
     return {
       suggested: 'debt_repayment',
-      reason: `${label} affiche encore ${Math.round(input.detteTotale).toLocaleString('fr-CA')} $ — un plan ciblé accélère le remboursement.`,
+      reason: `${label} affiche encore ${formatMoneyFr(input.detteTotale)} $ — un plan ciblé accélère le remboursement.`,
     };
   }
 

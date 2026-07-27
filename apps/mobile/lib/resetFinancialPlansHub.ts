@@ -1,5 +1,6 @@
 import { getGoalGreenShade } from '@/constants/theme';
 import { MOCK_DASHBOARD_PLANS } from '@/lib/dashboardPlansMock';
+import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 import { getSavingsGoals, getSetting, setSetting, upsertSavingsGoal } from '@/lib/db';
 import { isSavingsGoalPlanSubtype, type PlanActifOuTermine } from '@/lib/plans/Plan';
 import { registerPlanDetailForNavigation } from '@/lib/plans/planDashboardAdapter';
@@ -78,7 +79,10 @@ export async function resetFinancialPlansHubIfNeeded(): Promise<boolean> {
     registerPlanDetailForNavigation(plan);
   }
 
-  await ensureFondsUrgenceSavingsGoal(fondsPlan);
+  // Only seed the demo fonds d'urgence goal when demo data is enabled.
+  if (isDemoSeedEnabled()) {
+    await ensureFondsUrgenceSavingsGoal(fondsPlan);
+  }
   await setSetting(FINANCIAL_PLANS_HUB_RESET_KEY, FINANCIAL_PLANS_HUB_RESET_VERSION, { emit: false });
   return true;
 }

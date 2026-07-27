@@ -31,7 +31,7 @@ import {
   spacing,
   typographyKit,
 } from '@/constants/theme';
-import { loadBudgetCategoriesForPicker } from '@/lib/budgetCategories';
+import { loadBudgetCategoriesForPicker, BUDGET_CATEGORY_PICKER_EMPTY_HINT } from '@/lib/budgetCategories';
 import { inferCategoryId } from '@/lib/categoryInference';
 import { dataEvents } from '@/lib/events';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
@@ -226,15 +226,11 @@ export function AddArticleSheet({
     tapHaptic();
     Keyboard.dismiss();
     nameInputRef.current?.blur();
-    if (categories.length === 0) {
-      goToPriceStep();
-      return;
-    }
     setStep('category');
     requestAnimationFrame(() => {
       scrollToY(categorySectionY.current);
     });
-  }, [categories.length, goToPriceStep, name, scrollToY]);
+  }, [name, scrollToY]);
 
   const onCategorySelect = useCallback((selectedCategoryId: string) => {
     setCategoryId(selectedCategoryId);
@@ -344,21 +340,26 @@ export function AddArticleSheet({
     return null;
   }
 
-  const categoryPickerField = (
-    <EditableField
-      type="select"
-      value={categoryLabel}
-      selectedId={effectiveCategoryId ?? ''}
-      selectOptions={categoryOptions}
-      pickerTitle="Catégorie"
-      onSave={onCategorySelect}
-      placeholder="Choisir une catégorie"
-      accessibilityLabel="Choisir la catégorie"
-      align="right"
-      containerStyle={detailRowEditableContainer}
-      textStyle={detailRowSelectTextStyle}
-    />
-  );
+  const categoryPickerField =
+    categories.length > 0 ? (
+      <EditableField
+        type="select"
+        value={categoryLabel}
+        selectedId={effectiveCategoryId ?? ''}
+        selectOptions={categoryOptions}
+        pickerTitle="Catégorie"
+        onSave={onCategorySelect}
+        placeholder="Choisir une catégorie"
+        accessibilityLabel="Choisir la catégorie"
+        align="right"
+        containerStyle={detailRowEditableContainer}
+        textStyle={detailRowSelectTextStyle}
+      />
+    ) : (
+      <Text style={[detailRowSelectTextStyle, { color: colors.textMuted, textAlign: 'right' }]}>
+        {BUDGET_CATEGORY_PICKER_EMPTY_HINT}
+      </Text>
+    );
 
   const sheetNameField = (
     <View
@@ -529,7 +530,7 @@ export function AddArticleSheet({
     </Pressable>
   );
 
-  const sheetCategoryField = categories.length > 0 ? (
+  const sheetCategoryField = (
     <View
       onLayout={(event) => {
         categorySectionY.current = event.nativeEvent.layout.y;
@@ -550,9 +551,9 @@ export function AddArticleSheet({
         colors={colors}
       />
     </View>
-  ) : null;
+  );
 
-  const inlineCategoryField = categories.length > 0 ? (
+  const inlineCategoryField = (
     <View
       style={styles.inlineCategoryBlock}
       onLayout={() => {
@@ -567,7 +568,7 @@ export function AddArticleSheet({
         labelStyle={nestedFieldLabelStyle}
       />
     </View>
-  ) : null;
+  );
 
   const inlineFooterActions = (
     <View style={[styles.inlineFooterActions, { borderTopColor: colors.border }]}>

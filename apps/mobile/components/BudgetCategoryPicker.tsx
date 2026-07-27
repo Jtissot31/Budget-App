@@ -3,6 +3,7 @@ import type { StyleProp, TextStyle } from 'react-native';
 
 import { SettingsSelectField } from '@/components/SettingsSelectField';
 import type { SettingsPickerOption } from '@/components/SettingsPickerSheet';
+import { BUDGET_CATEGORY_PICKER_EMPTY_HINT } from '@/lib/budgetCategories';
 import { partitionBudgetCategories } from '@/lib/categoryInference';
 import type { Category } from '@/types';
 
@@ -60,7 +61,7 @@ export function BudgetCategoryPicker({
       onSelect={onSelect}
       pickerTitle="Catégorie"
       placeholder="Choisir une catégorie"
-      emptyHint="Aucune catégorie active dans le budget."
+      emptyHint={BUDGET_CATEGORY_PICKER_EMPTY_HINT}
     />
   );
 }

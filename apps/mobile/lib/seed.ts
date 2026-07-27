@@ -28,7 +28,10 @@ import {
   upsertCategoryBudget,
   upsertWealthAsset,
 } from './db';
+import { isDemoSeedEnabled } from './demoSeedGate';
 import { seedLoansIfMissing } from './seedLoans';
+import { yieldEvery, yieldToEventLoop } from './yieldToEventLoop';
+import { Platform } from 'react-native';
 
 type SeedTransaction = {
   id: string;
@@ -39,20 +42,21 @@ type SeedTransaction = {
   accountId: string;
 };
 
-const DEMO_WEEKS = 12;
+/** Native: 12 weeks (~170 rows). Web (opt-in seed): 2 weeks — keeps Accueil useful without freezing. */
+const DEMO_WEEKS = Platform.OS === 'web' ? 2 : 12;
 
 /** Full demo seed: 12 weekly cycles + recurring + occasional (~170 visible rows). */
-export const DEMO_EXPECTED_VISIBLE_TX = 170;
+export const DEMO_EXPECTED_VISIBLE_TX = Platform.OS === 'web' ? 40 : 170;
 
 /** Bump to force wipe + reseed of demo transactions (QC merchants). */
 const DEMO_TRANSACTIONS_SEED_VERSION = '2';
 const DEMO_TRANSACTIONS_SEED_KEY = 'demo_transactions_seed_version';
 
 /** In __DEV__, wipe and reseed when Historique has fewer visible rows than this. */
-const DEV_DEMO_RESEED_THRESHOLD = 50;
+const DEV_DEMO_RESEED_THRESHOLD = Platform.OS === 'web' ? 20 : 50;
 
 function isDevDemoReseedEnabled(): boolean {
-  return typeof __DEV__ !== 'undefined' && __DEV__;
+  return isDemoSeedEnabled();
 }
 
 function shouldReseedDemoTransactions(visibleCount: number): boolean {
@@ -193,6 +197,7 @@ async function syncDemoAccountMetadata(): Promise<void> {
 
 /** Inserts any DASHBOARD_ACCOUNTS rows missing from SQLite (idempotent; preserves balances). */
 export async function ensureDemoAccounts(): Promise<void> {
+  if (!isDemoSeedEnabled()) return;
   await seedDemoAccounts();
   await syncDemoAccountMetadata();
 }
@@ -206,7 +211,8 @@ async function insertBuiltDemoTransactions(): Promise<number> {
   const expenseCategories = expenseCategoriesForInference(DEFAULT_CATEGORIES);
   const samples = buildDemoTransactions(new Date());
 
-  for (const sample of samples) {
+  for (let i = 0; i < samples.length; i += 1) {
+    const sample = samples[i]!;
     const categoryId = resolveDemoCategoryId(sample.label, sample.type, expenseCategories);
     await insertTransaction(
       {
@@ -221,9 +227,13 @@ async function insertBuiltDemoTransactions(): Promise<number> {
       },
       { emit: false },
     );
+    await yieldEvery(i);
   }
 
-  for (const sample of samples) {
+  await yieldToEventLoop();
+
+  for (let i = 0; i < samples.length; i += 1) {
+    const sample = samples[i]!;
     for (const { id, delta } of getTransactionAccountDeltas({
       amount: sample.amount,
       type: sample.type,
@@ -231,6 +241,7 @@ async function insertBuiltDemoTransactions(): Promise<number> {
     })) {
       await adjustSimulatedAccountBalance(id, delta, { emit: false });
     }
+    await yieldEvery(i);
   }
 
   return samples.length;
@@ -407,6 +418,8 @@ export async function ensureSeedCatalog(): Promise<void> {
     await upsertCategory(category);
   }
 
+  if (!isDemoSeedEnabled()) return;
+
   for (const preset of AVERAGE_USER_BUDGET_PRESETS) {
     await upsertCategoryBudget(preset.id, preset.defaultLimit);
   }
@@ -424,6 +437,8 @@ export async function ensureSeedCatalog(): Promise<void> {
  * those are wiped before reseeding.
  */
 export async function seedDemoTransactionsIfMissing(): Promise<boolean> {
+  if (!isDemoSeedEnabled()) return false;
+
   await upsertCategory(UNCATEGORIZED_TRANSACTION_CATEGORY);
   await repairOrphanTransactionCategories(UNCATEGORIZED_TRANSACTION_CATEGORY.id);
 
@@ -453,7 +468,19 @@ export async function seedDemoTransactionsIfMissing(): Promise<boolean> {
   return true;
 }
 
-const BUDGET_BASELINE_SEED_VERSION = '2';
+const BUDGET_BASELINE_SEED_VERSION = '3';
+
+/** Taxonomy rows for pickers — no category_budgets / spend history. */
+async function ensureTaxonomyCatalogOnly(): Promise<void> {
+  await upsertCategory(UNCATEGORIZED_TRANSACTION_CATEGORY);
+  await upsertCategory(TRANSFER_CATEGORY);
+  await upsertCategory(INCOME_CATEGORY);
+  let catIndex = 0;
+  for (const category of DEFAULT_CATEGORIES) {
+    await upsertCategory(category);
+    await yieldEvery(catIndex++);
+  }
+}
 
 /**
  * Wipes user budget categories and restores the average-user baseline (10 categories).
@@ -479,11 +506,14 @@ export async function resetBudgetCategoriesToBaseline(): Promise<void> {
   await upsertCategory(UNCATEGORIZED_TRANSACTION_CATEGORY);
   await upsertCategory(TRANSFER_CATEGORY);
   await upsertCategory(INCOME_CATEGORY);
+  let catIndex = 0;
   for (const category of DEFAULT_CATEGORIES) {
     await upsertCategory(category);
+    await yieldEvery(catIndex++);
   }
   for (const category of baselineCategories) {
     await upsertCategory(category);
+    await yieldEvery(catIndex++);
   }
 
   const expenseCategories = baselineCategories;
@@ -494,7 +524,8 @@ export async function resetBudgetCategoriesToBaseline(): Promise<void> {
     category_id: string;
   }>('SELECT id, label, type, category_id FROM transactions');
 
-  for (const transaction of transactions) {
+  for (let i = 0; i < transactions.length; i += 1) {
+    const transaction = transactions[i]!;
     if (transaction.type === 'income') {
       if (transaction.category_id !== INCOME_CATEGORY.id) {
         await db.runAsync('UPDATE transactions SET category_id = ? WHERE id = ?', [
@@ -502,6 +533,7 @@ export async function resetBudgetCategoriesToBaseline(): Promise<void> {
           transaction.id,
         ]);
       }
+      await yieldEvery(i);
       continue;
     }
 
@@ -516,6 +548,7 @@ export async function resetBudgetCategoriesToBaseline(): Promise<void> {
         transaction.id,
       ]);
     }
+    await yieldEvery(i);
   }
 
   const recurringPayments = await db.getAllAsync<{
@@ -524,7 +557,8 @@ export async function resetBudgetCategoriesToBaseline(): Promise<void> {
     category_id: string | null;
   }>('SELECT id, name, category_id FROM recurring_payments WHERE category_id IS NOT NULL');
 
-  for (const payment of recurringPayments) {
+  for (let i = 0; i < recurringPayments.length; i += 1) {
+    const payment = recurringPayments[i]!;
     const nextCategoryId = inferCategoryId(payment.name, expenseCategories, null);
     if (nextCategoryId !== payment.category_id) {
       await db.runAsync('UPDATE recurring_payments SET category_id = ? WHERE id = ?', [
@@ -532,6 +566,7 @@ export async function resetBudgetCategoriesToBaseline(): Promise<void> {
         payment.id,
       ]);
     }
+    await yieldEvery(i);
   }
 
   await db.runAsync('DELETE FROM category_budgets');
@@ -550,16 +585,46 @@ export async function resetBudgetCategoriesToBaseline(): Promise<void> {
   dataEvents.emit();
 }
 
-/** One-time migration requested for demo baseline budgets. */
+/**
+ * One-time budget baseline migration.
+ * Demo: average-user category budgets + spend-ready catalog.
+ * Release/APK: taxonomy only — never pre-create budget allocations or fake history.
+ */
 export async function ensureAverageUserBudgetBaseline(): Promise<void> {
   const version = await getSetting('budget_baseline_seed_version', '0');
   if (version === BUDGET_BASELINE_SEED_VERSION) return;
+
+  if (!isDemoSeedEnabled()) {
+    await ensureTaxonomyCatalogOnly();
+    // Drop only known auto-seeded allocations from older APK builds; keep user-added budgets.
+    const db = await getDb();
+    const autoSeededBudgetIds = [
+      ...AVERAGE_USER_BUDGET_PRESETS.map((preset) => preset.id),
+      'cat-budget-logement',
+      'cat-budget-epicerie',
+      'cat-budget-transport',
+      'cat-budget-telephone',
+      'cat-budget-restaurants',
+      'cat-budget-loisirs',
+      'cat-budget-vetements',
+      'cat-budget-sante',
+      'cat-budget-depenses-inutiles',
+    ];
+    for (const categoryId of autoSeededBudgetIds) {
+      await db.runAsync('DELETE FROM category_budgets WHERE category_id = ?', [categoryId]);
+    }
+    await setSetting('budget_baseline_seed_version', BUDGET_BASELINE_SEED_VERSION);
+    dataEvents.emit();
+    return;
+  }
+
   await resetBudgetCategoriesToBaseline();
   await setSetting('budget_baseline_seed_version', BUDGET_BASELINE_SEED_VERSION);
 }
 
 /** Wipes transactions, resets demo account balances, and reseeds (dev / manual recovery). */
 export async function resetAndSeedDemoData(): Promise<void> {
+  if (!isDemoSeedEnabled()) return;
   await upsertCategory(UNCATEGORIZED_TRANSACTION_CATEGORY);
   await repairOrphanTransactionCategories(UNCATEGORIZED_TRANSACTION_CATEGORY.id);
   await wipeAllTransactions();
@@ -575,6 +640,11 @@ export async function resetAndSeedDemoData(): Promise<void> {
 
 /** Repairs orphan rows, then seeds catalog + demo transactions when history is empty. */
 export async function seedDatabase(): Promise<void> {
+  if (!isDemoSeedEnabled()) {
+    await ensureTaxonomyCatalogOnly();
+    await repairOrphanTransactionCategories(UNCATEGORIZED_TRANSACTION_CATEGORY.id);
+    return;
+  }
   await upsertCategory(UNCATEGORIZED_TRANSACTION_CATEGORY);
   await repairOrphanTransactionCategories(UNCATEGORIZED_TRANSACTION_CATEGORY.id);
   await ensureSeedCatalog();

@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useMemo, useRef } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -81,6 +81,12 @@ export function BottomSheet(props: BottomSheetProps) {
   /** Fixed viewport share so flex + `FlatList` layouts measure reliably outside `ScrollView`. */
   const sheetFixedHeight = Math.min(windowHeight * 0.88, windowHeight);
   const wasVisibleRef = useRef(false);
+  /** Skip mounting heavy body while closed; keep briefly on dismiss for gesture finish. */
+  const [bodyMounted, setBodyMounted] = useState(embedded || Boolean(visible));
+  if (!embedded && visible && !bodyMounted) {
+    setBodyMounted(true);
+  }
+  const sheetChildren = embedded || bodyMounted ? children : null;
 
   const {
     panGesture,
@@ -106,6 +112,10 @@ export function BottomSheet(props: BottomSheetProps) {
       resetSheetPosition(initialSnap);
     }
     wasVisibleRef.current = visible;
+    if (!visible) {
+      const timer = setTimeout(() => setBodyMounted(false), 280);
+      return () => clearTimeout(timer);
+    }
   }, [embedded, initialSnap, resetSheetPosition, visible]);
 
   const sheetBody = (
@@ -140,11 +150,11 @@ export function BottomSheet(props: BottomSheetProps) {
               bounces
               keyboardShouldPersistTaps="handled"
             >
-              {children}
+              {sheetChildren}
             </Animated.ScrollView>
           </GestureDetector>
         ) : (
-          <View style={[styles.nonScrollBody, scrollContentContainerStyle]}>{children}</View>
+          <View style={[styles.nonScrollBody, scrollContentContainerStyle]}>{sheetChildren}</View>
         )}
       </Animated.View>
     </GestureDetector>

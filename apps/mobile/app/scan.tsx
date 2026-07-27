@@ -13,7 +13,7 @@ import { ReceiptCaptureActions } from '@/components/ReceiptCaptureActions';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { containerSurfaceStyle, jakartaExtraBoldText, radius, spacing, typography } from '@/constants/theme';
 import { typographyKit } from '@/constants/typographyKit';
-import { getCategories } from '@/lib/db';
+import { loadBudgetCategoriesForPicker } from '@/lib/budgetCategories';
 import { formValidationError } from '@/lib/formFeedback';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
 import { captureReceiptPhoto, pickReceiptFromGallery } from '@/lib/receiptCapture';
@@ -60,7 +60,7 @@ export default function ScanScreen() {
   const autoCaptureHandled = useRef(false);
 
   useEffect(() => {
-    void getCategories().then(setCategories);
+    void loadBudgetCategoriesForPicker().then(setCategories);
   }, []);
 
   const total = useMemo(() => items.reduce((sum, item) => sum + item.price, 0), [items]);

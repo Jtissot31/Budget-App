@@ -382,8 +382,8 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   headerBlock: {
-    // Match Historique: spacing.md between SegmentedTabs and toolbar
-    marginTop: spacing.md,
+    // Gap below shared Transactions chrome (title + tabs) lives on the chrome itself.
+    marginTop: 0,
     gap: spacing.md,
     marginBottom: spacing.xl,
   },

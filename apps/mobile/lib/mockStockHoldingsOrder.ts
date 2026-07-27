@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MOCK_STOCK_HOLDINGS, type MockStockHolding } from '@/constants/mockStockPortfolio';
+import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 
 const STORAGE_KEY = 'mock_stock_holdings_display_order';
 
@@ -31,8 +32,13 @@ function applyOrderIds(
   return ordered;
 }
 
+/** Active mock stock list — empty on release APKs so Patrimoine starts blank. */
+export function getDemoStockHoldings(): readonly MockStockHolding[] {
+  return isDemoSeedEnabled() ? MOCK_STOCK_HOLDINGS : [];
+}
+
 export function getOrderedMockStockHoldings(
-  holdings: readonly MockStockHolding[] = MOCK_STOCK_HOLDINGS,
+  holdings: readonly MockStockHolding[] = getDemoStockHoldings(),
 ): MockStockHolding[] {
   return applyOrderIds(holdings, sessionOrderIds);
 }

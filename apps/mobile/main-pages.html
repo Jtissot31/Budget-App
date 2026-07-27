@@ -1,0 +1,1806 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Budget Tracker — Galerie visuelle</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --card: #111111;
+      --card-elevated: #161616;
+      --input: #1a1a1a;
+      --border: rgba(255, 255, 255, 0.12);
+      --border-soft: rgba(255, 255, 255, 0.08);
+      --text: #f5f5f5;
+      --text-secondary: #a3a3a3;
+      --text-muted: #737373;
+      --accent: #4ADE80;
+      --accent-muted: rgba(74, 222, 128, 0.14);
+      --danger: #f87171;
+      --warning: #fbbf24;
+      --radius: 13px;
+      --phone-w: 320px;
+      --phone-h: 680px;
+      --sidebar-w: 240px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: Inter, "Plus Jakarta Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.4;
+      min-height: 100vh;
+    }
+
+    /* ─── Shell layout ─── */
+    .app-shell {
+      display: grid;
+      grid-template-columns: var(--sidebar-w) 1fr;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      padding: 24px 16px;
+      border-right: 1px solid var(--border);
+      background: rgba(10, 10, 10, 0.96);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .brand {
+      font-family: "Plus Jakarta Sans", Inter, sans-serif;
+      font-weight: 800;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+      padding: 0 8px;
+    }
+    .brand span { color: var(--accent); }
+    .brand-sub {
+      margin: 4px 0 0;
+      padding: 0 8px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .nav-group-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 0 8px;
+      margin-bottom: 6px;
+    }
+
+    .nav-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .nav-list a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.86rem;
+      font-weight: 500;
+      border: 1px solid transparent;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .nav-list a:hover {
+      background: var(--card);
+      color: var(--text);
+      border-color: var(--border);
+    }
+    .nav-list a.active {
+      background: var(--accent-muted);
+      color: var(--accent);
+      border-color: rgba(74, 222, 128, 0.28);
+    }
+    .nav-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.55;
+      flex-shrink: 0;
+    }
+    .nav-list a.active .nav-dot { opacity: 1; }
+
+    .main {
+      padding: 28px 32px 80px;
+      max-width: 1200px;
+    }
+
+    .intro {
+      margin-bottom: 36px;
+    }
+    .intro h1 {
+      margin: 0 0 8px;
+      font-family: "Plus Jakarta Sans", Inter, sans-serif;
+      font-size: 1.75rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .intro p {
+      margin: 0;
+      color: var(--text-secondary);
+      max-width: 62ch;
+      font-size: 0.95rem;
+    }
+    .intro-meta {
+      margin-top: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .badge {
+      display: inline-flex;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text-secondary);
+      font-size: 0.72rem;
+      font-weight: 500;
+    }
+    .badge.accent {
+      border-color: rgba(74, 222, 128, 0.35);
+      background: var(--accent-muted);
+      color: var(--accent);
+    }
+
+    .gallery-section {
+      margin-bottom: 56px;
+      scroll-margin-top: 24px;
+    }
+    .gallery-section.hidden { display: none; }
+
+    .section-head {
+      margin-bottom: 20px;
+    }
+    .section-head h2 {
+      margin: 0 0 4px;
+      font-family: "Plus Jakarta Sans", Inter, sans-serif;
+      font-size: 1.2rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .section-head p {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    .phones {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 28px;
+      align-items: flex-start;
+    }
+
+    .phone-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .phone-caption {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-align: center;
+    }
+
+    /* ─── Phone frame ─── */
+    .phone {
+      width: var(--phone-w);
+      height: var(--phone-h);
+      background: var(--bg);
+      border-radius: 36px;
+      border: 2px solid rgba(255, 255, 255, 0.14);
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.6),
+        0 24px 48px rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .status-bar {
+      height: 28px;
+      padding: 8px 22px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: var(--text);
+      flex-shrink: 0;
+      z-index: 5;
+    }
+    .status-bar .right { display: flex; gap: 5px; align-items: center; opacity: 0.85; }
+    .status-bar .sig {
+      width: 14px; height: 8px;
+      border: 1.5px solid currentColor;
+      border-radius: 2px;
+      position: relative;
+    }
+    .status-bar .sig::after {
+      content: '';
+      position: absolute;
+      inset: 1.5px 1.5px 1.5px auto;
+      width: 55%;
+      background: currentColor;
+      border-radius: 1px;
+    }
+
+    .screen {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .screen-scroll {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 0 14px 88px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.15) transparent;
+    }
+
+    .screen-scroll::-webkit-scrollbar { width: 3px; }
+    .screen-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+
+    /* Floating tab bar */
+    .tab-bar {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: 14px;
+      height: 54px;
+      border-radius: 999px;
+      background: rgba(22, 22, 22, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(20px);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding: 0 6px;
+      z-index: 10;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    }
+    .tab {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      border-radius: 50%;
+    }
+    .tab.active { color: var(--accent); }
+    .tab svg { width: 20px; height: 20px; }
+
+    /* Shared UI atoms */
+    .eyebrow {
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin: 0 0 6px;
+    }
+    .eyebrow.accent { color: var(--accent); }
+
+    .page-title {
+      font-family: "Plus Jakarta Sans", Inter, sans-serif;
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin: 0;
+      color: var(--text);
+    }
+
+    .money {
+      font-family: Inter, system-ui, sans-serif;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+    }
+
+    .card-halo {
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    }
+
+    .section-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin: 16px 0 8px;
+    }
+
+    .muted { color: var(--text-muted); }
+    .secondary { color: var(--text-secondary); }
+    .accent-text { color: var(--accent); }
+    .danger-text { color: var(--danger); }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .row.between { justify-content: space-between; }
+    .grow { flex: 1; min-width: 0; }
+
+    .icon-well {
+      width: 36px;
+      height: 36px;
+      border-radius: 18px;
+      background: var(--input);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 0.85rem;
+    }
+    .icon-well.sm { width: 28px; height: 28px; border-radius: 14px; font-size: 0.7rem; }
+    .icon-well.accent-bg { background: var(--accent-muted); }
+
+    .progress {
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .progress > i {
+      display: block;
+      height: 100%;
+      border-radius: 999px;
+      background: var(--accent);
+    }
+
+    .seg {
+      display: flex;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .seg button {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 8px 4px;
+      border-radius: 8px;
+      cursor: default;
+    }
+    .seg button.on {
+      background: rgba(255, 255, 255, 0.1);
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    /* ─── Accueil ─── */
+    .home-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 8px;
+      margin-bottom: 18px;
+      gap: 10px;
+    }
+    .home-header .page-title { font-size: 1.2rem; }
+    .header-actions { display: flex; gap: 8px; }
+    .hdr-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text);
+      font-size: 0.85rem;
+      position: relative;
+    }
+    .hdr-btn .badge-dot {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 1.5px solid var(--bg);
+    }
+
+    .hero-balance {
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .hero-balance .money {
+      font-size: 2rem;
+      line-height: 1.1;
+      color: var(--accent);
+      margin: 4px 0 10px;
+    }
+    .spark {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 28px;
+      opacity: 0.7;
+    }
+    .spark span {
+      flex: 1;
+      background: var(--accent);
+      border-radius: 2px 2px 0 0;
+      opacity: 0.55;
+    }
+
+    .insight-card {
+      padding: 12px;
+      margin-bottom: 4px;
+      border-left: 2px solid var(--accent);
+    }
+    .insight-card .title {
+      font-size: 0.82rem;
+      font-weight: 650;
+      margin: 0 0 4px;
+    }
+    .insight-card .body {
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+      margin: 0;
+    }
+
+    .plan-carousel {
+      display: flex;
+      gap: 8px;
+      overflow: hidden;
+    }
+    .plan-chip {
+      min-width: 148px;
+      padding: 12px;
+    }
+    .plan-chip .t {
+      font-size: 0.8rem;
+      font-weight: 700;
+      margin: 0 0 4px;
+    }
+    .plan-chip .m {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      margin: 0;
+    }
+
+    .acct-preview {
+      display: flex;
+      gap: 8px;
+    }
+    .acct-pill {
+      flex: 1;
+      padding: 10px;
+      text-align: left;
+    }
+    .acct-pill .k {
+      font-size: 0.58rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin: 0 0 4px;
+    }
+    .acct-pill .n {
+      font-size: 0.72rem;
+      font-weight: 600;
+      margin: 0 0 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .acct-pill .a {
+      font-size: 0.85rem;
+      text-align: right;
+    }
+
+    /* ─── Transactions ─── */
+    .tx-chrome { padding-top: 6px; margin-bottom: 12px; }
+    .tx-chrome .page-title { margin-bottom: 12px; }
+
+    .search-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 12px;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+    }
+
+    .tx-filters {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .chip {
+      padding: 5px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .chip.on {
+      background: var(--accent-muted);
+      border-color: rgba(74, 222, 128, 0.3);
+      color: var(--accent);
+    }
+
+    .date-hdr {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin: 4px 0 8px;
+    }
+    .date-hdr b { color: var(--text-secondary); font-weight: 700; }
+
+    .tx-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .tx-row:last-child { border-bottom: none; }
+    .tx-row .name { font-size: 0.82rem; font-weight: 600; margin: 0; }
+    .tx-row .sub { font-size: 0.68rem; color: var(--text-muted); margin: 2px 0 0; }
+    .tx-row .amt { font-size: 0.85rem; font-weight: 800; text-align: right; }
+    .tx-row .amt.expense { color: var(--text); }
+    .tx-row .amt.income { color: var(--accent); }
+
+    .forecast-card { padding: 14px; margin-bottom: 12px; }
+    .forecast-card .money {
+      font-size: 1.55rem;
+      margin: 4px 0 12px;
+      color: var(--text);
+    }
+    .forecast-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .day-strip {
+      display: flex;
+      gap: 0;
+      border-top: 1px solid var(--border-soft);
+      padding-top: 10px;
+    }
+    .day-cell {
+      flex: 1;
+      text-align: center;
+      padding: 4px 0;
+      border-right: 1px solid var(--border-soft);
+    }
+    .day-cell:last-child { border-right: none; }
+    .day-cell .wd { font-size: 0.55rem; color: var(--text-muted); text-transform: lowercase; }
+    .day-cell .dn { font-size: 0.78rem; font-weight: 700; margin: 2px 0; }
+    .day-cell.today .dn { color: var(--accent); }
+    .day-cell .dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--text-muted); margin: 0 auto;
+      opacity: 0;
+    }
+    .day-cell.has .dot { opacity: 1; background: var(--warning); }
+    .day-cell.pay .dot { opacity: 1; background: var(--accent); }
+
+    .agenda-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 12px;
+      margin-bottom: 8px;
+    }
+    .agenda-row .name { font-size: 0.82rem; font-weight: 650; margin: 0; }
+    .agenda-row .sub { font-size: 0.68rem; color: var(--text-muted); margin: 2px 0 0; }
+    .agenda-row .amt { font-size: 0.85rem; font-weight: 800; }
+
+    /* ─── Plan financier ─── */
+    .hub-title-block { padding-top: 6px; margin-bottom: 4px; }
+    .hub-section-head { margin: 18px 0 10px; }
+    .hub-section-head .eyebrow { margin-bottom: 2px; }
+    .hub-section-head h3 {
+      margin: 0;
+      font-family: "Plus Jakarta Sans", Inter, sans-serif;
+      font-size: 1.05rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .plan-full {
+      padding: 14px;
+      margin-bottom: 8px;
+    }
+    .plan-full .t {
+      font-size: 0.88rem;
+      font-weight: 700;
+      margin: 0 0 4px;
+    }
+    .plan-full .hint {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin: 0 0 10px;
+    }
+    .plan-full .meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 0.78rem;
+    }
+    .plan-full .pct { color: var(--accent); font-weight: 700; font-size: 0.72rem; }
+
+    .savings-row, .loan-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      margin-bottom: 8px;
+    }
+    .savings-row .t, .loan-row .t { font-size: 0.82rem; font-weight: 650; margin: 0; }
+    .savings-row .s, .loan-row .s { font-size: 0.68rem; color: var(--text-muted); margin: 2px 0 0; }
+    .savings-row .a, .loan-row .a { font-size: 0.85rem; font-weight: 800; text-align: right; }
+
+    .add-cta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      margin-top: 4px;
+    }
+    .add-cta .label {
+      flex: 1;
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+    .chev { color: var(--text-muted); font-size: 0.9rem; }
+
+    /* ─── Comptes / Portefeuille ─── */
+    .acct-tile {
+      padding: 12px;
+      min-height: 100px;
+      display: flex;
+      flex-direction: column;
+    }
+    .acct-tile .type {
+      font-size: 0.58rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin: 0 0 8px;
+    }
+    .acct-tile .name {
+      font-size: 0.78rem;
+      font-weight: 650;
+      margin: 0;
+      flex: 1;
+    }
+    .acct-tile .bal {
+      font-size: 0.95rem;
+      font-weight: 800;
+      text-align: right;
+      margin-top: 8px;
+    }
+    .acct-tile.add-tile {
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border-style: dashed;
+      color: var(--text-secondary);
+      min-height: 100px;
+    }
+    .acct-tile.add-tile .plus {
+      width: 28px;
+      height: 28px;
+      border-radius: 14px;
+      background: var(--accent-muted);
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .acct-tile.add-tile .lab { font-size: 0.75rem; font-weight: 600; }
+
+    /* ─── Budgets ─── */
+    .budget-hero {
+      padding: 14px;
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .ring {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: conic-gradient(
+        var(--accent) 0deg 118deg,
+        #60a5fa 118deg 200deg,
+        #fbbf24 200deg 255deg,
+        rgba(255,255,255,0.08) 255deg 360deg
+      );
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .ring::after {
+      content: '';
+      position: absolute;
+      inset: 8px;
+      border-radius: 50%;
+      background: var(--card);
+    }
+    .ring .pct {
+      position: relative;
+      z-index: 1;
+      font-size: 0.85rem;
+      font-weight: 800;
+    }
+    .budget-stats { flex: 1; min-width: 0; }
+    .budget-stats .money { font-size: 1.25rem; margin: 2px 0 10px; }
+    .metric-pair { display: flex; gap: 16px; }
+    .metric-pair .lab { font-size: 0.62rem; color: var(--text-muted); margin: 0 0 2px; }
+    .metric-pair .val { font-size: 0.8rem; font-weight: 800; margin: 0; }
+
+    .cat-tile {
+      padding: 12px;
+      min-height: 92px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .cat-tile .top { display: flex; align-items: center; gap: 8px; }
+    .cat-tile .name { font-size: 0.75rem; font-weight: 650; margin: 0; flex: 1; }
+    .cat-tile .spent { font-size: 0.78rem; font-weight: 800; text-align: right; margin-top: auto; }
+    .cat-tile .limit { font-size: 0.62rem; color: var(--text-muted); text-align: right; }
+    .bar {
+      height: 3px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      overflow: hidden;
+    }
+    .bar > i { display: block; height: 100%; border-radius: 999px; }
+
+    .month-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      padding: 0 2px;
+    }
+    .month-nav .m {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .month-nav .arrow {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+    }
+
+    /* ─── Overlays ─── */
+    .overlay-bg {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+    .sheet {
+      background: var(--bg);
+      border-radius: 20px 20px 0 0;
+      border-top: 1px solid var(--border);
+      padding: 10px 16px 28px;
+      max-height: 88%;
+    }
+    .sheet-handle {
+      width: 36px;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.2);
+      margin: 4px auto 14px;
+    }
+    .sheet h3 {
+      font-family: "Plus Jakarta Sans", Inter, sans-serif;
+      font-size: 1.15rem;
+      font-weight: 800;
+      margin: 0 0 16px;
+      letter-spacing: -0.02em;
+    }
+    .field-label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin: 0 0 6px;
+    }
+    .field {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 0.88rem;
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+    .field.placeholder { color: var(--text-muted); }
+    .icon-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .icon-pick {
+      aspect-ratio: 1;
+      border-radius: 10px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+    }
+    .icon-pick.on {
+      border-color: rgba(74, 222, 128, 0.45);
+      background: var(--accent-muted);
+    }
+    .save-btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      background: var(--accent);
+      color: #0a0a0a;
+      font-family: inherit;
+      font-weight: 800;
+      font-size: 0.9rem;
+      margin-top: 4px;
+    }
+
+    .fyn-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      background: var(--bg);
+    }
+    .fyn-hdr {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px 12px;
+    }
+    .fyn-hdr .icon-hit {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text);
+      font-size: 1.1rem;
+    }
+    .fyn-body {
+      flex: 1;
+      padding: 8px 14px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .bubble {
+      max-width: 88%;
+      padding: 12px 14px;
+      border-radius: 16px;
+      font-size: 0.8rem;
+      line-height: 1.45;
+    }
+    .bubble.bot {
+      background: var(--card);
+      border: 1px solid var(--border);
+      align-self: flex-start;
+      border-bottom-left-radius: 6px;
+    }
+    .bubble.me {
+      background: rgba(74, 222, 128, 0.18);
+      border: 1px solid rgba(74, 222, 128, 0.25);
+      align-self: flex-end;
+      border-bottom-right-radius: 6px;
+    }
+    .fyn-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: auto;
+    }
+    .fyn-chip {
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+    }
+    .fyn-input {
+      margin: 0 14px 18px;
+      padding: 12px 14px;
+      border-radius: 999px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .onboard {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 24px 18px 28px;
+      background: #000;
+      position: relative;
+    }
+    .onboard::before {
+      content: '';
+      position: absolute;
+      inset: auto -20% -10% -20%;
+      height: 40%;
+      background: radial-gradient(ellipse, rgba(74,222,128,0.12), transparent 70%);
+      pointer-events: none;
+    }
+    .onboard-logo {
+      font-family: "Plus Jakarta Sans", Inter, sans-serif;
+      font-weight: 800;
+      font-size: 1.4rem;
+      letter-spacing: -0.03em;
+      margin-bottom: 28px;
+    }
+    .onboard-logo span { color: var(--accent); }
+    .onboard h2 {
+      font-family: "Plus Jakarta Sans", Inter, sans-serif;
+      font-size: 1.45rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin: 0 0 10px;
+      line-height: 1.2;
+    }
+    .onboard > p {
+      margin: 0 0 24px;
+      color: var(--text-secondary);
+      font-size: 0.88rem;
+    }
+    .feat {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 12px;
+      margin-bottom: 8px;
+    }
+    .feat .t { font-size: 0.82rem; font-weight: 700; margin: 0 0 2px; }
+    .feat .d { font-size: 0.7rem; color: var(--text-muted); margin: 0; }
+    .onboard-cta {
+      margin-top: auto;
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      background: var(--accent);
+      color: #0a0a0a;
+      font-family: inherit;
+      font-weight: 800;
+      font-size: 0.95rem;
+    }
+
+    .footer-note {
+      margin-top: 24px;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--card);
+      color: var(--text-muted);
+      font-size: 0.78rem;
+    }
+
+    @media (max-width: 820px) {
+      .app-shell { grid-template-columns: 1fr; }
+      .sidebar {
+        position: relative;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .nav-list { flex-direction: row; flex-wrap: wrap; }
+      .nav-list a { padding: 8px 10px; font-size: 0.78rem; }
+      .main { padding: 20px 16px 60px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div>
+        <div class="brand">Budget <span>Tracker</span></div>
+        <p class="brand-sub">Galerie visuelle · mockups finaux</p>
+      </div>
+
+      <div>
+        <div class="nav-group-label">Onglets</div>
+        <ul class="nav-list" id="nav-tabs">
+          <li><a href="#accueil" data-filter="accueil" class="active"><span class="nav-dot"></span>Accueil</a></li>
+          <li><a href="#transactions" data-filter="transactions"><span class="nav-dot"></span>Transactions</a></li>
+          <li><a href="#plan" data-filter="plan"><span class="nav-dot"></span>Plan financier</a></li>
+          <li><a href="#comptes" data-filter="comptes"><span class="nav-dot"></span>Comptes</a></li>
+          <li><a href="#budgets" data-filter="budgets"><span class="nav-dot"></span>Budgets</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="nav-group-label">Overlays</div>
+        <ul class="nav-list">
+          <li><a href="#overlays" data-filter="overlays"><span class="nav-dot"></span>Catégorie · Fyn · Onboarding</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="nav-group-label">Vue</div>
+        <ul class="nav-list">
+          <li><a href="#all" data-filter="all" id="nav-all"><span class="nav-dot"></span>Tout afficher</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="intro">
+        <h1>Pages principales</h1>
+        <p>
+          Prototypes visuels fidèles au rendu sombre final — composition, typo, couleurs et barre d’onglets flottante.
+          Clique une page dans la barre latérale pour filtrer ou faire défiler jusqu’au mockup.
+        </p>
+        <div class="intro-meta">
+          <span class="badge accent">#0a0a0a · #111111 · #4ADE80</span>
+          <span class="badge">radius 13px</span>
+          <span class="badge">Plus Jakarta Sans / Inter</span>
+          <span class="badge">FR</span>
+        </div>
+      </section>
+
+      <!-- ═══════════ ACCUEIL ═══════════ -->
+      <section class="gallery-section" id="accueil" data-section="accueil">
+        <div class="section-head">
+          <h2>Accueil</h2>
+          <p>Greeting · Disponible maintenant · insight · Tes plans · aperçu comptes</p>
+        </div>
+        <div class="phones">
+          <div class="phone-wrap">
+            <div class="phone" aria-label="Mockup Accueil">
+              <div class="status-bar">
+                <span>9:41</span>
+                <span class="right"><span class="sig"></span></span>
+              </div>
+              <div class="screen">
+                <div class="screen-scroll">
+                  <div class="home-header">
+                    <h1 class="page-title">Bonjour, Émile</h1>
+                    <div class="header-actions">
+                      <div class="hdr-btn">🔔<span class="badge-dot"></span></div>
+                      <div class="hdr-btn">⚙️</div>
+                    </div>
+                  </div>
+
+                  <div class="card card-halo hero-balance">
+                    <p class="eyebrow accent">Disponible maintenant</p>
+                    <div class="money">4 285,40 $</div>
+                    <div class="spark" aria-hidden="true">
+                      <span style="height:35%"></span><span style="height:48%"></span>
+                      <span style="height:42%"></span><span style="height:62%"></span>
+                      <span style="height:55%"></span><span style="height:78%"></span>
+                      <span style="height:70%"></span><span style="height:88%"></span>
+                      <span style="height:80%"></span><span style="height:95%"></span>
+                    </div>
+                  </div>
+
+                  <div class="card insight-card">
+                    <p class="eyebrow accent">Insight</p>
+                    <p class="title">Paie dans 3 jours</p>
+                    <p class="body">Après les factures restantes, il te restera environ 1 120 $.</p>
+                  </div>
+
+                  <p class="section-label">Tes plans</p>
+                  <div class="plan-carousel">
+                    <div class="card plan-chip card-halo">
+                      <p class="t">Fonds d’urgence</p>
+                      <p class="m">3 200 $ · 64 %</p>
+                      <div class="progress"><i style="width:64%"></i></div>
+                    </div>
+                    <div class="card plan-chip card-halo">
+                      <p class="t">Voyage 2026</p>
+                      <p class="m">1 450 $ · 29 %</p>
+                      <div class="progress"><i style="width:29%;background:#60a5fa"></i></div>
+                    </div>
+                  </div>
+
+                  <p class="section-label">Comptes</p>
+                  <div class="acct-preview">
+                    <div class="card acct-pill card-halo">
+                      <p class="k">Chèque</p>
+                      <p class="n">Desjardins</p>
+                      <div class="money a" style="font-size:0.85rem">2 840 $</div>
+                    </div>
+                    <div class="card acct-pill card-halo">
+                      <p class="k">Épargne</p>
+                      <p class="n">Wealthsimple</p>
+                      <div class="money a accent-text" style="font-size:0.85rem">1 445 $</div>
+                    </div>
+                  </div>
+                </div>
+                <nav class="tab-bar" aria-label="Navigation">
+                  <div class="tab active" title="Accueil">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+                  </div>
+                  <div class="tab" title="Transactions">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4h10a2 2 0 012 2v14l-3-2-3 2-3-2-3 2V6a2 2 0 012-2z"/><path d="M9 9h6M9 13h4"/></svg>
+                  </div>
+                  <div class="tab" title="Plan financier">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                  </div>
+                  <div class="tab" title="Portefeuille">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><circle cx="16" cy="14" r="1.2" fill="currentColor"/></svg>
+                  </div>
+                  <div class="tab" title="Budget">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a9 9 0 110 18 9 9 0 010-18z"/><path d="M12 3v9l6.5 3.5"/></svg>
+                  </div>
+                </nav>
+              </div>
+            </div>
+            <div class="phone-caption">Accueil · dashboard</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ TRANSACTIONS ═══════════ -->
+      <section class="gallery-section" id="transactions" data-section="transactions">
+        <div class="section-head">
+          <h2>Transactions</h2>
+          <p>Historique / Agenda / Marchands · liste · Prévision du solde</p>
+        </div>
+        <div class="phones">
+          <!-- Historique -->
+          <div class="phone-wrap">
+            <div class="phone" aria-label="Mockup Historique">
+              <div class="status-bar"><span>9:41</span><span class="right"><span class="sig"></span></span></div>
+              <div class="screen">
+                <div class="screen-scroll">
+                  <div class="tx-chrome">
+                    <h1 class="page-title">Transactions</h1>
+                    <div class="seg">
+                      <button class="on" type="button">Historique</button>
+                      <button type="button">Agenda</button>
+                      <button type="button">Marchands</button>
+                    </div>
+                  </div>
+                  <div class="search-bar">🔍 Rechercher…</div>
+                  <div class="tx-filters">
+                    <span class="chip on">Tous</span>
+                    <span class="chip">Dépenses</span>
+                    <span class="chip">Revenus</span>
+                  </div>
+                  <p class="date-hdr"><b>Aujourd’hui</b> · 26 juil.</p>
+                  <div class="tx-row">
+                    <div class="icon-well">🛒</div>
+                    <div class="grow">
+                      <p class="name">IGA Extra</p>
+                      <p class="sub">Alimentation</p>
+                    </div>
+                    <div class="money amt expense">−64,28 $</div>
+                  </div>
+                  <div class="tx-row">
+                    <div class="icon-well">☕</div>
+                    <div class="grow">
+                      <p class="name">Starbucks</p>
+                      <p class="sub">Café</p>
+                    </div>
+                    <div class="money amt expense">−7,45 $</div>
+                  </div>
+                  <p class="date-hdr"><b>Hier</b> · 25 juil.</p>
+                  <div class="tx-row">
+                    <div class="icon-well accent-bg">💰</div>
+                    <div class="grow">
+                      <p class="name">Paie</p>
+                      <p class="sub">Revenu</p>
+                    </div>
+                    <div class="money amt income">+2 450,00 $</div>
+                  </div>
+                  <div class="tx-row">
+                    <div class="icon-well">🏠</div>
+                    <div class="grow">
+                      <p class="name">Hydro-Québec</p>
+                      <p class="sub">Logement</p>
+                    </div>
+                    <div class="money amt expense">−128,90 $</div>
+                  </div>
+                  <div class="tx-row">
+                    <div class="icon-well">🎬</div>
+                    <div class="grow">
+                      <p class="name">Netflix</p>
+                      <p class="sub">Abonnements</p>
+                    </div>
+                    <div class="money amt expense">−18,64 $</div>
+                  </div>
+                </div>
+                <nav class="tab-bar">
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1v-9.5z"/></svg></div>
+                  <div class="tab active"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 3h10a2 2 0 012 2v16l-3.5-2.2L12 21l-3.5-2.2L5 21V5a2 2 0 012-2z"/></svg></div>
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg></div>
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a9 9 0 110 18"/><path d="M12 3v9l6.5 3.5"/></svg></div>
+                </nav>
+              </div>
+            </div>
+            <div class="phone-caption">Historique</div>
+          </div>
+
+          <!-- Agenda -->
+          <div class="phone-wrap">
+            <div class="phone" aria-label="Mockup Agenda">
+              <div class="status-bar"><span>9:41</span><span class="right"><span class="sig"></span></span></div>
+              <div class="screen">
+                <div class="screen-scroll">
+                  <div class="tx-chrome">
+                    <h1 class="page-title">Transactions</h1>
+                    <div class="seg">
+                      <button type="button">Historique</button>
+                      <button class="on" type="button">Agenda</button>
+                      <button type="button">Marchands</button>
+                    </div>
+                  </div>
+
+                  <div class="card card-halo forecast-card">
+                    <p class="eyebrow accent">Prévision du solde</p>
+                    <div class="money">3 412,18 $</div>
+                    <div class="forecast-meta">
+                      <span>4 factures avant paie</span>
+                      <span class="accent-text">≈ +2 450 $ · ven.</span>
+                    </div>
+                    <div class="day-strip">
+                      <div class="day-cell today"><div class="wd">dim.</div><div class="dn">26</div><div class="dot"></div></div>
+                      <div class="day-cell has"><div class="wd">lun.</div><div class="dn">27</div><div class="dot"></div></div>
+                      <div class="day-cell"><div class="wd">mar.</div><div class="dn">28</div><div class="dot"></div></div>
+                      <div class="day-cell has"><div class="wd">mer.</div><div class="dn">29</div><div class="dot"></div></div>
+                      <div class="day-cell"><div class="wd">jeu.</div><div class="dn">30</div><div class="dot"></div></div>
+                      <div class="day-cell pay"><div class="wd">ven.</div><div class="dn">31</div><div class="dot"></div></div>
+                      <div class="day-cell"><div class="wd">sam.</div><div class="dn">1</div><div class="dot"></div></div>
+                    </div>
+                  </div>
+
+                  <p class="date-hdr"><b>À venir</b> · lun. 27 juil.</p>
+                  <div class="card agenda-row card-halo">
+                    <div class="icon-well">📶</div>
+                    <div class="grow">
+                      <p class="name">Vidéotron</p>
+                      <p class="sub">Internet · mensuel</p>
+                    </div>
+                    <div class="money amt">−89,99 $</div>
+                  </div>
+                  <div class="card agenda-row card-halo">
+                    <div class="icon-well">🏋️</div>
+                    <div class="grow">
+                      <p class="name">Gym</p>
+                      <p class="sub">Abonnement</p>
+                    </div>
+                    <div class="money amt">−49,00 $</div>
+                  </div>
+                  <p class="date-hdr"><b>Mercredi</b> · 29 juil.</p>
+                  <div class="card agenda-row card-halo">
+                    <div class="icon-well">🏠</div>
+                    <div class="grow">
+                      <p class="name">Loyer</p>
+                      <p class="sub">Logement</p>
+                    </div>
+                    <div class="money amt">−1 250,00 $</div>
+                  </div>
+                </div>
+                <nav class="tab-bar">
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1v-9.5z"/></svg></div>
+                  <div class="tab active"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 3h10a2 2 0 012 2v16l-3.5-2.2L12 21l-3.5-2.2L5 21V5a2 2 0 012-2z"/></svg></div>
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg></div>
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a9 9 0 110 18"/><path d="M12 3v9l6.5 3.5"/></svg></div>
+                </nav>
+              </div>
+            </div>
+            <div class="phone-caption">Agenda · Prévision du solde</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ PLAN FINANCIER ═══════════ -->
+      <section class="gallery-section" id="plan" data-section="plan">
+        <div class="section-head">
+          <h2>Plan financier</h2>
+          <p>Stratégie · Épargne · Obligations</p>
+        </div>
+        <div class="phones">
+          <div class="phone-wrap">
+            <div class="phone" aria-label="Mockup Plan financier">
+              <div class="status-bar"><span>9:41</span><span class="right"><span class="sig"></span></span></div>
+              <div class="screen">
+                <div class="screen-scroll">
+                  <div class="hub-title-block">
+                    <h1 class="page-title">Plan financier</h1>
+                  </div>
+
+                  <div class="hub-section-head">
+                    <p class="eyebrow accent">Stratégie</p>
+                    <h3>Tes plans</h3>
+                  </div>
+                  <div class="card plan-full card-halo">
+                    <p class="t">Fonds d’urgence</p>
+                    <p class="hint">3 mois de dépenses essentielles</p>
+                    <div class="meta-row">
+                      <span class="money" style="font-size:0.9rem">3 200 $</span>
+                      <span class="pct">64 %</span>
+                    </div>
+                    <div class="progress"><i style="width:64%"></i></div>
+                  </div>
+                  <div class="card plan-full card-halo">
+                    <p class="t">Réduire les intérêts</p>
+                    <p class="hint">Prioriser la carte à 19,9 %</p>
+                    <div class="meta-row">
+                      <span class="money" style="font-size:0.9rem">1 180 $</span>
+                      <span class="pct" style="color:#60a5fa">41 %</span>
+                    </div>
+                    <div class="progress"><i style="width:41%;background:#60a5fa"></i></div>
+                  </div>
+
+                  <div class="hub-section-head">
+                    <p class="eyebrow accent">Épargne</p>
+                    <h3>Objectifs d’épargne</h3>
+                  </div>
+                  <div class="card savings-row card-halo">
+                    <div class="icon-well accent-bg">🏖️</div>
+                    <div class="grow">
+                      <p class="t">Vacances</p>
+                      <p class="s">850 $ / 3 000 $</p>
+                      <div class="progress"><i style="width:28%"></i></div>
+                    </div>
+                    <div class="money a" style="font-size:0.8rem">28 %</div>
+                  </div>
+                  <div class="card add-cta card-halo">
+                    <div class="icon-well accent-bg" style="color:var(--accent)">+</div>
+                    <span class="label">Ajouter un objectif</span>
+                    <span class="chev">›</span>
+                  </div>
+
+                  <div class="hub-section-head">
+                    <p class="eyebrow">Obligations</p>
+                    <h3>Prêts et dettes</h3>
+                  </div>
+                  <div class="card loan-row card-halo">
+                    <div class="icon-well">🚗</div>
+                    <div class="grow">
+                      <p class="t">Prêt auto</p>
+                      <p class="s">428 $ / mois · 4,9 %</p>
+                    </div>
+                    <div class="money a" style="font-size:0.85rem">12 450 $</div>
+                  </div>
+                  <div class="card loan-row card-halo">
+                    <div class="icon-well">💳</div>
+                    <div class="grow">
+                      <p class="t">Visa Desjardins</p>
+                      <p class="s">Minimum 85 $ · 19,9 %</p>
+                    </div>
+                    <div class="money a danger-text" style="font-size:0.85rem">2 890 $</div>
+                  </div>
+                </div>
+                <nav class="tab-bar">
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1v-9.5z"/></svg></div>
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4h10a2 2 0 012 2v14l-3-2-3 2-3-2-3 2V6a2 2 0 012-2z"/><path d="M9 9h6M9 13h4"/></svg></div>
+                  <div class="tab active"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2" stroke="#0a0a0a" stroke-width="2" fill="none"/></svg></div>
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg></div>
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a9 9 0 110 18"/><path d="M12 3v9l6.5 3.5"/></svg></div>
+                </nav>
+              </div>
+            </div>
+            <div class="phone-caption">Plan financier · hub</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ COMPTES ═══════════ -->
+      <section class="gallery-section" id="comptes" data-section="comptes">
+        <div class="section-head">
+          <h2>Comptes</h2>
+          <p>Portefeuille · tuiles 2 colonnes · soldes alignés à droite · Ajouter</p>
+        </div>
+        <div class="phones">
+          <div class="phone-wrap">
+            <div class="phone" aria-label="Mockup Comptes">
+              <div class="status-bar"><span>9:41</span><span class="right"><span class="sig"></span></span></div>
+              <div class="screen">
+                <div class="screen-scroll">
+                  <div class="hub-title-block" style="margin-bottom:12px">
+                    <h1 class="page-title">Portefeuille</h1>
+                  </div>
+                  <div class="hub-section-head" style="margin-top:4px">
+                    <p class="eyebrow accent">Comptes</p>
+                    <h3>Soldes des comptes</h3>
+                  </div>
+                  <div class="grid-2">
+                    <div class="card acct-tile card-halo">
+                      <p class="type">Chèque</p>
+                      <p class="name">Desjardins</p>
+                      <div class="money bal">2 840,12 $</div>
+                    </div>
+                    <div class="card acct-tile card-halo">
+                      <p class="type">Épargne</p>
+                      <p class="name">Wealthsimple</p>
+                      <div class="money bal accent-text">1 445,00 $</div>
+                    </div>
+                    <div class="card acct-tile card-halo">
+                      <p class="type">Crédit</p>
+                      <p class="name">Visa Infinite</p>
+                      <div class="money bal danger-text">−1 280,40 $</div>
+                    </div>
+                    <div class="card acct-tile card-halo">
+                      <p class="type">Chèque</p>
+                      <p class="name">Tangerine</p>
+                      <div class="money bal">612,55 $</div>
+                    </div>
+                    <div class="card acct-tile add-tile card-halo">
+                      <div class="plus">+</div>
+                      <span class="lab">Ajouter</span>
+                    </div>
+                  </div>
+                </div>
+                <nav class="tab-bar">
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1v-9.5z"/></svg></div>
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4h10a2 2 0 012 2v14l-3-2-3 2-3-2-3 2V6a2 2 0 012-2z"/><path d="M9 9h6"/></svg></div>
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+                  <div class="tab active"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18" stroke="#0a0a0a" stroke-width="1.5"/><circle cx="16" cy="14.5" r="1.5"/></svg></div>
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a9 9 0 110 18"/><path d="M12 3v9l6.5 3.5"/></svg></div>
+                </nav>
+              </div>
+            </div>
+            <div class="phone-caption">Portefeuille · comptes</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ BUDGETS ═══════════ -->
+      <section class="gallery-section" id="budgets" data-section="budgets">
+        <div class="section-head">
+          <h2>Budgets</h2>
+          <p>Anneau résumé · grille catégories · Ajouter une catégorie</p>
+        </div>
+        <div class="phones">
+          <div class="phone-wrap">
+            <div class="phone" aria-label="Mockup Budgets">
+              <div class="status-bar"><span>9:41</span><span class="right"><span class="sig"></span></span></div>
+              <div class="screen">
+                <div class="screen-scroll">
+                  <div class="hub-title-block" style="margin-bottom:8px">
+                    <h1 class="page-title">Budget</h1>
+                  </div>
+                  <div class="month-nav">
+                    <div class="arrow">‹</div>
+                    <span class="m">Juillet 2026</span>
+                    <div class="arrow">›</div>
+                  </div>
+
+                  <div class="card budget-hero card-halo">
+                    <div class="ring"><span class="pct money">33 %</span></div>
+                    <div class="budget-stats">
+                      <p class="eyebrow">Budget mensuel</p>
+                      <div class="money">3 200 $</div>
+                      <div class="metric-pair">
+                        <div>
+                          <p class="lab">Dépensé</p>
+                          <p class="val money">1 048 $</p>
+                        </div>
+                        <div>
+                          <p class="lab">Restant</p>
+                          <p class="val money accent-text">2 152 $</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="grid-2">
+                    <div class="card cat-tile card-halo">
+                      <div class="top">
+                        <div class="icon-well sm">🛒</div>
+                        <p class="name">Épicerie</p>
+                      </div>
+                      <div class="bar"><i style="width:62%;background:var(--accent)"></i></div>
+                      <div class="money spent">372 $</div>
+                      <div class="limit">/ 600 $</div>
+                    </div>
+                    <div class="card cat-tile card-halo">
+                      <div class="top">
+                        <div class="icon-well sm">🍽️</div>
+                        <p class="name">Restos</p>
+                      </div>
+                      <div class="bar"><i style="width:78%;background:#fbbf24"></i></div>
+                      <div class="money spent">234 $</div>
+                      <div class="limit">/ 300 $</div>
+                    </div>
+                    <div class="card cat-tile card-halo">
+                      <div class="top">
+                        <div class="icon-well sm">🚗</div>
+                        <p class="name">Transport</p>
+                      </div>
+                      <div class="bar"><i style="width:41%;background:#60a5fa"></i></div>
+                      <div class="money spent">164 $</div>
+                      <div class="limit">/ 400 $</div>
+                    </div>
+                    <div class="card cat-tile card-halo">
+                      <div class="top">
+                        <div class="icon-well sm">🎮</div>
+                        <p class="name">Loisirs</p>
+                      </div>
+                      <div class="bar"><i style="width:55%;background:#a78bfa"></i></div>
+                      <div class="money spent">278 $</div>
+                      <div class="limit">/ 500 $</div>
+                    </div>
+                  </div>
+
+                  <div class="card add-cta card-halo" style="margin-top:10px">
+                    <div class="icon-well accent-bg" style="color:var(--accent)">+</div>
+                    <span class="label">Ajouter une catégorie</span>
+                    <span class="chev">›</span>
+                  </div>
+                </div>
+                <nav class="tab-bar">
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1v-9.5z"/></svg></div>
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4h10a2 2 0 012 2v14l-3-2-3 2-3-2-3 2V6a2 2 0 012-2z"/><path d="M9 9h6"/></svg></div>
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+                  <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg></div>
+                  <div class="tab active"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 2v8.5L18 16a8 8 0 11-6-12z"/></svg></div>
+                </nav>
+              </div>
+            </div>
+            <div class="phone-caption">Budget · catégories</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ OVERLAYS ═══════════ -->
+      <section class="gallery-section" id="overlays" data-section="overlays">
+        <div class="section-head">
+          <h2>Overlays clés</h2>
+          <p>Nouvelle catégorie · Fyn · Onboarding</p>
+        </div>
+        <div class="phones">
+          <!-- Nouvelle catégorie -->
+          <div class="phone-wrap">
+            <div class="phone" aria-label="Mockup Nouvelle catégorie">
+              <div class="status-bar"><span>9:41</span><span class="right"><span class="sig"></span></span></div>
+              <div class="screen" style="background:#050505">
+                <div class="overlay-bg">
+                  <div class="sheet">
+                    <div class="sheet-handle"></div>
+                    <h3>Nouvelle catégorie</h3>
+                    <p class="field-label">Nom de catégorie</p>
+                    <div class="field">Épicerie</div>
+                    <p class="field-label">Icône</p>
+                    <div class="icon-grid">
+                      <div class="icon-pick on">🛒</div>
+                      <div class="icon-pick">🏠</div>
+                      <div class="icon-pick">🚗</div>
+                      <div class="icon-pick">☕</div>
+                      <div class="icon-pick">🎬</div>
+                    </div>
+                    <p class="field-label">Limite mensuelle</p>
+                    <div class="field money" style="font-size:1.2rem;font-weight:800">600</div>
+                    <button class="save-btn" type="button">Enregistrer</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="phone-caption">Nouvelle catégorie</div>
+          </div>
+
+          <!-- Fyn -->
+          <div class="phone-wrap">
+            <div class="phone" aria-label="Mockup Fyn">
+              <div class="status-bar"><span>9:41</span><span class="right"><span class="sig"></span></span></div>
+              <div class="screen">
+                <div class="fyn-screen">
+                  <div class="fyn-hdr">
+                    <div class="icon-hit">←</div>
+                    <div class="icon-hit">⚙️</div>
+                  </div>
+                  <div class="fyn-body">
+                    <div class="bubble bot">
+                      Salut — je suis Fyn. Tu veux un aperçu de ton cashflow cette semaine, ou un plan pour ton fonds d’urgence ?
+                    </div>
+                    <div class="bubble me">Combien me reste-t-il après les factures ?</div>
+                    <div class="bubble bot">
+                      Après Vidéotron, Gym et le loyer, tu conserves environ <strong style="color:var(--accent)">1 120 $</strong> avant ta paie de vendredi.
+                    </div>
+                    <div class="fyn-chips">
+                      <span class="fyn-chip">Cashflow</span>
+                      <span class="fyn-chip">Créer un plan</span>
+                      <span class="fyn-chip">Budgets</span>
+                    </div>
+                  </div>
+                  <div class="fyn-input">
+                    <span>Écrire à Fyn…</span>
+                    <span style="color:var(--accent)">↑</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="phone-caption">Fyn · chat (header minimal)</div>
+          </div>
+
+          <!-- Onboarding -->
+          <div class="phone-wrap">
+            <div class="phone" aria-label="Mockup Onboarding">
+              <div class="status-bar"><span>9:41</span><span class="right"><span class="sig"></span></span></div>
+              <div class="screen">
+                <div class="onboard">
+                  <div class="onboard-logo">Budget <span>Tracker</span></div>
+                  <h2>Tes finances, clairement.</h2>
+                  <p>Suivi, budgets et plans — avec Fyn comme conseiller.</p>
+                  <div class="card feat card-halo">
+                    <div class="icon-well accent-bg">📊</div>
+                    <div>
+                      <p class="t">Suivre tes dépenses</p>
+                      <p class="d">Historique, agenda et marchands</p>
+                    </div>
+                  </div>
+                  <div class="card feat card-halo">
+                    <div class="icon-well accent-bg">🎯</div>
+                    <div>
+                      <p class="t">Budgets clairs</p>
+                      <p class="d">Limites par catégorie, anneau mensuel</p>
+                    </div>
+                  </div>
+                  <div class="card feat card-halo">
+                    <div class="icon-well accent-bg">🧭</div>
+                    <div>
+                      <p class="t">Plans financiers</p>
+                      <p class="d">Stratégie, épargne et obligations</p>
+                    </div>
+                  </div>
+                  <button class="onboard-cta" type="button">Commencer</button>
+                </div>
+              </div>
+            </div>
+            <div class="phone-caption">Onboarding · aperçu</div>
+          </div>
+        </div>
+      </section>
+
+      <p class="footer-note">
+        Galerie HTML/CSS pure — tokens dark Budget Tracker. Pas de React.
+        Barre latérale : filtre + scroll. Fichier : <code>apps/mobile/main-pages.html</code>
+      </p>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      const links = document.querySelectorAll('.nav-list a[data-filter]');
+      const sections = document.querySelectorAll('.gallery-section[data-section]');
+
+      function setActive(filter) {
+        links.forEach((a) => {
+          a.classList.toggle('active', a.getAttribute('data-filter') === filter);
+        });
+      }
+
+      function showAll() {
+        sections.forEach((s) => s.classList.remove('hidden'));
+        setActive('all');
+      }
+
+      function filterTo(id) {
+        if (id === 'all') {
+          showAll();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return;
+        }
+        sections.forEach((s) => {
+          const match = s.getAttribute('data-section') === id;
+          s.classList.toggle('hidden', !match);
+        });
+        setActive(id);
+        const target = document.getElementById(id);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+
+      links.forEach((a) => {
+        a.addEventListener('click', (e) => {
+          e.preventDefault();
+          filterTo(a.getAttribute('data-filter'));
+        });
+      });
+
+      // Deep link / hash on load
+      const hash = (location.hash || '').replace('#', '');
+      if (hash && hash !== 'all' && document.getElementById(hash)) {
+        filterTo(hash);
+      }
+    })();
+  </script>
+</body>
+</html>

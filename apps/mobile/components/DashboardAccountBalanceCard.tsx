@@ -96,7 +96,7 @@ export const DashboardAccountBalanceCard = memo(function DashboardAccountBalance
       <View style={styles.cardValueRow}>
         <Text
           style={[
-            moneyAmountTypography({ tier: 'stat' }),
+            moneyAmountTypography({ tier: 'card', textAlign: 'right' }),
             styles.value,
             { color: balanceColor },
           ]}
@@ -176,10 +176,12 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: CARD_BODY_MIN_HEIGHT,
     justifyContent: 'flex-end',
+    alignItems: 'flex-end',
     paddingTop: spacing.sm,
   },
   value: {
-    alignSelf: 'stretch',
+    alignSelf: 'flex-end',
+    textAlign: 'right',
     includeFontPadding: false,
   },
 });

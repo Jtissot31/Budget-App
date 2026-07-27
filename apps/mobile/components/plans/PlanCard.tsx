@@ -11,7 +11,6 @@ import {
   PLAN_CARD_PADDING,
   PLAN_CAROUSEL,
   PLAN_HOME_ROW,
-  PLAN_HUB,
   planCardActiveStrategyAccent,
   planCardHomeAmountLine,
   planCardHomeProgressColor,
@@ -142,17 +141,7 @@ export function PlanCard({ plan, suggested = false, layout = 'full', onPress, st
             </View>
           </DashboardCard>
         ) : (
-          <DashboardCard padding={0} innerStyle={[styles.homeActiveInner, planHomeRowInnerStyle(), style]}>
-            <View
-              pointerEvents="none"
-              style={[
-                styles.homeActiveEdge,
-                {
-                  width: PLAN_HUB.activeEdgeWidth,
-                  backgroundColor: activeAccent.edge,
-                },
-              ]}
-            />
+          <DashboardCard padding={0} innerStyle={[planHomeRowInnerStyle(), style]}>
             <View style={[styles.homeIconWell, { backgroundColor: colors.input }]}>
               <AppIcon
                 family="material-community"
@@ -350,19 +339,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-  },
-  /** Active hub strategy: clip thin green left rail to the card radius. */
-  homeActiveInner: {
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  homeActiveEdge: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    borderTopLeftRadius: radius.card,
-    borderBottomLeftRadius: radius.card,
   },
   /** Suggested home: column shell so labels span the full card width. */
   homeSuggestedInner: {

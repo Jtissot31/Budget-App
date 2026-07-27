@@ -19,6 +19,7 @@ import { useRouter } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DASHBOARD_ACCOUNTS } from '@/constants/dashboardMockAccounts';
+import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   dashboardPalette,
@@ -329,7 +330,7 @@ function getUpcomingPayments(
     })
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  return persisted.length ? persisted : UPCOMING_PAYMENTS;
+  return persisted.length ? persisted : isDemoSeedEnabled() ? UPCOMING_PAYMENTS : [];
 }
 
 function nextMonthlyDate(dueDay?: number | null) {
@@ -391,6 +392,7 @@ function toPaymentResolutionAccounts(accounts: SimulatedAccount[]): PaymentResol
       creditLimit: account.creditLimit,
     }));
   }
+  if (!isDemoSeedEnabled()) return [];
   return DASHBOARD_ACCOUNTS.map((account) => ({
     id: account.id,
     name: account.name,
@@ -1102,13 +1104,13 @@ export default function HomeScreen() {
 
   const loadCore = useCallback(async () => {
     try {
-      // Web JS memory DB + demo seed is fast; native may need a short wait for SQLite/seed.
+      // Web: schema is ready almost immediately (heavy seed is deferred). Native may wait briefly.
       await Promise.race([
         ensureDbReady().catch((error: unknown) => {
           console.warn('[Accueil] ensureDbReady failed', error);
         }),
         new Promise<void>((resolve) =>
-          setTimeout(resolve, Platform.OS === 'web' ? 8_000 : 4_000),
+          setTimeout(resolve, Platform.OS === 'web' ? 1_200 : 4_000),
         ),
       ]);
 
@@ -1122,7 +1124,7 @@ export default function HomeScreen() {
       const settled = await Promise.race([
         loadRows,
         new Promise<'timeout'>((resolve) =>
-          setTimeout(() => resolve('timeout'), Platform.OS === 'web' ? 8_000 : 6_000),
+          setTimeout(() => resolve('timeout'), Platform.OS === 'web' ? 1_500 : 6_000),
         ),
       ]);
 
@@ -1259,84 +1261,90 @@ export default function HomeScreen() {
   const todayIso = isoDate(today);
   const sortedUpcomingPayments = [...upcomingPayments].sort((a, b) => a.date.localeCompare(b.date));
   const defaultNextPayment =
-    sortedUpcomingPayments.find((payment) => payment.date >= todayIso) ?? sortedUpcomingPayments[0];
+    sortedUpcomingPayments.find((payment) => payment.date >= todayIso) ?? sortedUpcomingPayments[0] ?? null;
 
+  // Fresh / empty DB (no demo seed): no upcoming payments — skip alert math entirely.
   let nextPayment = defaultNextPayment;
-  let resolvedAccount = resolvePaymentAccountForUpcoming(
-    nextPayment.account,
-    nextPayment.accountId,
-    paymentResolutionPool,
-  );
+  let resolvedAccount = nextPayment
+    ? resolvePaymentAccountForUpcoming(
+        nextPayment.account,
+        nextPayment.accountId,
+        paymentResolutionPool,
+      )
+    : null;
 
   let nextPaymentShortfall = 0;
   let showInsufficientFundsWarning = false;
   let creditRiskActive: Extract<CreditPaymentRisk, { shouldWarn: true }> | null = null;
   let checkingFundsAlert: InsufficientFundsCheckingAlert | null = null;
 
-  for (const candidate of sortedUpcomingPayments) {
-    if (candidate.date < todayIso || candidate.kind === 'income' || !candidate.recurring) continue;
+  if (nextPayment) {
+    for (const candidate of sortedUpcomingPayments) {
+      if (candidate.date < todayIso || candidate.kind === 'income' || !candidate.recurring) continue;
 
-    const candidateAccount = resolvePaymentAccountForUpcoming(
-      candidate.account,
-      candidate.accountId,
-      paymentResolutionPool,
-    );
-    if (!candidateAccount) continue;
+      const candidateAccount = resolvePaymentAccountForUpcoming(
+        candidate.account,
+        candidate.accountId,
+        paymentResolutionPool,
+      );
+      if (!candidateAccount) continue;
 
-    if (candidateAccount.kind === 'credit') {
-      const creditLimit = candidateAccount.creditLimit;
-      if (typeof creditLimit !== 'number' || creditLimit <= 0) continue;
+      if (candidateAccount.kind === 'credit') {
+        const creditLimit = candidateAccount.creditLimit;
+        if (typeof creditLimit !== 'number' || creditLimit <= 0) continue;
 
-      const risk = evaluateCreditPaymentRisk(creditLimit, candidateAccount.balance, candidate.amount);
-      if (!risk.shouldWarn) continue;
+        const risk = evaluateCreditPaymentRisk(creditLimit, candidateAccount.balance, candidate.amount);
+        if (!risk.shouldWarn) continue;
+
+        nextPayment = candidate;
+        resolvedAccount = candidateAccount;
+        showInsufficientFundsWarning = true;
+        creditRiskActive = risk;
+        checkingFundsAlert = null;
+        break;
+      }
+
+      const candidatePaymentDate = new Date(`${candidate.date}T00:00:00`);
+      const resolvedPaycheck = resolvePaycheckForPaymentAlert(
+        candidate.accountId,
+        recurringPayments,
+        incomeTransactions,
+        candidatePaymentDate,
+        today,
+      );
+      const alert = evaluateCheckingInsufficientFunds(
+        candidateAccount.balance,
+        candidate.amount,
+        candidatePaymentDate,
+        resolvedPaycheck,
+      );
+      if (!alert) continue;
 
       nextPayment = candidate;
       resolvedAccount = candidateAccount;
       showInsufficientFundsWarning = true;
-      creditRiskActive = risk;
-      checkingFundsAlert = null;
+      creditRiskActive = null;
+      checkingFundsAlert = alert;
+      nextPaymentShortfall = alert.currentShortfall;
       break;
     }
-
-    const candidatePaymentDate = new Date(`${candidate.date}T00:00:00`);
-    const resolvedPaycheck = resolvePaycheckForPaymentAlert(
-      candidate.accountId,
-      recurringPayments,
-      incomeTransactions,
-      candidatePaymentDate,
-      today,
-    );
-    const alert = evaluateCheckingInsufficientFunds(
-      candidateAccount.balance,
-      candidate.amount,
-      candidatePaymentDate,
-      resolvedPaycheck,
-    );
-    if (!alert) continue;
-
-    nextPayment = candidate;
-    resolvedAccount = candidateAccount;
-    showInsufficientFundsWarning = true;
-    creditRiskActive = null;
-    checkingFundsAlert = alert;
-    nextPaymentShortfall = alert.currentShortfall;
-    break;
   }
 
-  const isIncomeRecurring = nextPayment.kind === 'income';
+  const isIncomeRecurring = nextPayment?.kind === 'income';
 
-  const nextPaymentAccountName = resolvedAccount?.name ?? nextPayment.account;
-  const nextPaymentDate = new Date(`${nextPayment.date}T00:00:00`);
-  const resolvedPaycheckForTimeline =
-    checkingFundsAlert?.resolvedPaycheck ??
-    resolvePaycheckForPaymentAlert(
-      nextPayment.accountId,
-      recurringPayments,
-      incomeTransactions,
-      nextPaymentDate,
-      today,
-    ) ??
-    resolveNextPaycheckForAccount(nextPayment.accountId, recurringPayments, incomeTransactions, today);
+  const nextPaymentAccountName = resolvedAccount?.name ?? nextPayment?.account ?? '';
+  const nextPaymentDate = nextPayment ? new Date(`${nextPayment.date}T00:00:00`) : today;
+  const resolvedPaycheckForTimeline = nextPayment
+    ? checkingFundsAlert?.resolvedPaycheck ??
+      resolvePaycheckForPaymentAlert(
+        nextPayment.accountId,
+        recurringPayments,
+        incomeTransactions,
+        nextPaymentDate,
+        today,
+      ) ??
+      resolveNextPaycheckForAccount(nextPayment.accountId, recurringPayments, incomeTransactions, today)
+    : null;
   const estimatedPayDate = resolvedPaycheckForTimeline?.date ?? addDays(today, 14);
   const riskBeforePay = creditRiskActive
     ? nextPaymentDate.getTime() < estimatedPayDate.getTime() && !isIncomeRecurring
@@ -1344,9 +1352,12 @@ export default function HomeScreen() {
       ? !checkingFundsAlert.paycheckArrivesBeforePayment
       : false;
 
-  const nextPaymentDisplayName = formatPersonDirectedPaymentLabel(nextPayment.name);
+  const nextPaymentDisplayName = nextPayment
+    ? formatPersonDirectedPaymentLabel(nextPayment.name)
+    : '';
 
   const forecastShortfallMessage = (() => {
+    if (!nextPayment) return '';
     if (creditRiskActive) {
       return creditRiskActive.reason === 'over_limit'
         ? `Ce paiement pourrait dépasser ta marge disponible. On peut l’ajuster avant l’échéance.`
@@ -1366,15 +1377,17 @@ export default function HomeScreen() {
   const mockCreditOverLimitBody =
     'Après ce paiement, environ 96 % de ta limite serait utilisée. Tu as plusieurs façons de garder de la marge.';
   const livePaycheckMeta = paycheckMetaFromTimeline(nextPaymentDate, resolvedPaycheckForTimeline, estimatedPayDate);
-  const liveAlertTitle = creditRiskActive
-    ? buildCreditLimitAlertTitle(nextPayment.name)
-    : buildLowFundsAlertTitle(nextPayment.name);
+  const liveAlertTitle = nextPayment
+    ? creditRiskActive
+      ? buildCreditLimitAlertTitle(nextPayment.name)
+      : buildLowFundsAlertTitle(nextPayment.name)
+    : '';
   const liveAccountLabel = resolvedAccount
     ? insufficientFundsAlertPillLabel(resolvedAccount)
     : nextPaymentAccountName;
 
   const dashboardAlerts: DashboardAlertItem[] = [];
-  if (showInsufficientFundsWarning && forecastShortfallMessage) {
+  if (nextPayment && showInsufficientFundsWarning && forecastShortfallMessage) {
     dashboardAlerts.push({
       id: 'live',
       color: creditRiskActive ? dashPalette.red : dashPalette.warning,
@@ -1400,29 +1413,33 @@ export default function HomeScreen() {
     });
   }
   dashboardAlerts.push(
-    {
-      id: 'mock-credit',
-      color: dashPalette.red,
-      bg: 'rgba(255,85,85,0.08)',
-      severity: 'danger',
-      title: buildCreditLimitAlertTitle(MOCK_CREDIT_PAYMENT_NAME),
-      body: mockCreditOverLimitBody,
-      date: formatShortDate(mockCreditNextPaymentDate),
-      accountName: MOCK_CREDIT_CARD_NAME,
-      paymentName: MOCK_CREDIT_PAYMENT_NAME,
-      paymentDateRaw: mockCreditNextPaymentDate,
-      paycheckDateRaw: mockCreditPaycheckDate,
-      collapsedSummary: `${buildCreditLimitAlertTitle(MOCK_CREDIT_PAYMENT_NAME)} · ${mockCreditOverLimitBody}`,
-      paycheckBeforePayment: true,
-      paycheckIsEstimated: true,
-      stats: {
-        currentBalance: MOCK_CREDIT_BALANCE_BEFORE,
-        paymentAmount: MOCK_CREDIT_PAYMENT_AMOUNT,
-        afterAmount: MOCK_CREDIT_BALANCE_BEFORE - MOCK_CREDIT_PAYMENT_AMOUNT,
-        afterLabel: 'Après paiement',
-        kind: 'credit',
-      },
-    },
+    ...(isDemoSeedEnabled()
+      ? [
+          {
+            id: 'mock-credit' as const,
+            color: dashPalette.red,
+            bg: 'rgba(255,85,85,0.08)',
+            severity: 'danger' as const,
+            title: buildCreditLimitAlertTitle(MOCK_CREDIT_PAYMENT_NAME),
+            body: mockCreditOverLimitBody,
+            date: formatShortDate(mockCreditNextPaymentDate),
+            accountName: MOCK_CREDIT_CARD_NAME,
+            paymentName: MOCK_CREDIT_PAYMENT_NAME,
+            paymentDateRaw: mockCreditNextPaymentDate,
+            paycheckDateRaw: mockCreditPaycheckDate,
+            collapsedSummary: `${buildCreditLimitAlertTitle(MOCK_CREDIT_PAYMENT_NAME)} · ${mockCreditOverLimitBody}`,
+            paycheckBeforePayment: true,
+            paycheckIsEstimated: true,
+            stats: {
+              currentBalance: MOCK_CREDIT_BALANCE_BEFORE,
+              paymentAmount: MOCK_CREDIT_PAYMENT_AMOUNT,
+              afterAmount: MOCK_CREDIT_BALANCE_BEFORE - MOCK_CREDIT_PAYMENT_AMOUNT,
+              afterLabel: 'Après paiement',
+              kind: 'credit' as const,
+            },
+          },
+        ]
+      : []),
   );
 
   dashboardAlerts.sort((a, b) => {

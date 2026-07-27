@@ -22,7 +22,7 @@ type Props = {
 export function FynChatEntryCard({ scrollRef }: Props) {
   const router = useRouter();
   const { colors } = useAppTheme();
-  const tourRef = useAppTourTarget('fyn-entry');
+  const { ref: tourRef, onLayout: onTourLayout } = useAppTourTarget('fyn-entry');
 
   useEffect(() => {
     return registerAppTourRevealer('fyn-entry', () => {
@@ -40,7 +40,7 @@ export function FynChatEntryCard({ scrollRef }: Props) {
       }}
       style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
     >
-      <View ref={tourRef} collapsable={false}>
+      <View ref={tourRef} collapsable={false} onLayout={onTourLayout}>
         <OnyxContainer style={styles.row}>
           <FynAvatar size={40} showStatus statusBorderColor={colors.containerBackground} />
           <View style={styles.copy}>

@@ -51,12 +51,10 @@ import {
 } from '@/constants/theme';
 import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
 import {
-  getCategories,
-  getCategoryBudgets,
   getLoans,
-  getSimulatedAccounts,
   upsertRecurringPayment,
 } from '@/lib/db';
+import { BUDGET_CATEGORY_PICKER_EMPTY_HINT } from '@/lib/budgetCategories';
 import { getChildSupportSalaryNotices } from '@/lib/childSupportLoan';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { getMerchantLogoUrl, RECURRING_SERVICE_LOGO_OPTIONS } from '@/lib/merchantLogo';
@@ -730,6 +728,13 @@ function PaymentFormModal({
                     </Pressable>
                   ) : null}
                 </View>
+              </View>
+            ) : form.kind === 'payment' ? (
+              <View style={styles.section}>
+                <DashboardSectionLabel>Catégorie</DashboardSectionLabel>
+                <Text style={[styles.categoryEmptyHint, { color: themeColors.textMuted }]}>
+                  {BUDGET_CATEGORY_PICKER_EMPTY_HINT}
+                </Text>
               </View>
             ) : null}
 
@@ -1483,6 +1488,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 10,
     paddingVertical: 10,
+  },
+  categoryEmptyHint: {
+    ...jakartaMediumText,
+    fontSize: 13,
+    lineHeight: 18,
   },
   accountRow: {
     flexDirection: 'row',

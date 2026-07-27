@@ -20,13 +20,15 @@ import {
   debtWizardStepCount,
   type DebtWizardAssembled,
 } from '@/components/plans/DebtPlanWizard';
+import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
-import { SettingsPickerSheet } from '@/components/SettingsPickerSheet';
 import {
-  manualAccountOptions,
-  toAccountOptions,
-  type AccountOption,
-} from '@/components/RecurringPaymentsForm';
+  FIELD_LEADING_TILE_SIZE,
+  PickerLeadingTile,
+  SettingsPickerSheet,
+  type SettingsPickerOption,
+} from '@/components/SettingsPickerSheet';
+import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
 import {
   planFinanceEyebrowStyle,
   planFinanceFonts,
@@ -36,6 +38,10 @@ import {
   planFinanceSecondaryButtonStyle,
 } from '@/constants/planFinanceKit';
 import { interMediumText, interSemiboldText, spacing } from '@/constants/theme';
+import {
+  accountBalanceIconForKind,
+  accountPickerRowPresentation,
+} from '@/lib/accountBalancePresentation';
 import {
   activateSuggestedPlan,
   appendUserPlan,
@@ -62,6 +68,7 @@ import { sanitizeDebtParametresForAcceleratedPlan } from '@/lib/plans/debtPlanCa
 import { getLoans, getSimulatedAccounts } from '@/lib/db';
 import { tapHaptic } from '@/lib/haptics';
 import { setPendingPlanChatConfirmation } from '@/lib/plans/pendingPlanChatConfirmation';
+import type { SimulatedAccount } from '@/types';
 
 type QueueItem = Pick<
   PlanSuggere,
@@ -110,7 +117,7 @@ export default function PlanCreateScreen() {
   const cadenceOptions = cadenceField?.cadenceOptions ?? FALLBACK_CADENCE_OPTIONS;
   const hasAccountField = useMemo(() => config.fields.some((f) => f.kind === 'account'), [config]);
 
-  const [accounts, setAccounts] = useState<AccountOption[]>(manualAccountOptions());
+  const [simulatedAccounts, setSimulatedAccounts] = useState<SimulatedAccount[]>([]);
   const [accountPickerOpen, setAccountPickerOpen] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [cadenceAmount, setCadenceAmount] = useState(cadenceField?.defaultAmount ?? '150');
@@ -127,13 +134,36 @@ export default function PlanCreateScreen() {
   const [wizardValid, setWizardValid] = useState(false);
   const [wizardError, setWizardError] = useState<{ title: string; message: string } | undefined>();
 
+  const accountPickerOptions = useMemo<SettingsPickerOption<string>[]>(() => {
+    if (simulatedAccounts.length > 0) {
+      return simulatedAccounts.map((account) => {
+        const row = accountPickerRowPresentation(account);
+        return {
+          id: account.id,
+          label: row.label,
+          description: row.description,
+          fieldLabel: row.fieldLabel,
+          icon: row.icon,
+          logoUrl: row.logoUrl,
+        };
+      });
+    }
+    return MANUAL_ENTRY_ACCOUNTS.map((account) => ({
+      id: account.id,
+      label: account.label,
+      fieldLabel: account.label,
+      icon: accountBalanceIconForKind(
+        account.id === 'credit' ? 'credit' : account.id === 'savings' ? 'savings' : 'checking',
+      ),
+    }));
+  }, [simulatedAccounts]);
+
   useEffect(() => {
     if (!hasAccountField || isDebtWizard) return;
     void (async () => {
       const stored = await getSimulatedAccounts();
-      const options = stored.length ? toAccountOptions(stored) : manualAccountOptions();
-      setAccounts(options);
-      setSelectedAccountId((current) => current || options[0]?.id || '');
+      setSimulatedAccounts(stored);
+      setSelectedAccountId((current) => current || stored[0]?.id || MANUAL_ENTRY_ACCOUNTS[0]?.id || '');
     })();
   }, [hasAccountField, isDebtWizard]);
 
@@ -191,7 +221,12 @@ export default function PlanCreateScreen() {
     [params, screenLead, screenTitle, subtype],
   );
 
-  const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
+  const selectedAccountOption = accountPickerOptions.find((a) => a.id === selectedAccountId);
+  const selectedAccountLabel =
+    selectedAccountOption?.fieldLabel?.trim() || selectedAccountOption?.label?.trim() || '';
+  const showAccountLeading = Boolean(
+    selectedAccountOption?.logoUrl?.trim() || selectedAccountOption?.icon,
+  );
   const cadenceSuffix = useMemo(
     () => cadenceOptions.find((o) => o.id === cadenceFrequency)?.suffix ?? 'semaine',
     [cadenceOptions, cadenceFrequency],
@@ -323,7 +358,7 @@ export default function PlanCreateScreen() {
     const input = {
       subtype,
       values: textValues,
-      accountLabel: hasAccountField ? selectedAccount?.label : undefined,
+      accountLabel: hasAccountField ? selectedAccountLabel || undefined : undefined,
       cadenceLabel: cadenceField ? cadenceLabel : undefined,
     };
 
@@ -357,7 +392,7 @@ export default function PlanCreateScreen() {
     isDebtWizard,
     persistPlan,
     saving,
-    selectedAccount?.label,
+    selectedAccountLabel,
     subtype,
     suggestion.montant_cible,
     textValues,
@@ -403,8 +438,22 @@ export default function PlanCreateScreen() {
               }}
               style={({ pressed }) => [planFinanceInputStyle(), styles.selectRow, pressed && styles.pressed]}
             >
-              <Text style={[styles.inputText, { color: selectedAccount ? pf.text : pf.textMuted }]}>
-                {selectedAccount?.label ?? 'Choisir un compte'}
+              {showAccountLeading ? (
+                <PickerLeadingTile
+                  icon={selectedAccountOption?.icon}
+                  logoUrl={selectedAccountOption?.logoUrl}
+                  label={selectedAccountLabel}
+                  iconColor={pf.textMuted}
+                  wellBackground={pf.input}
+                  defaultBorder={pf.border}
+                  size={FIELD_LEADING_TILE_SIZE}
+                />
+              ) : null}
+              <Text
+                style={[styles.selectText, { color: selectedAccountLabel ? pf.text : pf.textMuted }]}
+                numberOfLines={1}
+              >
+                {selectedAccountLabel || 'Choisir un compte'}
               </Text>
             </Pressable>
           </Field>
@@ -449,9 +498,10 @@ export default function PlanCreateScreen() {
         );
 
       default: {
+        const AmountInput = field.kind === 'money' ? NumericAmountInput : TextInput;
         return (
           <Field key={field.key} label={field.label}>
-            <TextInput
+            <AmountInput
               value={textValues[field.key] ?? ''}
               onChangeText={(value) => setTextValue(field.key, value)}
               placeholder={field.placeholder}
@@ -479,7 +529,7 @@ export default function PlanCreateScreen() {
           {isEditing ? (
             <Text style={[styles.progress, planFinanceEyebrowStyle()]}>{headerEyebrow}</Text>
           ) : total > 1 || !isDebtWizard ? (
-            <Text style={[styles.progress, planFinanceEyebrowStyle()]}>{`PLAN ${index} DE ${total}`}</Text>
+            <Text style={[styles.progress, planFinanceEyebrowStyle()]}>Ajout du plan de match</Text>
           ) : null}
           <Text style={[styles.title, planFinanceFonts.heroTitle]}>{screenTitle}</Text>
           {screenLead ? (
@@ -529,8 +579,8 @@ export default function PlanCreateScreen() {
         <SettingsPickerSheet
           visible={accountPickerOpen}
           title="Compte lié"
-          options={accounts.map((account) => ({ id: account.id, label: account.label }))}
-          selectedId={selectedAccountId || accounts[0]?.id || ''}
+          options={accountPickerOptions}
+          selectedId={selectedAccountId || accountPickerOptions[0]?.id || ''}
           onClose={() => setAccountPickerOpen(false)}
           onSelect={setSelectedAccountId}
         />
@@ -587,6 +637,14 @@ const styles = StyleSheet.create({
   selectRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.sm,
+  },
+  selectText: {
+    ...interMediumText,
+    fontSize: 15,
+    paddingVertical: spacing.md,
+    flex: 1,
+    minWidth: 0,
   },
   cadenceRow: {
     gap: spacing.sm,

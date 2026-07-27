@@ -1,4 +1,5 @@
 import { DASHBOARD_ACCOUNTS } from '@/constants/dashboardMockAccounts';
+import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { resolvePaycheckForPaymentAlert } from '@/lib/estimatedPaycheck';
 import {
@@ -141,6 +142,7 @@ function toPaymentResolutionAccounts(accounts: SimulatedAccount[]): PaymentResol
       creditLimit: account.creditLimit,
     }));
   }
+  if (!isDemoSeedEnabled()) return [];
   return DASHBOARD_ACCOUNTS.map((account) => ({
     id: account.id,
     name: account.name,
@@ -273,7 +275,7 @@ function getUpcomingPayments(
     })
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  return persisted.length ? persisted : UPCOMING_PAYMENTS;
+  return persisted.length ? persisted : isDemoSeedEnabled() ? UPCOMING_PAYMENTS : [];
 }
 
 export type BuildPaymentAlertsInput = {
@@ -288,7 +290,7 @@ export function buildPaymentAlertSources({
   recurringPayments,
   simulatedAccounts,
   incomeTransactions,
-  includeMockCredit = true,
+  includeMockCredit = isDemoSeedEnabled(),
 }: BuildPaymentAlertsInput): PaymentAlertSource[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -298,8 +300,9 @@ export function buildPaymentAlertSources({
   const upcomingPayments = getUpcomingPayments(recurringPayments, paymentResolutionPool);
   const sortedUpcomingPayments = [...upcomingPayments].sort((a, b) => a.date.localeCompare(b.date));
   const defaultNextPayment =
-    sortedUpcomingPayments.find((payment) => payment.date >= todayIso) ?? sortedUpcomingPayments[0];
+    sortedUpcomingPayments.find((payment) => payment.date >= todayIso) ?? sortedUpcomingPayments[0] ?? null;
 
+  // Empty recurring list (release APK / no demo seed) — return mock-only or [].
   let nextPayment = defaultNextPayment;
 
   let nextPaymentShortfall = 0;
@@ -307,58 +310,63 @@ export function buildPaymentAlertSources({
   let creditRiskActive: Extract<CreditPaymentRisk, { shouldWarn: true }> | null = null;
   let checkingFundsAlert: InsufficientFundsCheckingAlert | null = null;
 
-  for (const candidate of sortedUpcomingPayments) {
-    if (candidate.date < todayIso || candidate.kind === 'income' || !candidate.recurring) continue;
+  if (nextPayment) {
+    for (const candidate of sortedUpcomingPayments) {
+      if (candidate.date < todayIso || candidate.kind === 'income' || !candidate.recurring) continue;
 
-    const candidateAccount = resolvePaymentAccountForUpcoming(
-      candidate.account,
-      candidate.accountId,
-      paymentResolutionPool,
-    );
-    if (!candidateAccount) continue;
+      const candidateAccount = resolvePaymentAccountForUpcoming(
+        candidate.account,
+        candidate.accountId,
+        paymentResolutionPool,
+      );
+      if (!candidateAccount) continue;
 
-    if (candidateAccount.kind === 'credit') {
-      const creditLimit = candidateAccount.creditLimit;
-      if (typeof creditLimit !== 'number' || creditLimit <= 0) continue;
+      if (candidateAccount.kind === 'credit') {
+        const creditLimit = candidateAccount.creditLimit;
+        if (typeof creditLimit !== 'number' || creditLimit <= 0) continue;
 
-      const risk = evaluateCreditPaymentRisk(creditLimit, candidateAccount.balance, candidate.amount);
-      if (!risk.shouldWarn) continue;
+        const risk = evaluateCreditPaymentRisk(creditLimit, candidateAccount.balance, candidate.amount);
+        if (!risk.shouldWarn) continue;
+
+        nextPayment = candidate;
+        showInsufficientFundsWarning = true;
+        creditRiskActive = risk;
+        checkingFundsAlert = null;
+        break;
+      }
+
+      const candidatePaymentDate = new Date(`${candidate.date}T00:00:00`);
+      const resolvedPaycheck = resolvePaycheckForPaymentAlert(
+        candidate.accountId,
+        recurringPayments,
+        incomeTransactions,
+        candidatePaymentDate,
+        today,
+      );
+      const alert = evaluateCheckingInsufficientFunds(
+        candidateAccount.balance,
+        candidate.amount,
+        candidatePaymentDate,
+        resolvedPaycheck,
+      );
+      if (!alert) continue;
 
       nextPayment = candidate;
       showInsufficientFundsWarning = true;
-      creditRiskActive = risk;
-      checkingFundsAlert = null;
+      creditRiskActive = null;
+      checkingFundsAlert = alert;
+      nextPaymentShortfall = alert.currentShortfall;
       break;
     }
-
-    const candidatePaymentDate = new Date(`${candidate.date}T00:00:00`);
-    const resolvedPaycheck = resolvePaycheckForPaymentAlert(
-      candidate.accountId,
-      recurringPayments,
-      incomeTransactions,
-      candidatePaymentDate,
-      today,
-    );
-    const alert = evaluateCheckingInsufficientFunds(
-      candidateAccount.balance,
-      candidate.amount,
-      candidatePaymentDate,
-      resolvedPaycheck,
-    );
-    if (!alert) continue;
-
-    nextPayment = candidate;
-    showInsufficientFundsWarning = true;
-    creditRiskActive = null;
-    checkingFundsAlert = alert;
-    nextPaymentShortfall = alert.currentShortfall;
-    break;
   }
 
-  const nextPaymentDate = new Date(`${nextPayment.date}T00:00:00`);
-  const nextPaymentDisplayName = formatPersonDirectedPaymentLabel(nextPayment.name);
+  const nextPaymentDate = nextPayment ? new Date(`${nextPayment.date}T00:00:00`) : today;
+  const nextPaymentDisplayName = nextPayment
+    ? formatPersonDirectedPaymentLabel(nextPayment.name)
+    : '';
 
   const forecastShortfallMessage = (() => {
+    if (!nextPayment) return '';
     if (creditRiskActive) {
       return creditRiskActive.reason === 'over_limit'
         ? `Le paiement de ${nextPaymentDisplayName} pourrait dépasser ta marge disponible. On peut l’ajuster avant l’échéance.`
@@ -377,7 +385,7 @@ export function buildPaymentAlertSources({
 
   const sources: PaymentAlertSource[] = [];
 
-  if (showInsufficientFundsWarning && forecastShortfallMessage) {
+  if (nextPayment && showInsufficientFundsWarning && forecastShortfallMessage) {
     const kind = creditRiskActive ? ('credit_limit' as const) : ('low_funds' as const);
     sources.push({
       id: 'live',

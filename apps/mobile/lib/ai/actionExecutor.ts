@@ -1,6 +1,6 @@
 import { assignCategoryColor } from '@/constants/budgetCategoryColors';
 import {
-  CATEGORY_ICON_OPTIONS,
+  getCategoryIconName,
   UNCATEGORIZED_TRANSACTION_CATEGORY,
 } from '@/constants/categoryOptions';
 import { getGoalGreenShade } from '@/constants/theme';
@@ -18,7 +18,6 @@ import {
 import type {
   ChatAction,
   ChatActionType,
-  CreerCategorieBudgetParams,
   CreerCompteParams,
   CreerMarchandParams,
   CreerObjectifParams,
@@ -35,6 +34,13 @@ import type {
   ModifierPretParams,
   ModifierTransactionParams,
 } from '@/lib/ai/types';
+import {
+  addCategory,
+  getCategories as getBudgetUiCategories,
+  updateCategoryLimit,
+  updateCategoryName,
+} from '@/lib/budgetCategories';
+import { canAddBudgetCategory, MAX_BUDGET_CATEGORIES } from '@/lib/budgetCategoryModel';
 import { normalizeSearch } from '@/lib/categoryInference';
 import {
   getCategories,
@@ -265,23 +271,44 @@ async function executeModifierObjectif(params: Record<string, unknown>): Promise
   };
 }
 
-// TODO(budget-categories-fresh-start): rewrite when new budget category model/UI lands.
+/** Same dual-write path as Budgets UI (`add-budget-category`): SQLite + AsyncStorage. */
 async function executeCreerCategorieBudget(
   params: Record<string, unknown>,
 ): Promise<ExecuteChatActionResult> {
   const name = requireString(params, 'nom', 'Nom');
   const limitAmount = requireNumber(params, 'limite_mensuelle', 'Limite mensuelle');
-  const id = createEntityId('cat');
-  const budgets = await getCategoryBudgets();
-  const color = assignCategoryColor(budgets.map((budget) => budget.categoryColor));
+  const uiCategories = await getBudgetUiCategories();
+  if (!canAddBudgetCategory(uiCategories.length)) {
+    throw new Error(`Limite atteinte — maximum ${MAX_BUDGET_CATEGORIES} catégories budget.`);
+  }
 
-  await upsertCategory({
-    id,
-    name,
-    icon: readString(params, 'icone') ?? CATEGORY_ICON_OPTIONS[0] ?? 'cart-outline',
-    color,
-  });
-  await upsertCategoryBudget(id, limitAmount, readNumber(params, 'limite_hebdomadaire'));
+  const duplicate = uiCategories.find(
+    (category) => normalizeSearch(category.name) === normalizeSearch(name),
+  );
+  if (duplicate) {
+    throw new Error(`La catégorie « ${duplicate.name} » existe déjà.`);
+  }
+
+  const id = createEntityId('cat');
+  const color = assignCategoryColor(uiCategories.map((category) => category.color));
+  const icon = readString(params, 'icone') ?? getCategoryIconName({ name });
+  const weeklyLimit = readNumber(params, 'limite_hebdomadaire');
+
+  await upsertCategory({ id, name, icon, color });
+  await Promise.all([
+    upsertCategoryBudget(id, limitAmount, weeklyLimit),
+    addCategory({
+      id,
+      name,
+      icon,
+      color,
+      limit: limitAmount,
+      spent: 0,
+      period: 'monthly',
+      created_by: 'fyn',
+      createdAt: new Date().toISOString(),
+    }),
+  ]);
 
   return {
     ok: true,
@@ -290,28 +317,70 @@ async function executeCreerCategorieBudget(
   };
 }
 
-// TODO(budget-categories-fresh-start): rewrite when new budget category model/UI lands.
 async function executeModifierCategorieBudget(
   params: Record<string, unknown>,
 ): Promise<ExecuteChatActionResult> {
   const typed = params as ModifierCategorieBudgetParams;
-  const categories = await getCategories();
-  const existing = resolveCategory(categories, { id: typed.id, nom: typed.nom });
+  const [sqliteCategories, uiCategories] = await Promise.all([
+    getCategories(),
+    getBudgetUiCategories(),
+  ]);
+  const existing =
+    resolveCategory(sqliteCategories, { id: typed.id, nom: typed.nom }) ??
+    (() => {
+      const match = uiCategories.find(
+        (category) =>
+          (typed.id && category.id === typed.id) ||
+          (typed.nom && normalizeSearch(category.name) === normalizeSearch(typed.nom)),
+      );
+      return match
+        ? { id: match.id, name: match.name, icon: match.icon, color: match.color }
+        : null;
+    })();
   if (!existing) throw new Error('Catégorie introuvable — précise l\'id ou le nom.');
 
   const nextName = readString(params, 'nom') ?? existing.name;
+  const nextIcon = readString(params, 'icone') ?? existing.icon;
   await upsertCategory({
     id: existing.id,
     name: nextName,
-    icon: readString(params, 'icone') ?? existing.icon,
+    icon: nextIcon,
     color: existing.color,
   });
 
   const budgets = await getCategoryBudgets();
   const currentBudget = budgets.find((budget) => budget.categoryId === existing.id);
-  const limitAmount = readNumber(params, 'limite_mensuelle') ?? currentBudget?.limitAmount ?? 0;
-  const weeklyLimit = readNumber(params, 'limite_hebdomadaire') ?? currentBudget?.weeklyLimitAmount ?? null;
+  const uiBudget = uiCategories.find((category) => category.id === existing.id);
+  const limitAmount =
+    readNumber(params, 'limite_mensuelle') ??
+    currentBudget?.limitAmount ??
+    uiBudget?.limit ??
+    0;
+  const weeklyLimit =
+    readNumber(params, 'limite_hebdomadaire') ?? currentBudget?.weeklyLimitAmount ?? null;
   await upsertCategoryBudget(existing.id, limitAmount, weeklyLimit);
+
+  // Keep Budgets tab (AsyncStorage) in sync with SQLite.
+  if (uiBudget) {
+    if (nextName !== uiBudget.name) {
+      await updateCategoryName(existing.id, nextName);
+    }
+    if (limitAmount !== uiBudget.limit) {
+      await updateCategoryLimit(existing.id, limitAmount);
+    }
+  } else {
+    await addCategory({
+      id: existing.id,
+      name: nextName,
+      icon: nextIcon,
+      color: existing.color,
+      limit: limitAmount,
+      spent: currentBudget?.spent ?? 0,
+      period: 'monthly',
+      created_by: 'fyn',
+      createdAt: new Date().toISOString(),
+    });
+  }
 
   return {
     ok: true,

@@ -1,8 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getCategoryBudgets, getCategorySpentForMonth } from '@/lib/db';
+import { INCOME_CATEGORY } from '@/constants/categoryOptions';
+import { deleteCategoryBudget, getCategoryBudgets, getCategorySpentForMonth } from '@/lib/db';
 import { isSameMonth } from '@/lib/budgetMonth';
 import { getMockBudgetSnapshotForMonth } from '@/lib/budgetMonthMock';
+import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 import type { Category } from '@/types';
+
+/** French empty copy for category selectors when Budgets has no active categories. */
+export const BUDGET_CATEGORY_PICKER_EMPTY_HINT =
+  'Aucune catégorie budget — crée-en une dans Budgets';
 
 export type BudgetCategory = {
   id: string;
@@ -17,7 +23,8 @@ export type BudgetCategory = {
 };
 
 const STORAGE_KEY = 'budget_tracker_categories';
-const MOCK_VERSION = '4';
+/** v5: stop auto-seeding mock budget allocations when demo seed is off (release APK). */
+const MOCK_VERSION = '5';
 const VERSION_KEY = 'budget_tracker_categories_version';
 
 /** Green-toned palette — one unique color per mock category (shuffled). */
@@ -122,7 +129,9 @@ export async function initializeCategories(): Promise<void> {
     const version = await AsyncStorage.getItem(VERSION_KEY);
     if (version === MOCK_VERSION) return;
 
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(buildBaselineCategories()));
+    // Demo only: pre-fill budget allocations + fake spend. Release/APK stays empty.
+    const initial = isDemoSeedEnabled() ? buildBaselineCategories() : [];
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(initial));
     await AsyncStorage.setItem(VERSION_KEY, MOCK_VERSION);
   } catch (error) {
     console.warn('[budgetCategories] initializeCategories failed', error);
@@ -131,12 +140,24 @@ export async function initializeCategories(): Promise<void> {
 
 export async function getCategories(): Promise<BudgetCategory[]> {
   try {
-    const stored = await readStoredCategories();
-    if (stored.length > 0) return stored;
-    return buildBaselineCategories();
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    if (raw != null) {
+      // Explicit stored list — including `[]` after clear-all.
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (Array.isArray(parsed)) {
+          return parsed.filter(isBudgetCategory);
+        }
+      } catch {
+        return [];
+      }
+      return [];
+    }
+    if (isDemoSeedEnabled()) return buildBaselineCategories();
+    return [];
   } catch (error) {
     console.warn('[budgetCategories] getCategories failed', error);
-    return buildBaselineCategories();
+    return isDemoSeedEnabled() ? buildBaselineCategories() : [];
   }
 }
 
@@ -164,6 +185,10 @@ export async function getCategoriesForMonth(monthDate: Date): Promise<BudgetCate
   try {
     const spentByCategory = await getCategorySpentForMonth(monthDate);
     if (spentByCategory.size === 0 && viewingCurrentMonth) {
+      // Release: never show baked mock `spent` from AsyncStorage seed.
+      if (!isDemoSeedEnabled()) {
+        return categories.map((category) => ({ ...category, spent: 0 }));
+      }
       return categories;
     }
 
@@ -172,7 +197,9 @@ export async function getCategoriesForMonth(monthDate: Date): Promise<BudgetCate
       if (fromDb !== undefined) {
         return { ...category, spent: fromDb };
       }
-      if (viewingCurrentMonth) return category;
+      if (viewingCurrentMonth) {
+        return isDemoSeedEnabled() ? category : { ...category, spent: 0 };
+      }
       return { ...category, spent: 0 };
     });
   } catch (error) {
@@ -244,6 +271,30 @@ export async function deleteCategory(id: string): Promise<void> {
   }
 }
 
+/**
+ * Removes every budget allocation (AsyncStorage list + SQLite `category_budgets`).
+ * Does not delete transactions — same semantics as single-category delete.
+ */
+export async function clearAllBudgetCategories(): Promise<void> {
+  try {
+    const [stored, sqliteBudgets] = await Promise.all([
+      readStoredCategories(),
+      getCategoryBudgets(),
+    ]);
+    const ids = [
+      ...new Set([
+        ...stored.map((category) => category.id),
+        ...sqliteBudgets.map((budget) => budget.categoryId),
+      ]),
+    ];
+    await saveCategories([]);
+    await Promise.all(ids.map((id) => deleteCategoryBudget(id)));
+  } catch (error) {
+    console.warn('[budgetCategories] clearAllBudgetCategories failed', error);
+    throw error;
+  }
+}
+
 export async function resetMonthlySpent(): Promise<void> {
   try {
     const categories = await readStoredCategories();
@@ -302,4 +353,34 @@ export async function loadBudgetCategoriesForPicker(monthDate = new Date()): Pro
   await initializeCategories();
   const budgets = await getCategoriesForMonth(monthDate);
   return budgets.map(mapBudgetCategoryToCategory);
+}
+
+/**
+ * Same as {@link loadBudgetCategoriesForPicker}, plus Revenus for income recurring forms.
+ * Never includes inactive Budgets taxonomy presets.
+ */
+export async function loadRecurringPickerCategories(monthDate = new Date()): Promise<Category[]> {
+  const budgets = await loadBudgetCategoriesForPicker(monthDate);
+  if (budgets.some((c) => c.id === INCOME_CATEGORY.id || c.name === INCOME_CATEGORY.name)) {
+    return budgets;
+  }
+  return [...budgets, INCOME_CATEGORY];
+}
+
+/** Keep a currently selected category visible even if it was removed from Budgets. */
+export function ensureCategoryInPickerList(
+  categories: Category[],
+  ensure?: Pick<Category, 'id' | 'name' | 'icon' | 'color'> | null,
+): Category[] {
+  if (!ensure?.id || !ensure.name?.trim()) return categories;
+  if (categories.some((c) => c.id === ensure.id)) return categories;
+  return [
+    {
+      id: ensure.id,
+      name: ensure.name,
+      icon: ensure.icon || 'pricetag-outline',
+      color: ensure.color || '#64748B',
+    },
+    ...categories,
+  ];
 }

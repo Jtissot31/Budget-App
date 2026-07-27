@@ -13,6 +13,7 @@ import {
   spacing,
   typography,
 } from '@/constants/theme';
+import { UNIFORM_SEGMENT_HEIGHT } from '@/lib/uniformGroupStyles';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -31,12 +32,61 @@ const HISTORY_FILTER_OPTIONS: { id: HistoryTypeFilter; label: string }[] = [
   { id: 'income', label: 'Revenus' },
 ];
 
-type Props = {
+/** Fixed chrome height pieces — title + tabs must not reflow across tab switches. */
+const TITLE_ROW_HEIGHT = 40;
+
+type ChromeProps = {
   topInset: number;
   titleColor: string;
   activeView: TransactionsViewTab;
   onChangeView: (view: TransactionsViewTab) => void;
-  showHistoryToolbar: boolean;
+};
+
+/**
+ * Shared Transactions chrome: page title + Historique/Agenda/Marchands.
+ * Rendered once outside tab scroll views so position/height stay constant.
+ */
+export function TransactionsViewHeader({
+  topInset,
+  titleColor,
+  activeView,
+  onChangeView,
+}: ChromeProps) {
+  const insets = useSafeAreaInsets();
+  const contentGutter = Platform.OS === 'web' ? 0 : screenHorizontalGutter(insets);
+
+  return (
+    <View
+      style={[
+        styles.chrome,
+        {
+          paddingTop: topInset + SCREEN_TOP_GUTTER,
+          paddingHorizontal: contentGutter,
+        },
+      ]}
+    >
+      <View style={styles.topBar}>
+        <Text style={[styles.title, { color: titleColor }]} numberOfLines={1}>
+          Transactions
+        </Text>
+      </View>
+      <View style={styles.viewTabs}>
+        <SegmentedTabs
+          tabs={VIEW_TABS}
+          active={activeView}
+          onChange={(id) => {
+            tapHaptic();
+            onChangeView(id);
+          }}
+          activeLabelColor="rgba(255,255,255,0.85)"
+          showDivider={false}
+        />
+      </View>
+    </View>
+  );
+}
+
+type HistoryToolbarProps = {
   search: string;
   onSearchChange: (text: string) => void;
   historyFiltersExpanded: boolean;
@@ -45,19 +95,15 @@ type Props = {
   onHistoryTypeFilterChange: (filter: HistoryTypeFilter) => void;
 };
 
-export function TransactionsViewHeader({
-  topInset,
-  titleColor,
-  activeView,
-  onChangeView,
-  showHistoryToolbar,
+/** Historique-only search + type filters — lives inside the history list header. */
+export function TransactionsHistoryToolbar({
   search,
   onSearchChange,
   historyFiltersExpanded,
   onToggleHistoryFilters,
   historyTypeFilter,
   onHistoryTypeFilterChange,
-}: Props) {
+}: HistoryToolbarProps) {
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const contentGutter = Platform.OS === 'web' ? 0 : screenHorizontalGutter(insets);
@@ -66,127 +112,113 @@ export function TransactionsViewHeader({
   const hasQuery = search.trim().length > 0;
 
   return (
-    <>
-      <View style={{ paddingTop: topInset + SCREEN_TOP_GUTTER, paddingHorizontal: contentGutter }}>
-        <View style={styles.topBar}>
-          <Text style={[styles.title, { color: titleColor }]}>Transactions</Text>
-        </View>
-        <View style={showHistoryToolbar ? styles.viewTabsHistory : undefined}>
-          <SegmentedTabs
-            tabs={VIEW_TABS}
-            active={activeView}
-            onChange={(id) => {
-              tapHaptic();
-              onChangeView(id);
-            }}
-            activeLabelColor="rgba(255,255,255,0.85)"
-            showDivider={false}
-          />
-        </View>
-      </View>
-      {showHistoryToolbar ? (
+    <View
+      style={[
+        styles.historyToolbar,
+        { paddingHorizontal: contentGutter, backgroundColor: colors.background },
+      ]}
+    >
+      <View style={[styles.searchFilterBlock, { backgroundColor: colors.background }]}>
         <View
           style={[
-            styles.historyToolbar,
-            { paddingHorizontal: contentGutter, backgroundColor: colors.background },
+            styles.searchPill,
+            { backgroundColor: colors.background, borderColor: colors.borderSubtle },
           ]}
         >
-          <View style={[styles.searchFilterBlock, { backgroundColor: colors.background }]}>
-            <View
-              style={[
-                styles.searchPill,
-                { backgroundColor: colors.background, borderColor: colors.borderSubtle },
-              ]}
-            >
-              <AppIcon family="ionicons" name="search-outline" size={16} color={colors.textMuted} />
-              <TextInput
-                ref={searchInputRef}
-                style={[styles.searchInput, { color: colors.text }]}
-                placeholder="Rechercher"
-                placeholderTextColor={colors.textMuted}
-                value={search}
-                onChangeText={onSearchChange}
-                returnKeyType="search"
-                accessibilityLabel="Rechercher"
-              />
-              {hasQuery ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Effacer la recherche"
-                  hitSlop={8}
-                  onPress={() => {
-                    tapHaptic();
-                    onSearchChange('');
-                  }}
-                  style={({ pressed }) => [styles.clearSearchBtn, pressed && styles.pressed]}
-                >
-                  <AppIcon family="ionicons" name="close-circle" size={18} color={colors.textMuted} />
-                </Pressable>
-              ) : null}
-            </View>
+          <AppIcon family="ionicons" name="search-outline" size={16} color={colors.textMuted} />
+          <TextInput
+            ref={searchInputRef}
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Rechercher"
+            placeholderTextColor={colors.textMuted}
+            value={search}
+            onChangeText={onSearchChange}
+            returnKeyType="search"
+            accessibilityLabel="Rechercher"
+          />
+          {hasQuery ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Filtres"
-              accessibilityState={{ expanded: historyFiltersExpanded }}
+              accessibilityLabel="Effacer la recherche"
               hitSlop={8}
               onPress={() => {
                 tapHaptic();
-                onToggleHistoryFilters();
+                onSearchChange('');
               }}
-              style={({ pressed }) => [
-                styles.filterBtn,
-                {
-                  backgroundColor: filterActive ? colors.containerBackground : colors.background,
-                  borderColor: filterActive ? colors.containerBorder : colors.borderSubtle,
-                },
-                pressed && styles.pressed,
-              ]}
+              style={({ pressed }) => [styles.clearSearchBtn, pressed && styles.pressed]}
             >
-              <AppIcon
-                family="ionicons"
-                name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
-                size={20}
-                color={filterActive ? colors.text : colors.textMuted}
-              />
+              <AppIcon family="ionicons" name="close-circle" size={18} color={colors.textMuted} />
             </Pressable>
-          </View>
-          {historyFiltersExpanded ? (
-            <View style={styles.historyFilterWrap}>
-              <SegmentedTabs
-                tabs={HISTORY_FILTER_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
-                active={historyTypeFilter}
-                onChange={(id) => {
-                  tapHaptic();
-                  onHistoryTypeFilterChange(id);
-                }}
-                showDivider={false}
-                trackBgColor="transparent"
-                activeBgColor="rgba(255,255,255,0.07)"
-                activeLabelColor="rgba(255,255,255,0.85)"
-                inactiveLabelColor="rgba(255,255,255,0.28)"
-              />
-            </View>
           ) : null}
         </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Filtres"
+          accessibilityState={{ expanded: historyFiltersExpanded }}
+          hitSlop={8}
+          onPress={() => {
+            tapHaptic();
+            onToggleHistoryFilters();
+          }}
+          style={({ pressed }) => [
+            styles.filterBtn,
+            {
+              backgroundColor: filterActive ? colors.containerBackground : colors.background,
+              borderColor: filterActive ? colors.containerBorder : colors.borderSubtle,
+            },
+            pressed && styles.pressed,
+          ]}
+        >
+          <AppIcon
+            family="ionicons"
+            name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
+            size={20}
+            color={filterActive ? colors.text : colors.textMuted}
+          />
+        </Pressable>
+      </View>
+      {historyFiltersExpanded ? (
+        <View style={styles.historyFilterWrap}>
+          <SegmentedTabs
+            tabs={HISTORY_FILTER_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
+            active={historyTypeFilter}
+            onChange={(id) => {
+              tapHaptic();
+              onHistoryTypeFilterChange(id);
+            }}
+            showDivider={false}
+            trackBgColor="transparent"
+            activeBgColor="rgba(255,255,255,0.07)"
+            activeLabelColor="rgba(255,255,255,0.85)"
+            inactiveLabelColor="rgba(255,255,255,0.28)"
+          />
+        </View>
       ) : null}
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  chrome: {
+    // Keeps title + tabs out of tab scroll content so they never remount/shift.
+    flexShrink: 0,
+  },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: spacing.md,
     marginBottom: PAGE_TITLE_CONTENT_GAP,
+    height: TITLE_ROW_HEIGHT,
   },
   title: {
     ...PAGE_TITLE_STYLE,
     flex: 1,
   },
-  viewTabsHistory: {
+  viewTabs: {
+    height: UNIFORM_SEGMENT_HEIGHT,
     marginBottom: spacing.md,
+    justifyContent: 'center',
   },
   historyToolbar: {
     marginBottom: spacing.xl,

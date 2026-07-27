@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Modal,
+  InteractionManager,
   Pressable,
   StyleSheet,
   Text,
@@ -13,8 +13,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OnyxContainer } from '@/components/OnyxContainer';
 import { ONYX_CONTAINER } from '@/constants/planFinanceKit';
 import {
-  FLOATING_TAB_BAR_PILL_HEIGHT,
-  getFloatingTabBarBottomInset,
   jakartaBoldText,
   jakartaExtraBoldText,
   jakartaMediumText,
@@ -24,24 +22,28 @@ import {
 } from '@/constants/theme';
 import {
   finishAppTour,
+  getAppTourStopIndex,
   isAppTourActive,
-  maybeStartPendingAppTour,
+  setAppTourStopIndex,
   subscribeAppTourActive,
 } from '@/lib/appTour';
 import {
+  getCachedAppTourTargetRect,
   measureAppTourTarget,
   revealAppTourTarget,
   subscribeAppTourTargets,
   type TourTargetRect,
 } from '@/lib/appTourTargets';
 import { tapHaptic } from '@/lib/haptics';
-import { subscribeOnboardingCompleted } from '@/lib/onboarding';
 import { ONBOARDING_TOUR_STOPS } from '@/lib/onboardingTour';
 import { useAppTheme } from '@/lib/themeContext';
 
 const SPOTLIGHT_PAD = 8;
 const TOOLTIP_GAP = 14;
-const MEASURE_RETRY_MS = [0, 80, 180, 320, 500] as const;
+/** Settle delays after tab nav / density-driven bar height changes. */
+const MEASURE_RETRY_MS = [0, 32, 80, 160, 280, 450, 700] as const;
+/** Overlay dim — light enough that the real page stays readable. */
+const DIM_COLOR = 'rgba(0, 0, 0, 0.48)';
 
 function inflateRect(rect: TourTargetRect, pad: number): TourTargetRect {
   return {
@@ -52,35 +54,29 @@ function inflateRect(rect: TourTargetRect, pad: number): TourTargetRect {
   };
 }
 
-function fallbackTabRect(
-  targetId: string,
-  screenWidth: number,
-  screenHeight: number,
-  safeBottom: number,
-): TourTargetRect | null {
-  const tabOrder = [
-    'tab:index',
-    'tab:transactions',
-    'tab:goals',
-    'tab:accounts',
-    'tab:budgets',
-  ] as const;
-  const index = tabOrder.indexOf(targetId as (typeof tabOrder)[number]);
-  if (index < 0) return null;
+function waitMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  const bottom = getFloatingTabBarBottomInset(safeBottom);
-  const pillLeft = spacing.lg;
-  const pillWidth = screenWidth - spacing.lg * 2;
-  const slotWidth = pillWidth / tabOrder.length;
-  const pillHeight = FLOATING_TAB_BAR_PILL_HEIGHT;
-  const pillTop = screenHeight - bottom - pillHeight;
+function waitNextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
 
-  return {
-    x: pillLeft + slotWidth * index + slotWidth * 0.15,
-    y: pillTop + 4,
-    width: slotWidth * 0.7,
-    height: pillHeight - 8,
-  };
+/** Match expo-router pathnames like `/(tabs)/transactions` to tour hrefs (`/transactions`). */
+function pathMatchesTourHref(pathname: string, href: string): boolean {
+  if (pathname === href) return true;
+  if (href === '/') {
+    return (
+      pathname === '/' ||
+      pathname === '/index' ||
+      pathname.endsWith('/(tabs)') ||
+      pathname.endsWith('/(tabs)/') ||
+      pathname.endsWith('/(tabs)/index')
+    );
+  }
+  return pathname === href || pathname.endsWith(href);
 }
 
 export function AppGuidedTour() {
@@ -91,21 +87,30 @@ export function AppGuidedTour() {
   const { colors } = useAppTheme();
 
   const [active, setActive] = useState(isAppTourActive);
-  const [stopIndex, setStopIndex] = useState(0);
+  const [stopIndex, setStopIndex] = useState(getAppTourStopIndex);
   const [hole, setHole] = useState<TourTargetRect | null>(null);
+  const refreshGen = useRef(0);
 
   const stop = ONBOARDING_TOUR_STOPS[stopIndex] ?? ONBOARDING_TOUR_STOPS[0];
   const isLast = stopIndex >= ONBOARDING_TOUR_STOPS.length - 1;
 
+  const updateStopIndex = useCallback((index: number) => {
+    const next = Math.max(0, Math.min(index, ONBOARDING_TOUR_STOPS.length - 1));
+    setAppTourStopIndex(next);
+    setStopIndex(next);
+  }, []);
+
   useEffect(() => {
-    const unsubActive = subscribeAppTourActive(setActive);
-    const unsubOnboarding = subscribeOnboardingCompleted((done) => {
-      if (done) void maybeStartPendingAppTour();
+    // Auto-start after onboarding is disabled — overlay blocked the main tabs.
+    // Keep subscription so an explicit `startAppTour()` still drives UI if remounted.
+    const unsubActive = subscribeAppTourActive((nextActive) => {
+      setActive(nextActive);
+      if (nextActive) {
+        setStopIndex(getAppTourStopIndex());
+      }
     });
-    void maybeStartPendingAppTour();
     return () => {
       unsubActive();
-      unsubOnboarding();
     };
   }, []);
 
@@ -113,11 +118,10 @@ export function AppGuidedTour() {
     (index: number) => {
       const next = ONBOARDING_TOUR_STOPS[index];
       if (!next) return;
-      if (pathname !== next.href) {
+      if (!pathMatchesTourHref(pathname, next.href)) {
         router.navigate(next.href);
       }
       if (next.targetId === 'fyn-entry') {
-        // Let the hub mount, then scroll the card into view.
         requestAnimationFrame(() => {
           revealAppTourTarget('fyn-entry');
         });
@@ -137,33 +141,67 @@ export function AppGuidedTour() {
       return;
     }
 
+    const gen = ++refreshGen.current;
+    const targetId = stop.targetId;
+
+    // Show last known bounds immediately so the hole doesn't jump to a fixed Y.
+    const cached = getCachedAppTourTargetRect(targetId);
+    if (cached && gen === refreshGen.current) {
+      setHole(inflateRect(cached, SPOTLIGHT_PAD));
+    }
+
+    await new Promise<void>((resolve) => {
+      InteractionManager.runAfterInteractions(() => resolve());
+    });
+    if (gen !== refreshGen.current) return;
+
     let measured: TourTargetRect | null = null;
     for (const delay of MEASURE_RETRY_MS) {
       if (delay > 0) {
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        await waitMs(delay);
+      } else {
+        await waitNextFrame();
+        await waitNextFrame();
       }
-      if (stop.targetId === 'fyn-entry') {
+      if (gen !== refreshGen.current) return;
+
+      if (targetId === 'fyn-entry') {
         revealAppTourTarget('fyn-entry');
       }
-      measured = await measureAppTourTarget(stop.targetId);
+
+      measured = await measureAppTourTarget(targetId);
       if (measured) break;
     }
 
-    if (!measured) {
-      measured = fallbackTabRect(stop.targetId, screenWidth, screenHeight, insets.bottom);
+    if (gen !== refreshGen.current) return;
+
+    if (measured) {
+      setHole(inflateRect(measured, SPOTLIGHT_PAD));
+      return;
     }
 
-    setHole(measured ? inflateRect(measured, SPOTLIGHT_PAD) : null);
-  }, [active, insets.bottom, screenHeight, screenWidth, stop]);
+    // Keep prior hole if we already painted from cache; otherwise clear.
+    if (!cached) {
+      setHole(null);
+    }
+  }, [active, stop]);
 
   useEffect(() => {
     if (!active) return;
     void refreshHole();
+    let layoutDebounce: ReturnType<typeof setTimeout> | null = null;
     const unsub = subscribeAppTourTargets(() => {
-      void refreshHole();
+      // Tab slots + pill often layout in a burst; coalesce before remasuring.
+      if (layoutDebounce) clearTimeout(layoutDebounce);
+      layoutDebounce = setTimeout(() => {
+        void refreshHole();
+      }, 16);
     });
-    return unsub;
-  }, [active, pathname, refreshHole, stopIndex]);
+    return () => {
+      if (layoutDebounce) clearTimeout(layoutDebounce);
+      unsub();
+    };
+  }, [active, pathname, refreshHole, screenHeight, screenWidth, stopIndex, insets.bottom]);
 
   const tooltipPlacement = useMemo(() => {
     if (!hole) {
@@ -185,10 +223,10 @@ export function AppGuidedTour() {
   const complete = useCallback(async () => {
     tapHaptic();
     await finishAppTour();
-    setStopIndex(0);
+    updateStopIndex(0);
     setHole(null);
     router.navigate('/');
-  }, [router]);
+  }, [router, updateStopIndex]);
 
   const goNext = useCallback(() => {
     tapHaptic();
@@ -196,19 +234,27 @@ export function AppGuidedTour() {
       void complete();
       return;
     }
-    setStopIndex((current) => Math.min(current + 1, ONBOARDING_TOUR_STOPS.length - 1));
-  }, [complete, isLast]);
+    updateStopIndex(Math.min(stopIndex + 1, ONBOARDING_TOUR_STOPS.length - 1));
+  }, [complete, isLast, stopIndex, updateStopIndex]);
 
   if (!active) return null;
 
-  const dimColor = 'rgba(0, 0, 0, 0.72)';
+  const ringRadius = hole
+    ? Math.max(14, Math.min(hole.width, hole.height) / 2)
+    : 16;
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent>
-      <View style={styles.root} pointerEvents="box-none">
+    // Absolute overlay (not RN Modal) — avoids web Modal hit-testing bugs where
+    // dim siblings sit above Suivant. Covers tabs; lives outside swipe GestureDetector.
+    <View style={styles.root} accessibilityViewIsModal>
+      {/* Blocks interaction with the app while the tour is active. */}
+      <View style={styles.blocker} />
+
+      {/* Visual dim + spotlight only — never steal presses from the tooltip. */}
+      <View style={styles.visualLayer} pointerEvents="none">
         {hole ? (
           <>
-            <View style={[styles.dim, { top: 0, left: 0, right: 0, height: hole.y, backgroundColor: dimColor }]} />
+            <View style={[styles.dim, { top: 0, left: 0, right: 0, height: hole.y, backgroundColor: DIM_COLOR }]} />
             <View
               style={[
                 styles.dim,
@@ -217,7 +263,7 @@ export function AppGuidedTour() {
                   left: 0,
                   width: hole.x,
                   height: hole.height,
-                  backgroundColor: dimColor,
+                  backgroundColor: DIM_COLOR,
                 },
               ]}
             />
@@ -229,7 +275,7 @@ export function AppGuidedTour() {
                   left: hole.x + hole.width,
                   right: 0,
                   height: hole.height,
-                  backgroundColor: dimColor,
+                  backgroundColor: DIM_COLOR,
                 },
               ]}
             />
@@ -241,7 +287,7 @@ export function AppGuidedTour() {
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  backgroundColor: dimColor,
+                  backgroundColor: DIM_COLOR,
                 },
               ]}
             />
@@ -250,7 +296,6 @@ export function AppGuidedTour() {
               from={{ opacity: 0, scale: 0.92 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ type: 'timing', duration: 220 }}
-              pointerEvents="none"
               style={[
                 styles.ring,
                 {
@@ -258,27 +303,32 @@ export function AppGuidedTour() {
                   left: hole.x,
                   width: hole.width,
                   height: hole.height,
+                  borderRadius: ringRadius,
                   borderColor: colors.accentGreen,
                 },
               ]}
             />
           </>
         ) : (
-          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: dimColor }]} />
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: DIM_COLOR }]} />
         )}
+      </View>
 
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.tooltipWrap,
+          {
+            paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+            ...tooltipPlacement,
+          },
+        ]}
+      >
         <MotiView
           key={`tip-${stop.id}`}
           from={{ opacity: 0, translateY: 10 }}
           animate={{ opacity: 1, translateY: 0 }}
           transition={{ type: 'timing', duration: 240 }}
-          style={[
-            styles.tooltipWrap,
-            {
-              paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-              ...tooltipPlacement,
-            },
-          ]}
         >
           <OnyxContainer style={styles.tooltipCard}>
             <View style={styles.tooltipHeader}>
@@ -336,26 +386,37 @@ export function AppGuidedTour() {
           </OnyxContainer>
         </MotiView>
       </View>
-    </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
+    elevation: 100,
+  },
+  blocker: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+  visualLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
   },
   dim: {
     position: 'absolute',
   },
   ring: {
     position: 'absolute',
-    borderRadius: 16,
     borderWidth: 2,
   },
   tooltipWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
+    zIndex: 3,
+    elevation: 3,
   },
   tooltipCard: {
     padding: ONYX_CONTAINER.padding.card,

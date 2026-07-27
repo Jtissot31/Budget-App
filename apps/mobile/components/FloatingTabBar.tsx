@@ -40,6 +40,7 @@ import { uiEvents } from '@/lib/events';
 import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
 import { useAppTourTarget } from '@/hooks/useAppTourTarget';
+import { notifyAppTourTargetLayout } from '@/lib/appTourTargets';
 import type { TourTargetId } from '@/lib/onboardingTour';
 
 /** Matches `radius.pill` (999) — literal avoids Hermes `radius` binding clashes in this module. */
@@ -97,7 +98,7 @@ function TourableTabButton({
   iconColor,
   onPress,
 }: TourableTabProps) {
-  const tourRef = useAppTourTarget(targetId);
+  const { ref: tourRef, onLayout: onTourLayout } = useAppTourTarget(targetId);
   return (
     <Pressable
       onPress={onPress}
@@ -106,14 +107,22 @@ function TourableTabButton({
       accessibilityLabel={tabLabel}
       accessibilityState={{ selected: focused }}
     >
-      <View ref={tourRef} collapsable={false} style={styles.tabInner}>
-        <AppIcon
-          family="material-community"
-          name={iconName}
-          size={focused ? TAB_ICON_SIZE + 1 : TAB_ICON_SIZE}
-          color={iconColor}
-          focused={focused}
-        />
+      {/* Full slot bounds — height/width vary with safe area + resolution */}
+      <View
+        ref={tourRef}
+        collapsable={false}
+        onLayout={onTourLayout}
+        style={styles.tabMeasureFill}
+      >
+        <View style={styles.tabInner}>
+          <AppIcon
+            family="material-community"
+            name={iconName}
+            size={focused ? TAB_ICON_SIZE + 1 : TAB_ICON_SIZE}
+            color={iconColor}
+            focused={focused}
+          />
+        </View>
       </View>
     </Pressable>
   );
@@ -560,6 +569,12 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
       <View pointerEvents="box-none" style={[styles.floatingNavOuter, { marginBottom: bottom }]}>
         <View
           pointerEvents="box-none"
+          onLayout={() => {
+            // Pill height changes with padding / density — nudge all tab targets to remeasure.
+            Object.values(ROUTE_TOUR_TARGETS).forEach((id) => {
+              notifyAppTourTargetLayout(id);
+            });
+          }}
           style={[
             styles.floatingNavPill,
             {
@@ -711,6 +726,13 @@ const styles = StyleSheet.create({
   },
   tabSlot: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  tabMeasureFill: {
+    flex: 1,
+    alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 44,
