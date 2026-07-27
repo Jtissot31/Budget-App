@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DASHBOARD_ACCOUNTS } from '@/constants/dashboardMockAccounts';
 import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
+import { COLORS, SPACING, RADIUS, TYPOGRAPHY } from '@/constants/design-tokens';
 import {
   dashboardPalette,
   dashboardPaletteForTheme,
@@ -33,6 +34,7 @@ import {
   jakartaMediumText,
   jakartaSemiboldText,
   interNumericExtraBoldText,
+  moneyAmountTypography,
   radius,
   spacing,
   typography,
@@ -771,7 +773,7 @@ function AlertCard({
                 ]}
               >
                 <View style={[aStyles.marker, { backgroundColor: alert.color }]}>
-                  <AlertDiamondFillIcon size={16} color="#fff" />
+                  <AlertDiamondFillIcon size={16} color={COLORS.text} />
                 </View>
               </View>
 
@@ -783,6 +785,7 @@ function AlertCard({
                 ]}
               >
                 <View style={[aStyles.marker, { backgroundColor: palette.green }]}>
+                  {/* Near-miss: wallet icon on green — pitch #000 vs COLORS.dark.textOnAccent (#0a0a0a) */}
                   <AppIcon family="ionicons" name="wallet" size={14} color="#000" />
                 </View>
               </View>
@@ -816,7 +819,7 @@ function AlertCard({
 
 const aStyles = StyleSheet.create({
   bellButton: {
-    padding: 4,
+    padding: SPACING.xs,
     flexShrink: 0,
   },
   card: {
@@ -837,7 +840,7 @@ const aStyles = StyleSheet.create({
   cardHeaderActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: SPACING.xs,
     flexShrink: 0,
   },
   statsRow: {
@@ -861,7 +864,7 @@ const aStyles = StyleSheet.create({
     lineHeight: typography.caption + 4,
   },
   timeline: {
-    gap: 6,
+    gap: 6, // keep — intentional density, no 6px SPACING token
   },
   dateRow: {
     flexDirection: 'row',
@@ -881,7 +884,7 @@ const aStyles = StyleSheet.create({
   },
   todayArrowText: {
     ...jakartaBoldText,
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.sizes.tag,
     color: 'rgba(245,245,245,0.84)',
     lineHeight: 12,
   },
@@ -919,13 +922,13 @@ const aStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   legend: {
-    gap: 6,
-    marginTop: 4,
+    gap: 6, // keep — intentional density
+    marginTop: SPACING.xs,
   },
   legendRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: SPACING.sm,
   },
   legendIcon: {
     width: 14,
@@ -1595,13 +1598,13 @@ const styles = StyleSheet.create({
   },
   /** Shadow + chrome only — no overflow hidden (clips iOS shadow). */
   forecastSurface: {
-    borderRadius: 24,
+    borderRadius: 24, // keep — no 24px RADIUS token
     borderWidth: 0,
   },
   forecastClip: {
-    borderRadius: 24,
+    borderRadius: 24, // keep — matches forecastSurface
     overflow: 'hidden',
-    paddingHorizontal: 18,
+    paddingHorizontal: 18, // keep — no 18px SPACING token
     paddingVertical: 18,
   },
   greetingBlock: {
@@ -1612,7 +1615,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 14,
+    gap: SPACING.planCardGap,
     minWidth: 0,
   },
   greetingMotion: {
@@ -1631,7 +1634,7 @@ const styles = StyleSheet.create({
   headerIconButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: RADIUS.planIconButton,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1648,14 +1651,14 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.72 },
   // ── New multi-ring gauge card ────────────────────────────────────────────
   gaugeCard: {
-    borderRadius: 20,
-    paddingHorizontal: 18,
+    borderRadius: RADIUS.planIconButton,
+    paddingHorizontal: 18, // keep — no 18px SPACING token
     paddingVertical: 18,
   },
   gaugeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: SPACING.planCardGap,
   },
   gaugeCopy: {
     flex: 1,
@@ -1664,36 +1667,36 @@ const styles = StyleSheet.create({
   },
   gaugeWarnIcon: {
     alignSelf: 'flex-end',
-    marginBottom: 6,
+    marginBottom: 6, // keep — no 6px SPACING token
   },
   gaugeWarnIconPlaceholder: {
     height: 22,
   },
   gaugeUsageLabel: {
     ...interNumericExtraBoldText,
-    fontSize: 28,
-    letterSpacing: -0.4,
+    fontSize: TYPOGRAPHY.moneyTiers.hero,
+    letterSpacing: -0.4, // keep — hero preset uses -0.8
     textTransform: 'uppercase',
     fontVariant: ['tabular-nums'],
-    lineHeight: 32,
+    lineHeight: 32, // keep — hero preset uses 33
   },
   gaugeEyebrow: {
     ...jakartaBoldText,
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.sizes.tag,
     letterSpacing: 2.0,
     textTransform: 'uppercase',
-    marginTop: 3,
+    marginTop: SPACING.tagPaddingVertical,
   },
   gaugeSpacer: {
-    height: 14,
+    height: SPACING.planCardGap,
   },
   gaugeAmountLabel: {
     ...interNumericExtraBoldText,
-    fontSize: 26,
+    fontSize: 26, // keep — between heroStat(24) and hero(28)
     letterSpacing: -0.5,
     fontVariant: ['tabular-nums'],
   },
-  balanceRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 },
+  balanceRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: SPACING.planCardGap },
   balanceCol: { flex: 1, minWidth: 0, justifyContent: 'flex-start' },
   eyebrow: {
     ...jakartaSemiboldText,
@@ -1704,12 +1707,9 @@ const styles = StyleSheet.create({
     lineHeight: typography.micro + 4,
   },
   balanceMint: {
-    ...interNumericExtraBoldText,
-    marginTop: 8,
-    fontSize: 30,
+    ...moneyAmountTypography({ fontSize: 30, lineHeight: 36 }), // 30 — no moneyTiers match
+    marginTop: SPACING.sm,
     color: C.green,
-    fontVariant: ['tabular-nums'],
-    lineHeight: 36,
   },
   metricUnit: {
     ...interNumericExtraBoldText,
@@ -1717,42 +1717,39 @@ const styles = StyleSheet.create({
     color: 'rgba(245,245,245,0.84)',
   },
   balanceWhite: {
-    ...interNumericExtraBoldText,
-    marginTop: 8,
-    fontSize: 30,
+    ...moneyAmountTypography({ fontSize: 30, lineHeight: 36 }), // 30 — no moneyTiers match
+    marginTop: SPACING.sm,
     color: C.text,
-    fontVariant: ['tabular-nums'],
-    lineHeight: 36,
   },
   aiInsight: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 7,
+    gap: 7, // keep — no 7px token
     marginTop: 0,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    borderRadius: 18,
+    paddingHorizontal: 10, // keep — no 10px SPACING token
+    paddingVertical: 9, // keep — no 9px token
+    borderRadius: RADIUS.card,
     borderWidth: StyleSheet.hairlineWidth,
   },
   aiDot: {
     width: 22,
     height: 22,
-    borderRadius: 11,
+    borderRadius: 11, // keep — circle half of 22
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 1,
+    marginTop: 1, // keep — optical nudge
     borderWidth: StyleSheet.hairlineWidth,
   },
   forecastInline: {
-    gap: 12,
-    paddingTop: 4,
-    paddingBottom: 2,
+    gap: SPACING.md,
+    paddingTop: SPACING.xs,
+    paddingBottom: 2, // keep — optical
   },
   /** Eyebrow + compte : colonne pour éviter que la pill chevauche le titre. */
   timelineAlertHeader: {
     flexDirection: 'column',
     alignItems: 'stretch',
-    gap: 8,
+    gap: SPACING.sm,
     minWidth: 0,
   },
   timelineAlertEyebrow: {
@@ -1764,9 +1761,9 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.pill,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginLeft: 8,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    marginLeft: SPACING.sm,
   },
   simPreviewTagText: {
     fontSize: typography.micro - 2,
@@ -1786,8 +1783,8 @@ const styles = StyleSheet.create({
   balanceInsightPagerPages: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingTop: 4,
-    paddingBottom: 18,
+    paddingTop: SPACING.xs,
+    paddingBottom: 18, // keep — no 18px SPACING token
   },
   balanceInsightPage: {
     flexGrow: 0,
@@ -1796,12 +1793,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 7,
+    gap: 7, // keep — no 7px token
   },
   pagerDot: {
     width: 6,
     height: 6,
-    borderRadius: 3,
+    borderRadius: 3, // keep — micro dot
   },
   balancePagerHint: {
     textAlign: 'center',
@@ -1812,15 +1809,15 @@ const styles = StyleSheet.create({
   shortfallCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 8,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    gap: SPACING.sm,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 11, // keep — no 11px token
   },
   shortfallMessageColumn: {
     flex: 1,
     minWidth: 0,
-    gap: 7,
+    gap: 7, // keep — no 7px token
     alignItems: 'stretch',
     flexShrink: 1,
     paddingTop: 1,
@@ -1831,8 +1828,8 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 11,
-    paddingVertical: 4,
+    paddingHorizontal: 11, // keep — no 11px token
+    paddingVertical: SPACING.xs,
     marginBottom: 1,
   },
   alertAccountPillText: {
@@ -1853,7 +1850,7 @@ const styles = StyleSheet.create({
   shortfallIconBadge: {
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: 14, // keep — circle half of 28
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -1895,7 +1892,7 @@ const styles = StyleSheet.create({
   },
   timeline: {
     position: 'relative',
-    marginTop: 2,
+    marginTop: 2, // keep — optical
     marginHorizontal: 2,
   },
   timelineCompact: {
@@ -1976,7 +1973,7 @@ const styles = StyleSheet.create({
     top: 5,
     width: 24,
     height: 24,
-    borderRadius: 12,
+    borderRadius: RADIUS.md,
     marginLeft: -12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1991,24 +1988,24 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,168,84,0.9)',
   },
   timelineLegend: {
-    gap: 8,
+    gap: SPACING.sm,
   },
   legendDot: {
     width: 7,
     height: 7,
-    borderRadius: 4,
+    borderRadius: 4, // keep — micro dot
     backgroundColor: 'rgba(0,168,84,0.62)',
   },
   legendLabels: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    columnGap: 12,
-    rowGap: 7,
+    columnGap: SPACING.md,
+    rowGap: 7, // keep — no 7px token
   },
   legendPair: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 5, // keep — no 5px token
   },
   legendTodayMarker: {
     width: 0,
@@ -2023,7 +2020,7 @@ const styles = StyleSheet.create({
   legendIconMarker: {
     width: 14,
     height: 14,
-    borderRadius: 7,
+    borderRadius: 7, // keep — circle half of 14
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2062,18 +2059,18 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   fill: { height: 5, borderRadius: radius.pill },
-  alertText: { fontSize: typography.caption, fontWeight: '600', color: C.subtext, marginTop: 4 },
+  alertText: { fontSize: typography.caption, fontWeight: '600', color: C.subtext, marginTop: SPACING.xs },
   captionMuted: { flex: 1, fontSize: typography.meta, fontWeight: '700', color: C.subtext, lineHeight: typography.meta + 4 },
   paymentPreview: {
-    gap: 9,
+    gap: 9, // keep — intentional density
   },
   paymentPreviewInner: {
-    gap: 9,
+    gap: 9, // keep — intentional density
   },
   paymentHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 13,
+    gap: 13, // keep — spacing near onyx radius value, not a spacing token
     minWidth: 0,
   },
   paymentIcon: {
@@ -2081,11 +2078,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  paymentCopy: { flex: 1, minWidth: 0, gap: 3 },
+  paymentCopy: { flex: 1, minWidth: 0, gap: SPACING.tagPaddingVertical },
   paymentTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 6, // keep — no 6px token
     minWidth: 0,
   },
   rowTitle: {
@@ -2105,10 +2102,10 @@ const styles = StyleSheet.create({
   paymentWarningCallout: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: SPACING.sm,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 10, // keep — no 10px SPACING token
   },
   paymentWarningText: {
     flex: 1,
@@ -2120,10 +2117,10 @@ const styles = StyleSheet.create({
   paymentReadyCallout: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: SPACING.sm,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 10, // keep — no 10px SPACING token
   },
   paymentReadyText: {
     flex: 1,
@@ -2135,17 +2132,17 @@ const styles = StyleSheet.create({
   paymentMetaGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: SPACING.sm,
   },
   paymentMetaPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 6, // keep — no 6px token
     maxWidth: '100%',
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingHorizontal: 10, // keep — no 10px SPACING token
+    paddingVertical: 7, // keep — no 7px token
   },
   paymentMetaText: {
     flexShrink: 1,
@@ -2157,7 +2154,7 @@ const styles = StyleSheet.create({
   paymentAlertRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 6,
+    gap: 6, // keep — no 6px token
     minWidth: 0,
   },
   paymentAlertText: {
@@ -2177,14 +2174,14 @@ const dashStyles = StyleSheet.create({
   skeletonGreeting: {
     height: 38,
     width: '62%',
-    borderRadius: 10,
+    borderRadius: RADIUS.budgetCategoryIconWell,
     backgroundColor: C.border,
     opacity: 0.55,
     marginTop: spacing.xxl + spacing.lg,
   },
   skeletonCard: {
     height: 120,
-    borderRadius: 16,
+    borderRadius: RADIUS.lg,
     backgroundColor: C.card,
     opacity: 0.45,
   },
@@ -2289,8 +2286,8 @@ const dashStyles = StyleSheet.create({
   },
   paymentBadge: {
     marginBottom: spacing.xs,
-    borderRadius: 4,
-    paddingHorizontal: 6,
+    borderRadius: 4, // keep — micro badge
+    paddingHorizontal: 6, // keep — badge density
     paddingVertical: 2,
   },
   paymentBadgeExpense: {
@@ -2301,7 +2298,7 @@ const dashStyles = StyleSheet.create({
   },
   paymentBadgeText: {
     ...jakartaMediumText,
-    fontSize: 11,
+    fontSize: 11, // keep — between tag(10) and micro(12)
     letterSpacing: 0.3,
   },
   paymentBadgeTextExpense: {
