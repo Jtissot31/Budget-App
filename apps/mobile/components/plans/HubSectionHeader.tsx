@@ -2,7 +2,8 @@ import { ReactNode } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { planFinanceKit } from '@/constants/planFinanceKit';
-import { spacing, typographyKit } from '@/constants/theme';
+import { SPACING } from '@/constants/design-tokens';
+import { typographyKit } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
@@ -10,7 +11,7 @@ type Props = {
   title: string;
   trailing?: ReactNode;
   style?: StyleProp<ViewStyle>;
-  /** Soft `#4ADE80` eyebrow — hub strategy / épargne only; keep Obligations muted. */
+  /** Soft accent eyebrow (`COLORS.green` / `#4ADE80`) — hub strategy / épargne only; keep Obligations muted. */
   accentEyebrow?: boolean;
 };
 
@@ -37,13 +38,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: spacing.md,
-    paddingBottom: spacing.xs,
+    gap: SPACING.md,
+    paddingBottom: SPACING.xs,
   },
   titleGroup: {
     flex: 1,
     minWidth: 0,
-    gap: spacing.xs,
+    gap: SPACING.xs,
   },
   title: {
     ...typographyKit.sectionTitle,
@@ -51,7 +52,7 @@ const styles = StyleSheet.create({
   },
   trailing: {
     flexShrink: 0,
-    paddingTop: 2,
+    paddingTop: 2, // keep — optical
   },
 });
 

@@ -79,6 +79,6 @@ const styles = StyleSheet.create({
   copy: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: 2, // keep — hub row density
   },
 });

@@ -5,6 +5,7 @@ import {
   onyxContainerPressedStyle,
   onyxContainerRowLayoutStyle,
 } from '@/constants/planFinanceKit';
+import { RADIUS } from '@/constants/design-tokens';
 import { typographyKit } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
@@ -60,7 +61,7 @@ const styles = StyleSheet.create({
   iconWell: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: RADIUS.card,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -68,6 +69,6 @@ const styles = StyleSheet.create({
   copy: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: 2, // keep — hub row density
   },
 });

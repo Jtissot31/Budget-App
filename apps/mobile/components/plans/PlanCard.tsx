@@ -3,6 +3,7 @@ import { AppIcon } from '@/components/icons/AppIcon';
 import { DashboardCard } from '@/components/DashboardCard';
 import { OnyxContainer } from '@/components/OnyxContainer';
 import { planFinanceContainerPressedStyle } from '@/constants/planFinanceKit';
+import { TYPOGRAPHY } from '@/constants/design-tokens';
 import { moneyAmountTypography, radius, spacing, typographyKit } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { isPlanSuggere, planProgressionPourcent, type Plan } from '@/lib/plans/Plan';
@@ -396,12 +397,12 @@ const styles = StyleSheet.create({
   homeCategory: {
     flex: 1,
     minWidth: 0,
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.sizes.tag,
     letterSpacing: 0.5,
   },
   homeSuggestedStatus: {
     flexShrink: 0,
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.sizes.tag,
     letterSpacing: 0.5,
   },
   homeSuggestedHint: {
@@ -409,7 +410,7 @@ const styles = StyleSheet.create({
   },
   homePct: {
     flexShrink: 0,
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.sizes.tag,
     fontWeight: '600',
   },
   carouselTopRow: {
@@ -469,13 +470,13 @@ const styles = StyleSheet.create({
   },
   progressPct: {
     ...typographyKit.microMedium,
-    fontSize: 11,
+    fontSize: 11, // keep — between tag(10) and micro(12)
     letterSpacing: 0.15,
     flexShrink: 0,
   },
   progressTrack: {
     height: 4,
-    borderRadius: 2,
+    borderRadius: 2, // keep — progress micro
     overflow: 'hidden',
     marginTop: spacing.xs,
     alignSelf: 'stretch',
@@ -487,6 +488,6 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: '100%',
-    borderRadius: 2,
+    borderRadius: 2, // keep — progress micro
   },
 });

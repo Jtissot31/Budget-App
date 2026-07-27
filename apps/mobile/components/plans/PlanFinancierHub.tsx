@@ -19,6 +19,7 @@ import { HubSectionHeader, HUB_SECTION_INNER_GAP } from '@/components/plans/HubS
 import { PlanHubCardCarousel } from '@/components/plans/PlanHubCardCarousel';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { planFinanceKit } from '@/constants/planFinanceKit';
+import { SPACING } from '@/constants/design-tokens';
 import {
   FLOATING_NAV_CONTENT_PADDING,
   PAGE_TITLE_CONTENT_GAP,
@@ -243,16 +244,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: SPACING.pagePaddingHorizontal,
     paddingBottom: PAGE_TITLE_CONTENT_GAP,
-    gap: spacing.md,
+    gap: SPACING.md,
   },
   title: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    gap: planFinanceKit.layout.sectionGap,
+    paddingHorizontal: SPACING.pagePaddingHorizontal,
+    gap: SPACING.planSectionGap, // = planFinanceKit.layout.sectionGap (32)
   },
   plansSection: {
     gap: HUB_SECTION_INNER_GAP,
@@ -261,14 +262,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: PLAN_HOME_ROW.iconWellSize + PLAN_HOME_ROW.paddingVertical * 2,
-    paddingVertical: spacing.xl,
+    paddingVertical: SPACING.xl,
   },
   emptyState: {
     alignItems: 'stretch',
-    paddingVertical: spacing.xs,
+    paddingVertical: SPACING.xs,
   },
   footerBlock: {
-    gap: spacing.md,
-    paddingTop: spacing.xs,
+    gap: SPACING.md,
+    paddingTop: SPACING.xs,
   },
 });

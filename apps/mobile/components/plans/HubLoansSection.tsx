@@ -20,6 +20,7 @@ import {
   loanTypeBadgeLabel,
 } from '@/lib/loanPresentation';
 import { computeLineOfCreditUtilization } from '@/lib/loanDetailSections';
+import { RADIUS } from '@/constants/design-tokens';
 import { moneyAmountTypography, spacing, typographyKit } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 import type { Loan } from '@/types';
@@ -150,7 +151,7 @@ const styles = StyleSheet.create({
   loanCopy: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: 2, // keep — hub row density
   },
   loanType: {
     ...typographyKit.metaMedium,
@@ -167,7 +168,7 @@ const styles = StyleSheet.create({
   loanAmountCol: {
     alignItems: 'flex-end',
     flexShrink: 0,
-    gap: 2,
+    gap: 2, // keep — hub row density
   },
   utilCaption: {
     ...typographyKit.metaMedium,
@@ -180,7 +181,7 @@ const styles = StyleSheet.create({
   addIconWell: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: RADIUS.card, // circle half of 36 — not Onyx shell (Onyx stays 13)
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,

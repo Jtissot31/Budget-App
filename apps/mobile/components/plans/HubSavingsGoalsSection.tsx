@@ -19,6 +19,7 @@ import {
   onyxContainerPressedStyle,
   onyxContainerRowLayoutStyle,
 } from '@/constants/planFinanceKit';
+import { RADIUS } from '@/constants/design-tokens';
 import { spacing, typographyKit } from '@/constants/theme';
 import { getCategoryBudgets, getDashboard, getRecurringPayments, getSavingsGoals } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
@@ -263,7 +264,7 @@ const styles = StyleSheet.create({
   addIconWell: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: RADIUS.card, // circle half of 36 — Onyx shell stays 13
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
