@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { DashboardCard } from '@/components/DashboardCard';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { SPACING } from '@/constants/design-tokens';
 import {
   moneyAmountTypography,
   radius,
@@ -539,6 +540,7 @@ export function AgendaCashHeroCard({
                 style={({ pressed }) => [
                   styles.daySquare,
                   {
+                    // keep #D0D0D0 — today square fill/border not in COLORS (near light border)
                     backgroundColor: isToday
                       ? '#D0D0D0'
                       : isSelected
@@ -633,14 +635,14 @@ const styles = StyleSheet.create({
     width: '100%',
     minHeight: TIMELINE_TRACK_HEIGHT + TIMELINE_AMOUNT_RESERVE,
     // Room for the lifted today cursor above the track.
-    paddingTop: TODAY_CURSOR_LIFT + 4,
+    paddingTop: TODAY_CURSOR_LIFT + SPACING.xs,
     paddingBottom: spacing.md,
-    gap: 2,
+    gap: 2, // keep — Agenda density
   },
   /** Same width as the first N day columns + dividers — left-aligned with the strip. */
   timelineWeek: {
     alignSelf: 'flex-start',
-    gap: 2,
+    gap: 2, // keep — Agenda density
   },
   /** Track + below amounts share a box so leader hairlines can span both. */
   timelineTrackAndAmounts: {
@@ -657,14 +659,14 @@ const styles = StyleSheet.create({
   timelineLine: {
     height: StyleSheet.hairlineWidth * 2,
     width: '100%',
-    borderRadius: 1,
+    borderRadius: 1, // keep — track geometry
   },
   timelineSegmentTick: {
     position: 'absolute',
     top: (TIMELINE_TRACK_HEIGHT - TIMELINE_SEGMENT_TICK_HEIGHT) / 2,
     width: TIMELINE_SEGMENT_TICK_WIDTH,
     height: TIMELINE_SEGMENT_TICK_HEIGHT,
-    borderRadius: 1,
+    borderRadius: 1, // keep — tick geometry
     zIndex: 0,
   },
   timelineTodayCursor: {
@@ -723,7 +725,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'flex-start',
-    gap: 2,
+    gap: 2, // keep — Agenda density
     paddingVertical: spacing.sm,
     paddingHorizontal: 2,
     borderRadius: radius.md,
@@ -737,7 +739,7 @@ const styles = StyleSheet.create({
     height: typographyKit.micro.lineHeight + typographyKit.rowTitle.lineHeight + 6,
     alignSelf: 'flex-start',
     marginTop: spacing.sm,
-    borderRadius: 1,
+    borderRadius: 1, // keep — divider geometry
   },
   dayWeekday: {
     textTransform: 'uppercase',
@@ -754,7 +756,7 @@ const styles = StyleSheet.create({
   dayDot: {
     width: 4,
     height: 4,
-    borderRadius: 2,
+    borderRadius: 2, // keep — micro marker
   },
   dayDotSpacer: {
     width: 4,

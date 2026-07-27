@@ -7,6 +7,7 @@ import {
 } from '@/components/TransactionAmountLabel';
 import type { MerchantOverride, SimulatedAccount, Transaction } from '@/types';
 import { getMerchantOverrideForLabel } from '@/lib/merchantLogo';
+import { TYPOGRAPHY } from '@/constants/design-tokens';
 import {
   ICON_WELL_SIZE,
   jakartaMediumText,
@@ -267,11 +268,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   contentEmbedded: {
-    gap: 2,
+    gap: 2, // keep — list density
   },
   avatarEmbedded: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 9,
+    borderRadius: 9, // keep — near sm(8)
     flexShrink: 0,
   },
   mainRow: {
@@ -288,7 +289,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     minWidth: 0,
-    gap: 5,
+    gap: 5, // keep — list density
   },
   titleRow: {
     flexDirection: 'row',
@@ -304,7 +305,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   name: {
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.sizes.caption,
     lineHeight: 18,
   },
   nameEmbedded: {
@@ -324,7 +325,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   meta: {
-    fontSize: 12,
+    fontSize: TYPOGRAPHY.sizes.micro,
     lineHeight: 16,
   },
   metaEmbedded: {

@@ -43,6 +43,7 @@ import {
   type HistoryTypeFilter,
   type TransactionsViewTab,
 } from '@/components/transactions/TransactionsViewHeader';
+import { SPACING, RADIUS } from '@/constants/design-tokens';
 import {
   colors,
   FLOATING_NAV_CONTENT_PADDING,
@@ -688,7 +689,7 @@ const styles = StyleSheet.create({
   historyEmptyIcon: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 24, // keep — circle half of 48
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xs,
@@ -740,7 +741,7 @@ const styles = StyleSheet.create({
   },
   dateHeader: {
     paddingVertical: spacing.sm,
-    gap: 2,
+    gap: 2, // keep — Agenda density
   },
   dateHeaderLabel: {
     ...typographyKit.microUpper,
@@ -771,10 +772,10 @@ const styles = StyleSheet.create({
   merchantModalSheet: {
     maxHeight: '86%',
     backgroundColor: colors.containerBackground,
-    borderRadius: 30,
+    borderRadius: 30, // keep — sheet chrome, no 30px RADIUS token
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.lg,
-    shadowColor: '#000000',
+    shadowColor: '#000000', // keep — shadow noise
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.32,
     shadowRadius: 20,
@@ -798,12 +799,12 @@ const styles = StyleSheet.create({
   modalTitleCopy: {
     flex: 1,
     minWidth: 0,
-    gap: 3,
+    gap: SPACING.tagPaddingVertical,
   },
   closeBtn: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: RADIUS.card,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
@@ -813,13 +814,13 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   formHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  formHeadCopy: { flex: 1, minWidth: 0, gap: 4 },
+  formHeadCopy: { flex: 1, minWidth: 0, gap: SPACING.xs },
   formTitle: { color: colors.text, fontSize: typography.body, fontWeight: '800' },
   formHint: { color: colors.textMuted, fontSize: typography.meta, lineHeight: 17 },
   logoPreviewWrap: {
     position: 'relative',
-    paddingRight: 4,
-    paddingBottom: 4,
+    paddingRight: SPACING.xs,
+    paddingBottom: SPACING.xs,
   },
   logoPreview: {
     width: 52,
@@ -837,7 +838,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: 24,
     height: 24,
-    borderRadius: 12,
+    borderRadius: RADIUS.md,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
@@ -928,7 +929,7 @@ const styles = StyleSheet.create({
   confirmIcon: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 22, // keep — circle half of 44
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,

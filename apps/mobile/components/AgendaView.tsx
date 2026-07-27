@@ -7,6 +7,7 @@ import { PaymentDetailSheet, type PaymentDetailPayload } from '@/components/Paym
 import { AgendaPaymentRow } from '@/components/AgendaPaymentRow';
 import { AgendaCashHeroCard } from '@/components/AgendaCashHeroCard';
 import { DashboardCard } from '@/components/DashboardCard';
+import { SPACING, RADIUS, TYPOGRAPHY } from '@/constants/design-tokens';
 import {
   FLOATING_NAV_CONTENT_PADDING,
   jakartaBoldText,
@@ -1322,7 +1323,7 @@ function createStyles(colors: AppColors): AgendaViewStyles {
   },
   ctxTitle: {
     ...jakartaBoldText,
-    fontSize: 18,
+    fontSize: TYPOGRAPHY.sizes.dashboardGreeting,
     letterSpacing: -0.2,
   },
   ctxTitleMuted: {
@@ -1330,12 +1331,12 @@ function createStyles(colors: AppColors): AgendaViewStyles {
   },
   calNav: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 6, // keep — Agenda density
   },
   calNavBtn: {
     width: 28,
     height: 28,
-    borderRadius: 9,
+    borderRadius: 9, // keep — near sm(8)
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1344,17 +1345,17 @@ function createStyles(colors: AppColors): AgendaViewStyles {
   },
   viewSwitch: {
     flexDirection: 'row',
-    gap: 2,
+    gap: 2, // keep — Agenda density
     borderWidth: 1,
-    borderRadius: 10,
-    padding: 3,
+    borderRadius: RADIUS.budgetCategoryIconWell,
+    padding: SPACING.tagPaddingVertical,
     marginLeft: 'auto',
     zIndex: 1,
   },
   viewSwitchBtn: {
     width: 34,
     height: 30,
-    borderRadius: 7,
+    borderRadius: 7, // keep — compact switch
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1373,12 +1374,12 @@ function createStyles(colors: AppColors): AgendaViewStyles {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
-    paddingTop: 6,
+    paddingTop: 6, // keep — Agenda density
     paddingBottom: spacing.sm,
   },
   dateHeaderLabel: {
     ...jakartaBoldText,
-    fontSize: 11.5,
+    fontSize: 11.5, // keep — between tag(10) and micro(12)
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     flex: 1,
@@ -1404,7 +1405,7 @@ function createStyles(colors: AppColors): AgendaViewStyles {
     flex: 1,
     textAlign: 'center',
     ...jakartaBoldText,
-    fontSize: 10,
+    fontSize: TYPOGRAPHY.sizes.tag,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
@@ -1413,7 +1414,7 @@ function createStyles(colors: AppColors): AgendaViewStyles {
   },
   calWeekRow: {
     flexDirection: 'row',
-    paddingVertical: 4,
+    paddingVertical: SPACING.xs,
   },
   cell: {
     width: '14.28%',
@@ -1422,11 +1423,11 @@ function createStyles(colors: AppColors): AgendaViewStyles {
   calCell: {
     width: '100%',
     height: 48,
-    borderRadius: 12,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'flex-start',
-    paddingTop: 7,
-    gap: 4,
+    paddingTop: 7, // keep — Agenda density
+    gap: SPACING.xs,
     borderWidth: 1,
     borderColor: 'transparent',
   },
@@ -1435,13 +1436,13 @@ function createStyles(colors: AppColors): AgendaViewStyles {
   },
   dayNum: {
     ...jakartaSemiboldText,
-    fontSize: 14,
+    fontSize: TYPOGRAPHY.sizes.caption,
     lineHeight: 14,
     fontVariant: ['tabular-nums'],
   },
   dotsRow: {
     flexDirection: 'row',
-    gap: 3,
+    gap: SPACING.tagPaddingVertical,
     minHeight: 4,
   },
   dotSpacer: {
@@ -1450,30 +1451,30 @@ function createStyles(colors: AppColors): AgendaViewStyles {
   eventDot: {
     width: 4,
     height: 4,
-    borderRadius: 2,
+    borderRadius: 2, // keep — micro chart/dot
   },
   eventDotIncome: {},
   dayPanel: {
-    marginTop: 14,
+    marginTop: SPACING.planCardGap,
   },
   dayPanelHead: {
     flexDirection: 'row',
     alignItems: 'baseline',
     flexWrap: 'wrap',
     gap: spacing.xs,
-    paddingTop: 14,
-    paddingBottom: 6,
+    paddingTop: SPACING.planCardGap,
+    paddingBottom: 6, // keep — Agenda density
   },
   dayPanelTitle: {
     ...jakartaBoldText,
-    fontSize: 15,
+    fontSize: 15, // keep — between caption(14) and body(16)
     letterSpacing: -0.1,
     flexShrink: 1,
     minWidth: 0,
   },
   dayPanelSuffix: {
     ...jakartaMediumText,
-    fontSize: 12.5,
+    fontSize: 12.5, // keep — Agenda density
     flexShrink: 0,
   },
   emptyState: {
@@ -1489,7 +1490,7 @@ function createStyles(colors: AppColors): AgendaViewStyles {
   emptyIcon: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 24, // keep — circle half of 48
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1497,12 +1498,12 @@ function createStyles(colors: AppColors): AgendaViewStyles {
   },
   emptyTitle: {
     ...jakartaBoldText,
-    fontSize: 16,
+    fontSize: TYPOGRAPHY.sizes.body,
     textAlign: 'center',
   },
   emptyHint: {
     ...jakartaMediumText,
-    fontSize: 12.5,
+    fontSize: 12.5, // keep — Agenda density
     lineHeight: 18,
     textAlign: 'center',
   },
