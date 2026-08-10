@@ -10,6 +10,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PageTransition } from '@/components/PageTransition';
+import { ComponentLibraryShortcutRow } from '@/components/plans/ComponentLibraryShortcutRow';
 import { ExploreMorePlansRow } from '@/components/plans/ExploreMorePlansRow';
 import { FynChatEntryCard } from '@/components/plans/FynChatEntryCard';
 import { WidgetGalleryShortcutRow } from '@/components/plans/WidgetGalleryShortcutRow';
@@ -176,6 +177,10 @@ export function PlanFinancierHub() {
     router.push('/widgets');
   }, [router]);
 
+  const handleOpenComponentLibrary = useCallback(() => {
+    router.push('/fyn-ui-lab');
+  }, [router]);
+
   const showCarouselSpinner =
     carouselPlans.length === 0 && (plansLoading || suggestionsLoading);
   const isEmpty = !plansLoading && !suggestionsLoading && carouselPlans.length === 0;
@@ -227,8 +232,9 @@ export function PlanFinancierHub() {
           <HubLoansSection />
 
           <View style={styles.footerBlock}>
-            <FynChatEntryCard scrollRef={scrollRef} />
+            <FynChatEntryCard />
             <WidgetGalleryShortcutRow onPress={handleOpenWidgetGallery} />
+            <ComponentLibraryShortcutRow onPress={handleOpenComponentLibrary} />
           </View>
         </ScrollView>
       </View>

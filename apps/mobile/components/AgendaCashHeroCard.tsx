@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { DashboardCard } from '@/components/DashboardCard';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { SPACING } from '@/constants/design-tokens';
 import {
   moneyAmountTypography,
   radius,
@@ -62,16 +61,16 @@ const DAY_PITCH = DAY_SQUARE_WIDTH + DAY_DIVIDER_WIDTH;
 /** Timeline maps to N day columns currently visible in the strip viewport. */
 const TIMELINE_VISIBLE_DAYS = 7;
 const TIMELINE_DOT_SIZE = 8;
-/** Right-pointing chevron (`>`) marking today — kept larger than payment dots. */
-const TODAY_CURSOR_ICON_SIZE = 18;
-/** Hit/ring box around the today cursor (must clear an 8px payment dot). */
-const TODAY_CURSOR_SIZE = 26;
-/** Lift cursor above the track center so same-day payment dots don’t bury it. */
-const TODAY_CURSOR_LIFT = 10;
-/** Alias kept so Fast Refresh / older evals never throw ReferenceError. */
-const TODAY_CURSOR_HEIGHT = TODAY_CURSOR_SIZE;
+/** Vertical today marker — thin accent line through the track. */
+const TODAY_CURSOR_LINE_WIDTH = 2;
+/** Line height: crosses the track with a short extension above/below. */
+const TODAY_CURSOR_LINE_HEIGHT = TIMELINE_DOT_SIZE + 10;
+/** Gap between « Aujourd’hui » label bottom and the top of the today line. */
+const TODAY_CURSOR_LABEL_GAP = 2;
+/** Reserved space above the track for the today label. */
+const TODAY_CURSOR_LABEL_RESERVE = 18;
 const TIMELINE_SEGMENT_TICK_HEIGHT = 7;
-/** Track stays ~12px; today chevron may overflow vertically when lifted. */
+/** Track stays ~12px; today line + label may extend above. */
 const TIMELINE_TRACK_HEIGHT = Math.max(
   TIMELINE_DOT_SIZE,
   TIMELINE_SEGMENT_TICK_HEIGHT,
@@ -463,20 +462,26 @@ export function AgendaCashHeroCard({
                         styles.timelineTodayCursor,
                         {
                           left: timeline.todayLeft,
-                          marginLeft: -TODAY_CURSOR_SIZE / 2,
-                          borderColor: colors.primary,
-                          backgroundColor: isLight
-                            ? 'rgba(255, 255, 255, 0.92)'
-                            : 'rgba(10, 10, 10, 0.92)',
+                          marginLeft: -TODAY_CURSOR_LINE_WIDTH / 2,
                         },
                       ]}
-                      accessibilityLabel="Aujourd'hui"
+                      accessibilityLabel="Aujourd’hui"
                     >
-                      <AppIcon
-                        family="ionicons"
-                        name="chevron-forward"
-                        size={TODAY_CURSOR_ICON_SIZE}
-                        color={colors.primary}
+                      <Text
+                        style={[
+                          typographyKit.micro,
+                          styles.timelineTodayLabel,
+                          { color: colors.primary },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        Aujourd’hui
+                      </Text>
+                      <View
+                        style={[
+                          styles.timelineTodayLine,
+                          { backgroundColor: colors.primary },
+                        ]}
                       />
                     </View>
                   ) : null}
@@ -634,8 +639,8 @@ const styles = StyleSheet.create({
   timelineBlock: {
     width: '100%',
     minHeight: TIMELINE_TRACK_HEIGHT + TIMELINE_AMOUNT_RESERVE,
-    // Room for the lifted today cursor above the track.
-    paddingTop: TODAY_CURSOR_LIFT + SPACING.xs,
+    // Room for « Aujourd’hui » above the track.
+    paddingTop: TODAY_CURSOR_LABEL_RESERVE + TODAY_CURSOR_LABEL_GAP,
     paddingBottom: spacing.md,
     gap: 2, // keep — Agenda density
   },
@@ -669,18 +674,27 @@ const styles = StyleSheet.create({
     borderRadius: 1, // keep — tick geometry
     zIndex: 0,
   },
+  /** Today marker: label above + vertical line through the track. */
   timelineTodayCursor: {
     position: 'absolute',
-    // Sit above the track so same-day payment/paycheck dots stay readable underneath.
-    top: (TIMELINE_TRACK_HEIGHT - TODAY_CURSOR_HEIGHT) / 2 - TODAY_CURSOR_LIFT,
-    width: TODAY_CURSOR_SIZE,
-    height: TODAY_CURSOR_HEIGHT,
-    borderRadius: TODAY_CURSOR_SIZE / 2,
-    borderWidth: 2,
+    top: (TIMELINE_TRACK_HEIGHT - TODAY_CURSOR_LINE_HEIGHT) / 2,
+    width: TODAY_CURSOR_LINE_WIDTH,
+    height: TODAY_CURSOR_LINE_HEIGHT,
     alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 5,
-    elevation: 5,
+    zIndex: 4,
+    elevation: 4,
+  },
+  timelineTodayLabel: {
+    position: 'absolute',
+    bottom: TODAY_CURSOR_LINE_HEIGHT + TODAY_CURSOR_LABEL_GAP,
+    left: TODAY_CURSOR_LINE_WIDTH / 2,
+    transform: [{ translateX: '-50%' }],
+    letterSpacing: 0.2,
+  },
+  timelineTodayLine: {
+    width: TODAY_CURSOR_LINE_WIDTH,
+    height: TODAY_CURSOR_LINE_HEIGHT,
+    borderRadius: 1,
   },
   timelineDot: {
     position: 'absolute',

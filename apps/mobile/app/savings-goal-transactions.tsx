@@ -142,7 +142,7 @@ export default function SavingsGoalTransactionsScreen() {
 
   return (
     <PageTransition>
-    <View style={[stylesMemo.screenRoot, { backgroundColor: 'transparent' }]}>
+    <View style={[stylesMemo.screenRoot, { backgroundColor: colors.background }]}>
       <BottomSheet
         visible
         scrollable={false}

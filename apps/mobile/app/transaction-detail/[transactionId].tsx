@@ -829,13 +829,13 @@ function updateArticlesInNote(note: string | undefined, articles: ItemizedNote[]
 const SHARE_CARD_WIDTH = 360;
 
 const SHARE_THEME = {
-  screenBg: '#0a0a0a',
+  screenBg: '#070709',
   surface: '#111111',
   surfaceElevated: '#181818',
   border: '#1c1c1c',
   text: '#FFFFFF',
   textMuted: '#666666',
-  success: '#00e664',
+  success: '#22C55E',
   successMuted: 'rgba(0, 230, 100, 0.12)',
 } as const;
 

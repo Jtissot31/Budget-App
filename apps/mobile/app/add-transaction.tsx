@@ -970,7 +970,7 @@ export default function AddTransactionScreen() {
   const themed = useMemo(
     () => ({
       modalBackdrop: { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' },
-      sheet: { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
+      sheet: { backgroundColor: colors.background, borderColor: colors.containerBorder },
       handle: { backgroundColor: colors.borderStrong },
       closeButton: {
         backgroundColor: colors.surfaceElevated,

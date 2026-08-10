@@ -1,5 +1,4 @@
-import { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, View, type RefObject, type ScrollView } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { useRouter } from 'expo-router';
 import { FynAvatar } from '@/components/ai-chat/FynAvatar';
@@ -9,26 +8,12 @@ import {
   onyxContainerRowLayoutStyle,
 } from '@/constants/planFinanceKit';
 import { typographyKit } from '@/constants/theme';
-import { useAppTourTarget } from '@/hooks/useAppTourTarget';
-import { registerAppTourRevealer } from '@/lib/appTourTargets';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
-type Props = {
-  /** Parent hub scroll — tour scrolls to end so this card is visible. */
-  scrollRef?: RefObject<ScrollView | null>;
-};
-
-export function FynChatEntryCard({ scrollRef }: Props) {
+export function FynChatEntryCard() {
   const router = useRouter();
   const { colors } = useAppTheme();
-  const { ref: tourRef, onLayout: onTourLayout } = useAppTourTarget('fyn-entry');
-
-  useEffect(() => {
-    return registerAppTourRevealer('fyn-entry', () => {
-      scrollRef?.current?.scrollToEnd({ animated: true });
-    });
-  }, [scrollRef]);
 
   return (
     <Pressable
@@ -40,33 +25,31 @@ export function FynChatEntryCard({ scrollRef }: Props) {
       }}
       style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
     >
-      <View ref={tourRef} collapsable={false} onLayout={onTourLayout}>
-        <OnyxContainer style={styles.row}>
-          <FynAvatar size={40} showStatus statusBorderColor={colors.containerBackground} />
-          <View style={styles.copy}>
-            <Text
-              style={[typographyKit.rowTitle, { color: colors.text }]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              Parler à Fyn
-            </Text>
-            <Text
-              style={[typographyKit.metaMedium, { color: colors.textMuted }]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              Conseiller IA pour tes plans
-            </Text>
-          </View>
-          <AppIcon
-            family="ionicons"
-            name="chevron-forward"
-            size={16}
-            color={colors.accentGreen || colors.primary}
-          />
-        </OnyxContainer>
-      </View>
+      <OnyxContainer style={styles.row}>
+        <FynAvatar size={40} showStatus statusBorderColor={colors.containerBackground} />
+        <View style={styles.copy}>
+          <Text
+            style={[typographyKit.rowTitle, { color: colors.text }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            Parler à Fyn
+          </Text>
+          <Text
+            style={[typographyKit.metaMedium, { color: colors.textMuted }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            Conseiller IA pour tes plans
+          </Text>
+        </View>
+        <AppIcon
+          family="ionicons"
+          name="chevron-forward"
+          size={16}
+          color={colors.accentGreen || colors.primary}
+        />
+      </OnyxContainer>
     </Pressable>
   );
 }
@@ -79,6 +62,6 @@ const styles = StyleSheet.create({
   copy: {
     flex: 1,
     minWidth: 0,
-    gap: 2, // keep — hub row density
+    gap: 2,
   },
 });

@@ -33,26 +33,29 @@ export const appBackgroundGradientLight = {
   end: { x: 0.28, y: 1 },
 } as const;
 
-/** Neutral charcoal app canvas — solid, no blue tint (not pitch black) */
-export const DARK_CANVAS = '#0a0a0a';
+/**
+ * Budget Proto (Figma) canvas — source: Downloads/Budget Proto `App.tsx` DARK.BG
+ * (+ theme.css `--background` ≈ #080808).
+ */
+export const DARK_CANVAS = '#070709';
 
 /** Screen-level charcoal canvas — same as DARK_CANVAS */
 export const CANVAS_CHARCOAL = DARK_CANVAS;
 
 /**
- * Standard container fill for cards, list rows, sheets (dark #111111).
+ * Standard container fill — Figma glass card (`DARK.CARD`).
  * Icon wells only: use `iconBox` / `surfaceElevated`.
  */
-export const CONTAINER_SURFACE = '#111111';
+export const CONTAINER_SURFACE = 'rgba(255, 255, 255, 0.055)';
 
 /**
- * Standard container outline — matches dashboard « Fonds insuffisants » alert shell (`aStyles.card`).
+ * Standard container outline — Figma `DARK.BORDER`.
  * Use with {@link CONTAINER_SURFACE} / `containerBackground` and `borderWidth: 1`.
  */
-export const CONTAINER_BORDER = '#1c1c1c';
+export const CONTAINER_BORDER = 'rgba(255, 255, 255, 0.1)';
 
-/** Light-theme container outline (same as `lightDashboardPalette.border`). */
-export const CONTAINER_BORDER_LIGHT = '#C0C0C8';
+/** Light-theme container outline (Figma LIGHT.BORDER). */
+export const CONTAINER_BORDER_LIGHT = 'rgba(0, 0, 0, 0.09)';
 
 /**
  * Liquid spring presets for {@link ThemeSegmentedControl} / {@link SegmentedTabs} sliding pill.
@@ -87,35 +90,35 @@ export const liquidSegmentedSettleSpring = {
  * icon-card grids ({@link TransferModePicker}), or picker sheets.
  */
 export const segmentedTabBarDark = {
-  track: '#1C1C1C',
-  activePill: '#2C2C2C',
+  track: 'rgba(255, 255, 255, 0.05)',
+  activePill: 'rgba(255, 255, 255, 0.1)',
   activeText: '#FFFFFF',
-  inactiveText: '#6B6B6B',
+  inactiveText: '#6E6E80',
 } as const;
 
-/** Segmented tab bar — light theme (unchanged from prior light work) */
+/** Segmented tab bar — light theme (Budget Proto LIGHT) */
 export const segmentedTabBarLight = {
-  track: 'rgba(10, 10, 10, 0.06)',
-  activePill: 'rgba(10, 10, 10, 0.10)',
-  activeText: '#0D1117',
-  inactiveText: '#52525B',
+  track: 'rgba(0, 0, 0, 0.06)',
+  activePill: 'rgba(0, 0, 0, 0.09)',
+  activeText: '#0A0A0F',
+  inactiveText: '#8E8E9A',
 } as const;
 
-/** Dashboard dark palette — single source of truth for app-wide dark surfaces */
+/** Dashboard dark palette — Budget Proto Figma (App.tsx DARK + semantics) */
 export const dashboardPalette = {
   bg: DARK_CANVAS,
   card: CONTAINER_SURFACE,
-  iconBox: '#181818',
+  iconBox: 'rgba(255, 255, 255, 0.08)',
   /** Portfolio scope segmented control track — distinct from card surfaces */
   scopeTrack: segmentedTabBarDark.track,
   /** Active pill on scope track — slightly elevated from track */
   scopeActive: segmentedTabBarDark.activePill,
   border: CONTAINER_BORDER,
-  green: '#00e664',
-  red: '#ff5555',
-  text: '#ffffff',
-  subtext: '#666666',
-  warning: '#e6a000',
+  green: '#22C55E',
+  red: '#F87171',
+  text: '#FFFFFF',
+  subtext: '#6E6E80',
+  warning: '#FBBF24',
 } as const;
 
 /** Dark theme tokens — derived from dashboard palette */
@@ -131,41 +134,41 @@ export const darkColors = {
   containerBorder: dashboardPalette.border,
   cardBackground: dashboardPalette.card,
   glassSolid: dashboardPalette.card,
-  surfaceElevated: '#1F1F23',
-  input: dashboardPalette.iconBox,
-  accentGreen: '#4ADE80',
-  /** Premium boolean toggle — off track (muted charcoal) */
-  toggleTrackOff: '#28282E',
-  /** Premium boolean toggle — on track (accentGreen at reduced opacity) */
-  toggleTrackOn: 'rgba(74, 222, 128, 0.32)',
+  surfaceElevated: 'rgba(255, 255, 255, 0.08)',
+  input: 'rgba(255, 255, 255, 0.06)',
+  accentGreen: '#22C55E',
+  /** Premium boolean toggle — off track */
+  toggleTrackOff: 'rgba(255, 255, 255, 0.15)',
+  /** Premium boolean toggle — on track (accent green at reduced opacity) */
+  toggleTrackOn: 'rgba(34, 197, 94, 0.32)',
   /** Premium boolean toggle — thumb (light gray / white) */
   toggleThumb: '#F4F4F5',
   /** Premium boolean toggle — track hairline */
   toggleBorder: 'rgba(255, 255, 255, 0.08)',
-  codeBg: '#161618',
-  borderSubtle: 'rgba(255, 255, 255, 0.07)',
+  codeBg: '#0F0F14',
+  borderSubtle: 'rgba(255, 255, 255, 0.06)',
   border: dashboardPalette.border,
   borderStrong: dashboardPalette.border,
   cardBorder: dashboardPalette.border,
   text: dashboardPalette.text,
-  textSecondary: dashboardPalette.subtext,
+  textSecondary: '#C8C8D8',
   textMuted: dashboardPalette.subtext,
   textDisabled: dashboardPalette.subtext,
   primary: dashboardPalette.green,
   primaryAlt: dashboardPalette.green,
   success: dashboardPalette.green,
-  successMuted: 'rgba(0, 230, 100, 0.12)',
+  successMuted: 'rgba(34, 197, 94, 0.12)',
   danger: dashboardPalette.red,
-  dangerMuted: 'rgba(255, 85, 85, 0.13)',
+  dangerMuted: 'rgba(248, 113, 113, 0.13)',
   warning: dashboardPalette.warning,
-  warningMuted: 'rgba(230, 160, 0, 0.14)',
-  purple: '#B48CFF',
-  purpleMuted: 'rgba(180, 140, 255, 0.13)',
-  /** Neutral chip/well tint — iconBox family (no blue chrome) */
-  cyanMuted: 'rgba(24, 24, 24, 0.92)',
-  /** Selection tint — scopeActive family (no blue chrome) */
-  blueMuted: 'rgba(33, 38, 45, 0.85)',
-  /** Solid pill on charcoal canvas — no white rgba (Android dither grain) */
+  warningMuted: 'rgba(251, 191, 36, 0.14)',
+  purple: '#C084FC',
+  purpleMuted: 'rgba(192, 132, 252, 0.13)',
+  /** Neutral chip/well tint — elevated glass */
+  cyanMuted: 'rgba(255, 255, 255, 0.08)',
+  /** Selection tint — scopeActive family */
+  blueMuted: 'rgba(96, 165, 250, 0.18)',
+  /** Tab bar pill on proto canvas */
   navPill: DARK_CANVAS,
   /** Solid card fill on charcoal canvas — no white rgba tint */
   glassBackground: dashboardPalette.card,
@@ -184,47 +187,47 @@ export const darkColors = {
 } as const;
 
 export const lightColors = {
-  background: '#F0F0F0',
+  background: '#F2F2F7',
   screenCanvas: 'transparent',
-  surface: '#FFFFFF',
-  surfaceSolid: '#FFFFFF',
-  /** Standard card/container fill — low-fund alert shell */
-  containerBackground: '#FFFFFF',
-  /** Standard card/container outline — low-fund alert shell */
+  surface: 'rgba(255, 255, 255, 0.82)',
+  surfaceSolid: 'rgba(255, 255, 255, 0.95)',
+  /** Standard card/container fill — Budget Proto LIGHT.CARD */
+  containerBackground: 'rgba(255, 255, 255, 0.82)',
+  /** Standard card/container outline — Budget Proto LIGHT.BORDER */
   containerBorder: CONTAINER_BORDER_LIGHT,
-  cardBackground: '#FFFFFF',
-  glassSolid: '#FFFFFF',
-  surfaceElevated: '#E8E8ED',
-  input: '#E8E8ED',
-  accentGreen: '#4ADE80',
+  cardBackground: 'rgba(255, 255, 255, 0.82)',
+  glassSolid: 'rgba(255, 255, 255, 0.95)',
+  surfaceElevated: 'rgba(255, 255, 255, 0.95)',
+  input: 'rgba(255, 255, 255, 0.95)',
+  accentGreen: '#22C55E',
   toggleTrackOff: '#D4D4DC',
-  toggleTrackOn: 'rgba(0, 168, 84, 0.24)',
+  toggleTrackOn: 'rgba(34, 197, 94, 0.24)',
   toggleThumb: '#FFFFFF',
   toggleBorder: 'rgba(0, 0, 0, 0.08)',
   codeBg: '#E4E4EA',
-  borderSubtle: 'rgba(0, 0, 0, 0.07)',
+  borderSubtle: 'rgba(0, 0, 0, 0.06)',
   border: CONTAINER_BORDER_LIGHT,
-  borderStrong: '#9090A0',
+  borderStrong: 'rgba(0, 0, 0, 0.12)',
   cardBorder: CONTAINER_BORDER_LIGHT,
-  text: '#0D1117',
-  textSecondary: '#4B5563',
-  textMuted: '#52525B',
-  textDisabled: '#6B7280',
-  primary: '#00A854',
-  primaryAlt: '#00A854',
-  success: '#00A854',
-  successMuted: 'rgba(0, 168, 84, 0.12)',
-  danger: '#CF222E',
-  dangerMuted: 'rgba(207, 34, 46, 0.12)',
-  warning: '#C96F1A',
-  warningMuted: 'rgba(201, 111, 26, 0.12)',
-  purple: '#6D5DF6',
-  purpleMuted: 'rgba(109, 93, 246, 0.12)',
+  text: '#0A0A0F',
+  textSecondary: '#3C3C4A',
+  textMuted: '#8E8E9A',
+  textDisabled: '#8E8E9A',
+  primary: '#22C55E',
+  primaryAlt: '#22C55E',
+  success: '#22C55E',
+  successMuted: 'rgba(34, 197, 94, 0.12)',
+  danger: '#F87171',
+  dangerMuted: 'rgba(248, 113, 113, 0.12)',
+  warning: '#FBBF24',
+  warningMuted: 'rgba(251, 191, 36, 0.12)',
+  purple: '#C084FC',
+  purpleMuted: 'rgba(192, 132, 252, 0.12)',
   cyanMuted: 'rgba(246, 248, 250, 1)',
-  blueMuted: 'rgba(0, 168, 84, 0.14)',
+  blueMuted: 'rgba(96, 165, 250, 0.14)',
   navPill: 'rgba(255, 255, 255, 0.82)',
   /** Tinted glass fill over light gradient — no blur */
-  glassBackground: 'rgba(255, 255, 255, 0.45)',
+  glassBackground: 'rgba(255, 255, 255, 0.82)',
   glassBorder: CONTAINER_BORDER_LIGHT,
   /** @deprecated Use glassBorder */
   glassBorderTop: 'rgba(255, 255, 255, 0.06)',
@@ -497,14 +500,14 @@ export function articlesReceiptTypography(
   };
 }
 
-/** Accueil dashboard semantic colors — value direction on home tab only. */
-export const DASHBOARD_VALUE_GREEN = '#4ADE80';
-export const DASHBOARD_VALUE_RED = '#FF6B6B';
+/** Accueil dashboard semantic colors — Budget Proto GREEN / RED. */
+export const DASHBOARD_VALUE_GREEN = '#22C55E';
+export const DASHBOARD_VALUE_RED = '#F87171';
 
-/** Unified savings-goal progress bar fill — matches chart/savings accent (#4ADE80). */
+/** Unified savings-goal progress bar fill — matches chart/savings accent. */
 export const GOAL_PROGRESS_FILL = DASHBOARD_VALUE_GREEN;
 export const GOAL_PROGRESS_TRACK_LIGHT = '#E8EDF3';
-export const GOAL_PROGRESS_TRACK_DARK = '#08090B';
+export const GOAL_PROGRESS_TRACK_DARK = 'rgba(255, 255, 255, 0.07)';
 
 export function goalProgressTrackColor(isLight: boolean): string {
   return isLight ? GOAL_PROGRESS_TRACK_LIGHT : GOAL_PROGRESS_TRACK_DARK;
@@ -762,7 +765,7 @@ export const PAGE_TITLE_CONTENT_GAP = spacing.xl;
 
 /** Chart accent colors aligned with design system */
 export const chartTokens = {
-  line: '#00E676',
+  line: '#22C55E',
   lineLight: '#00A854',
   fillTop: 'rgba(0, 230, 118, 0.4)',
   fillTopLight: 'rgba(0, 168, 84, 0.35)',
@@ -791,7 +794,7 @@ const GOAL_SLOT_PERMUTATION = [0, 4, 2, 5, 1, 3] as const;
  * High-contrast solid greens for progress bars, badges, and legend dots (pale → deep).
  */
 export const goalGreenPalette = {
-  dark: ['#00E676', '#3ADF8A', '#7AF5B4', '#00BA56', '#008F47', '#005C30'],
+  dark: ['#22C55E', '#3ADF8A', '#7AF5B4', '#00BA56', '#008F47', '#005C30'],
   light: ['#00A854', '#34D399', '#10B981', '#059669', '#047857', '#065F46'],
 } as const;
 

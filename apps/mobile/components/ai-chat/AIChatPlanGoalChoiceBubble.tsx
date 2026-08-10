@@ -20,7 +20,7 @@ import { useAIChatColors } from './theme';
 
 const PLAN_SURFACE = '#111111';
 const PLAN_BORDER = 'rgba(255, 255, 255, 0.12)';
-const PLAN_SELECTED_BORDER = '#4ADE80';
+const PLAN_SELECTED_BORDER = '#22C55E';
 const CARD_RADIUS = 13;
 
 export type PlanGoalChoiceBubbleState = ChatPlanGoalChoice;

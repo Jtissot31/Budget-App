@@ -20,7 +20,7 @@ import { formatPlanSuggestionReasonForCard } from './planSuggestionCopy';
 export const PLAN_HUB = {
   background: DARK_CANVAS,
   surface: '#111111',
-  accent: '#4ADE80',
+  accent: '#22C55E',
   /** Soft wash for suggested icon wells — shells stay `#111`. */
   accentMuted: 'rgba(74, 222, 128, 0.12)',
   danger: '#C96560',
@@ -32,7 +32,7 @@ export const PLAN_HUB = {
 
 type PlanCardChromeColors = {
   primary: string;
-  /** Prefer soft `#4ADE80` when present; falls back to `primary`. */
+  /** Prefer soft `#22C55E` when present; falls back to `primary`. */
   accentGreen?: string;
   successMuted: string;
   textMuted: string;

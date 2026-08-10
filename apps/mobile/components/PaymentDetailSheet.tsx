@@ -1082,7 +1082,7 @@ function PaymentAvatar({ detail, size }: { detail: PaymentDetailPayload; size: n
 function createStyles(colors: AppColors) {
   return StyleSheet.create({
     sheet: {
-      backgroundColor: colors.containerBackground,
+      backgroundColor: colors.background,
       borderTopLeftRadius: DETAIL_SHEET_TOP_RADIUS,
       borderTopRightRadius: DETAIL_SHEET_TOP_RADIUS,
     },

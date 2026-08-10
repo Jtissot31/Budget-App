@@ -24,7 +24,7 @@ const CORNER_R = 2;
 const VIEW_RADIUS = 3;
 const STITCH_IN = 4;
 
-/** Wallet illustration palette — feature-local voids; keep vs canvas (#0a0a0a). */
+/** Wallet illustration palette — feature-local voids; keep vs canvas (#070709). */
 const C = {
   back: '#0A0A0C', // keep — near canvas
   void: '#0E0E10', // keep — COLORS.aiChatDark / knownSpecDiffs

@@ -248,7 +248,7 @@ export default function MerchantDetailScreen() {
 
   return (
     <PageTransition>
-      <View style={styles.screen}>
+      <View style={[styles.screen, { backgroundColor: colors.background }]}>
         <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
           <Pressable
             accessibilityRole="button"

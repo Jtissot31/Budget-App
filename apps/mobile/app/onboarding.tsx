@@ -40,7 +40,6 @@ import { clearUserGeminiApiKey, setUserGeminiApiKey } from '@/lib/ai/userApiKeys
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { setOnboardingCompleted } from '@/lib/onboarding';
 import { applyOnboardingMoneyAnswers } from '@/lib/onboardingMoney';
-import { setAppTourCompleted } from '@/lib/appTour';
 import {
   PAY_ESTIMATION_FREQUENCY_OPTIONS,
   type PayEstimationFrequency,
@@ -50,7 +49,7 @@ import { getUserDisplayName, setUserDisplayName } from '@/lib/userDisplay';
 
 type StepId = 'welcome' | 'features' | 'name' | 'pay' | 'housing' | 'fyn';
 
-/** Intro wizard only — no in-app guided tab tour afterwards. */
+/** Intro wizard — optional via settings; not forced on launch. */
 const STEPS: StepId[] = ['welcome', 'features', 'name', 'pay', 'housing', 'fyn'];
 
 /** Fully pitch-black onboarding canvas — ambient green via soft edge washes only. */
@@ -150,8 +149,6 @@ export default function OnboardingScreen() {
         await setUserDisplayName(trimmed);
       }
       await persistMoneyAnswers();
-      // Mark guided tour completed so it never auto-starts on the main tabs.
-      await setAppTourCompleted(true);
       await setOnboardingCompleted(true);
       successHaptic();
       router.replace('/(tabs)');

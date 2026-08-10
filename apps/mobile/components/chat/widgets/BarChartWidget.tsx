@@ -25,7 +25,7 @@ const MOCK = {
   warning: '#E6A000',
   warningLimit: '#8A7A55',
   divider: '#1C1C1C',
-  barGreen: '#00E664',
+  barGreen: '#22C55E',
   track: '#1C1C1C',
   barHeight: 8,
   listMaxHeight: 280,

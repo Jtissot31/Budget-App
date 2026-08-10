@@ -172,7 +172,7 @@ export default function BudgetCategoryTransactionsScreen() {
 
   return (
     <PageTransition>
-    <View style={[stylesMemo.screenRoot, { backgroundColor: 'transparent' }]}>
+    <View style={[stylesMemo.screenRoot, { backgroundColor: colors.background }]}>
       <BottomSheet
         visible
         scrollable={false}
@@ -185,7 +185,8 @@ export default function BudgetCategoryTransactionsScreen() {
         sheetStyle={[
           stylesMemo.sheetSurface,
           {
-            backgroundColor: colors.containerBackground,
+            // Opaque canvas — containerBackground is glass and bleeds the Budgets list through.
+            backgroundColor: colors.background,
             borderTopLeftRadius: DETAIL_SHEET_TOP_RADIUS,
             borderTopRightRadius: DETAIL_SHEET_TOP_RADIUS,
           },

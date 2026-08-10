@@ -736,7 +736,7 @@ export function AddArticleSheet({
             style={[
               styles.articleSheet,
               {
-                backgroundColor: colors.containerBackground,
+                backgroundColor: colors.background,
                 borderColor: colors.containerBorder,
                 paddingBottom: Math.max(insets.bottom + spacing.lg, spacing.xl),
               },

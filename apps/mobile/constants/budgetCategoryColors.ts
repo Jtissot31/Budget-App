@@ -1,6 +1,6 @@
 /** Fixed 10-color palette for budget categories — one unique color per category. */
 export const BUDGET_CATEGORY_PALETTE = [
-  '#4ADE80', // vert accent
+  '#22C55E', // vert accent
   '#60A5FA', // bleu doux
   '#34D399', // vert teal
   '#A78BFA', // violet doux

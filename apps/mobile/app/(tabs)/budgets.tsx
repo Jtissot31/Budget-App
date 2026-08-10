@@ -6,7 +6,9 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
+  type LayoutChangeEvent,
   type ListRenderItem,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,9 +19,10 @@ import { AddBudgetCategoryCta } from '@/components/budget/AddBudgetCategoryCta';
 import { BudgetCategoryDetailSheet } from '@/components/budget/BudgetCategoryDetailSheet';
 import { BudgetCategoryRow } from '@/components/budget/BudgetCategoryRow';
 import { BudgetCategorySuggestionTile } from '@/components/budget/BudgetCategorySuggestionTile';
-import { BudgetHeroCard } from '@/components/budget/BudgetHeroCard';
+import { ProtoBudgetSummaryCard } from '@/components/budget/ProtoBudgetSummaryCard';
+import { ProtoGlassCard } from '@/components/proto/ProtoGlassCard';
+import { ProtoSectionHeader } from '@/components/proto/ProtoSectionHeader';
 import { MonthSelector } from '@/components/MonthSelector';
-import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { PageTransition } from '@/components/PageTransition';
 import {
   BUDGET_CATEGORY_SUGGESTIONS,
@@ -72,7 +75,7 @@ function currentMonthStart(): Date {
   return startOfMonth(new Date());
 }
 
-function BudgetPageHeader() {
+function BudgetPageHeader({ monthLabel }: { monthLabel: string }) {
   const { colors } = useAppTheme();
 
   return (
@@ -80,6 +83,9 @@ function BudgetPageHeader() {
       <View style={pageStyles.headerRow}>
         <Text style={[pageStyles.pageTitle, { color: colors.text }]} numberOfLines={1}>
           Budget
+        </Text>
+        <Text style={[pageStyles.monthLabel, { color: colors.textMuted }]} numberOfLines={1}>
+          {monthLabel}
         </Text>
       </View>
     </View>
@@ -89,8 +95,29 @@ function BudgetPageHeader() {
 export default function BudgetScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const { colors, isLight } = useAppTheme();
   const listRef = useRef<FlatList<BudgetCategoryUiModel>>(null);
+  /** Measured inner width of the wrap grid (padding applied on outer shell). */
+  const [gridContentWidth, setGridContentWidth] = useState(0);
+
+  const onCategoriesGridLayout = useCallback((event: LayoutChangeEvent) => {
+    const next = Math.floor(event.nativeEvent.layout.width);
+    setGridContentWidth((prev) => (prev === next ? prev : next));
+  }, []);
+
+  /** Half-column from real grid width; single tile uses full width. */
+  const categoryCellWidthFor = useCallback(
+    (count: number) => {
+      const contentWidth =
+        gridContentWidth > 0
+          ? gridContentWidth
+          : Math.max(0, windowWidth - PAGE_PADDING_HORIZONTAL * 2);
+      if (count <= 1) return contentWidth;
+      return Math.floor((contentWidth - GRID_GAP) / 2);
+    },
+    [gridContentWidth, windowWidth],
+  );
 
   const [categories, setCategories] = useState<BudgetCategoryUiModel[]>([]);
   const [detailCategoryId, setDetailCategoryId] = useState<string | null>(null);
@@ -274,7 +301,12 @@ export default function BudgetScreen() {
             { paddingTop: insets.top + SCREEN_TOP_GUTTER },
           ]}
         >
-          <BudgetPageHeader />
+          <BudgetPageHeader
+            monthLabel={displayMonth.toLocaleDateString('fr-CA', {
+              month: 'long',
+              year: 'numeric',
+            })}
+          />
         </View>
 
         <View style={pageStyles.monthSection}>
@@ -288,31 +320,33 @@ export default function BudgetScreen() {
         </View>
 
         <View style={pageStyles.heroSection}>
-          <BudgetHeroCard
-            categories={heroCategories}
+          <ProtoBudgetSummaryCard
             totalAllocated={totals.totalAllocated}
             totalSpent={totals.totalSpent}
-            hubEyebrow={hubEyebrow}
-            isCurrentMonth={isCurrentMonth(displayMonth)}
-            onSelectCategory={openCategoryDetail}
           />
         </View>
 
         {listCategories.length > 0 ? (
           <>
             <View style={pageStyles.listHeader}>
-              <DashboardSectionLabel>Catégories</DashboardSectionLabel>
+              <ProtoSectionHeader
+                title="CATÉGORIES"
+                actionLabel={showAddButton ? '+ Nouveau' : undefined}
+                onAction={showAddButton ? openBlankCreate : undefined}
+              />
             </View>
 
-            <View style={pageStyles.categoriesSection}>
-              {listCategories.map((item) => (
-                <View key={item.id} style={pageStyles.categoryCell}>
+            <View style={pageStyles.categoriesSectionShell}>
+              <ProtoGlassCard>
+                {listCategories.map((item, index) => (
                   <BudgetCategoryRow
+                    key={item.id}
                     category={item}
                     onPress={openCategoryDetail}
+                    isLast={index === listCategories.length - 1}
                   />
-                </View>
-              ))}
+                ))}
+              </ProtoGlassCard>
             </View>
 
             {addCategoryCta}
@@ -346,20 +380,33 @@ export default function BudgetScreen() {
             {addCategoryCta}
 
             <View style={pageStyles.listHeader}>
-              <DashboardSectionLabel style={{ color: colors.accentGreen }}>
-                Suggestions
-              </DashboardSectionLabel>
+              <ProtoSectionHeader title="SUGGESTIONS" />
             </View>
 
-            <View style={pageStyles.categoriesSection}>
-              {BUDGET_CATEGORY_SUGGESTIONS.map((item) => (
-                <View key={item.id} style={pageStyles.categoryCell}>
-                  <BudgetCategorySuggestionTile
-                    suggestion={item}
-                    onPress={openSuggestionCreate}
-                  />
-                </View>
-              ))}
+            <View style={pageStyles.categoriesSectionShell}>
+              <View
+                style={pageStyles.categoriesSection}
+                onLayout={onCategoriesGridLayout}
+              >
+                {BUDGET_CATEGORY_SUGGESTIONS.map((item) => (
+                  <View
+                    key={item.id}
+                    style={[
+                      pageStyles.categoryCell,
+                      {
+                        width: categoryCellWidthFor(
+                          BUDGET_CATEGORY_SUGGESTIONS.length,
+                        ),
+                      },
+                    ]}
+                  >
+                    <BudgetCategorySuggestionTile
+                      suggestion={item}
+                      onPress={openSuggestionCreate}
+                    />
+                  </View>
+                ))}
+              </View>
             </View>
           </>
         )}
@@ -371,18 +418,17 @@ export default function BudgetScreen() {
       canGoBudgetNext,
       canGoBudgetPrevious,
       listCategories,
-      colors.accentGreen,
       deletingAll,
-      heroCategories,
       displayMonth,
       goBudgetNext,
       goBudgetPrevious,
-      hubEyebrow,
       insets.top,
       isLight,
+      openBlankCreate,
       openCategoryDetail,
       openDeleteAllConfirm,
       openSuggestionCreate,
+      showAddButton,
       totals.totalAllocated,
       totals.totalSpent,
     ],
@@ -464,19 +510,25 @@ const pageStyles = StyleSheet.create({
     marginTop: SECTION_BREAK,
     marginBottom: spacing.md,
   },
+  /** Outer shell owns page padding so onLayout width === usable grid width. */
+  categoriesSectionShell: {
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+    marginBottom: spacing.md,
+  },
   categoriesSection: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    marginBottom: spacing.md,
+    alignContent: 'flex-start',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    width: '100%',
     gap: GRID_GAP,
   },
-  /** Fixed half-width slot — odd last tile stays same size, left-aligned (no flex stretch). */
+  /** Pixel half-width applied inline — no flex grow, odd last tile stays left. */
   categoryCell: {
-    width: '48%',
-    maxWidth: '48%',
     flexGrow: 0,
     flexShrink: 0,
+    alignSelf: 'flex-start',
   },
   addCtaBlock: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
@@ -509,6 +561,11 @@ const pageStyles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   pageTitle: { ...PAGE_TITLE_STYLE, flex: 1, minWidth: 0 },
+  monthLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'capitalize' as const,
+  },
 });
 
 const styles = StyleSheet.create({

@@ -294,7 +294,7 @@ export default function SettingsScreen() {
             />
             <SettingsNavigationRow
               label="Revoir l’introduction"
-              hint="Relance l’intro et la visite guidée dans l’app."
+              hint="Relance l’écran d’intro (optionnel)."
               icon="sparkles-outline"
               onPress={() => {
                 tapHaptic();

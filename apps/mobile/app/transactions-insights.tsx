@@ -350,7 +350,7 @@ export default function TransactionsInsightsScreen() {
               </Text>
               {pendingValidation.length > 0 ? (
                 <View style={[styles.validateBadge, { backgroundColor: colors.accentGreen }]}>
-                  <Text style={[typographyKit.caption, { color: '#0a0a0a' }]}>
+                  <Text style={[typographyKit.caption, { color: '#070709' }]}>
                     {pendingValidation.length}
                   </Text>
                 </View>

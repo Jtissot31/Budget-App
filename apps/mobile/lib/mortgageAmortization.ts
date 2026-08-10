@@ -1,6 +1,6 @@
 import type { Loan, LoanDurationUnit, LoanPaymentFrequency } from '@/types';
 
-export const MORTGAGE_CHART_CAPITAL = '#4ADE80';
+export const MORTGAGE_CHART_CAPITAL = '#22C55E';
 export const MORTGAGE_CHART_INTEREST = '#8B949E';
 
 export type AmortizationPeriod = {

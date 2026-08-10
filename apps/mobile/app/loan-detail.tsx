@@ -160,7 +160,7 @@ export default function LoanDetailScreen() {
   const navigateToEdit = () => {
     if (!loan) return;
     tapHaptic();
-    router.replace({ pathname: '/accounts', params: { editLoanId: loan.id } });
+    router.replace({ pathname: '/loan-detail', params: { loanId: loan.id } });
   };
 
   const confirmDelete = () => {
@@ -236,7 +236,7 @@ export default function LoanDetailScreen() {
 
   return (
     <PageTransition>
-      <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
+      <View style={[styles.screen, { backgroundColor: colors.background }]}>
         <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.lg + spacing.md }]}>
           <Pressable
             accessibilityRole="button"

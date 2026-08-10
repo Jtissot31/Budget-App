@@ -14,7 +14,7 @@ type Props = {
 export function FynAvatar({
   size = 40,
   showStatus = false,
-  statusColor = '#4ADE80',
+  statusColor = '#22C55E',
   statusBorderColor = '#0E0E10',
   style,
 }: Props) {

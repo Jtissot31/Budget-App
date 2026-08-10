@@ -365,7 +365,7 @@ export function BudgetCategoryDetailSheet({
     <BottomSheet
       visible={visible}
       onClose={onClose}
-      sheetStyle={styles.sheet}
+      sheetStyle={[styles.sheet, { backgroundColor: colors.background }]}
       scrollContentContainerStyle={styles.scrollContent}
     >
       <View style={styles.header}>

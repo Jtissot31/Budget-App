@@ -28,7 +28,7 @@ import {
 } from '@/lib/paycheckAllocation';
 import { useAppTheme } from '@/lib/themeContext';
 
-const AVAILABLE_GREEN = '#4ADE80';
+const AVAILABLE_GREEN = '#22C55E';
 
 type TransferRowProps = {
   line: PaycheckAllocationLine;

@@ -154,7 +154,7 @@ export default function WealthAssetTransactionsScreen() {
 
   return (
     <PageTransition>
-    <View style={[stylesMemo.screenRoot, { backgroundColor: 'transparent' }]}>
+    <View style={[stylesMemo.screenRoot, { backgroundColor: colors.background }]}>
       <BottomSheet
         visible={sheetVisible}
         scrollable={false}

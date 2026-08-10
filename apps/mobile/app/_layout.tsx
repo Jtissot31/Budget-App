@@ -1,7 +1,7 @@
 import 'react-native-gesture-handler';
 /** Install web SQLite error guards before boot UI / LogBox mounts. */
 import '@/lib/db';
-import { Redirect, Stack } from 'expo-router';
+import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { loadAsync as loadFontAsync } from 'expo-font';
@@ -21,10 +21,6 @@ import {
 import { AppBackgroundGradient } from '@/components/AppBackgroundGradient';
 import { RootErrorBoundary } from '@/components/RootErrorBoundary';
 import { ensureDbReady } from '@/lib/init';
-import {
-  isOnboardingCompleted,
-  subscribeOnboardingCompleted,
-} from '@/lib/onboarding';
 import { preloadVectorIconFonts } from '@/lib/preloadVectorIconFonts';
 import { useAppFonts } from '@/lib/useAppFonts';
 import { ThemeProvider, useAppTheme } from '@/lib/themeContext';
@@ -62,8 +58,6 @@ function ThemedRootShell() {
 function RootLayoutContent() {
   const { colors, statusBarStyle } = useAppTheme();
   const [ready, setReady] = useState(true);
-  /** null = still resolving; true = show intro before tabs. */
-  const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
   // Critical path fonts only — DM Mono is receipt/articles-only (deferred).
   const [fontsLoaded, fontError] = useAppFonts({
     PlusJakartaSans_400Regular,
@@ -80,25 +74,12 @@ function RootLayoutContent() {
     SplashScreen.hideAsync().catch(() => {});
     void (async () => {
       try {
-        // Settings are readable as soon as SQLite opens — don't wait for demo seed.
-        const done = await isOnboardingCompleted();
-        setNeedsOnboarding(!done);
-      } catch (error) {
-        console.warn('[Boot] onboarding gate failed', error);
-        setNeedsOnboarding(false);
-      }
-    })();
-    void (async () => {
-      try {
         await ensureDbReady();
         console.log('[Boot] database ready');
       } catch (error) {
         console.warn('[Boot] database init failed', error);
       }
     })();
-    const unsub = subscribeOnboardingCompleted((done) => {
-      setNeedsOnboarding(!done);
-    });
     const idle = InteractionManager.runAfterInteractions(() => {
       void loadFontAsync({
         DMMono_400Regular,
@@ -110,11 +91,8 @@ function RootLayoutContent() {
     const timer = setTimeout(() => {
       console.log('[Boot] bootstrap safety tick');
       setReady(true);
-      // Absolute fallback — never leave the user on a blank gradient.
-      setNeedsOnboarding((prev) => (prev === null ? false : prev));
     }, Platform.OS === 'web' ? 1_200 : BOOTSTRAP_MAX_MS || 3_000);
     return () => {
-      unsub();
       idle.cancel();
       clearTimeout(timer);
     };
@@ -130,7 +108,7 @@ function RootLayoutContent() {
     }
   }, [fontsLoaded, fontError]);
 
-  if (!ready || needsOnboarding === null) {
+  if (!ready) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <AppBackgroundGradient />
@@ -205,6 +183,7 @@ function RootLayoutContent() {
             <Stack.Screen name="transactions-insights" options={{ headerShown: false }} />
             <Stack.Screen name="paycheck-allocation" options={{ headerShown: false }} />
             <Stack.Screen name="lucide-icons" options={{ headerShown: false }} />
+            <Stack.Screen name="fyn-ui-lab" options={{ headerShown: false }} />
             <Stack.Screen name="plans" options={{ headerShown: false }} />
             <Stack.Screen name="scan" options={{ title: 'Scanner', presentation: 'modal' }} />
             <Stack.Screen name="ai-chat" options={{ headerShown: false }} />
@@ -213,7 +192,6 @@ function RootLayoutContent() {
             <Stack.Screen name="alert-center" options={{ headerShown: false }} />
             <Stack.Screen name="alert-detail" options={{ headerShown: false }} />
           </Stack>
-          {needsOnboarding ? <Redirect href="/onboarding" /> : null}
         </View>
       </View>
     </>

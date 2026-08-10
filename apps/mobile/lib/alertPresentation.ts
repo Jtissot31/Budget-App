@@ -55,6 +55,67 @@ export function resolveAlertDisplayTitle(
   return item.title;
 }
 
+/** First clause of a longer body, capped for compact list rows. */
+function firstMessageClause(text: string, maxLen = 52): string {
+  const first = text.split(/[.!?]/)[0]?.trim() ?? '';
+  if (!first) return '';
+  if (first.length <= maxLen) return first;
+  return `${first.slice(0, maxLen - 1).trimEnd()}…`;
+}
+
+/**
+ * One-line reason for Accueil / compact alert cards.
+ * Keeps full `message` intact for alert-detail.
+ */
+export function alertListShortReason(
+  item: Pick<AlertCenterItem, 'kind' | 'title' | 'message' | 'paymentName'>,
+): string {
+  const message = item.message?.trim() ?? '';
+
+  switch (item.kind) {
+    case 'credit_limit': {
+      const pct = message.match(/(\d+(?:[.,]\d+)?)\s*%/);
+      if (pct) {
+        const n = pct[1].replace(',', '.');
+        return `Marge ~${n} % après ce paiement`;
+      }
+      if (/dépasser/i.test(message)) return 'Paiement au-delà de la marge';
+      if (/peu de marge/i.test(message)) return 'Peu de marge après paiement';
+      return 'Marge insuffisante';
+    }
+    case 'budget_over': {
+      const cat = message.match(/enveloppe\s+(.+?)\s+a\s+(?:été\s+)?dépassée/i);
+      if (cat?.[1]) return `${cat[1].trim()} dépassée`;
+      return 'Enveloppe dépassée';
+    }
+    case 'high_interest_debt': {
+      const m = message.match(/^(.+?)\s+porte\s+un\s+taux\s+de\s+(\d+(?:[.,]\d+)?)\s*%/i);
+      if (m) {
+        const name = m[1].trim();
+        const rate = Math.round(Number.parseFloat(m[2].replace(',', '.')));
+        if (Number.isFinite(rate)) return `${name} à ${rate} %`;
+      }
+      return 'Taux d’intérêt élevé';
+    }
+    case 'low_funds': {
+      const shortfall = message.match(/manque\s+([^.]+?)(?:\s+pour\s+|\.|$)/i);
+      if (shortfall?.[1]) {
+        const amount = shortfall[1].trim();
+        const merchant = merchantLabelFromPaymentName(item.paymentName);
+        return merchant ? `Manque ${amount} · ${merchant}` : `Manque ${amount}`;
+      }
+      const bal = message.match(/est\s+bas\s+\(([^)]+)\)/i);
+      if (bal?.[1]) return `Solde bas (${bal[1].trim()})`;
+      return 'Solde insuffisant';
+    }
+    case 'plan_adaptation':
+      return firstMessageClause(message) || 'Adaptation proposée';
+    case 'fyn':
+    default:
+      return firstMessageClause(message) || item.title;
+  }
+}
+
 /** Short type-only nav/header title on alert detail (not merchant-aware). */
 export function alertTypeHeaderTitle(kind: AlertCenterKind): string {
   switch (kind) {

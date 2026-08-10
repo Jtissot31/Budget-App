@@ -34,7 +34,7 @@ export const PLAN_DETAIL_LAYOUT = {
 export const PLAN_DETAIL = {
   background: '#050505',
   surface: '#1C1C1E',
-  accent: '#4ADE80',
+  accent: '#22C55E',
   accentMuted: 'rgba(74, 222, 128, 0.15)',
   text: '#F4F4F5',
   textMuted: '#A1A1AA',

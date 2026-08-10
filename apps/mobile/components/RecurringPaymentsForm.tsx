@@ -834,7 +834,7 @@ export function toAccountOptions(accounts: SimulatedAccount[]): AccountOption[] 
       account.kind === 'checking'
         ? ghost.mint
         : account.kind === 'cash'
-          ? '#4ADE80'
+          ? '#22C55E'
           : account.kind === 'credit'
             ? '#d4d4d8'
             : '#A78BFA',

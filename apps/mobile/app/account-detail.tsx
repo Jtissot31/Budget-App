@@ -689,7 +689,7 @@ export default function AccountDetailScreen() {
 
   return (
     <PageTransition>
-    <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.lg + spacing.md }]}>
         <Pressable
           accessibilityRole="button"

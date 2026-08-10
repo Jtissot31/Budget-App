@@ -45,7 +45,7 @@ type Props<T extends string> = {
   layout?: TabLayoutMode;
 };
 
-const INDICATOR_COLOR = '#4ADE80';
+const INDICATOR_COLOR = '#22C55E';
 
 export function AnimatedUnderlineTabs<T extends string>({
   tabs,

@@ -98,6 +98,12 @@ function normalizeLabel(value: string): string {
     .toLowerCase();
 }
 
+/** First character majuscule; rest of casing unchanged. Empty stays empty. */
+function capitalizeCategoryName(value: string): string {
+  if (!value) return value;
+  return value.charAt(0).toLocaleUpperCase('fr-CA') + value.slice(1);
+}
+
 function parseLimitInput(value: string): number | null {
   const parsed = Number.parseFloat(value.replace(',', '.'));
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
@@ -123,7 +129,7 @@ function parsePrefillFromParams(params: {
     return null;
   }
   return {
-    name: name || undefined,
+    name: name ? capitalizeCategoryName(name) : undefined,
     icon,
     limit: Number.isFinite(limitParsed) && limitParsed > 0 ? limitParsed : undefined,
   };
@@ -143,7 +149,7 @@ export default function AddBudgetCategoryScreen() {
   const { colors, isLight } = useAppTheme();
   const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.text }];
 
-  const [name, setName] = useState(() => prefill?.name?.trim() ?? '');
+  const [name, setName] = useState(() => capitalizeCategoryName(prefill?.name?.trim() ?? ''));
   const [limit, setLimit] = useState(() =>
     prefill?.limit != null && prefill.limit > 0 ? String(Math.round(prefill.limit)) : '',
   );
@@ -478,7 +484,7 @@ export default function AddBudgetCategoryScreen() {
         backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)',
       },
       sheet: {
-        backgroundColor: colors.containerBackground,
+        backgroundColor: colors.background,
         borderColor: colors.containerBorder,
       },
       handle: { backgroundColor: colors.borderStrong },
@@ -592,7 +598,7 @@ export default function AddBudgetCategoryScreen() {
                         ref={nameInputRef}
                         value={name}
                         onChangeText={(value) => {
-                          setName(value);
+                          setName(capitalizeCategoryName(value));
                           clearFieldError('name');
                           if (feedback) setFeedback(null);
                         }}

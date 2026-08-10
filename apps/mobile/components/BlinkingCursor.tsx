@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 
-const CURSOR_COLOR = '#4ADE80';
+const CURSOR_COLOR = '#22C55E';
 const BLINK_MS = 500;
 
 /** Lightweight green caret shown while an AI reply is streaming. */

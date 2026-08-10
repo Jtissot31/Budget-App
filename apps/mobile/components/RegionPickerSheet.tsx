@@ -656,7 +656,7 @@ export function RegionPickerSheet({ visible, selectedId, onClose, onSelect }: Pr
             style={[
               styles.sheet,
               {
-                backgroundColor: colors.containerBackground,
+                backgroundColor: colors.background,
                 borderColor: colors.containerBorder,
                 paddingBottom: Math.max(insets.bottom, spacing.md),
               },

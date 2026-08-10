@@ -30,7 +30,7 @@ export const BUDGET_UNDER_BUDGET_COLOR = 'rgba(255,255,255,0.35)';
 /** @deprecated Unused track override; under-budget now uses theme border track. */
 export const BUDGET_UNDER_BUDGET_TRACK_COLOR = 'rgba(255,255,255,0.08)';
 /** Green bar — on track (0–100 %). Matches `colors.accentGreen`. */
-export const BUDGET_GREEN_COLOR = '#4ADE80';
+export const BUDGET_GREEN_COLOR = '#22C55E';
 /** Amber warning — mild overspend (101–115 %). */
 export const BUDGET_WARNING_COLOR = '#C9974A';
 /** Muted red — zero-limit overspend or significant overspend (>115 %). */

@@ -38,7 +38,7 @@ export const TRANSACTIONS_FAB_GLOW_BLUR: Pick<
   ViewStyle,
   'shadowColor' | 'shadowOffset' | 'shadowOpacity' | 'shadowRadius' | 'elevation'
 > = {
-  shadowColor: '#4ADE80',
+  shadowColor: '#22C55E',
   shadowOffset: { width: 0, height: 0 },
   shadowOpacity: 0.35,
   shadowRadius: 12,

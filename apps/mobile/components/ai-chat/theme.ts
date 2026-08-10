@@ -20,13 +20,13 @@ export type AIChatColors = {
 const FYN_CHAT_DARK = {
   background: '#0E0E10',
   surface: '#1F1F23',
-  primary: '#4ADE80',
+  primary: '#22C55E',
   text: '#FFFFFF',
   textMuted: 'rgba(255,255,255,0.45)',
   border: 'rgba(255,255,255,0.12)',
-  userBubble: '#4ADE80',
-  userBubbleText: '#0A0A0A',
-  onAccent: '#0A0A0A',
+  userBubble: '#22C55E',
+  userBubbleText: '#070709',
+  onAccent: '#070709',
   aiBubble: '#28282E',
   sendMuted: 'rgba(255,255,255,0.35)',
 } as const;
@@ -47,8 +47,8 @@ export function useAIChatColors(): AIChatColors {
       textMuted: colors.textSecondary,
       border: colors.border,
       userBubble: colors.primary,
-      userBubbleText: '#0A0A0A',
-      onAccent: '#0A0A0A',
+      userBubbleText: '#070709',
+      onAccent: '#070709',
       aiBubble: colors.surface,
       sendMuted: colors.textMuted,
     };

@@ -40,7 +40,7 @@ if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
 }
 
-const AVAILABLE_GREEN = '#4ADE80';
+const AVAILABLE_GREEN = '#22C55E';
 
 export function PaycheckAllocationWidget() {
   const router = useRouter();

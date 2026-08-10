@@ -13,7 +13,7 @@ import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { alertDetailRouteParams } from '@/lib/alerts';
 import { tapHaptic } from '@/lib/haptics';
 
-/** Pitch black — intentional; no exact token (canvas is `#0a0a0a`). */
+/** Pitch black — intentional; no exact token (canvas is `#070709`). */
 const MESSAGES_SCREEN_BG = '#000000';
 /** Filter chip fill — near `COLORS.planFinance.input` (`#1A1A1D`) but not identical. */
 const FILTER_BUTTON_BG = '#1A1A1A';

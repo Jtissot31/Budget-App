@@ -11,7 +11,7 @@ type Props = {
   title: string;
   trailing?: ReactNode;
   style?: StyleProp<ViewStyle>;
-  /** Soft accent eyebrow (`COLORS.green` / `#4ADE80`) — hub strategy / épargne only; keep Obligations muted. */
+  /** Soft accent eyebrow (`COLORS.green` / `#22C55E`) — hub strategy / épargne only; keep Obligations muted. */
   accentEyebrow?: boolean;
 };
 

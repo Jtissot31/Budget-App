@@ -16,6 +16,7 @@ import {
   jakartaSemiboldText,
   screenHorizontalGutter,
   spacing,
+  typographyKit,
   type AppColors,
 } from '@/constants/theme';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
@@ -1062,37 +1063,43 @@ export const AgendaView = forwardRef<AgendaViewRef, AgendaViewProps>(function Ag
           <View style={[styles.viewSwitch, { backgroundColor: surfaceSoft, borderColor: colors.borderSubtle }]}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Vue liste"
+              accessibilityLabel="Vue semaine"
               accessibilityState={{ selected: viewMode === 'list' }}
               onPress={() => setAgendaViewMode('list')}
               style={[
                 styles.viewSwitchBtn,
+                styles.viewSwitchBtnText,
                 viewMode === 'list' && [styles.viewSwitchBtnActive, { backgroundColor: colors.toggleTrackOff }],
               ]}
             >
-              <AppIcon
-                family="ionicons"
-                name="list-outline"
-                size={16}
-                color={viewMode === 'list' ? colors.text : textFaint}
-              />
+              <Text
+                style={[
+                  styles.viewSwitchLabel,
+                  { color: viewMode === 'list' ? colors.text : textFaint },
+                ]}
+              >
+                Semaine
+              </Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Vue calendrier"
+              accessibilityLabel="Vue mois"
               accessibilityState={{ selected: viewMode === 'calendar' }}
               onPress={() => setAgendaViewMode('calendar')}
               style={[
                 styles.viewSwitchBtn,
+                styles.viewSwitchBtnText,
                 viewMode === 'calendar' && [styles.viewSwitchBtnActive, { backgroundColor: colors.toggleTrackOff }],
               ]}
             >
-              <AppIcon
-                family="ionicons"
-                name="calendar-outline"
-                size={16}
-                color={viewMode === 'calendar' ? colors.text : textFaint}
-              />
+              <Text
+                style={[
+                  styles.viewSwitchLabel,
+                  { color: viewMode === 'calendar' ? colors.text : textFaint },
+                ]}
+              >
+                Mois
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -1353,13 +1360,21 @@ function createStyles(colors: AppColors): AgendaViewStyles {
     zIndex: 1,
   },
   viewSwitchBtn: {
-    width: 34,
+    minWidth: 72,
     height: 30,
+    paddingHorizontal: 10,
     borderRadius: 7, // keep — compact switch
     alignItems: 'center',
     justifyContent: 'center',
   },
   viewSwitchBtnActive: {},
+  viewSwitchBtnText: {
+    width: undefined,
+  },
+  viewSwitchLabel: {
+    ...typographyKit.metaSemibold,
+    fontSize: 12,
+  },
   hero: {
     marginTop: spacing.lg,
   },

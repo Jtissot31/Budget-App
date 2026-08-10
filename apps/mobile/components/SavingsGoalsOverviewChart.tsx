@@ -17,7 +17,7 @@ import {
 import type { SavingsGoal, SimulatedAccount, Transaction } from '@/types';
 
 /** Savings goals accent — same green family as portfolio chart, tuned for épargne. */
-const SAVINGS_CHART_LINE = '#4ADE80';
+const SAVINGS_CHART_LINE = '#22C55E';
 
 const GOALS_CHART_PERIODS: NetWorthChartPeriod[] = ['1M', '3M', '6M', 'CA', '1A'];
 

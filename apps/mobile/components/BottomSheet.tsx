@@ -203,7 +203,8 @@ function createStyles(colors: AppColors) {
     },
     sheet: {
       maxHeight: '88%',
-      backgroundColor: colors.containerBackground,
+      // Opaque canvas — containerBackground is glass (Budget Proto); sheets must not show through.
+      backgroundColor: colors.background,
       borderTopLeftRadius: radius.xxl,
       borderTopRightRadius: radius.xxl,
       borderTopWidth: 1,

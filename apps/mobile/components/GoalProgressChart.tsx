@@ -16,7 +16,7 @@ import {
 } from '@/lib/buildSavingsGoalsTrendSeries';
 import type { SavingsGoal, SimulatedAccount, Transaction } from '@/types';
 
-const GOAL_CHART_LINE = '#4ADE80';
+const GOAL_CHART_LINE = '#22C55E';
 const GOAL_CHART_PERIODS: NetWorthChartPeriod[] = ['1M', '3M', '6M', 'CA', '1A'];
 
 export type GoalProgressChartHandle = PortfolioChartCardHandle;

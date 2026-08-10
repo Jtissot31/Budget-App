@@ -29,7 +29,7 @@ const VERSION_KEY = 'budget_tracker_categories_version';
 
 /** Green-toned palette — one unique color per mock category (shuffled). */
 const MOCK_CATEGORY_COLORS = [
-  '#4ADE80',
+  '#22C55E',
   '#14532D',
   '#22C55E',
   '#3A4A40',

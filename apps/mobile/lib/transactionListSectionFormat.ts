@@ -84,6 +84,18 @@ export function formatHistoryDaySectionHeader(dateKey: string, todayKey: string)
   };
 }
 
+/** Budget Proto Transactions — short day labels (AUJ. / HIER / date). */
+export function formatProtoDaySectionLabel(dateKey: string, todayKey: string): string {
+  const date = parseIsoDayKey(dateKey);
+  const today = parseIsoDayKey(todayKey);
+  if (!date || !today) return dateKey.toUpperCase();
+
+  const yesterdayKey = dateKeyFromDate(addDays(today, -1));
+  if (dateKey === todayKey) return 'AUJ.';
+  if (dateKey === yesterdayKey) return 'HIER';
+  return formatListShortDate(dateKey).toUpperCase();
+}
+
 export function sumHistoryDayTotals(txs: Transaction[]) {
   let expenseTotal = 0;
   let incomeTotal = 0;

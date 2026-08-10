@@ -39,16 +39,16 @@ import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsF
 import { uiEvents } from '@/lib/events';
 import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
-import { useAppTourTarget } from '@/hooks/useAppTourTarget';
-import { notifyAppTourTargetLayout } from '@/lib/appTourTargets';
-import type { TourTargetId } from '@/lib/onboardingTour';
 
 /** Matches `radius.pill` (999) — literal avoids Hermes `radius` binding clashes in this module. */
 const PILL_BORDER_RADIUS = 999;
 
 const TAB_ICON_SIZE = 21;
-/** Orion-style dark glass bar blur strength. */
-const ORION_NAV_BLUR_INTENSITY = Platform.OS === 'ios' ? 32 : 22;
+/** Active tab icon — modest bump; stays optically centered in `tabInner` (no vertical lift). */
+const TAB_ICON_SIZE_ACTIVE = 24;
+/** Orion-style dark glass bar blur — iOS only (Android dimezisBlurView crashes on hardware bitmaps). */
+const ORION_NAV_BLUR_INTENSITY = 32;
+const USE_NAV_BLUR = Platform.OS === 'ios';
 
 /** Material Community Icons — outline only (icon-only tabs, no filled circles). */
 const ROUTE_ICONS: Record<
@@ -56,33 +56,24 @@ const ROUTE_ICONS: Record<
   { outline: keyof typeof MaterialCommunityIcons.glyphMap; filled: keyof typeof MaterialCommunityIcons.glyphMap }
 > = {
   index: { outline: 'home-outline', filled: 'home' },
-  transactions: { outline: 'receipt-text-outline', filled: 'receipt-text' },
-  goals: { outline: 'compass-outline', filled: 'compass' },
+  transactions: { outline: 'swap-horizontal', filled: 'swap-horizontal' },
   accounts: { outline: 'wallet-outline', filled: 'wallet' },
   budgets: { outline: 'chart-pie-outline', filled: 'chart-pie' },
+  goals: { outline: 'calendar-month-outline', filled: 'calendar-month' },
 };
 
 const ROUTE_LABELS: Record<string, string> = {
   index: 'Accueil',
-  accounts: 'Portefeuille',
-  goals: 'Plan financier',
   transactions: 'Transactions',
+  accounts: 'Comptes',
   budgets: 'Budget',
+  goals: 'Agenda',
   settings: 'Réglages',
 };
 
 const HIDDEN_ROUTES = new Set(['settings', 'widgets']);
 
-const ROUTE_TOUR_TARGETS: Record<string, TourTargetId> = {
-  index: 'tab:index',
-  transactions: 'tab:transactions',
-  goals: 'tab:goals',
-  accounts: 'tab:accounts',
-  budgets: 'tab:budgets',
-};
-
-type TourableTabProps = {
-  targetId: TourTargetId;
+type TabButtonProps = {
   tabLabel: string;
   focused: boolean;
   iconName: keyof typeof MaterialCommunityIcons.glyphMap;
@@ -90,15 +81,7 @@ type TourableTabProps = {
   onPress: () => void;
 };
 
-function TourableTabButton({
-  targetId,
-  tabLabel,
-  focused,
-  iconName,
-  iconColor,
-  onPress,
-}: TourableTabProps) {
-  const { ref: tourRef, onLayout: onTourLayout } = useAppTourTarget(targetId);
+function TabButton({ tabLabel, focused, iconName, iconColor, onPress }: TabButtonProps) {
   return (
     <Pressable
       onPress={onPress}
@@ -107,22 +90,14 @@ function TourableTabButton({
       accessibilityLabel={tabLabel}
       accessibilityState={{ selected: focused }}
     >
-      {/* Full slot bounds — height/width vary with safe area + resolution */}
-      <View
-        ref={tourRef}
-        collapsable={false}
-        onLayout={onTourLayout}
-        style={styles.tabMeasureFill}
-      >
-        <View style={styles.tabInner}>
-          <AppIcon
-            family="material-community"
-            name={iconName}
-            size={focused ? TAB_ICON_SIZE + 1 : TAB_ICON_SIZE}
-            color={iconColor}
-            focused={focused}
-          />
-        </View>
+      <View style={styles.tabInner}>
+        <AppIcon
+          family="material-community"
+          name={iconName}
+          size={focused ? TAB_ICON_SIZE_ACTIVE : TAB_ICON_SIZE}
+          color={iconColor}
+          focused={focused}
+        />
       </View>
     </Pressable>
   );
@@ -242,23 +217,13 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   );
   const bottom = getFloatingTabBarBottomInset(insets.bottom);
   const activeRouteName = state.routes[state.index]?.name;
-  const activeRouteParams = state.routes[state.index]?.params as { view?: string } | undefined;
-  const transactionsView = activeRouteName === 'transactions' ? (activeRouteParams?.view ?? 'history') : undefined;
-  const isDashboard = activeRouteName === 'index';
-  const isTransactionsHistoryView = transactionsView === 'history';
-  const isTransactionsAgendaView = transactionsView === 'agenda';
-  const isTransactionsMerchantsView = transactionsView === 'merchants';
+  const isAgendaTab = activeRouteName === 'goals';
+  const isTransactionsTab = activeRouteName === 'transactions';
   const showAddButton =
     SHOW_TRANSACTIONS_TAB_FABS &&
-    activeRouteName !== 'accounts' &&
-    activeRouteName !== 'goals' &&
-    activeRouteName !== 'budgets' &&
-    activeRouteName !== 'widgets' &&
-    activeRouteName !== 'settings' &&
-    !isDashboard &&
-    !isTransactionsMerchantsView;
-  const showHistoryFabOptions = isTransactionsHistoryView && isHistoryFabExpanded;
-  const showAgendaFabOptions = isTransactionsAgendaView && isAgendaFabExpanded;
+    (isTransactionsTab || isAgendaTab);
+  const showHistoryFabOptions = isTransactionsTab && isHistoryFabExpanded;
+  const showAgendaFabOptions = isAgendaTab && isAgendaFabExpanded;
   const rightThumbFabBottom = bottom + FLOATING_FAB_SIZE - spacing.sm;
 
   const collapseSpeedDials = useCallback(() => {
@@ -280,7 +245,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     return () => {
       collapseSpeedDials();
     };
-  }, [state.index, pathname, transactionsView, collapseSpeedDials]);
+  }, [state.index, pathname, collapseSpeedDials]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -330,13 +295,13 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   );
 
   const handleAddPress = () => {
-    if (isTransactionsHistoryView) {
+    if (isTransactionsTab) {
       tapHaptic();
       setIsHistoryFabExpanded((expanded) => !expanded);
       return;
     }
 
-    if (isTransactionsAgendaView) {
+    if (isAgendaTab) {
       tapHaptic();
       setIsAgendaFabExpanded((expanded) => !expanded);
       return;
@@ -347,10 +312,16 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   };
 
   const tabBarBorderColor = isLight ? colors.border : 'rgba(255, 255, 255, 0.10)';
-  const navGlassTint = isLight ? 'rgba(255, 255, 255, 0.72)' : 'rgba(17, 17, 17, 0.68)';
-  const navActiveColor = isLight ? '#111111' : '#FFFFFF';
-  const navInactiveColor = '#6B6B6B';
-
+  // Android: no BlurView — use a denser tint so the pill still reads as frosted glass.
+  const navGlassTint = USE_NAV_BLUR
+    ? isLight
+      ? 'rgba(255, 255, 255, 0.72)'
+      : 'rgba(17, 17, 17, 0.68)'
+    : isLight
+      ? 'rgba(255, 255, 255, 0.92)'
+      : 'rgba(17, 17, 17, 0.92)';
+  const navActiveColor = colors.text;
+  const navInactiveColor = colors.textMuted;
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       {showHistoryFabOptions ? (
@@ -537,24 +508,24 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           onPress={handleAddPress}
           accessibilityRole="button"
           accessibilityState={
-            isTransactionsHistoryView
+            isTransactionsTab
               ? { expanded: isHistoryFabExpanded }
-              : isTransactionsAgendaView
+              : isAgendaTab
                 ? { expanded: isAgendaFabExpanded }
                 : undefined
           }
           accessibilityLabel={
-            (isTransactionsHistoryView && isHistoryFabExpanded) ||
-            (isTransactionsAgendaView && isAgendaFabExpanded)
+            (isTransactionsTab && isHistoryFabExpanded) || (isAgendaTab && isAgendaFabExpanded)
               ? 'Fermer le menu d\'ajout'
-              : 'Nouvelle transaction'
+              : isAgendaTab
+                ? 'Ajouter un paiement récurrent'
+                : 'Nouvelle transaction'
           }
         >
           <MotiView
             animate={{
               rotate:
-                (isTransactionsHistoryView && isHistoryFabExpanded) ||
-                (isTransactionsAgendaView && isAgendaFabExpanded)
+                (isTransactionsTab && isHistoryFabExpanded) || (isAgendaTab && isAgendaFabExpanded)
                   ? '45deg'
                   : '0deg',
             }}
@@ -569,12 +540,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
       <View pointerEvents="box-none" style={[styles.floatingNavOuter, { marginBottom: bottom }]}>
         <View
           pointerEvents="box-none"
-          onLayout={() => {
-            // Pill height changes with padding / density — nudge all tab targets to remeasure.
-            Object.values(ROUTE_TOUR_TARGETS).forEach((id) => {
-              notifyAppTourTargetLayout(id);
-            });
-          }}
           style={[
             styles.floatingNavPill,
             {
@@ -584,13 +549,14 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
             },
           ]}
         >
-          <BlurView
-            pointerEvents="none"
-            intensity={ORION_NAV_BLUR_INTENSITY}
-            tint={isLight ? 'light' : 'dark'}
-            experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
-            style={StyleSheet.absoluteFillObject}
-          />
+          {USE_NAV_BLUR ? (
+            <BlurView
+              pointerEvents="none"
+              intensity={ORION_NAV_BLUR_INTENSITY}
+              tint={isLight ? 'light' : 'dark'}
+              style={StyleSheet.absoluteFillObject}
+            />
+          ) : null}
           <View
             pointerEvents="none"
             style={[StyleSheet.absoluteFillObject, { backgroundColor: navGlassTint }]}
@@ -618,9 +584,8 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                 if (event.defaultPrevented) return;
 
                 if (route.name === 'transactions') {
-                  const subView = (route.params as { view?: string } | undefined)?.view;
-                  if (!focused || (subView && subView !== 'history')) {
-                    navigation.navigate('transactions', { view: 'history' });
+                  if (!focused) {
+                    navigation.navigate('transactions');
                   }
                   return;
                 }
@@ -631,9 +596,8 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
               };
 
               return (
-                <TourableTabButton
+                <TabButton
                   key={route.key}
-                  targetId={ROUTE_TOUR_TARGETS[route.name] ?? 'tab:index'}
                   tabLabel={tabLabel}
                   focused={focused}
                   iconName={iconName}
@@ -675,7 +639,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: Platform.OS === 'android' ? 7 : 9,
+    paddingVertical: Platform.OS === 'android' ? 10 : 12,
     paddingHorizontal: spacing.sm,
     zIndex: 1,
   },
@@ -726,13 +690,6 @@ const styles = StyleSheet.create({
   },
   tabSlot: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 44,
-  },
-  tabMeasureFill: {
-    flex: 1,
-    alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 44,

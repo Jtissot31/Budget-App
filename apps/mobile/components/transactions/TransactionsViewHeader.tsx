@@ -1,58 +1,43 @@
-import { useRef } from 'react';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+/**
+ * Budget Proto — Transactions chrome.
+ * Large title + green + FAB → add-transaction. Type pills: Tout / Dépenses / Revenus.
+ */
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
-  fontFamilies,
   PAGE_TITLE_CONTENT_GAP,
   PAGE_TITLE_STYLE,
-  radius,
   screenHorizontalGutter,
   spacing,
-  typography,
+  typographyKit,
 } from '@/constants/theme';
-import { UNIFORM_SEGMENT_HEIGHT } from '@/lib/uniformGroupStyles';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
-export type TransactionsViewTab = 'history' | 'agenda' | 'merchants';
 export type HistoryTypeFilter = 'all' | 'expense' | 'income';
 
-const VIEW_TABS: { id: TransactionsViewTab; label: string }[] = [
-  { id: 'history', label: 'Historique' },
-  { id: 'agenda', label: 'Agenda' },
-  { id: 'merchants', label: 'Marchands' },
-];
-
-const HISTORY_FILTER_OPTIONS: { id: HistoryTypeFilter; label: string }[] = [
-  { id: 'all', label: 'Tous' },
+const TYPE_FILTERS: { id: HistoryTypeFilter; label: string }[] = [
+  { id: 'all', label: 'Tout' },
   { id: 'expense', label: 'Dépenses' },
   { id: 'income', label: 'Revenus' },
 ];
 
-/** Fixed chrome height pieces — title + tabs must not reflow across tab switches. */
 const TITLE_ROW_HEIGHT = 40;
+const FAB_SIZE = 36;
 
 type ChromeProps = {
   topInset: number;
   titleColor: string;
-  activeView: TransactionsViewTab;
-  onChangeView: (view: TransactionsViewTab) => void;
 };
 
-/**
- * Shared Transactions chrome: page title + Historique/Agenda/Marchands.
- * Rendered once outside tab scroll views so position/height stay constant.
- */
-export function TransactionsViewHeader({
-  topInset,
-  titleColor,
-  activeView,
-  onChangeView,
-}: ChromeProps) {
+/** Page title + green + → `/add-transaction`. */
+export function TransactionsViewHeader({ topInset, titleColor }: ChromeProps) {
   const insets = useSafeAreaInsets();
+  const { colors } = useAppTheme();
+  const router = useRouter();
   const contentGutter = Platform.OS === 'web' ? 0 : screenHorizontalGutter(insets);
 
   return (
@@ -69,140 +54,70 @@ export function TransactionsViewHeader({
         <Text style={[styles.title, { color: titleColor }]} numberOfLines={1}>
           Transactions
         </Text>
-      </View>
-      <View style={styles.viewTabs}>
-        <SegmentedTabs
-          tabs={VIEW_TABS}
-          active={activeView}
-          onChange={(id) => {
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Nouvelle transaction"
+          onPress={() => {
             tapHaptic();
-            onChangeView(id);
+            router.push({ pathname: '/add-transaction', params: { type: 'expense' } });
           }}
-          activeLabelColor="rgba(255,255,255,0.85)"
-          showDivider={false}
-        />
+          style={({ pressed }) => [
+            styles.addBtn,
+            { backgroundColor: colors.accentGreen },
+            pressed && { opacity: 0.85 },
+          ]}
+        >
+          <AppIcon family="ionicons" name="add" size={22} color={colors.background} />
+        </Pressable>
       </View>
     </View>
   );
 }
 
-type HistoryToolbarProps = {
-  search: string;
-  onSearchChange: (text: string) => void;
-  historyFiltersExpanded: boolean;
-  onToggleHistoryFilters: () => void;
-  historyTypeFilter: HistoryTypeFilter;
-  onHistoryTypeFilterChange: (filter: HistoryTypeFilter) => void;
+type TypeFilterProps = {
+  value: HistoryTypeFilter;
+  onChange: (filter: HistoryTypeFilter) => void;
 };
 
-/** Historique-only search + type filters — lives inside the history list header. */
-export function TransactionsHistoryToolbar({
-  search,
-  onSearchChange,
-  historyFiltersExpanded,
-  onToggleHistoryFilters,
-  historyTypeFilter,
-  onHistoryTypeFilterChange,
-}: HistoryToolbarProps) {
+/** Figma chips — Tout / Dépenses / Revenus. */
+export function TransactionsTypeFilter({ value, onChange }: TypeFilterProps) {
   const { colors } = useAppTheme();
-  const insets = useSafeAreaInsets();
-  const contentGutter = Platform.OS === 'web' ? 0 : screenHorizontalGutter(insets);
-  const filterActive = historyTypeFilter !== 'all';
-  const searchInputRef = useRef<TextInput>(null);
-  const hasQuery = search.trim().length > 0;
 
   return (
-    <View
-      style={[
-        styles.historyToolbar,
-        { paddingHorizontal: contentGutter, backgroundColor: colors.background },
-      ]}
-    >
-      <View style={[styles.searchFilterBlock, { backgroundColor: colors.background }]}>
-        <View
-          style={[
-            styles.searchPill,
-            { backgroundColor: colors.background, borderColor: colors.borderSubtle },
-          ]}
-        >
-          <AppIcon family="ionicons" name="search-outline" size={16} color={colors.textMuted} />
-          <TextInput
-            ref={searchInputRef}
-            style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Rechercher"
-            placeholderTextColor={colors.textMuted}
-            value={search}
-            onChangeText={onSearchChange}
-            returnKeyType="search"
-            accessibilityLabel="Rechercher"
-          />
-          {hasQuery ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Effacer la recherche"
-              hitSlop={8}
-              onPress={() => {
-                tapHaptic();
-                onSearchChange('');
-              }}
-              style={({ pressed }) => [styles.clearSearchBtn, pressed && styles.pressed]}
-            >
-              <AppIcon family="ionicons" name="close-circle" size={18} color={colors.textMuted} />
-            </Pressable>
-          ) : null}
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Filtres"
-          accessibilityState={{ expanded: historyFiltersExpanded }}
-          hitSlop={8}
-          onPress={() => {
-            tapHaptic();
-            onToggleHistoryFilters();
-          }}
-          style={({ pressed }) => [
-            styles.filterBtn,
-            {
-              backgroundColor: filterActive ? colors.containerBackground : colors.background,
-              borderColor: filterActive ? colors.containerBorder : colors.borderSubtle,
-            },
-            pressed && styles.pressed,
-          ]}
-        >
-          <AppIcon
-            family="ionicons"
-            name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
-            size={20}
-            color={filterActive ? colors.text : colors.textMuted}
-          />
-        </Pressable>
-      </View>
-      {historyFiltersExpanded ? (
-        <View style={styles.historyFilterWrap}>
-          <SegmentedTabs
-            tabs={HISTORY_FILTER_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
-            active={historyTypeFilter}
-            onChange={(id) => {
+    <View style={styles.filterRow}>
+      {TYPE_FILTERS.map((option) => {
+        const active = option.id === value;
+        return (
+          <Pressable
+            key={option.id}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            onPress={() => {
               tapHaptic();
-              onHistoryTypeFilterChange(id);
+              onChange(option.id);
             }}
-            showDivider={false}
-            trackBgColor="transparent"
-            activeBgColor="rgba(255,255,255,0.07)"
-            activeLabelColor="rgba(255,255,255,0.85)"
-            inactiveLabelColor="rgba(255,255,255,0.28)"
-          />
-        </View>
-      ) : null}
+            style={[
+              styles.filterChip,
+              { backgroundColor: active ? colors.surfaceElevated : 'transparent' },
+            ]}
+          >
+            <Text
+              style={[
+                styles.filterLabel,
+                { color: active ? colors.text : colors.textMuted },
+              ]}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  chrome: {
-    // Keeps title + tabs out of tab scroll content so they never remount/shift.
-    flexShrink: 0,
-  },
+  chrome: { flexShrink: 0 },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -215,53 +130,26 @@ const styles = StyleSheet.create({
     ...PAGE_TITLE_STYLE,
     flex: 1,
   },
-  viewTabs: {
-    height: UNIFORM_SEGMENT_HEIGHT,
-    marginBottom: spacing.md,
-    justifyContent: 'center',
-  },
-  historyToolbar: {
-    marginBottom: spacing.xl,
-  },
-  searchFilterBlock: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  searchPill: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: 44,
-    borderRadius: radius.lg,
-    borderWidth: 1.5,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  searchInput: {
-    flex: 1,
-    fontFamily: fontFamilies.regular,
-    fontSize: typography.body,
-    padding: 0,
-    includeFontPadding: false,
-  },
-  clearSearchBtn: {
-    padding: 4,
-  },
-  filterBtn: {
-    width: 44,
-    height: 44,
+  addBtn: {
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    borderRadius: FAB_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radius.lg,
-    borderWidth: 1.5,
   },
-  historyFilterWrap: {
-    marginBottom: 0,
+  filterRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: spacing.md,
+    paddingHorizontal: 0,
   },
-  pressed: {
-    opacity: 0.7,
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  filterLabel: {
+    ...typographyKit.metaSemibold,
+    fontSize: 13,
   },
 });

@@ -238,7 +238,7 @@ export default function WealthAssetDetailScreen() {
   const navigateToEdit = () => {
     if (!asset) return;
     tapHaptic();
-    router.replace({ pathname: '/accounts', params: { editWealthAssetId: asset.id } });
+    router.replace({ pathname: '/wealth-asset-detail', params: { id: asset.id } });
   };
 
   const confirmDelete = () => {
@@ -410,7 +410,7 @@ export default function WealthAssetDetailScreen() {
 
   return (
     <PageTransition>
-      <View style={[styles.screen, { backgroundColor: 'transparent' }]}>
+      <View style={[styles.screen, { backgroundColor: colors.background }]}>
         <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.lg + spacing.md }]}>
           <Pressable
             accessibilityRole="button"

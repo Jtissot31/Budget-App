@@ -23,9 +23,9 @@ import type { LineOfCreditBalanceHistoryResult } from '@/lib/buildLineOfCreditBa
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { useAppTheme } from '@/lib/themeContext';
 
-const LOC_UTIL_GREEN = '#4ADE80';
+const LOC_UTIL_GREEN = '#22C55E';
 const LOC_UTIL_ORANGE = '#FBBF24';
-const LOC_UTIL_RED = '#FF6B6B';
+const LOC_UTIL_RED = '#F87171';
 const LOC_DISPONIBLE_GRAY = '#8B949E';
 
 const DONUT_CHART_HEIGHT = 148;
