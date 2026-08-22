@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { IncomeIcon } from '@/components/icons/IncomeIcon';
 import { MdiIcon } from '@/components/MdiIcon';
 import { RemoteLogoImage } from '@/components/IconFrame';
 import type { IconName } from '@/constants/categoryOptions';
 import { jakartaSemiboldText } from '@/constants/theme';
 import { EXPENSE_DEFAULT_ICON, type ExpenseFallbackIcon } from '@/lib/expenseIcon';
+import { isIncomeHistoryIcon } from '@/lib/incomeIcon';
 import { isDesignSystemLucideIcon } from '@/lib/iconMigration/designSystemIconSelection';
 import { resolveLucideNameForLegacy } from '@/lib/iconMigration/iconMap';
-import { getMerchantLogoUrls, merchantInitials } from '@/lib/merchantLogo';
+import { getLocalMerchantLogoAsset, getMerchantLogoUrls, merchantInitials } from '@/lib/merchantLogo';
 import {
   EXPENSE_MDI_ICON,
   resolveMdiOrLegacyIcon,
@@ -31,7 +34,7 @@ type Props = {
   color?: string | null;
   size?: number;
   iconSize?: number;
-  /** Force white glyphs inside the well (debts, recurring payments). */
+  /** Force high-contrast glyphs in the well (white in dark, `colors.text` in light). */
   wellGlyphWhite?: boolean;
   /** Pre-resolved logo URL (stored recurring logo or merchant favicon). */
   logoUrl?: string | null;
@@ -68,10 +71,17 @@ export function UserPickedIconWell({
     setCoverFailed(false);
   }, [trimmedCover]);
 
-  const chainUrls = useMemo(
-    () => (merchantLabel ? getMerchantLogoUrls(merchantLabel) : []),
+  const localAsset = useMemo(
+    () => (merchantLabel ? getLocalMerchantLogoAsset(merchantLabel) : null),
     [merchantLabel],
   );
+
+  const chainUrls = useMemo(() => {
+    if (!merchantLabel) return [] as string[];
+    const urls = getMerchantLogoUrls(merchantLabel);
+    if (localAsset == null) return urls;
+    return urls.filter((url) => /^https?:\/\//i.test(url));
+  }, [merchantLabel, localAsset]);
 
   const urls = useMemo(() => {
     const direct = logoUrl?.trim();
@@ -80,34 +90,42 @@ export function UserPickedIconWell({
   }, [logoUrl, chainUrls]);
 
   const [sourceIndex, setSourceIndex] = useState(0);
+  const [localFailed, setLocalFailed] = useState(false);
   const [giveUp, setGiveUp] = useState(false);
 
   useEffect(() => {
     setSourceIndex(0);
+    setLocalFailed(false);
     setGiveUp(false);
-  }, [urls]);
+  }, [urls, localAsset]);
 
   const uri = urls[sourceIndex];
-  const showRemote = Boolean(uri) && !giveUp;
+  const preferLocalAsset = Boolean(localAsset) && !localFailed && !logoUrl?.trim();
+  const showRemote = (preferLocalAsset || Boolean(uri)) && !giveUp;
   const computedIconSize = userPickedIconGlyphSize(size, iconSize);
   const categoryTint = normalizeUserIconColor(color);
   const glyphColor = wellGlyphWhite
-    ? WELL_GLYPH_WHITE
+    ? isLight
+      ? colors.text
+      : WELL_GLYPH_WHITE
     : resolveUserPickedIconGlyphColor(categoryTint, isLight, colors);
   const mdiName = resolveStoredIconToMdi(icon) ?? resolveMdiOrLegacyIcon(icon);
   const materialCommunityLucide = resolveLucideNameForLegacy('material-community', icon);
   const useMaterialCommunityAppIcon =
-    materialCommunityLucide != null && isDesignSystemLucideIcon(materialCommunityLucide);
+    (materialCommunityLucide != null && isDesignSystemLucideIcon(materialCommunityLucide)) ||
+    (Object.prototype.hasOwnProperty.call(MaterialCommunityIcons.glyphMap, icon) &&
+      !Object.prototype.hasOwnProperty.call(Ionicons.glyphMap, icon));
   const isExpenseBag = icon === EXPENSE_DEFAULT_ICON || icon === EXPENSE_MDI_ICON;
+  const isIncomeGlyph = isIncomeHistoryIcon(icon);
   const bagSize = Math.round(size * 0.4);
   const showCover = Boolean(trimmedCover) && !coverFailed;
-  const isKnownMerchant = chainUrls.length > 0;
+  const isKnownMerchant = Boolean(localAsset) || chainUrls.length > 0;
   const showMerchantInitials =
     Boolean(merchantLabel?.trim()) &&
     isKnownMerchant &&
     !showCover &&
     !showRemote &&
-    (giveUp || urls.length === 0);
+    (giveUp || (!preferLocalAsset && urls.length === 0));
 
   const wellStyle = useMemo(() => {
     if (noBackground) {
@@ -143,6 +161,14 @@ export function UserPickedIconWell({
           recyclingKey={trimmedCover}
           onError={() => setCoverFailed(true)}
         />
+      ) : preferLocalAsset && localAsset != null ? (
+        <RemoteLogoImage
+          asset={localAsset}
+          size={noBackground ? userPickedIconLogoSize(size) : size}
+          fullSize={noBackground}
+          recyclingKey={`merchant-local-${merchantLabel}`}
+          onError={() => setLocalFailed(true)}
+        />
       ) : showRemote && uri ? (
         <RemoteLogoImage
           uri={uri}
@@ -168,11 +194,16 @@ export function UserPickedIconWell({
         >
           {merchantInitials(merchantLabel ?? '')}
         </Text>
+      ) : isIncomeGlyph ? (
+        <IncomeIcon
+          size={computedIconSize}
+          color={glyphColor}
+        />
       ) : isExpenseBag ? (
         <MdiIcon
           name={EXPENSE_MDI_ICON}
           size={bagSize}
-          color={wellGlyphWhite ? WELL_GLYPH_WHITE : glyphColor}
+          color={glyphColor}
         />
       ) : resolveStoredIconToMdi(icon) ? (
         <MdiIcon

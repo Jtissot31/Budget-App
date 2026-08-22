@@ -46,7 +46,8 @@ function AnimatedKey({ label, onPress }: { label: string; onPress: () => void })
   const touchStartY = useRef(0);
   const touchStartX = useRef(0);
   const cancelledByMove = useRef(false);
-  const { colors } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
+  const keyBackground = isLight ? colors.modalAction : colors.surfaceElevated;
 
   const animateTo = (value: number) => {
     Animated.spring(scale, {
@@ -99,7 +100,7 @@ function AnimatedKey({ label, onPress }: { label: string; onPress: () => void })
         style={[
           styles.key,
           {
-            backgroundColor: colors.surfaceElevated,
+            backgroundColor: keyBackground,
             borderColor: colors.border,
             transform: [{ scale }],
           },

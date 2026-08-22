@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PageTransition } from '@/components/PageTransition';
@@ -11,7 +10,14 @@ import { SurfaceCard } from '@/components/SurfaceCard';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import { ReceiptCaptureActions } from '@/components/ReceiptCaptureActions';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
-import { containerSurfaceStyle, jakartaExtraBoldText, radius, spacing, typography } from '@/constants/theme';
+import {
+  containerSurfaceStyle,
+  FLOATING_NAV_CONTENT_PADDING,
+  jakartaExtraBoldText,
+  radius,
+  spacing,
+  typography,
+} from '@/constants/theme';
 import { typographyKit } from '@/constants/typographyKit';
 import { loadBudgetCategoriesForPicker } from '@/lib/budgetCategories';
 import { formValidationError } from '@/lib/formFeedback';
@@ -121,16 +127,6 @@ export default function ScanScreen() {
     void handleCapture();
   }, [captureSource, handleCapture, handleImport, phase]);
 
-  const handleScan = async () => {
-    tapHaptic();
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      setError(formValidationError('Permission requise', 'Autorise la caméra pour scanner un reçu.'));
-      return;
-    }
-    await handleCapture();
-  };
-
   const continueWithResults = () => {
     if (items.length === 0) {
       setError(formValidationError('Aucun article', 'Scanne à nouveau ou ajoute les articles manuellement.'));
@@ -164,9 +160,14 @@ export default function ScanScreen() {
     });
   };
 
+  const screenBottomPad =
+    phase === 'idle'
+      ? FLOATING_NAV_CONTENT_PADDING
+      : Math.max(insets.bottom, spacing.lg);
+
   return (
     <PageTransition>
-      <View style={[styles.screen, { paddingTop: insets.top + SCREEN_TOP_GUTTER, paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+      <View style={[styles.screen, { paddingTop: insets.top + SCREEN_TOP_GUTTER, paddingBottom: screenBottomPad }]}>
         <View style={styles.topBar}>
           <Pressable
             accessibilityRole="button"
@@ -181,10 +182,6 @@ export default function ScanScreen() {
           <View style={styles.topSpacer} />
         </View>
 
-        <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-          Photo → extraction des articles → catégories budgétaires en quelques secondes.
-        </Text>
-
         {phase === 'processing' ? (
           <SurfaceCard innerStyle={styles.processingInner} padding={spacing.lg}>
             {imageUri ? <Image source={{ uri: imageUri }} style={styles.preview} contentFit="cover" /> : null}
@@ -194,15 +191,17 @@ export default function ScanScreen() {
         ) : null}
 
         {phase === 'idle' ? (
-          <>
-            <ReceiptCaptureActions onScan={() => void handleScan()} onCapture={() => void handleCapture()} onImport={() => void handleImport()} />
-            <SurfaceCard innerStyle={styles.tipInner} padding={spacing.md}>
-              <AppIcon family="ionicons" name="flash-outline" size={16} color={colors.primary} />
-              <Text style={[styles.tipText, { color: colors.textMuted }]}>
-                Place le reçu à plat, avec le texte lisible. Les articles seront pré-remplis automatiquement.
-              </Text>
-            </SurfaceCard>
-          </>
+          <View style={styles.idleBody}>
+            <View style={styles.idleSpacerTop} />
+            <ReceiptCaptureActions
+              onCapture={() => void handleCapture()}
+              onImport={() => void handleImport()}
+            />
+            <Text style={[styles.tipText, { color: colors.textMuted }]}>
+              Astuce : place le reçu à plat, texte lisible.
+            </Text>
+            <View style={styles.idleSpacerBottom} />
+          </View>
         ) : null}
 
         {phase === 'review' ? (
@@ -271,7 +270,7 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    justifyContent: 'space-between',
   },
   backBtn: {
     width: 38,
@@ -282,6 +281,8 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
+    textAlign: 'center',
+    marginHorizontal: spacing.sm,
     ...jakartaExtraBoldText,
     fontSize: typography.title,
     letterSpacing: -0.4,
@@ -289,9 +290,15 @@ const styles = StyleSheet.create({
   topSpacer: {
     width: 38,
   },
-  subtitle: {
-    ...typographyKit.metaMedium,
-    lineHeight: 20,
+  idleBody: {
+    flex: 1,
+  },
+  /** Larger top spacer → actions sit in lower-middle / thumb reach zone. */
+  idleSpacerTop: {
+    flex: 1.35,
+  },
+  idleSpacerBottom: {
+    flex: 0.55,
   },
   processingInner: {
     alignItems: 'center',
@@ -310,15 +317,11 @@ const styles = StyleSheet.create({
   processingText: {
     ...typographyKit.caption,
   },
-  tipInner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-  },
   tipText: {
-    flex: 1,
     ...typographyKit.metaMedium,
     lineHeight: 19,
+    textAlign: 'center',
+    marginTop: spacing.xs,
   },
   review: {
     gap: spacing.sm,

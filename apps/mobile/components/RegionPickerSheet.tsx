@@ -3,19 +3,18 @@ import { AppIcon } from '@/components/icons/AppIcon';
 import {
   ActivityIndicator,
   FlatList,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable as RNPressable,
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
 import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
+import { FormSheetModalBody, useFormSheetHeight } from '@/lib/sheet/formSheetScroll';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Gesture,
@@ -389,8 +388,7 @@ function AlphabetIndexRail({
 export function RegionPickerSheet({ visible, selectedId, onClose, onSelect }: Props) {
   const { colors, isLight } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
-  const sheetHeight = Math.round(windowHeight * 0.92);
+  const sheetHeight = useFormSheetHeight(0.92);
   const listRef = useRef<FlatList<IndexedListItem>>(null);
   const isRailScrubbingRef = useRef(false);
 
@@ -649,7 +647,7 @@ export function RegionPickerSheet({ visible, selectedId, onClose, onSelect }: Pr
             onPress={handleClose}
             accessibilityLabel="Fermer"
           />
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboard}>
+          <FormSheetModalBody>
           <DraggableSheetSurface
             onClose={handleClose}
             sheetHeight={sheetHeight}
@@ -791,7 +789,7 @@ export function RegionPickerSheet({ visible, selectedId, onClose, onSelect }: Pr
               ) : null}
             </View>
           </DraggableSheetSurface>
-        </KeyboardAvoidingView>
+          </FormSheetModalBody>
       </View>
       </GestureHandlerRootView>
     </Modal>

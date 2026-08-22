@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
+import { SwipeBackExclusion } from '@/components/gestures/SwipeBackExclusion';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import {
   detailCarouselPageMinHeight,
@@ -379,35 +380,37 @@ function LineOfCreditChartCarousel({
     <View style={styles.carouselWrap} onLayout={onCarouselLayout}>
       {pageWidth > 0 ? (
         <>
-          <ScrollView
-            ref={scrollRef}
-            horizontal
-            pagingEnabled
-            nestedScrollEnabled
-            keyboardShouldPersistTaps="handled"
-            showsHorizontalScrollIndicator={false}
-            decelerationRate="fast"
-            onMomentumScrollEnd={onMomentumScrollEnd}
-            scrollEventThrottle={16}
-          >
-            <View key="utilization" style={[styles.carouselPage, { width: pageWidth }]}>
-              <UtilizationSlide
-                usedBalance={usedBalance}
-                available={available}
-                creditLimit={creditLimit}
-                usedColor={usedColor}
-                carousel
-              />
-            </View>
-            <View key="history" style={[styles.carouselPage, { width: pageWidth }]}>
-              <BalanceHistorySlide
-                balanceHistory={balanceHistory}
-                creditLimit={creditLimit}
-                chartWidth={chartWidth}
-                carousel
-              />
-            </View>
-          </ScrollView>
+          <SwipeBackExclusion>
+            <ScrollView
+              ref={scrollRef}
+              horizontal
+              pagingEnabled
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
+              decelerationRate="fast"
+              onMomentumScrollEnd={onMomentumScrollEnd}
+              scrollEventThrottle={16}
+            >
+              <View key="utilization" style={[styles.carouselPage, { width: pageWidth }]}>
+                <UtilizationSlide
+                  usedBalance={usedBalance}
+                  available={available}
+                  creditLimit={creditLimit}
+                  usedColor={usedColor}
+                  carousel
+                />
+              </View>
+              <View key="history" style={[styles.carouselPage, { width: pageWidth }]}>
+                <BalanceHistorySlide
+                  balanceHistory={balanceHistory}
+                  creditLimit={creditLimit}
+                  chartWidth={chartWidth}
+                  carousel
+                />
+              </View>
+            </ScrollView>
+          </SwipeBackExclusion>
           <View style={styles.pagination}>
             {Array.from({ length: pageCount }, (_, index) => (
               <View

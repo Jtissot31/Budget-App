@@ -6,6 +6,11 @@ import { loadEncryptedJson, saveEncryptedJson } from '@/lib/ai/encryptedStorage'
 import { buildHeuristicRFA, buildRFAInputFromAppData } from '@/lib/ai/sanitizeForAI';
 import { appendAIMemory } from '@/lib/ai/aiMemory';
 import { ALERT_TITLES } from '@/lib/alertPresentation';
+import {
+  MAX_STORED_ALERTS,
+  planAdaptationAlertKey,
+  resolveAlertIdentityKey,
+} from '@/lib/alertIdentity';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { dataEvents } from '@/lib/events';
 import type { AIAlert } from '@/lib/ai/types';
@@ -278,21 +283,21 @@ function upsertPlanAlert(
   existing: AIAlert[],
   proposal: PlanAdaptationProposal,
 ): { alerts: AIAlert[]; alertId: string } {
+  const dedupeKey = planAdaptationAlertKey(proposal.planId, proposal.kind);
   const duplicate = existing.find(
-    (alert) =>
-      alert.categorie === 'plan' &&
-      alert.adaptationProposalId === proposal.id &&
-      !alert.lu,
+    (alert) => resolveAlertIdentityKey(alert) === dedupeKey && !alert.lu,
   );
   if (duplicate) {
     return { alerts: existing, alertId: duplicate.id };
   }
 
   const alertId = createAlertId();
+  const now = new Date().toISOString();
   const alert: AIAlert = {
     id: alertId,
     type: 'info',
     categorie: 'plan',
+    dedupeKey,
     titre: `${ALERT_TITLES.planAdaptation} · ${proposal.planTitre}`,
     message: proposal.alertMessage,
     montant: null,
@@ -300,12 +305,13 @@ function upsertPlanAlert(
     dateEcheance: null,
     actionDisponible: 'confirmer_adaptation',
     lu: false,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    raisedAt: now,
     adaptationProposalId: proposal.id,
     relatedPlanId: proposal.planId,
   };
 
-  return { alerts: [alert, ...existing].slice(0, 50), alertId };
+  return { alerts: [alert, ...existing].slice(0, MAX_STORED_ALERTS), alertId };
 }
 
 /**
@@ -332,12 +338,17 @@ export async function evaluateAndSurfacePlanAdaptations(): Promise<PlanAdaptatio
   );
 
   const nextProposals = [...existingProposals];
-  const { loadAlerts, saveAlerts } = await import('@/lib/ai/alertService');
-  let alerts = await loadAlerts();
-  let created = 0;
+  const { mutateAlerts } = await import('@/lib/ai/alertService');
+  const { getAlertTypePreferences, isAlertTypeEnabled } = await import(
+    '@/lib/alertTypePreferences'
+  );
+  const prefs = await getAlertTypePreferences();
+  const planAlertsEnabled = isAlertTypeEnabled(prefs, 'plan_adaptation');
+  const created: PlanAdaptationProposal[] = [];
 
   for (const draft of drafts) {
-    if (created + pending.length >= MAX_PENDING_PROPOSALS) break;
+    if (!planAlertsEnabled) break;
+    if (created.length + pending.length >= MAX_PENDING_PROPOSALS) break;
     if (pendingPlanIds.has(draft.planId)) continue;
     if (cooledDownKeys.has(`${draft.planId}:${draft.kind}`)) continue;
 
@@ -348,16 +359,22 @@ export async function evaluateAndSurfacePlanAdaptations(): Promise<PlanAdaptatio
       createdAt: new Date().toISOString(),
     };
 
-    const upserted = upsertPlanAlert(alerts, proposal);
-    alerts = upserted.alerts;
-    proposal.alertId = upserted.alertId;
+    created.push(proposal);
     nextProposals.unshift(proposal);
     pendingPlanIds.add(proposal.planId);
-    created += 1;
   }
 
-  if (created > 0) {
-    await Promise.all([savePlanAdaptationProposals(nextProposals), saveAlerts(alerts)]);
+  if (created.length > 0) {
+    await mutateAlerts((stored) => {
+      let alerts = stored;
+      for (const proposal of created) {
+        const upserted = upsertPlanAlert(alerts, proposal);
+        alerts = upserted.alerts;
+        proposal.alertId = upserted.alertId;
+      }
+      return alerts;
+    });
+    await savePlanAdaptationProposals(nextProposals);
   }
 
   return nextProposals.filter((item) => item.status === 'pending');
@@ -406,9 +423,8 @@ export async function acceptPlanAdaptation(
   await savePlanAdaptationProposals(nextProposals);
 
   if (proposal.alertId) {
-    const { loadAlerts, saveAlerts } = await import('@/lib/ai/alertService');
-    const alerts = await loadAlerts();
-    await saveAlerts(
+    const { mutateAlerts } = await import('@/lib/ai/alertService');
+    await mutateAlerts((alerts) =>
       alerts.map((alert) =>
         alert.id === proposal.alertId || alert.adaptationProposalId === proposalId
           ? { ...alert, lu: true }
@@ -452,9 +468,8 @@ export async function dismissPlanAdaptation(
   await savePlanAdaptationProposals(nextProposals);
 
   if (proposal.alertId) {
-    const { loadAlerts, saveAlerts } = await import('@/lib/ai/alertService');
-    const alerts = await loadAlerts();
-    await saveAlerts(
+    const { mutateAlerts } = await import('@/lib/ai/alertService');
+    await mutateAlerts((alerts) =>
       alerts.map((alert) =>
         alert.id === proposal.alertId || alert.adaptationProposalId === proposalId
           ? { ...alert, lu: true }

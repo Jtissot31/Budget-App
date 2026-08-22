@@ -4,6 +4,18 @@
     "appVersionSource": "local"
   },
   "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "env": {
+        "EXPO_PUBLIC_SEED_DEMO": "0",
+        "EXPO_PUBLIC_USE_MOCK_DATA": "0"
+      }
+    },
     "preview": {
       "distribution": "internal",
       "android": {

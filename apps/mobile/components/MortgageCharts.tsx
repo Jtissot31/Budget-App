@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import Svg, { Circle, Rect, Text as SvgText } from 'react-native-svg';
+import { SwipeBackExclusion } from '@/components/gestures/SwipeBackExclusion';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import {
   detailCarouselPageMinHeight,
@@ -343,28 +344,30 @@ function MortgageChartCarousel({
     <View style={styles.carouselWrap} onLayout={onCarouselLayout}>
       {pageWidth > 0 ? (
         <>
-          <ScrollView
-            ref={scrollRef}
-            horizontal
-            pagingEnabled
-            nestedScrollEnabled
-            keyboardShouldPersistTaps="handled"
-            showsHorizontalScrollIndicator={false}
-            decelerationRate="fast"
-            onMomentumScrollEnd={onMomentumScrollEnd}
-            scrollEventThrottle={16}
-          >
-            {hasDonut ? (
-              <View key="donut" style={[styles.carouselPage, { width: pageWidth }]}>
-                <PaymentSplitDonutCard loan={loan} schedule={schedule} carousel />
-              </View>
-            ) : null}
-            {hasAnnual ? (
-              <View key="annual" style={[styles.carouselPage, { width: pageWidth }]}>
-                <AnnualPaymentsCard schedule={schedule} chartWidth={chartWidth} carousel />
-              </View>
-            ) : null}
-          </ScrollView>
+          <SwipeBackExclusion>
+            <ScrollView
+              ref={scrollRef}
+              horizontal
+              pagingEnabled
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
+              decelerationRate="fast"
+              onMomentumScrollEnd={onMomentumScrollEnd}
+              scrollEventThrottle={16}
+            >
+              {hasDonut ? (
+                <View key="donut" style={[styles.carouselPage, { width: pageWidth }]}>
+                  <PaymentSplitDonutCard loan={loan} schedule={schedule} carousel />
+                </View>
+              ) : null}
+              {hasAnnual ? (
+                <View key="annual" style={[styles.carouselPage, { width: pageWidth }]}>
+                  <AnnualPaymentsCard schedule={schedule} chartWidth={chartWidth} carousel />
+                </View>
+              ) : null}
+            </ScrollView>
+          </SwipeBackExclusion>
           {pageCount > 1 ? (
             <View style={styles.pagination}>
               {Array.from({ length: pageCount }, (_, index) => (

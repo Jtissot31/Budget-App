@@ -1,12 +1,31 @@
-import { cashBanknotesLogoUri } from '@/components/icons/CashBanknotesOutlineIcon';
+import { CASH_BANKNOTES_ICON } from '@/components/icons/CashBanknotesOutlineIcon';
 import { DASHBOARD_VALUE_GREEN, DASHBOARD_VALUE_RED } from '@/constants/theme';
-import { getAccountLogoUrl } from '@/lib/merchantLogo';
+import { getAccountLogoAsset, getAccountLogoUrls } from '@/lib/merchantLogo';
+import type { MdiIconName } from '@/lib/mdiIconCatalog';
 import type { AccountKind, SimulatedAccount } from '@/types';
 
 export type AccountBalanceDisplayAccount = Pick<
   SimulatedAccount,
-  'id' | 'name' | 'balance' | 'institution' | 'last4' | 'kind' | 'creditLimit' | 'logoUrl'
+  'id' | 'name' | 'balance' | 'institution' | 'last4' | 'kind' | 'creditLimit' | 'logoUrl' | 'icon'
 >;
+
+/** Curated bank / account glyphs for the create-account identity picker. */
+export const ACCOUNT_ICON_PICKER_OPTIONS: Array<{
+  id: string;
+  icon: MdiIconName;
+  label: string;
+}> = [
+  { id: 'bank', icon: 'AccountBalance', label: 'Banque' },
+  { id: 'wallet', icon: 'AccountBalanceWallet', label: 'Portefeuille' },
+  { id: 'card', icon: 'CreditCard', label: 'Carte' },
+  { id: 'savings', icon: 'Savings', label: 'Épargne' },
+  { id: 'atm', icon: 'LocalAtm', label: 'Guichet' },
+  { id: 'payments', icon: 'Payments', label: 'Paiements' },
+  { id: 'money', icon: 'AttachMoney', label: 'Argent' },
+  { id: 'business', icon: 'Business', label: 'Institution' },
+  { id: 'store', icon: 'Storefront', label: 'Commerce' },
+  { id: 'exchange', icon: 'CurrencyExchange', label: 'Change' },
+];
 
 function normalizeAccountLabel(value: string) {
   return value
@@ -203,19 +222,78 @@ export function accountBalanceIconForKind(
   return 'wallet-outline';
 }
 
-/** Resolve institution logo for account tiles / picker rows. */
-export function resolveSimulatedAccountLogoUrl(account: SimulatedAccount): string | null {
-  if (account.kind === 'cash') {
-    return account.logoUrl?.trim() || cashBanknotesLogoUri() || null;
+/** Manual icon when set; otherwise kind fallback (tiles prefer logo when auto). */
+export function resolveSimulatedAccountIcon(account: Pick<SimulatedAccount, 'kind' | 'icon'>): string {
+  const manual = account.icon?.trim();
+  if (manual) return manual;
+  return accountBalanceIconForKind(account.kind);
+}
+
+/** True when the user locked a glyph instead of auto logo deduction. */
+export function hasManualSimulatedAccountIcon(
+  account: Pick<SimulatedAccount, 'icon'>,
+): boolean {
+  return Boolean(account.icon?.trim());
+}
+
+/**
+ * True for logo URIs that work in both Expo Go and release APKs.
+ * Rejects Metro packager URLs and bare Asset registry paths.
+ */
+export function isReleaseSafeLogoUri(uri: string): boolean {
+  const t = uri.trim();
+  if (!t) return false;
+  if (/:8081\//.test(t) || t.includes('unstable_path') || t.includes('/assets/?')) return false;
+  if (/^https:\/\//i.test(t)) return true;
+  if (/^(file|content):/i.test(t)) return true;
+  return false;
+}
+
+export type SimulatedAccountLogoSources = {
+  /** Bundled `require()` module — preferred for expo-image in release APKs. */
+  asset: number | null;
+  /** Remote https favicon chain (gstatic → Google s2 → DDG). */
+  urls: string[];
+};
+
+/** Resolve institution logo sources for account tiles / picker rows. */
+export function resolveSimulatedAccountLogoSources(
+  account: SimulatedAccount,
+): SimulatedAccountLogoSources {
+  if (hasManualSimulatedAccountIcon(account)) {
+    return { asset: null, urls: [] };
   }
+  if (account.kind === 'cash') {
+    return { asset: CASH_BANKNOTES_ICON, urls: [] };
+  }
+
+  const primary = account.institution?.trim() || account.name;
+  const asset = getAccountLogoAsset(primary) ?? getAccountLogoAsset(account.name);
+
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  const pushAll = (candidates: string[]) => {
+    for (const candidate of candidates) {
+      if (!isReleaseSafeLogoUri(candidate) || seen.has(candidate)) continue;
+      seen.add(candidate);
+      urls.push(candidate);
+    }
+  };
+
   // Prefer live name→logo inference so "Visa Desjardins" tracks the bank mark
   // even when an older saved favicon pointed at the card network.
-  return (
-    getAccountLogoUrl(account.institution?.trim() || account.name) ||
-    getAccountLogoUrl(account.name) ||
-    account.logoUrl?.trim() ||
-    null
-  );
+  pushAll(getAccountLogoUrls(primary));
+  pushAll(getAccountLogoUrls(account.name));
+  const stored = account.logoUrl?.trim();
+  if (stored) pushAll([stored]);
+
+  return { asset, urls };
+}
+
+/** First remote https favicon (or null). Prefer {@link resolveSimulatedAccountLogoSources}. */
+export function resolveSimulatedAccountLogoUrl(account: SimulatedAccount): string | null {
+  const { urls } = resolveSimulatedAccountLogoSources(account);
+  return urls[0] ?? null;
 }
 
 /** Sheet / select-field presentation for a payment account row. */
@@ -225,6 +303,7 @@ export function accountPickerRowPresentation(account: SimulatedAccount): {
   fieldLabel: string;
   icon: string;
   logoUrl: string | null;
+  logoAsset: number | null;
 } {
   const label = accountBalanceDisplayName(account);
   const last4 = account.last4?.trim();
@@ -234,12 +313,14 @@ export function accountPickerRowPresentation(account: SimulatedAccount): {
   if (last4) parts.push(`••${last4}`);
   if (parts.length === 0) parts.push(accountKindTypeLabel(account.kind));
 
+  const logo = resolveSimulatedAccountLogoSources(account);
   return {
     label,
     description: parts.join(' · '),
     fieldLabel: last4 ? `${label} · ${last4}` : label,
-    icon: accountBalanceIconForKind(account.kind),
-    logoUrl: resolveSimulatedAccountLogoUrl(account),
+    icon: resolveSimulatedAccountIcon(account),
+    logoUrl: logo.urls[0] ?? null,
+    logoAsset: logo.asset,
   };
 }
 export function accountBalanceValueColor(

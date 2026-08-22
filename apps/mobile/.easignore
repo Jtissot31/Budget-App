@@ -1,4 +1,4 @@
-ï»¿# Local screenshots / ADB captures
+# Local screenshots / ADB captures
 verify-*.png
 verify-*.xml
 *-screenshot*.png
@@ -24,10 +24,21 @@ ui-*.xml
 app-open2.png
 .android-screenshot.png
 
+# Agent / local export junk
+.agent-tmp/
+.agent-tmp-export/
+.agent-tmp-*/
+_figma-import/
+
+# Built APKs / web export (must exclude — replaces .gitignore when present)
+dist/
+dist/**
+*.apk
+
 # Dev / local noise
 manual-entry-forms.html
-dist/
 .expo/
+.expo-*/
 node_modules/
 *.log
 tsc-check.log
@@ -37,3 +48,20 @@ MIGRATION-FORMS.md
 icon-usage-audit.md
 VERIFY_BUILD.txt
 RUN-MIGRATION.bat
+.env
+.env.local
+.env.*.local
+web-build/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+expo-env.d.ts
+
+# Agent / local export noise (keep out of EAS archive)
+.agent-tmp/
+.agent-tmp-export/
+.agent-tmp*
+_figma-import/

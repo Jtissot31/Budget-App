@@ -4,7 +4,8 @@ import {
   UNCATEGORIZED_TRANSACTION_CATEGORY,
 } from '@/constants/categoryOptions';
 import { getGoalGreenShade } from '@/constants/theme';
-import { loadAlerts, saveAlerts } from '@/lib/ai/alertService';
+import { mutateAlerts } from '@/lib/ai/alertService';
+import { genericAlertKey, MAX_STORED_ALERTS } from '@/lib/alertIdentity';
 import {
   mapAccountKind,
   resolveAccount,
@@ -769,11 +770,12 @@ async function executeCreerAlerte(params: Record<string, unknown>): Promise<Exec
     | 'attention'
     | 'info';
 
-  const alerts = await loadAlerts();
+  const now = new Date().toISOString();
   const alert = {
     id: createEntityId('alert'),
     type,
     categorie: 'autre' as const,
+    dedupeKey: genericAlertKey('other', titre),
     titre,
     message,
     montant: readNumber(params, 'montant') ?? null,
@@ -781,10 +783,11 @@ async function executeCreerAlerte(params: Record<string, unknown>): Promise<Exec
     dateEcheance: readString(params, 'date_echeance') ?? null,
     actionDisponible: null,
     lu: false,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    raisedAt: now,
   };
 
-  await saveAlerts([alert, ...alerts].slice(0, 50));
+  await mutateAlerts((alerts) => [alert, ...alerts].slice(0, MAX_STORED_ALERTS));
   return {
     ok: true,
     message: `Alerte « ${titre} » créée.`,

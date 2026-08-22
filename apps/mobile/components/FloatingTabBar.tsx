@@ -1,5 +1,11 @@
+/**
+ * Native FloatingTabBar — background via TabBarDynamicBlur:
+ * Android Expo Go = translucent tint only (no expo-blur / dimezisBlurView);
+ * Android Dev Client on Samsung = SemBlur; other Android = tint;
+ * iOS = expo-blur BlurView.
+ * Web uses `FloatingTabBar.web.tsx` (body-portaled CSS backdrop-filter).
+ */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   AppState,
   BackHandler,
@@ -10,18 +16,39 @@ import {
   Text,
   View,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { useFocusEffect } from '@react-navigation/native';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { GlassFab } from '@/components/GlassFab';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { usePathname, useRouter } from 'expo-router';
+import { TabBarDynamicBlur } from '@/components/tabbar/TabBarDynamicBlur';
+import {
+  AGENDA_FAB_ADD_ACTIONS,
+  AGENDA_FAB_OPTION_PILL_WIDTH,
+  FAB_STACK_OFFSET_ADD,
+  getAgendaFabArcOffsets,
+  getHistoryFabArcOffsets,
+  HIDDEN_ROUTES,
+  useShouldHideTabFabs,
+  HISTORY_FAB_ADD_ACTIONS,
+  HISTORY_FAB_ARC_ANGLES_DEG,
+  HISTORY_FAB_ARC_RADIUS,
+  HISTORY_FAB_ARC_STAGGER_MS,
+  HISTORY_FAB_MAIN_SIZE,
+  HISTORY_FAB_OPTION_ICON_COLOR,
+  HISTORY_FAB_OPTION_PILL_WIDTH,
+  HISTORY_FAB_OPTION_ROW_HEIGHT,
+  PILL_BORDER_RADIUS,
+  PlusFabIcon,
+  ROUTE_ICONS,
+  ROUTE_LABELS,
+  TabButton,
+  type HistoryAddTransactionType,
+} from '@/components/tabbar/floatingTabBarShared';
 import {
   SHOW_TRANSACTIONS_TAB_FABS,
-  TRANSACTIONS_FAB_ICON_COLOR_ORIGINAL,
-  TRANSACTIONS_FAB_STYLE_ORIGINAL,
+  TRANSACTIONS_FAB_ICON_COLOR_BLUR,
 } from '@/constants/fabStyles';
 import {
   FLOATING_FAB_SIZE,
@@ -33,172 +60,14 @@ import {
   spacing,
   typographyKit,
 } from '@/constants/theme';
-import { pressableCompactMotionStyle } from '@/constants/motionKit';
 import { tapHaptic } from '@/lib/haptics';
 import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsForm';
 import { uiEvents } from '@/lib/events';
 import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
+import { usePathname, useRouter } from 'expo-router';
 
-/** Matches `radius.pill` (999) — literal avoids Hermes `radius` binding clashes in this module. */
-const PILL_BORDER_RADIUS = 999;
-
-const TAB_ICON_SIZE = 21;
-/** Active tab icon — modest bump; stays optically centered in `tabInner` (no vertical lift). */
-const TAB_ICON_SIZE_ACTIVE = 24;
-/** Orion-style dark glass bar blur — iOS only (Android dimezisBlurView crashes on hardware bitmaps). */
-const ORION_NAV_BLUR_INTENSITY = 32;
-const USE_NAV_BLUR = Platform.OS === 'ios';
-
-/** Material Community Icons — outline only (icon-only tabs, no filled circles). */
-const ROUTE_ICONS: Record<
-  string,
-  { outline: keyof typeof MaterialCommunityIcons.glyphMap; filled: keyof typeof MaterialCommunityIcons.glyphMap }
-> = {
-  index: { outline: 'home-outline', filled: 'home' },
-  transactions: { outline: 'swap-horizontal', filled: 'swap-horizontal' },
-  accounts: { outline: 'wallet-outline', filled: 'wallet' },
-  budgets: { outline: 'chart-pie-outline', filled: 'chart-pie' },
-  goals: { outline: 'calendar-month-outline', filled: 'calendar-month' },
-};
-
-const ROUTE_LABELS: Record<string, string> = {
-  index: 'Accueil',
-  transactions: 'Transactions',
-  accounts: 'Comptes',
-  budgets: 'Budget',
-  goals: 'Agenda',
-  settings: 'Réglages',
-};
-
-const HIDDEN_ROUTES = new Set(['settings', 'widgets']);
-
-type TabButtonProps = {
-  tabLabel: string;
-  focused: boolean;
-  iconName: keyof typeof MaterialCommunityIcons.glyphMap;
-  iconColor: string;
-  onPress: () => void;
-};
-
-function TabButton({ tabLabel, focused, iconName, iconColor, onPress }: TabButtonProps) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.tabSlot, pressableCompactMotionStyle(pressed)]}
-      accessibilityRole="tab"
-      accessibilityLabel={tabLabel}
-      accessibilityState={{ selected: focused }}
-    >
-      <View style={styles.tabInner}>
-        <AppIcon
-          family="material-community"
-          name={iconName}
-          size={focused ? TAB_ICON_SIZE_ACTIVE : TAB_ICON_SIZE}
-          color={iconColor}
-          focused={focused}
-        />
-      </View>
-    </Pressable>
-  );
-}
-
-/** `Plus` from src/icons — React Native SVG. */
-function PlusFabIcon({ size, color }: { size: number; color: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        fill={color}
-        d="M19 11h-6V5a1 1 0 0 0-2 0v6H5a1 1 0 0 0 0 2h6v6a1 1 0 0 0 2 0v-6h6a1 1 0 0 0 0-2Z"
-      />
-    </Svg>
-  );
-}
-
-type HistoryAddTransactionType = 'expense' | 'income' | 'transfer';
-
-const HISTORY_FAB_OPTION_ICON_COLOR = '#FFFFFF';
-
-const HISTORY_FAB_ADD_ACTIONS: {
-  type: HistoryAddTransactionType;
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  accessibilityLabel: string;
-}[] = [
-  {
-    type: 'transfer',
-    label: 'Virement',
-    icon: 'swap-horizontal-outline',
-    accessibilityLabel: 'Ajouter un virement',
-  },
-  {
-    type: 'expense',
-    label: 'Dépense',
-    icon: 'arrow-down-circle-outline',
-    accessibilityLabel: 'Ajouter une dépense',
-  },
-  {
-    type: 'income',
-    label: 'Revenu',
-    icon: 'cash-outline',
-    accessibilityLabel: 'Ajouter un revenu',
-  },
-];
-
-/** Vertical stack above tab bar: add (lowest) → type options when Historique FAB expanded. */
-const FAB_STACK_OFFSET_ADD = 104;
-const HISTORY_FAB_MAIN_SIZE = 54;
-const HISTORY_FAB_OPTION_ROW_HEIGHT = 44;
-/** Arc speed-dial: radius and angles (°) from FAB center — 180° = left, 90° = up. */
-const HISTORY_FAB_ARC_RADIUS = 125;
-const HISTORY_FAB_ARC_ANGLES_DEG = [195, 163, 121] as const;
-const HISTORY_FAB_OPTION_PILL_WIDTH = 132;
-const HISTORY_FAB_ARC_STAGGER_MS = 55;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-
-const AGENDA_FAB_OPTION_PILL_WIDTH = 132;
-
-const AGENDA_FAB_ADD_ACTIONS: {
-  variant: RecurringPaymentAddVariant;
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  accessibilityLabel: string;
-}[] = [
-  {
-    variant: 'subscription',
-    label: 'Abonnement',
-    icon: 'repeat-outline',
-    accessibilityLabel: 'Ajouter un abonnement',
-  },
-  {
-    variant: 'bill',
-    label: 'Paiements',
-    icon: 'document-text-outline',
-    accessibilityLabel: 'Ajouter un paiement récurrent',
-  },
-  {
-    variant: 'income',
-    label: 'Revenus',
-    icon: 'trending-up-outline',
-    accessibilityLabel: 'Ajouter un revenu récurrent',
-  },
-];
-
-function getHistoryFabArcOffsets(angleDeg: number, arcRadius: number) {
-  const rad = (angleDeg * Math.PI) / 180;
-  return {
-    right: -arcRadius * Math.cos(rad) - HISTORY_FAB_OPTION_PILL_WIDTH / 2,
-    bottom: arcRadius * Math.sin(rad) - HISTORY_FAB_OPTION_ROW_HEIGHT / 2,
-  };
-}
-
-function getAgendaFabArcOffsets(angleDeg: number, r: number) {
-  const rad = (angleDeg * Math.PI) / 180;
-  return {
-    right: -r * Math.cos(rad) - AGENDA_FAB_OPTION_PILL_WIDTH / 2,
-    bottom: r * Math.sin(rad) - HISTORY_FAB_OPTION_ROW_HEIGHT / 2,
-  };
-}
 
 export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const [isHistoryFabExpanded, setIsHistoryFabExpanded] = useState(false);
@@ -207,6 +76,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { colors, isLight } = useAppTheme();
+
   const historyFabOptionsSurface = useMemo(
     () => ({
       backgroundColor: isLight ? 'rgba(18, 18, 18, 0.90)' : 'rgba(22, 22, 22, 0.94)',
@@ -215,15 +85,19 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     }),
     [isLight],
   );
+
   const bottom = getFloatingTabBarBottomInset(insets.bottom);
   const activeRouteName = state.routes[state.index]?.name;
   const isAgendaTab = activeRouteName === 'goals';
   const isTransactionsTab = activeRouteName === 'transactions';
+  const hideTabFabs = useShouldHideTabFabs(pathname);
   const showAddButton =
     SHOW_TRANSACTIONS_TAB_FABS &&
-    (isTransactionsTab || isAgendaTab);
-  const showHistoryFabOptions = isTransactionsTab && isHistoryFabExpanded;
-  const showAgendaFabOptions = isAgendaTab && isAgendaFabExpanded;
+    (isTransactionsTab || isAgendaTab) &&
+    !hideTabFabs;
+  const showHistoryFabOptions =
+    isTransactionsTab && isHistoryFabExpanded && !hideTabFabs;
+  const showAgendaFabOptions = isAgendaTab && isAgendaFabExpanded && !hideTabFabs;
   const rightThumbFabBottom = bottom + FLOATING_FAB_SIZE - spacing.sm;
 
   const collapseSpeedDials = useCallback(() => {
@@ -234,18 +108,14 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   useFocusEffect(
     useCallback(() => {
       collapseSpeedDials();
-      return () => {
-        collapseSpeedDials();
-      };
+      return () => collapseSpeedDials();
     }, [collapseSpeedDials]),
   );
 
   useEffect(() => {
     collapseSpeedDials();
-    return () => {
-      collapseSpeedDials();
-    };
-  }, [state.index, pathname, collapseSpeedDials]);
+    return () => collapseSpeedDials();
+  }, [state.index, pathname, hideTabFabs, collapseSpeedDials]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -265,13 +135,8 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     return () => subscription.remove();
   }, [collapseSpeedDials, isAgendaFabExpanded, isHistoryFabExpanded]);
 
-  const collapseHistoryFab = useCallback(() => {
-    setIsHistoryFabExpanded(false);
-  }, []);
-
-  const collapseAgendaFab = useCallback(() => {
-    setIsAgendaFabExpanded(false);
-  }, []);
+  const collapseHistoryFab = useCallback(() => setIsHistoryFabExpanded(false), []);
+  const collapseAgendaFab = useCallback(() => setIsAgendaFabExpanded(false), []);
 
   const openAgendaAddRecurring = useCallback(
     (variant: RecurringPaymentAddVariant) => {
@@ -286,10 +151,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     (type: HistoryAddTransactionType) => {
       tapHaptic();
       collapseHistoryFab();
-      router.push({
-        pathname: '/add-transaction',
-        params: { type },
-      });
+      router.push({ pathname: '/add-transaction', params: { type } });
     },
     [collapseHistoryFab, router],
   );
@@ -300,28 +162,19 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
       setIsHistoryFabExpanded((expanded) => !expanded);
       return;
     }
-
     if (isAgendaTab) {
       tapHaptic();
       setIsAgendaFabExpanded((expanded) => !expanded);
       return;
     }
-
     tapHaptic();
     router.push('/add-transaction');
   };
 
   const tabBarBorderColor = isLight ? colors.border : 'rgba(255, 255, 255, 0.10)';
-  // Android: no BlurView — use a denser tint so the pill still reads as frosted glass.
-  const navGlassTint = USE_NAV_BLUR
-    ? isLight
-      ? 'rgba(255, 255, 255, 0.72)'
-      : 'rgba(17, 17, 17, 0.68)'
-    : isLight
-      ? 'rgba(255, 255, 255, 0.92)'
-      : 'rgba(17, 17, 17, 0.92)';
   const navActiveColor = colors.text;
   const navInactiveColor = colors.textMuted;
+
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       {showHistoryFabOptions ? (
@@ -342,6 +195,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           accessibilityLabel="Fermer le menu d'ajout"
         />
       ) : null}
+
       {showHistoryFabOptions ? (
         <View
           pointerEvents="box-none"
@@ -362,7 +216,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
               right: -HISTORY_FAB_OPTION_PILL_WIDTH / 2,
               bottom: -HISTORY_FAB_OPTION_ROW_HEIGHT / 2,
             };
-
             return (
               <MotiView
                 key={type}
@@ -391,7 +244,12 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                     ],
                   ]}
                 >
-                  <AppIcon family="ionicons" name={icon} size={16} color={HISTORY_FAB_OPTION_ICON_COLOR} />
+                  <AppIcon
+                    family="ionicons"
+                    name={icon}
+                    size={16}
+                    color={HISTORY_FAB_OPTION_ICON_COLOR}
+                  />
                   <Text
                     style={[
                       styles.historyFabOptionLabel,
@@ -408,6 +266,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           })}
         </View>
       ) : null}
+
       {showAgendaFabOptions ? (
         <Pressable
           pointerEvents="auto"
@@ -426,6 +285,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           accessibilityLabel="Fermer le menu d'ajout"
         />
       ) : null}
+
       {showAgendaFabOptions ? (
         <View
           pointerEvents="box-none"
@@ -446,7 +306,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
               right: -AGENDA_FAB_OPTION_PILL_WIDTH / 2,
               bottom: -HISTORY_FAB_OPTION_ROW_HEIGHT / 2,
             };
-
             return (
               <MotiView
                 key={variant}
@@ -475,7 +334,12 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                     ],
                   ]}
                 >
-                  <AppIcon family="ionicons" name={icon} size={16} color={HISTORY_FAB_OPTION_ICON_COLOR} />
+                  <AppIcon
+                    family="ionicons"
+                    name={icon}
+                    size={16}
+                    color={HISTORY_FAB_OPTION_ICON_COLOR}
+                  />
                   <Text
                     style={[
                       styles.historyFabOptionLabel,
@@ -492,21 +356,14 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           })}
         </View>
       ) : null}
+
       {showAddButton ? (
-        <Pressable
-          pointerEvents="auto"
-          style={({ pressed }) => [
+        <GlassFab
+          style={[
             styles.fabPosition,
-            styles.addOuter,
-            {
-              bottom: rightThumbFabBottom + FAB_STACK_OFFSET_ADD,
-              backgroundColor: colors.accentGreen,
-              shadowColor: colors.accentGreen,
-            },
-            pressed && floatingGlassButtonPressed,
+            { bottom: rightThumbFabBottom + FAB_STACK_OFFSET_ADD },
           ]}
           onPress={handleAddPress}
-          accessibilityRole="button"
           accessibilityState={
             isTransactionsTab
               ? { expanded: isHistoryFabExpanded }
@@ -516,7 +373,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           }
           accessibilityLabel={
             (isTransactionsTab && isHistoryFabExpanded) || (isAgendaTab && isAgendaFabExpanded)
-              ? 'Fermer le menu d\'ajout'
+              ? "Fermer le menu d'ajout"
               : isAgendaTab
                 ? 'Ajouter un paiement récurrent'
                 : 'Nouvelle transaction'
@@ -532,35 +389,35 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
             transition={{ type: 'timing', duration: 180 }}
             style={styles.addIconWrap}
           >
-            <PlusFabIcon size={24} color={TRANSACTIONS_FAB_ICON_COLOR_ORIGINAL} />
+            <PlusFabIcon size={24} color={TRANSACTIONS_FAB_ICON_COLOR_BLUR} />
           </MotiView>
-        </Pressable>
+        </GlassFab>
       ) : null}
 
       <View pointerEvents="box-none" style={[styles.floatingNavOuter, { marginBottom: bottom }]}>
         <View
           pointerEvents="box-none"
+          collapsable={false}
+          renderToHardwareTextureAndroid={false}
           style={[
             styles.floatingNavPill,
             {
               marginHorizontal: spacing.lg,
               borderColor: tabBarBorderColor,
-              shadowColor: isLight ? '#000000' : '#000000',
+              backgroundColor: 'transparent',
+              // Soft lift — blur layer is TabBarDynamicBlur
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: Platform.OS === 'android' ? 0 : 0.35,
+              shadowRadius: 22,
+              // Elevation composites the pill into an offscreen layer; SemBlur then
+              // samples empty pixels instead of the dashboard. iOS keeps the shadow.
+              elevation: Platform.OS === 'android' ? 0 : 14,
+              overflow: Platform.OS === 'android' ? 'visible' : 'hidden',
             },
           ]}
         >
-          {USE_NAV_BLUR ? (
-            <BlurView
-              pointerEvents="none"
-              intensity={ORION_NAV_BLUR_INTENSITY}
-              tint={isLight ? 'light' : 'dark'}
-              style={StyleSheet.absoluteFillObject}
-            />
-          ) : null}
-          <View
-            pointerEvents="none"
-            style={[StyleSheet.absoluteFillObject, { backgroundColor: navGlassTint }]}
-          />
+          <TabBarDynamicBlur isLight={isLight} cornerRadius={PILL_BORDER_RADIUS} />
           <View style={styles.navContent} pointerEvents="box-none">
             {state.routes.map((route, index) => {
               if (HIDDEN_ROUTES.has(route.name)) return null;
@@ -575,21 +432,16 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
 
               const onPress = () => {
                 collapseSpeedDials();
-
                 const event = navigation.emit({
                   type: 'tabPress',
                   target: route.key,
                   canPreventDefault: true,
                 });
                 if (event.defaultPrevented) return;
-
                 if (route.name === 'transactions') {
-                  if (!focused) {
-                    navigation.navigate('transactions');
-                  }
+                  if (!focused) navigation.navigate('transactions');
                   return;
                 }
-
                 if (!focused) {
                   navigation.navigate(route.name, route.params);
                 }
@@ -627,13 +479,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   floatingNavPill: {
-    overflow: 'hidden',
     borderWidth: 1,
     borderRadius: radius.pill,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.28,
-    shadowRadius: 20,
-    elevation: 14,
+    overflow: 'hidden',
   },
   navContent: {
     flexDirection: 'row',
@@ -680,27 +528,8 @@ const styles = StyleSheet.create({
     right: spacing.lg,
     zIndex: 10,
   },
-  addOuter: {
-    ...TRANSACTIONS_FAB_STYLE_ORIGINAL,
-  },
   addIconWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 1,
-  },
-  tabSlot: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 44,
-  },
-  tabInner: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    minWidth: 44,
-    minHeight: 44,
-    borderRadius: radius.lg,
   },
 });

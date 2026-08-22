@@ -49,6 +49,7 @@ import {
   detailSectionsCardStyle,
   detailSubSectionHeaderStyle,
   detailSubSectionsGap,
+  FLOATING_NAV_CONTENT_PADDING,
   jakartaBoldText,
   jakartaExtraBoldText,
   jakartaMediumText,
@@ -61,9 +62,10 @@ import {
 } from '@/constants/theme';
 import {
   FLOATING_FAB_ICON_SIZE,
-  floatingGlassButtonPressed,
-  floatingGlassFabSurface,
+  FLOATING_FAB_SIZE,
 } from '@/constants/floatingGlassButton';
+import { TRANSACTIONS_FAB_ICON_COLOR_BLUR } from '@/constants/fabStyles';
+import { GlassFab } from '@/components/GlassFab';
 import {
   findInsufficientFundsViolation,
   getReceiptStatusLabel,
@@ -200,6 +202,7 @@ function buildPaymentAccountOptions(
             fieldLabel: row.fieldLabel,
             icon: row.icon,
             logoUrl: row.logoUrl,
+            logoAsset: row.logoAsset,
           };
         })
       : (() => {
@@ -522,33 +525,35 @@ function buildTransactionDetailSections(
   const categorySection: DetailSection = {
     title: 'Catégorie',
     rows:
-      tx.type !== 'transfer' && editors
-        ? (() => {
-            const categoryRow = resolveCategoryDetailRowState(articles, editors, categories);
-            return [
-              {
-                label: 'Catégorie',
-                value: categoryRow.label,
-                icon: 'pricetag-outline' as const,
-                valueLayout: 'text' as const,
-                compact: categoryRow.compact,
-                valueContent: (
-                  <EditableCategoryDetailValue
-                    label={categoryRow.label}
-                    selectedId={categoryRow.selectedId}
-                    categoryOptions={editors.categoryOptions}
-                    onSaveCategory={editors.onSaveCategory}
-                    derivedChips={categoryRow.derivedChips}
-                  />
-                ),
-              },
-            ];
-          })()
-        : [
-            tx.categoryName
-              ? { label: 'Catégorie', value: tx.categoryName, icon: 'pricetag-outline' as const }
-              : null,
-          ].filter(Boolean) as DetailSection['rows'],
+      tx.type === 'income'
+        ? []
+        : tx.type !== 'transfer' && editors
+          ? (() => {
+              const categoryRow = resolveCategoryDetailRowState(articles, editors, categories);
+              return [
+                {
+                  label: 'Catégorie',
+                  value: categoryRow.label,
+                  icon: 'pricetag-outline' as const,
+                  valueLayout: 'text' as const,
+                  compact: categoryRow.compact,
+                  valueContent: (
+                    <EditableCategoryDetailValue
+                      label={categoryRow.label}
+                      selectedId={categoryRow.selectedId}
+                      categoryOptions={editors.categoryOptions}
+                      onSaveCategory={editors.onSaveCategory}
+                      derivedChips={categoryRow.derivedChips}
+                    />
+                  ),
+                },
+              ];
+            })()
+          : [
+              tx.categoryName
+                ? { label: 'Catégorie', value: tx.categoryName, icon: 'pricetag-outline' as const }
+                : null,
+            ].filter(Boolean) as DetailSection['rows'],
   };
 
   const incomeReason = tx.type === 'income' ? parseRaisonFromNote(tx.note) : null;
@@ -769,48 +774,44 @@ function ReceiptPreviewModal({
         </View>
 
         <View style={[styles.receiptFabRow, { bottom: receiptFabBottom }]}>
-          <Pressable
-            accessibilityRole="button"
+          <GlassFab
+            size={FLOATING_FAB_SIZE}
+            tone="neutral"
             accessibilityLabel="Partager le reçu"
-            disabled={sharing || downloading}
-            onPress={() => void handleShareReceipt()}
-            style={({ pressed }) => [
-              styles.receiptActionButton,
-              floatingGlassFabSurface(colors, isLight),
-              (pressed || sharing) && floatingGlassButtonPressed,
-            ]}
+            onPress={() => {
+              if (sharing || downloading) return;
+              void handleShareReceipt();
+            }}
+            style={(sharing || downloading) ? { opacity: 0.55 } : undefined}
           >
             {sharing ? (
               <ActivityIndicator color={colors.text} size="small" />
             ) : (
               <AppIcon family="ionicons" name="share-outline" size={FLOATING_FAB_ICON_SIZE} color={colors.text} />
             )}
-          </Pressable>
+          </GlassFab>
 
-          <Pressable
-            accessibilityRole="button"
+          <GlassFab
+            size={FLOATING_FAB_SIZE}
+            tone="accentGreen"
             accessibilityLabel="Télécharger le reçu"
-            disabled={downloading || sharing}
-            onPress={() => void handleDownload()}
-            style={({ pressed }) => [
-              styles.receiptActionButton,
-              {
-                backgroundColor: colors.primary,
-                shadowColor: colors.primary,
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.35,
-                shadowRadius: 16,
-                elevation: 12,
-              },
-              (pressed || downloading) && floatingGlassButtonPressed,
-            ]}
+            onPress={() => {
+              if (downloading || sharing) return;
+              void handleDownload();
+            }}
+            style={(downloading || sharing) ? { opacity: 0.55 } : undefined}
           >
             {downloading ? (
-              <ActivityIndicator color="#000000" size="small" />
+              <ActivityIndicator color={TRANSACTIONS_FAB_ICON_COLOR_BLUR} size="small" />
             ) : (
-              <AppIcon family="ionicons" name="download-outline" size={FLOATING_FAB_ICON_SIZE} color="#000000" />
+              <AppIcon
+                family="ionicons"
+                name="download-outline"
+                size={FLOATING_FAB_ICON_SIZE}
+                color={TRANSACTIONS_FAB_ICON_COLOR_BLUR}
+              />
             )}
-          </Pressable>
+          </GlassFab>
         </View>
       </View>
     </Modal>
@@ -1765,7 +1766,7 @@ export default function TransactionDetailScreen() {
   );
 
   const scrollContentContainerStyle = useMemo(() => {
-    const basePaddingBottom = Math.max(insets.bottom + spacing.xxl, 72);
+    const basePaddingBottom = insets.bottom + FLOATING_NAV_CONTENT_PADDING;
     const keyboardPaddingBottom =
       keyboardInset > 0 ? Math.max(basePaddingBottom, keyboardInset + spacing.xl) : basePaddingBottom;
     let activePaddingBottom = keyboardPaddingBottom;
@@ -2438,13 +2439,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-  },
-  receiptActionButton: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   pressed: { opacity: 0.78 },
 

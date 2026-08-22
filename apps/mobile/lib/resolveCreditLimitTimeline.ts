@@ -153,8 +153,10 @@ export function resolveCreditLimitTimelineData(
 
   if (isMockCreditAlert(item.id)) {
     const { creditLimit, balanceUsedBefore, paymentAmount } = CREDIT_LIMIT_MOCK_ALERT_NUMBERS;
+    const dashboardCredit = DASHBOARD_ACCOUNTS.find((account) => account.kind === 'credit');
     return buildTimelineData({
       paymentLabel,
+      accountLabel: dashboardCredit?.name,
       balanceUsedBefore,
       paymentAmount,
       creditLimit,

@@ -1,36 +1,46 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { cashBanknotesLogoUri } from '@/components/icons/CashBanknotesOutlineIcon';
+import { CASH_BANKNOTES_ICON } from '@/components/icons/CashBanknotesOutlineIcon';
 import {
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
+import {
+  DraggableSheetScrollView,
+  DraggableSheetSurface,
+} from '@/components/DraggableSheetSurface';
+import {
+  FormSheetModalBody,
+  formSheetScrollContentStyle,
+  formSheetScrollPaddingBottom,
+  formSheetScrollViewStyle,
+  useFormSheetHeight,
+} from '@/lib/sheet/formSheetScroll';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BankAccountCard } from '@/components/BankAccountCard';
-import { CashAccountCard } from '@/components/CashAccountCard';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
-import { SurfaceCard } from '@/components/SurfaceCard';
+import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
+import { OnyxContainer } from '@/components/OnyxContainer';
+import { ProtoSectionHeader } from '@/components/proto/ProtoSectionHeader';
+import { AccountDetailHeroCard } from '@/components/wallet/AccountCardPrototypes';
+import { IconPickerSheet } from '@/components/IconPickerSheet';
+import { MdiIcon } from '@/components/MdiIcon';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
+import { FixedScreenHeader } from '@/components/FixedScreenHeader';
 import { OverflowMenuButton } from '@/components/OverflowMenuButton';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import { formValidationError, type FormFeedback } from '@/lib/formFeedback';
 import { PageTransition } from '@/components/PageTransition';
-import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
+import { LogoIconFrame } from '@/components/IconFrame';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { getMerchantLogoUrl } from '@/lib/merchantLogo';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
@@ -44,30 +54,29 @@ import {
   toAccountOptions,
   type PaymentForm,
 } from '@/lib/recurringPaymentsForm';
-import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
+import {
+  ONYX_CONTAINER,
+  onyxContainerPressedStyle,
+  onyxContainerRowLayoutStyle,
+} from '@/constants/planFinanceKit';
 import {
   colors,
+  FLOATING_NAV_CONTENT_PADDING,
+  FORM_SECTION_LABEL_STYLE,
   ICON_WELL_SIZE,
-  accountDetailHeroBlockStyle,
-  accountDetailRecurringPanelStyle,
-  accountDetailRecurringTriggerStyle,
-  accountDetailSectionDividerStyle,
-  accountDetailStatementStatColStyle,
-  accountDetailStatementStatLabelStyle,
-  accountDetailStatementStatsRowStyle,
-  accountDetailStatementStatValueStyle,
+  containerSurfaceStyle,
   destructiveIconColor,
   destructiveTextActionStyle,
   jakartaBoldText,
   jakartaExtraBoldText,
   jakartaMediumText,
+  jakartaSemiboldText,
   moneyAmountTypography,
   radius,
   spacing,
   subtleDeleteButtonStyle,
   typography,
   typographyKit,
-  type AppColors,
 } from '@/constants/theme';
 import {
   deleteSimulatedAccount,
@@ -84,15 +93,17 @@ import { ensureCategoryInPickerList, loadRecurringPickerCategories } from '@/lib
 import { dataEvents } from '@/lib/events';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
 import { openTransactionDetail } from '@/lib/openTransactionDetail';
-import { getAccountLogoUrl } from '@/lib/merchantLogo';
-import { resolveSimulatedAccountLogoUrl } from '@/lib/accountBalancePresentation';
-import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';import { useAppTheme } from '@/lib/themeContext';
-import { formatCreditDueDateLabel } from '@/lib/creditDueDate';
 import {
-  creditLimitUtilizationPercent,
-  creditUsedFromBalance,
-  utilizationPercentColor,
-} from '@/lib/creditLimitUtilization';
+  getAccountLogoAsset,
+  getAccountLogoUrl,
+  getStableAccountLogoUrl,
+} from '@/lib/merchantLogo';
+import {
+  ACCOUNT_ICON_PICKER_OPTIONS,
+  accountBalanceIconForKind,
+} from '@/lib/accountBalancePresentation';
+import type { MdiIconName } from '@/lib/mdiIconCatalog';
+import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';import { useAppTheme } from '@/lib/themeContext';
 import { parseIsoDay } from '@/lib/estimatedPaycheck';
 import {
   buildLoanByRecurringPaymentId,
@@ -185,119 +196,6 @@ function recurringPaymentDefinitionMeta(payment: RecurringPayment, from: Date) {
   return parts.join(' · ');
 }
 
-type CreditDetailRow = {
-  label: string;
-  value: string;
-  icon?: keyof typeof Ionicons.glyphMap;
-  valueColor?: string;
-};
-
-function buildCreditDetailRows(
-  account: SimulatedAccount,
-  creditInfo: { creditLimit?: number; utilPct?: number; available?: number },
-  today: Date,
-  colors: Pick<AppColors, 'text' | 'textMuted' | 'danger' | 'warning' | 'success'>,
-): CreditDetailRow[] {
-  const rows: CreditDetailRow[] = [];
-
-  if (typeof creditInfo.utilPct === 'number') {
-    rows.push({
-      label: '% utilisé',
-      value: `${Math.round(creditInfo.utilPct)} %`,
-      icon: 'pie-chart-outline',
-      valueColor: utilizationPercentColor(creditInfo.utilPct, colors),
-    });
-  }
-
-  if (typeof creditInfo.available === 'number') {
-    rows.push({
-      label: 'Disponible',
-      value: formatMoney(creditInfo.available),
-      icon: 'wallet-outline',
-    });
-  }
-
-  if (typeof creditInfo.creditLimit === 'number') {
-    rows.push({
-      label: 'Plafond',
-      value: formatMoney(creditInfo.creditLimit),
-      icon: 'card-outline',
-    });
-  }
-
-  if (typeof account.dueDay === 'number') {
-    rows.push({
-      label: 'Échéance',
-      value: formatCreditDueDateLabel(account.dueDay, today),
-      icon: 'calendar-outline',
-    });
-  }
-
-  if (typeof account.interestRate === 'number') {
-    rows.push({
-      label: "Taux d'intérêt",
-      value: `${account.interestRate} %`,
-      icon: 'trending-up-outline',
-    });
-  }
-
-  return rows;
-}
-
-function chunkDetailRows<T>(rows: T[]): T[][] {
-  const pairs: T[][] = [];
-  for (let index = 0; index < rows.length; index += 2) {
-    pairs.push(rows.slice(index, index + 2));
-  }
-  return pairs;
-}
-
-function DetailInfoRowPair({
-  rows,
-  colors,
-  isLast,
-}: {
-  rows: CreditDetailRow[];
-  colors: Pick<AppColors, 'text' | 'textMuted' | 'border'>;
-  isLast: boolean;
-}) {
-  return (
-    <View
-      style={[
-        styles.infoRowPair,
-        !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-      ]}
-    >
-      {rows.map((row, index) => (
-        <DetailInfoRow key={`${row.label}-${index}`} row={row} colors={colors} />
-      ))}
-      {rows.length === 1 ? <View style={styles.infoRowCellSpacer} /> : null}
-    </View>
-  );
-}
-
-function DetailInfoRow({
-  row,
-  colors,
-}: {
-  row: CreditDetailRow;
-  colors: Pick<AppColors, 'text' | 'textMuted' | 'border'>;
-}) {
-  return (
-    <View style={styles.infoRow}>
-      {row.icon ? (
-        <AppIcon family="ionicons" name={row.icon} size={18} color={colors.textMuted} style={styles.infoRowIcon} />
-      ) : (
-        <View style={styles.infoRowIconSpacer} />
-      )}
-      <View style={styles.infoRowCopy}>
-        <Text style={[styles.infoRowLabel, { color: colors.textMuted }]}>{row.label}</Text>
-        <Text style={[styles.infoRowValue, { color: row.valueColor ?? colors.text }]}>{row.value}</Text>
-      </View>
-    </View>
-  );
-}
-
 function DetailRow({
   label,
   value,
@@ -321,39 +219,35 @@ function DetailRow({
   );
 }
 
-function StatementStatColumn({
+function FlowStatColumn({
   label,
   value,
   valueColor,
-  align = 'center',
-  prominent,
+  align = 'left',
 }: {
   label: string;
   value: string;
   valueColor?: string;
-  align?: 'left' | 'center' | 'right';
-  prominent?: boolean;
+  align?: 'left' | 'right';
 }) {
   const { colors } = useAppTheme();
-  const textAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
+  const textAlign = align === 'right' ? 'right' : 'left';
 
   return (
-    <View style={accountDetailStatementStatColStyle({ align, prominent })}>
+    <View style={[styles.flowCol, align === 'right' && styles.flowColEnd]}>
       <Text
         style={[
-          accountDetailStatementStatValueStyle(prominent),
-          { color: valueColor ?? colors.text, textAlign },
+          moneyAmountTypography({ tier: 'card', textAlign }),
+          { color: valueColor ?? colors.text },
         ]}
         numberOfLines={1}
         adjustsFontSizeToFit
+        minimumFontScale={0.7}
       >
         {value}
       </Text>
       <Text
-        style={[
-          accountDetailStatementStatLabelStyle(),
-          { color: colors.textMuted, textAlign },
-        ]}
+        style={[typographyKit.microUpper, { color: colors.textMuted, textAlign }]}
         numberOfLines={1}
       >
         {label}
@@ -372,19 +266,19 @@ function CheckingMonthlyStatsRow({
   const { colors } = useAppTheme();
 
   return (
-    <View style={accountDetailStatementStatsRowStyle()}>
-      <StatementStatColumn
+    <OnyxContainer style={styles.flowCard}>
+      <FlowStatColumn
         label="Revenu"
         value={`+${formatMoney(revenues)}`}
         valueColor={colors.success}
-        align="left"
       />
-      <StatementStatColumn
-        label="Montant dépensé"
+      <View style={[styles.flowRule, { backgroundColor: colors.borderSubtle }]} />
+      <FlowStatColumn
+        label="Dépense"
         value={`−${formatMoney(expenses)}`}
         align="right"
       />
-    </View>
+    </OnyxContainer>
   );
 }
 
@@ -393,18 +287,31 @@ function StatementStatsRow({
 }: {
   stats: Array<{ label: string; value: string; valueColor?: string }>;
 }) {
-  return (
-    <View style={accountDetailStatementStatsRowStyle()}>
-      {stats.map((stat) => (
-        <StatementStatColumn key={stat.label} label={stat.label} value={stat.value} valueColor={stat.valueColor} />
-      ))}
-    </View>
-  );
-}
+  const { colors } = useAppTheme();
 
-function FlowDivider() {
-  const { isLight } = useAppTheme();
-  return <View style={accountDetailSectionDividerStyle(isLight)} />;
+  return (
+    <OnyxContainer style={styles.flowCard}>
+      {stats.flatMap((stat, index) => {
+        const column = (
+          <FlowStatColumn
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            valueColor={stat.valueColor}
+            align={index === stats.length - 1 ? 'right' : 'left'}
+          />
+        );
+        if (index === 0) return [column];
+        return [
+          <View
+            key={`rule-${stat.label}`}
+            style={[styles.flowRule, { backgroundColor: colors.borderSubtle }]}
+          />,
+          column,
+        ];
+      })}
+    </OnyxContainer>
+  );
 }
 
 function RecurringChevron({ expanded, color }: { expanded: boolean; color: string }) {
@@ -430,8 +337,7 @@ export default function AccountDetailScreen() {
   const params = useLocalSearchParams<{ accountId?: string }>();
   const accountId = typeof params.accountId === 'string' ? params.accountId : '';
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
-  const editAccountSheetHeight = Math.round(windowHeight * 0.92);
+  const editAccountSheetHeight = useFormSheetHeight(0.92);
   const scrollRef = useRef<ScrollView>(null);
   const searchInputRef = useRef<TextInput>(null);
   const { colors, ghost, ghostCardShadow, isLight } = useAppTheme();
@@ -456,6 +362,9 @@ export default function AccountDetailScreen() {
   const [creditLimit, setCreditLimit] = useState('');
   const [dueDay, setDueDay] = useState('');
   const [interestRate, setInterestRate] = useState('');
+  const [icon, setIcon] = useState<string | null>(null);
+  const [showIconPicker, setShowIconPicker] = useState(false);
+  const [fullIconPickerVisible, setFullIconPickerVisible] = useState(false);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
   const [pendingDeleteAccount, setPendingDeleteAccount] = useState<SimulatedAccount | null>(null);
   const [recurringForm, setRecurringForm] = useState<PaymentForm | null>(null);
@@ -547,21 +456,25 @@ export default function AccountDetailScreen() {
     });
     return { revenues, expenses };
   }, [account, accountTransactions]);
-  const creditInfo = useMemo(() => {
-    if (!account || account.kind !== 'credit') return null;
-    const creditLimit =
-      typeof account.creditLimit === 'number' && account.creditLimit > 0 ? account.creditLimit : undefined;
-    const creditUsed = creditUsedFromBalance(account.balance);
-    const utilPct = creditLimitUtilizationPercent(account.balance, creditLimit);
-    const available = typeof creditLimit === 'number' ? Math.max(0, creditLimit - creditUsed) : undefined;
-    return { creditLimit, creditUsed, utilPct, available };
-  }, [account]);
-  const creditDetailRows = useMemo(() => {
-    if (!account || account.kind !== 'credit' || !creditInfo) return [];
-    return buildCreditDetailRows(account, creditInfo, today, colors);
-  }, [account, colors, creditInfo, today]);
   const logoSourceName = institution.trim() || name.trim();
-  const previewLogo = useMemo(() => getAccountLogoUrl(logoSourceName), [logoSourceName]);
+  const manualIcon = icon?.trim() || null;
+  const previewLogoAsset = useMemo(() => {
+    if (manualIcon) return null;
+    if (kind === 'cash') return CASH_BANKNOTES_ICON;
+    if (!logoSourceName) return null;
+    return getAccountLogoAsset(logoSourceName);
+  }, [kind, logoSourceName, manualIcon]);
+  const previewLogo = useMemo(() => {
+    if (manualIcon || previewLogoAsset) return null;
+    if (kind === 'cash') return null;
+    if (!logoSourceName) return null;
+    return getStableAccountLogoUrl(logoSourceName) ?? getAccountLogoUrl(logoSourceName);
+  }, [kind, logoSourceName, manualIcon, previewLogoAsset]);
+  const previewIcon = manualIcon || accountBalanceIconForKind(kind);
+  const hasIdentityContent = Boolean(
+    manualIcon || previewLogoAsset || previewLogo || name.trim() || institution.trim(),
+  );
+  const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.text }];
   const formThemed = usePortfolioFormTheme();
 
   const resetForm = () => {
@@ -573,6 +486,9 @@ export default function AccountDetailScreen() {
     setCreditLimit('');
     setDueDay('');
     setInterestRate('');
+    setIcon(null);
+    setShowIconPicker(false);
+    setFullIconPickerVisible(false);
   };
 
   const openEditAccountForm = (nextAccount: SimulatedAccount) => {
@@ -585,6 +501,9 @@ export default function AccountDetailScreen() {
     setCreditLimit(typeof nextAccount.creditLimit === 'number' ? String(nextAccount.creditLimit) : '');
     setDueDay(typeof nextAccount.dueDay === 'number' ? String(nextAccount.dueDay) : '');
     setInterestRate(typeof nextAccount.interestRate === 'number' ? String(nextAccount.interestRate) : '');
+    setIcon(nextAccount.icon?.trim() || null);
+    setShowIconPicker(false);
+    setFullIconPickerVisible(false);
     setShowForm(true);
   };
 
@@ -618,7 +537,8 @@ export default function AccountDetailScreen() {
       creditLimit: kind === 'credit' ? parseOptionalMoney(creditLimit) : undefined,
       dueDay: kind === 'credit' ? parseOptionalInt(dueDay) : undefined,
       interestRate: kind === 'savings' ? parseOptionalMoney(interestRate) : undefined,
-      logoUrl: kind === 'cash' ? undefined : getAccountLogoUrl(logoSourceName) ?? undefined,
+      logoUrl: kind === 'cash' ? undefined : getStableAccountLogoUrl(logoSourceName) ?? undefined,
+      icon: manualIcon,
       linkedSavingsGoalId: editingAccount.linkedSavingsGoalId ?? null,
       hidden: editingAccount.hidden,
       displayOrder: editingAccount.displayOrder,
@@ -688,56 +608,49 @@ export default function AccountDetailScreen() {
   };
 
   return (
-    <PageTransition>
+    <PageTransition animate={false}>
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.lg + spacing.md }]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Retour"
-          hitSlop={12}
-          style={({ pressed }) => [
-            styles.backButton,
-            { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
-            pressed && styles.pressed,
-          ]}
-          onPress={() => router.back()}
-        >
-          <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
-        </Pressable>
-        <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-          {account?.name ?? 'Compte'}
-        </Text>
-        {account ? (
-          <OverflowMenuButton
-            accessibilityLabel="Options du compte"
-            items={[
-              {
-                key: 'edit',
-                label: 'Modifier',
-                onPress: () => openEditAccountForm(account),
-              },
-              ...(account.kind !== 'cash'
-                ? [
-                    {
-                      key: 'delete',
-                      label: 'Supprimer',
-                      icon: 'trash-outline' as const,
-                      destructive: true,
-                      onPress: () => confirmDeleteAccount(account),
-                    },
-                  ]
-                : []),
-            ]}
-          />
-        ) : (
-          <View style={styles.topBarSpacer} />
-        )}
-      </View>
+      <FixedScreenHeader
+        title={account?.name ?? 'Compte'}
+        onBack={() => router.back()}
+        trailing={
+          account ? (
+            <OverflowMenuButton
+              accessibilityLabel="Options du compte"
+              style={[
+                styles.backButton,
+                { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
+              ]}
+              items={[
+                {
+                  key: 'edit',
+                  label: 'Modifier',
+                  onPress: () => openEditAccountForm(account),
+                },
+                ...(account.kind !== 'cash'
+                  ? [
+                      {
+                        key: 'delete',
+                        label: 'Supprimer',
+                        icon: 'trash-outline' as const,
+                        destructive: true,
+                        onPress: () => confirmDeleteAccount(account),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          ) : undefined
+        }
+      />
 
       <ScrollView
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom + spacing.xl, 56) }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING },
+        ]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -752,18 +665,7 @@ export default function AccountDetailScreen() {
       >
         {account ? (
           <>
-            <View style={accountDetailHeroBlockStyle()}>
-              <View style={ghostCardShadow}>
-                {account.kind === 'cash' ? (
-                  <CashAccountCard account={account} />
-                ) : (
-                  <BankAccountCard
-                    account={account}
-                    logoUrl={resolveSimulatedAccountLogoUrl(account)}
-                  />
-                )}
-              </View>
-            </View>
+            <AccountDetailHeroCard account={account} />
 
             {monthlyTransactionStats ? (
               <CheckingMonthlyStatsRow
@@ -790,73 +692,61 @@ export default function AccountDetailScreen() {
               />
             ) : null}
 
-            <View style={showRecurringPayments ? accountDetailRecurringPanelStyle(isLight) : undefined}>
+            <View style={styles.recurringSection}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Paiements récurrents liés à ce compte"
                 accessibilityHint="Affiche ou masque la liste des paiements récurrents"
                 accessibilityState={{ expanded: showRecurringPayments }}
                 android_ripple={null}
-                style={({ pressed }) => [
-                  accountDetailRecurringTriggerStyle(),
-                  showRecurringPayments && {
-                    paddingHorizontal: spacing.md,
-                    borderBottomColor: colors.border,
-                    borderBottomWidth: StyleSheet.hairlineWidth,
-                  },
-                  !showRecurringPayments && pressed && styles.pressed,
-                ]}
                 onPress={() => {
                   tapHaptic();
                   setShowRecurringPayments((visible) => !visible);
                 }}
+                style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
               >
-                <View style={styles.recurringTriggerCopy}>
-                  <View style={styles.recurringTriggerTitleRow}>
-                    <AppIcon family="ionicons"
-                      name="calendar-outline"
-                      size={RECURRING_TRIGGER_ICON_SIZE}
-                      color={colors.textSecondary}
-                    />
-                    <Text style={[typographyKit.eyebrow, { color: colors.textMuted }]}>
-                      Paiements récurrents
-                    </Text>
+                <OnyxContainer style={onyxContainerRowLayoutStyle()}>
+                  <View style={styles.recurringTriggerCopy}>
+                    <View style={styles.recurringTriggerTitleRow}>
+                      <AppIcon
+                        family="ionicons"
+                        name="calendar-outline"
+                        size={RECURRING_TRIGGER_ICON_SIZE}
+                        color={colors.textSecondary}
+                      />
+                      <Text style={[typographyKit.eyebrow, { color: colors.textMuted }]}>
+                        Paiements récurrents
+                      </Text>
+                    </View>
+                    {!showRecurringPayments ? (
+                      <Text style={[styles.recurringTriggerHint, { color: colors.textMuted }]} numberOfLines={1}>
+                        {accountRecurringPayments.length > 0
+                          ? `${accountRecurringPayments.length} lié${accountRecurringPayments.length > 1 ? 's' : ''} à ce compte`
+                          : 'Aucun paiement lié'}
+                      </Text>
+                    ) : null}
                   </View>
-                  {!showRecurringPayments ? (
-                    <Text style={[styles.recurringTriggerHint, { color: colors.textMuted }]} numberOfLines={1}>
-                      {accountRecurringPayments.length > 0
-                        ? `${accountRecurringPayments.length} lié${accountRecurringPayments.length > 1 ? 's' : ''} à ce compte`
-                        : 'Aucun paiement lié'}
+                  <View style={styles.recurringTriggerMeta}>
+                    <Text style={[styles.recurringTriggerCount, { color: colors.textMuted }]}>
+                      {accountRecurringPayments.length}
                     </Text>
-                  ) : null}
-                </View>
-                <View style={styles.recurringTriggerMeta}>
-                  <Text style={[styles.recurringTriggerCount, { color: colors.textMuted }]}>
-                    {accountRecurringPayments.length}
-                  </Text>
-                  <RecurringChevron expanded={showRecurringPayments} color={colors.textMuted} />
-                </View>
+                    <RecurringChevron expanded={showRecurringPayments} color={colors.textMuted} />
+                  </View>
+                </OnyxContainer>
               </Pressable>
 
               {showRecurringPayments ? (
-                <View style={styles.recurringPanelBody}>
-                  {accountRecurringPayments.length > 0 ? (
-                    accountRecurringPayments.map((payment, paymentIndex) => (
-                      <Pressable
-                        key={payment.id}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Modifier ${payment.name}`}
-                        android_ripple={null}
-                        style={({ pressed }) => [
-                          styles.recurringPaymentRow,
-                          paymentIndex < accountRecurringPayments.length - 1 && {
-                            borderBottomColor: colors.border,
-                            borderBottomWidth: StyleSheet.hairlineWidth,
-                          },
-                          pressed && styles.pressed,
-                        ]}
-                        onPress={() => void openEditRecurringPayment(payment)}
-                      >
+                accountRecurringPayments.length > 0 ? (
+                  accountRecurringPayments.map((payment) => (
+                    <Pressable
+                      key={payment.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Modifier ${payment.name}`}
+                      android_ripple={null}
+                      onPress={() => void openEditRecurringPayment(payment)}
+                      style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
+                    >
+                      <OnyxContainer style={onyxContainerRowLayoutStyle()}>
                         <UserPickedIconWell
                           icon={resolveRecurringPaymentDisplayIconById(payment, loanByRecurringPaymentId)}
                           color={payment.color}
@@ -878,36 +768,21 @@ export default function AccountDetailScreen() {
                           color={payment.kind === 'income' ? colors.success : colors.text}
                           textStyle={styles.recurringPaymentAmount}
                         />
-                      </Pressable>
-                    ))
-                  ) : (
+                      </OnyxContainer>
+                    </Pressable>
+                  ))
+                ) : (
+                  <OnyxContainer style={styles.emptyCard}>
                     <Text style={[styles.recurringPanelEmpty, { color: colors.textMuted }]}>
                       Aucun paiement récurrent pour ce compte.
                     </Text>
-                  )}
-                </View>
+                  </OnyxContainer>
+                )
               ) : null}
             </View>
 
-            {creditDetailRows.length > 0 ? (
-              <SurfaceCard style={styles.infoCard}>
-                <Text style={[styles.infoSectionLabel, { color: colors.textMuted }]}>DÉTAILS</Text>
-                <View style={[styles.infoRows, { borderColor: colors.border }]}>
-                  {chunkDetailRows(creditDetailRows).map((pair, pairIndex, pairs) => (
-                    <DetailInfoRowPair
-                      key={`${pair[0]?.label ?? 'pair'}-${pairIndex}`}
-                      rows={pair}
-                      colors={colors}
-                      isLast={pairIndex === pairs.length - 1}
-                    />
-                  ))}
-                </View>
-              </SurfaceCard>
-            ) : null}
-
             {account.kind === 'savings' && linkedSavingsGoal ? (
-              <>
-                <FlowDivider />
+              <OnyxContainer style={styles.savingsCard}>
                 <DetailRow label="Objectif" value={linkedSavingsGoal.name} isLast />
                 <View style={styles.savingsProgressBlock}>
                   <View style={[styles.savingsProgressTrack, { backgroundColor: colors.border }]}>
@@ -927,14 +802,12 @@ export default function AccountDetailScreen() {
                     />
                   </View>
                 </View>
-              </>
+              </OnyxContainer>
             ) : null}
-
-            <FlowDivider />
 
             <View style={styles.transactionList}>
               {searchExpanded ? (
-                <View style={[styles.searchRow, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
+                <View style={[styles.searchRow, containerSurfaceStyle(isLight)]}>
                   <AppIcon family="ionicons" name="search-outline" size={18} color={colors.textMuted} />
                   <TextInput
                     ref={searchInputRef}
@@ -973,46 +846,57 @@ export default function AccountDetailScreen() {
                   </Pressable>
                 </View>
               ) : (
-                <View style={styles.searchToolbarRow}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Rechercher"
-                    hitSlop={8}
-                    onPress={expandSearch}
-                    style={({ pressed }) => [
-                      styles.searchIconBtn,
-                      { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <AppIcon family="ionicons"
-                      name="search-outline"
-                      size={20}
-                      color={search.trim().length > 0 ? colors.primary : colors.textMuted}
-                    />
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Filtres"
-                    accessibilityState={{ expanded: historyFiltersExpanded }}
-                    hitSlop={8}
-                    onPress={() => {
-                      tapHaptic();
-                      setHistoryFiltersExpanded((expanded) => !expanded);
-                    }}
-                    style={({ pressed }) => [
-                      styles.searchIconBtn,
-                      { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <AppIcon family="ionicons"
-                      name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
-                      size={20}
-                      color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
-                    />
-                  </Pressable>
-                </View>
+                <ProtoSectionHeader
+                  title="Historique"
+                  trailing={
+                    <View style={styles.searchToolbarRow}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Rechercher"
+                        hitSlop={8}
+                        onPress={expandSearch}
+                        style={({ pressed }) => [
+                          styles.searchIconBtn,
+                          {
+                            backgroundColor: colors.containerBackground,
+                            borderColor: colors.containerBorder,
+                          },
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <AppIcon family="ionicons"
+                          name="search-outline"
+                          size={18}
+                          color={search.trim().length > 0 ? colors.primary : colors.textMuted}
+                        />
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Filtres"
+                        accessibilityState={{ expanded: historyFiltersExpanded }}
+                        hitSlop={8}
+                        onPress={() => {
+                          tapHaptic();
+                          setHistoryFiltersExpanded((expanded) => !expanded);
+                        }}
+                        style={({ pressed }) => [
+                          styles.searchIconBtn,
+                          {
+                            backgroundColor: colors.containerBackground,
+                            borderColor: colors.containerBorder,
+                          },
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <AppIcon family="ionicons"
+                          name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
+                          size={18}
+                          color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
+                        />
+                      </Pressable>
+                    </View>
+                  }
+                />
               )}
               {historyFiltersExpanded ? (
                 <View style={styles.historyFilterWrap}>
@@ -1053,11 +937,13 @@ export default function AccountDetailScreen() {
                   </View>
                 ))
               ) : (
-                <Text style={[styles.emptyInline, { color: colors.textMuted }]}>
-                  {historyHasActiveFilters
-                    ? 'Aucun résultat. Essaie un autre filtre ou une autre recherche.'
-                    : 'Aucune transaction trouvée pour ce compte.'}
-                </Text>
+                <OnyxContainer style={styles.emptyCard}>
+                  <Text style={[styles.emptyInline, { color: colors.textMuted }]}>
+                    {historyHasActiveFilters
+                      ? 'Aucun résultat. Essaie un autre filtre ou une autre recherche.'
+                      : 'Aucune transaction trouvée pour ce compte.'}
+                  </Text>
+                </OnyxContainer>
               )}
             </View>
 
@@ -1071,19 +957,11 @@ export default function AccountDetailScreen() {
         <GestureHandlerRootView style={{ flex: 1 }}>
           <View style={[styles.modalBackdrop, formThemed.modalBackdrop]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={closeForm} />
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              style={styles.modalKeyboard}
-            >
+            <FormSheetModalBody>
               <DraggableSheetSurface
                 onClose={closeForm}
                 sheetHeight={editAccountSheetHeight}
-                style={[
-                  styles.modalSheet,
-                  ghostCardShadow,
-                  formThemed.sheet,
-                  { paddingBottom: Math.max(insets.bottom, spacing.md) },
-                ]}
+                style={[styles.modalSheet, ghostCardShadow, formThemed.sheet]}
               >
                 <View style={[styles.modalHandle, formThemed.handle]} />
               <View style={styles.modalTitleRow}>
@@ -1095,49 +973,184 @@ export default function AccountDetailScreen() {
                 </Pressable>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
-              {kind === 'cash' ? (
-                <View style={styles.formHead}>
-                  <View style={styles.logoPreviewWrap}>
-                    <LogoIconFrame uri={cashBanknotesLogoUri()} size={52} />
-                  </View>
-                  <Text style={[styles.formHint, formThemed.textMuted]}>
-                    Solde manuel — pas de synchronisation bancaire.
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.formHead}>
-                  <View style={styles.logoPreviewWrap}>
-                    {previewLogo ? (
-                      <LogoIconFrame uri={previewLogo} size={52} />
+              <DraggableSheetScrollView
+                style={formSheetScrollViewStyle()}
+                contentContainerStyle={[
+                  styles.modalContent,
+                  formSheetScrollContentStyle,
+                  { paddingBottom: formSheetScrollPaddingBottom(insets.bottom) },
+                ]}
+              >
+              <View style={styles.section}>
+                <DashboardSectionLabel style={sectionLabelStyle}>
+                  Nom du compte
+                </DashboardSectionLabel>
+                <View style={styles.identityRow}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Changer l'icône du compte"
+                    onPress={() => {
+                      tapHaptic();
+                      setShowIconPicker((open) => !open);
+                    }}
+                    style={({ pressed }) => [styles.iconAffordance, pressed && styles.pressed]}
+                  >
+                    {previewLogoAsset || previewLogo ? (
+                      <LogoIconFrame
+                        asset={previewLogoAsset}
+                        uri={previewLogo}
+                        size={28}
+                      />
+                    ) : hasIdentityContent ? (
+                      <UserPickedIconWell icon={previewIcon} size={28} iconSize={16} />
                     ) : (
-                      <IconFrame size={52}>
-                        <AppIcon family="ionicons" name="business-outline" size={22} color={colors.textMuted} />
-                      </IconFrame>
+                      <View style={styles.iconGhostSlot} accessibilityElementsHidden>
+                        <AppIcon
+                          family="ionicons"
+                          name={
+                            kind === 'credit'
+                              ? 'card-outline'
+                              : kind === 'savings'
+                                ? 'trending-up-outline'
+                                : kind === 'cash'
+                                  ? 'cash-outline'
+                                  : 'wallet-outline'
+                          }
+                          size={20}
+                          color={colors.textMuted}
+                        />
+                      </View>
                     )}
-                  </View>
-                  <Text style={[styles.formHint, formThemed.textMuted]}>
-                    Le logo se déduit du nom. Exemple : Visa Desjardins {'->'} Desjardins.
-                  </Text>
+                  </Pressable>
+                  <TextInput
+                    value={name}
+                    onChangeText={setName}
+                    placeholder={
+                      kind === 'credit'
+                        ? 'Visa Desjardins'
+                        : kind === 'cash'
+                          ? 'Argent Cash'
+                          : kind === 'savings'
+                            ? 'CELI Tangerine'
+                            : 'Tangerine chèque'
+                    }
+                    placeholderTextColor={colors.textMuted}
+                    style={[
+                      styles.nameInput,
+                      {
+                        color: colors.text,
+                        borderBottomColor: colors.border,
+                        borderBottomWidth: StyleSheet.hairlineWidth,
+                      },
+                    ]}
+                    returnKeyType="next"
+                    accessibilityLabel="Nom du compte"
+                  />
                 </View>
-              )}
+                <Text style={[styles.fieldHint, formThemed.textMuted]}>
+                  {manualIcon
+                    ? 'Icône manuelle · toucher pour changer'
+                    : previewLogo
+                      ? 'Logo auto · toucher pour choisir une icône'
+                      : 'Icône auto · toucher pour choisir'}
+                </Text>
+              </View>
 
-              <AccountInput
-                label="Nom du compte"
-                value={name}
-                onChangeText={setName}
-                placeholder={
-                  kind === 'credit'
-                    ? 'Visa Desjardins'
-                    : kind === 'cash'
-                      ? 'Argent Cash'
-                      : kind === 'savings'
-                        ? 'CELI Tangerine'
-                        : 'Tangerine chèque'
-                }
-              />
+              {showIconPicker ? (
+                <View style={styles.section}>
+                  <DashboardSectionLabel style={sectionLabelStyle}>
+                    Logo / icône
+                  </DashboardSectionLabel>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.iconOptionRow}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Utiliser le logo automatique"
+                      onPress={() => {
+                        tapHaptic();
+                        setIcon(null);
+                        setShowIconPicker(false);
+                      }}
+                      style={[
+                        styles.iconOption,
+                        {
+                          borderColor: manualIcon == null ? colors.primary : colors.border,
+                          backgroundColor: colors.surfaceElevated,
+                        },
+                      ]}
+                    >
+                      <AppIcon
+                        family="ionicons"
+                        name="sparkles-outline"
+                        size={18}
+                        color={manualIcon == null ? colors.primary : colors.textMuted}
+                      />
+                    </Pressable>
+                    {ACCOUNT_ICON_PICKER_OPTIONS.map((option) => {
+                      const selected = manualIcon === option.icon;
+                      return (
+                        <Pressable
+                          key={option.id}
+                          accessibilityRole="button"
+                          accessibilityLabel={option.label}
+                          onPress={() => {
+                            tapHaptic();
+                            setIcon(option.icon);
+                            setShowIconPicker(false);
+                          }}
+                          style={[
+                            styles.iconOption,
+                            {
+                              borderColor: selected ? colors.primary : colors.border,
+                              backgroundColor: colors.surfaceElevated,
+                            },
+                          ]}
+                        >
+                          <MdiIcon
+                            name={option.icon}
+                            size={18}
+                            color={selected ? colors.primary : colors.textSecondary}
+                          />
+                        </Pressable>
+                      );
+                    })}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Voir toutes les icônes"
+                      onPress={() => {
+                        tapHaptic();
+                        setFullIconPickerVisible(true);
+                      }}
+                      style={[
+                        styles.iconOption,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: colors.surfaceElevated,
+                        },
+                      ]}
+                    >
+                      <AppIcon
+                        family="ionicons"
+                        name="grid-outline"
+                        size={18}
+                        color={colors.textMuted}
+                      />
+                    </Pressable>
+                  </ScrollView>
+                </View>
+              ) : null}
+
               {kind !== 'cash' ? (
                 <AccountInput label="Institution" value={institution} onChangeText={setInstitution} placeholder="Desjardins, Tangerine, BMO…" />
+              ) : null}
+              {kind === 'cash' ? (
+                <Text style={[styles.fieldHint, formThemed.textMuted]}>
+                  Solde manuel — pas de synchronisation bancaire.
+                </Text>
               ) : null}
               <AccountInput
                 label={kind === 'credit' ? 'Solde dû actuel' : 'Solde actuel'}
@@ -1212,10 +1225,22 @@ export default function AccountDetailScreen() {
                   </Pressable>
                 </View>
               )}
-              </ScrollView>
+              </DraggableSheetScrollView>
               </DraggableSheetSurface>
-            </KeyboardAvoidingView>
+            </FormSheetModalBody>
           </View>
+
+          <IconPickerSheet
+            visible={fullIconPickerVisible}
+            selectedIcon={manualIcon}
+            title="Choisir une icône"
+            onClose={() => setFullIconPickerVisible(false)}
+            onSelect={(nextIcon: MdiIconName) => {
+              setIcon(nextIcon);
+              setShowIconPicker(false);
+              setFullIconPickerVisible(false);
+            }}
+          />
         </GestureHandlerRootView>
       </Modal>
 
@@ -1354,13 +1379,6 @@ function escapeRegExp(value: string) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-  },
   backButton: {
     width: 38,
     height: 38,
@@ -1369,18 +1387,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: {
-    flex: 1,
-    textAlign: 'center',
-    marginHorizontal: spacing.sm,
-    ...jakartaExtraBoldText,
-    fontSize: typography.body,
-    letterSpacing: -0.2,
-  },
-  topBarSpacer: { width: 38 },
   content: {
     paddingHorizontal: spacing.lg,
     gap: spacing.lg,
+  },
+  flowCard: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    padding: ONYX_CONTAINER.padding.row,
+    gap: spacing.md,
+  },
+  flowCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  flowColEnd: {
+    alignItems: 'flex-end',
+  },
+  flowRule: {
+    width: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
+  },
+  recurringSection: {
+    gap: ONYX_CONTAINER.listGap,
+  },
+  emptyCard: {
+    padding: ONYX_CONTAINER.padding.row,
+  },
+  savingsCard: {
+    paddingHorizontal: ONYX_CONTAINER.padding.card,
+    paddingTop: spacing.sm,
+    paddingBottom: ONYX_CONTAINER.padding.row,
+    gap: spacing.sm,
   },
   detailRow: {
     flexDirection: 'row',
@@ -1391,66 +1430,13 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   detailLabel: {
-    ...jakartaMediumText,
-    fontSize: 10,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
+    ...typographyKit.microUpper,
     flexShrink: 0,
   },
   detailValue: {
     ...moneyAmountTypography({ tier: 'row', fontSize: typography.meta }),
     flex: 1,
     textAlign: 'right',
-  },
-  infoCard: {
-    gap: spacing.sm,
-  },
-  infoSectionLabel: {
-    ...jakartaBoldText,
-    fontSize: typography.micro,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  infoRows: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  infoRowPair: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  infoRow: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-  },
-  infoRowCellSpacer: {
-    flex: 1,
-    minWidth: 0,
-  },
-  infoRowIcon: {
-    marginTop: 2,
-    width: 20,
-  },
-  infoRowIconSpacer: {
-    width: 20,
-  },
-  infoRowCopy: {
-    flex: 1,
-    gap: 4,
-  },
-  infoRowLabel: {
-    ...jakartaBoldText,
-    fontSize: typography.micro,
-    letterSpacing: 0.55,
-    textTransform: 'uppercase',
-  },
-  infoRowValue: {
-    fontSize: typography.body,
-    fontWeight: '700',
   },
   savingsProgressBlock: {
     paddingBottom: spacing.xs,
@@ -1497,20 +1483,10 @@ const styles = StyleSheet.create({
     minWidth: 14,
     textAlign: 'right',
   },
-  recurringPanelBody: {
-    paddingHorizontal: spacing.md,
-  },
   recurringPanelEmpty: {
-    ...typographyKit.microMedium,
-    lineHeight: 18,
-    paddingVertical: spacing.md,
-  },
-  recurringPaymentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.sm + 2,
-    minHeight: 52,
+    ...typographyKit.metaMedium,
+    lineHeight: 20,
+    textAlign: 'center',
   },
   recurringPaymentCopy: {
     flex: 1,
@@ -1518,8 +1494,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   recurringPaymentAmount: {
-    ...typographyKit.meta,
-    fontVariant: ['tabular-nums'],
+    ...moneyAmountTypography({ tier: 'row' }),
     flexShrink: 0,
   },
   transactionList: {
@@ -1530,13 +1505,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: spacing.sm,
-    minHeight: 44,
   },
   searchIconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.card,
-    borderWidth: 1,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1547,8 +1521,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     minHeight: 44,
-    borderRadius: radius.card,
-    borderWidth: 1,
+    borderRadius: ONYX_CONTAINER.borderRadius,
   },
   searchInput: {
     flex: 1,
@@ -1577,7 +1550,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   transactionGroupLabel: {
-    fontSize: typography.caption,
+    ...typographyKit.metaMedium,
     textTransform: 'capitalize',
     flex: 1,
     minWidth: 0,
@@ -1593,9 +1566,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
   },
   emptyInline: {
-    fontSize: typography.caption,
+    ...typographyKit.metaMedium,
     lineHeight: 20,
-    paddingVertical: spacing.sm,
+    textAlign: 'center',
   },
   modalBackdrop: {
     flex: 1,
@@ -1606,8 +1579,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    marginTop: 88,
-    maxHeight: '92%',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingTop: spacing.md,
@@ -1638,16 +1609,63 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingBottom: spacing.lg,
   },
-  formHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
   formTitle: {
     flex: 1,
     ...jakartaExtraBoldText,
     fontSize: typography.title,
     letterSpacing: -0.4,
+  },
+  section: {
+    gap: spacing.sm,
+  },
+  identityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    minHeight: 48,
+  },
+  iconAffordance: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  iconGhostSlot: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.42,
+  },
+  nameInput: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: 0,
+    fontSize: typography.body,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    ...jakartaSemiboldText,
+  },
+  fieldHint: {
+    ...typographyKit.metaMedium,
+    lineHeight: 16,
+    opacity: 0.85,
+  },
+  iconOptionRow: {
+    gap: spacing.sm,
+    paddingVertical: 2,
+  },
+  iconOption: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    opacity: 0.78,
   },
   formHint: {
     flex: 1,
@@ -1775,5 +1793,4 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     fontWeight: '800',
   },
-  pressed: { opacity: 0.78 },
 });

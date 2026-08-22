@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
@@ -29,9 +29,9 @@ import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   destructiveTextActionStyle,
   FLOATING_NAV_CONTENT_PADDING,
-  PAGE_PADDING_HORIZONTAL,
   PAGE_TITLE_CONTENT_GAP,
   radius,
+  screenHorizontalGutter,
   spacing,
   subtleDeleteButtonStyle,
   typography,
@@ -259,6 +259,9 @@ export default function SettingsScreen() {
     [],
   );
 
+  /** Web: PageTransition already applies horizontal gutter — avoid double inset. */
+  const contentGutter = Platform.OS === 'web' ? 0 : screenHorizontalGutter(insets);
+
   return (
     <PageTransition>
       <View style={styles.screen}>
@@ -267,11 +270,17 @@ export default function SettingsScreen() {
           style={styles.screen}
           contentContainerStyle={[
             styles.content,
-            { paddingTop: insets.top + SCREEN_TOP_GUTTER },
+            {
+              paddingTop: insets.top + SCREEN_TOP_GUTTER,
+              paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING,
+              paddingHorizontal: contentGutter,
+            },
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.title}>Réglages</Text>
+          <Text style={styles.title} numberOfLines={1}>
+            Réglages
+          </Text>
 
           <SettingsSection title="Compte">
             <SettingsNavigationRow
@@ -755,29 +764,44 @@ const createStyles = (colors: AppColors) =>
   StyleSheet.create({
     screen: {
       flex: 1,
+      minWidth: 0,
+      width: '100%',
+      maxWidth: '100%',
       backgroundColor: colors.background,
     },
     content: {
-      paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-      paddingBottom: FLOATING_NAV_CONTENT_PADDING,
+      alignSelf: 'stretch',
+      width: '100%',
+      maxWidth: '100%',
+      minWidth: 0,
       gap: PAGE_TITLE_CONTENT_GAP,
     },
     title: {
       ...typographyKit.pageTitle,
       color: colors.text,
+      flexShrink: 1,
+      minWidth: 0,
+      maxWidth: '100%',
     },
     dangerBlock: {
       padding: spacing.lg,
       gap: spacing.md,
+      width: '100%',
+      maxWidth: '100%',
+      minWidth: 0,
     },
     dangerHint: {
       ...typographyKit.metaMedium,
       lineHeight: typographyKit.metaMedium.fontSize + 6,
+      flexShrink: 1,
+      minWidth: 0,
     },
     statusBadge: {
       borderRadius: radius.pill,
       paddingHorizontal: spacing.sm,
       paddingVertical: 3,
+      flexShrink: 0,
+      maxWidth: '100%',
     },
     statusBadgeText: {
       ...typographyKit.microMedium,
@@ -788,15 +812,20 @@ const createStyles = (colors: AppColors) =>
       ...typographyKit.microMedium,
       textAlign: 'center',
       marginTop: spacing.sm,
+      alignSelf: 'stretch',
     },
     amountInput: {
+      alignSelf: 'stretch',
+      width: '100%',
+      maxWidth: '100%',
+      minWidth: 0,
       minHeight: 50,
-      borderRadius: 13,
+      borderRadius: radius.md,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
       backgroundColor: colors.surfaceElevated,
       paddingHorizontal: spacing.md,
-      paddingVertical: 14,
+      paddingVertical: spacing.md + 2,
       color: colors.text,
       fontSize: typography.body,
       fontWeight: '700',

@@ -5,15 +5,19 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DashboardCard } from '@/components/DashboardCard';
-import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
-import { ExpenseCategoryDonut } from '@/components/ExpenseCategoryDonut';
+import { FixedScreenHeader } from '@/components/FixedScreenHeader';
 import { MonthSelector } from '@/components/MonthSelector';
 import { PageTransition } from '@/components/PageTransition';
+import {
+  ProtoShortcutGrid,
+  type ProtoShortcutItem,
+} from '@/components/proto/ProtoShortcutRow';
+import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionRow } from '@/components/TransactionRow';
+import { CumulativeSpendStepChart } from '@/components/transactions/CumulativeSpendStepChart';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   FLOATING_NAV_CONTENT_PADDING,
-  jakartaExtraBoldText,
   PAGE_PADDING_HORIZONTAL,
   PAGE_TITLE_STYLE,
   PORTFOLIO_SECTION_GAP,
@@ -22,40 +26,47 @@ import {
   typography,
   typographyKit,
 } from '@/constants/theme';
-import { UNIFORM_ACTION_BUTTON_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import { useContactPhotoMap } from '@/hooks/useContactPhotoMap';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useSavingsGoals } from '@/hooks/useSavingsGoals';
 import { useTransactionReviewQueue } from '@/hooks/useTransactionReviewQueue';
 import {
-  formatBudgetMonthEyebrow,
-  isCurrentMonth,
-  isMonthAfter,
-  isMonthBefore,
-  startOfMonth,
-} from '@/lib/budgetMonth';
+  buildSpendTrendBundle,
+  isSpendTrendAnchorAfter,
+  isSpendTrendAnchorBefore,
+  shiftSpendTrendAnchor,
+  snapSpendTrendAnchor,
+  spendTrendNavigatorLabels,
+  spendTrendPriorPeriodLabel,
+  spendTrendScrubLabel,
+  type SpendTrendGranularity,
+} from '@/lib/buildMonthSpendSeries';
 import {
+  getDashboard,
   getEarliestExpenseMonthStart,
   getSimulatedAccounts,
   getTransactions,
-  sortTransactionsNewestFirst,
 } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
 import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import { ensureDbReady } from '@/lib/init';
 import {
-  aggregateExpenseCategories,
   getTransactionValidationIssues,
-  listTransactionsNeedingValidation,
   REVIEW_TRANSACTION_WINDOW,
   validationIssueLabel,
 } from '@/lib/transactionInsights';
 import { useAppTheme } from '@/lib/themeContext';
 import type { SimulatedAccount, Transaction } from '@/types';
 
-function currentMonthStart(): Date {
-  return startOfMonth(new Date());
+const SPEND_TREND_TABS: { id: SpendTrendGranularity; label: string }[] = [
+  { id: 'week', label: '1S' },
+  { id: 'month', label: '1M' },
+  { id: 'year', label: '1A' },
+];
+
+function currentPeriodAnchor(granularity: SpendTrendGranularity): Date {
+  return snapSpendTrendAnchor(new Date(), granularity);
 }
 
 function shouldOpenValidation(validate?: string | string[]) {
@@ -66,6 +77,16 @@ function shouldOpenValidation(validate?: string | string[]) {
 function formatReviewScopeLine(count: number): string {
   const noun = count > 1 ? 'transactions' : 'transaction';
   return `${count} ${noun} · ${REVIEW_TRANSACTION_WINDOW} dernières dépenses`;
+}
+
+function periodNavA11y(granularity: SpendTrendGranularity, direction: 'prev' | 'next'): string {
+  if (granularity === 'week') {
+    return direction === 'prev' ? 'Semaine précédente' : 'Semaine suivante';
+  }
+  if (granularity === 'year') {
+    return direction === 'prev' ? 'Année précédente' : 'Année suivante';
+  }
+  return direction === 'prev' ? 'Mois précédent' : 'Mois suivant';
 }
 
 export default function TransactionsInsightsScreen() {
@@ -80,14 +101,15 @@ export default function TransactionsInsightsScreen() {
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
-  const [displayMonth, setDisplayMonth] = useState(currentMonthStart);
-  const [pendingMonth, setPendingMonth] = useState(currentMonthStart);
-  const [earliestMonth, setEarliestMonth] = useState(currentMonthStart);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const [validationVisible, setValidationVisible] = useState(openValidationOnFocus);
+  const [monthlyBudgetLimit, setMonthlyBudgetLimit] = useState(0);
+  const [granularity, setGranularity] = useState<SpendTrendGranularity>('month');
+  const [displayAnchor, setDisplayAnchor] = useState(() => currentPeriodAnchor('month'));
+  const [pendingAnchor, setPendingAnchor] = useState(() => currentPeriodAnchor('month'));
+  const [earliestMonth, setEarliestMonth] = useState(() => currentPeriodAnchor('month'));
   const reviewSeenMarkedRef = useRef(false);
 
-  const latestMonth = currentMonthStart();
+  const latestAnchor = currentPeriodAnchor(granularity);
+  const earliestAnchor = snapSpendTrendAnchor(earliestMonth, granularity);
 
   const loadInFlightRef = useRef<Promise<void> | null>(null);
   const needsReloadRef = useRef(false);
@@ -102,12 +124,14 @@ export default function TransactionsInsightsScreen() {
       do {
         needsReloadRef.current = false;
         await ensureDbReady();
-        const [txs, simulatedAccounts] = await Promise.all([
+        const [txs, simulatedAccounts, dashboard] = await Promise.all([
           getTransactions(),
           getSimulatedAccounts(),
+          getDashboard(),
         ]);
         setTransactions(txs);
         setAccounts(simulatedAccounts);
+        setMonthlyBudgetLimit(dashboard.monthlyBudgetLimit ?? 0);
       } while (needsReloadRef.current);
     })();
 
@@ -135,9 +159,25 @@ export default function TransactionsInsightsScreen() {
   useRefreshOnFocus(load, { skipInitial: true });
   useEffect(() => dataEvents.subscribe(load), [load]);
 
-  const { categories, totalSpent } = useMemo(
-    () => aggregateExpenseCategories(transactions, displayMonth),
-    [displayMonth, transactions],
+  const { summary: spendSummary, comparisonSeries: priorSpendSeries } = useMemo(
+    () => buildSpendTrendBundle(transactions, granularity, displayAnchor),
+    [displayAnchor, granularity, transactions],
+  );
+
+  const {
+    series: spendSeries,
+    activeIndex: spendActiveIndex,
+    total: spendPeriodTotal,
+  } = spendSummary;
+
+  const navLabels = useMemo(
+    () => spendTrendNavigatorLabels(granularity, displayAnchor),
+    [displayAnchor, granularity],
+  );
+
+  const getScrubLabel = useCallback(
+    (index: number) => spendTrendScrubLabel(granularity, index, displayAnchor),
+    [displayAnchor, granularity],
   );
 
   const {
@@ -147,26 +187,18 @@ export default function TransactionsInsightsScreen() {
     ignoreTransaction,
   } = useTransactionReviewQueue(transactions);
 
-  const pendingValidation = useMemo(
-    () =>
-      isReviewMode
-        ? pendingReview
-        : sortTransactionsNewestFirst(listTransactionsNeedingValidation(transactions, displayMonth)),
-    [displayMonth, isReviewMode, pendingReview, transactions],
-  );
+  const pendingValidation = isReviewMode ? pendingReview : [];
 
   useFocusEffect(
     useCallback(() => {
       reviewSeenMarkedRef.current = false;
-      const month = currentMonthStart();
-      setDisplayMonth(month);
-      setPendingMonth(month);
-      setSelectedCategoryId(null);
-      setValidationVisible(openValidationOnFocus);
+      const anchor = currentPeriodAnchor(granularity);
+      setDisplayAnchor(anchor);
+      setPendingAnchor(anchor);
       return () => {
         reviewSeenMarkedRef.current = false;
       };
-    }, [openValidationOnFocus]),
+    }, [granularity]),
   );
 
   useEffect(() => {
@@ -175,50 +207,39 @@ export default function TransactionsInsightsScreen() {
     void markAllPendingSeen();
   }, [markAllPendingSeen, openValidationOnFocus, pendingReview.length]);
 
-  const showValidationList = isReviewMode || validationVisible;
+  const showValidationList = isReviewMode;
 
-  const hubEyebrow = useMemo(
-    () =>
-      isCurrentMonth(displayMonth)
-        ? 'CE MOIS-CI'
-        : formatBudgetMonthEyebrow(displayMonth),
-    [displayMonth],
-  );
+  const budgetAnchor = snapSpendTrendAnchor(pendingAnchor, granularity);
+  const canGoPrevious = isSpendTrendAnchorAfter(budgetAnchor, earliestAnchor, granularity);
+  const canGoNext = isSpendTrendAnchorBefore(budgetAnchor, latestAnchor, granularity);
 
-  const budgetMonth = startOfMonth(pendingMonth);
-  const budgetEarliest = startOfMonth(earliestMonth);
-  const budgetLatest = startOfMonth(latestMonth);
-  const canGoPrevious = isMonthAfter(budgetMonth, budgetEarliest);
-  const canGoNext = isMonthBefore(budgetMonth, budgetLatest);
-
-  const navigateToMonth = useCallback(
-    (month: Date) => {
-      const next = startOfMonth(month);
-      setPendingMonth(next);
-      setDisplayMonth(next);
-      setSelectedCategoryId(null);
-      if (!isReviewMode) {
-        setValidationVisible(false);
-      }
+  const navigateToAnchor = useCallback(
+    (next: Date) => {
+      const snapped = snapSpendTrendAnchor(next, granularity);
+      setPendingAnchor(snapped);
+      setDisplayAnchor(snapped);
     },
-    [isReviewMode],
+    [granularity],
   );
 
   const goPrevious = useCallback(() => {
-    navigateToMonth(new Date(budgetMonth.getFullYear(), budgetMonth.getMonth() - 1, 1));
-  }, [budgetMonth, navigateToMonth]);
+    navigateToAnchor(shiftSpendTrendAnchor(budgetAnchor, granularity, -1));
+  }, [budgetAnchor, granularity, navigateToAnchor]);
 
   const goNext = useCallback(() => {
-    navigateToMonth(new Date(budgetMonth.getFullYear(), budgetMonth.getMonth() + 1, 1));
-  }, [budgetMonth, navigateToMonth]);
+    navigateToAnchor(shiftSpendTrendAnchor(budgetAnchor, granularity, 1));
+  }, [budgetAnchor, granularity, navigateToAnchor]);
 
-  const handlePressTransaction = useCallback(
-    (transactionId: string) => {
+  const handleGranularityChange = useCallback(
+    (next: SpendTrendGranularity) => {
+      if (next === granularity) return;
       tapHaptic();
-      void markSeen([transactionId]);
-      openTransactionDetail(transactionId);
+      setGranularity(next);
+      const anchor = currentPeriodAnchor(next);
+      setPendingAnchor(anchor);
+      setDisplayAnchor(anchor);
     },
-    [markSeen],
+    [granularity],
   );
 
   const handleEnterInfo = useCallback(
@@ -238,160 +259,141 @@ export default function TransactionsInsightsScreen() {
     [ignoreTransaction],
   );
 
-  const listHeader = (
-    <View>
-      {isReviewMode ? (
-        <View
-          style={[
-            styles.reviewPageHeader,
-            { paddingTop: insets.top + SCREEN_TOP_GUTTER },
-          ]}
+  const actionTiles = useMemo(
+    () =>
+      [
+        {
+          key: 'categories',
+          label: 'Catégories',
+          icon: 'pie-chart-outline',
+          accessibilityLabel: 'Voir la répartition par catégories',
+          onPress: () => router.push('/budgets'),
+        },
+        {
+          key: 'analyze-subscriptions',
+          label: 'Analyser mes abonnements',
+          icon: 'repeat-outline',
+          accessibilityLabel: 'Analyser mes abonnements',
+          onPress: () => router.push('/subscriptions-insights'),
+        },
+        {
+          key: 'analyze-spend',
+          label: 'Analyser mes dépenses',
+          icon: 'stats-chart-outline',
+          accessibilityLabel: 'Analyser mes dépenses',
+          // Already on this screen — push keeps deep-link/share parity if the row is reused elsewhere.
+          onPress: () => router.push('/transactions-insights'),
+        },
+        {
+          key: 'strategies',
+          label: 'Stratégies',
+          icon: 'compass-outline',
+          accessibilityLabel: 'Ouvrir les stratégies',
+          onPress: () => router.push('/plans/explore'),
+        },
+      ] as const satisfies readonly ProtoShortcutItem[],
+    [router],
+  );
+
+  const fixedPageHeader = isReviewMode ? (
+    <View
+      style={[
+        styles.reviewPageHeader,
+        { paddingTop: insets.top + SCREEN_TOP_GUTTER },
+      ]}
+    >
+      <View style={styles.reviewTitleRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Retour"
+          hitSlop={12}
+          onPress={() => {
+            tapHaptic();
+            router.back();
+          }}
+          style={({ pressed }) => [styles.reviewBackHit, pressed && styles.pressed]}
         >
-          <View style={styles.reviewTitleRow}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Retour"
-              hitSlop={12}
-              onPress={() => {
-                tapHaptic();
-                router.back();
-              }}
-              style={({ pressed }) => [styles.reviewBackHit, pressed && styles.pressed]}
-            >
-              <AppIcon family="ionicons" name="chevron-back" size={24} color={colors.text} />
-            </Pressable>
-            <Text style={[styles.reviewPageTitle, { color: colors.text }]} numberOfLines={1}>
-              À compléter
-            </Text>
-          </View>
-          <Text style={[typographyKit.caption, styles.reviewScope, { color: colors.textMuted }]}>
-            {pendingValidation.length > 0
-              ? formatReviewScopeLine(pendingValidation.length)
-              : 'Toutes vos dépenses récentes sont complètes.'}
-          </Text>
-        </View>
-      ) : (
-        <>
-          <View
-            style={[
-              styles.stackTopBar,
-              { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.lg + spacing.md },
-            ]}
-          >
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Retour"
-              hitSlop={12}
-              onPress={() => {
-                tapHaptic();
-                router.back();
-              }}
-              style={({ pressed }) => [
-                styles.stackBackButton,
-                {
-                  backgroundColor: colors.containerBackground,
-                  borderColor: colors.containerBorder,
-                },
-                pressed && styles.pressed,
-              ]}
-            >
-              <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
-            </Pressable>
-            <Text style={[styles.stackTitle, { color: colors.text }]} numberOfLines={1}>
-              Analyse dépenses
-            </Text>
-            <View style={styles.stackTopBarSpacer} />
-          </View>
+          <AppIcon family="ionicons" name="chevron-back" size={24} color={colors.text} />
+        </Pressable>
+        <Text style={[styles.reviewPageTitle, { color: colors.text }]} numberOfLines={1}>
+          À compléter
+        </Text>
+      </View>
+      <Text style={[typographyKit.caption, styles.reviewScope, { color: colors.textMuted }]}>
+        {pendingValidation.length > 0
+          ? formatReviewScopeLine(pendingValidation.length)
+          : 'Toutes vos dépenses récentes sont complètes.'}
+      </Text>
+    </View>
+  ) : (
+    <FixedScreenHeader title="Analyse dépenses" onBack={() => router.back()} />
+  );
 
-          <View style={styles.donutSection}>
-            <DashboardCard padding={spacing.lg} innerStyle={styles.distributionCard}>
-              <MonthSelector
-                month={budgetMonth}
-                onPrevious={goPrevious}
-                onNext={goNext}
-                canGoPrevious={canGoPrevious}
-                canGoNext={canGoNext}
-              />
-              <ExpenseCategoryDonut
-                categories={categories}
-                totalSpent={totalSpent}
-                selectedId={selectedCategoryId}
-                onSelectCategory={setSelectedCategoryId}
-                hubEyebrow={hubEyebrow}
-              />
-            </DashboardCard>
-          </View>
-
-          <View style={styles.validateSection}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                validationVisible
-                  ? 'Masquer les transactions à compléter'
-                  : 'Afficher les transactions à compléter'
-              }
-              accessibilityState={{ expanded: validationVisible }}
-              onPress={() => {
-                tapHaptic();
-                setValidationVisible((visible) => !visible);
-              }}
-              style={({ pressed }) => [
-                styles.validateButton,
-                {
-                  backgroundColor: colors.text,
-                  borderColor: colors.text,
-                },
-                pressed && styles.pressed,
-              ]}
-            >
-              <AppIcon family="ionicons" name="checkmark-circle-outline" size={18} color={colors.background} />
-              <Text style={[typographyKit.bodyBold, { color: colors.background }]}>
-                Valider
-              </Text>
-              {pendingValidation.length > 0 ? (
-                <View style={[styles.validateBadge, { backgroundColor: colors.accentGreen }]}>
-                  <Text style={[typographyKit.caption, { color: '#070709' }]}>
-                    {pendingValidation.length}
-                  </Text>
-                </View>
-              ) : null}
-            </Pressable>
-            <Text style={[styles.validateHint, typographyKit.caption, { color: colors.textMuted }]}>
-              {pendingValidation.length > 0
-                ? 'Transactions sans catégorie ou articles à compléter ce mois-ci.'
-                : 'Toutes les dépenses de ce mois sont complètes.'}
-            </Text>
-          </View>
-        </>
-      )}
-
-      {!isReviewMode && validationVisible ? (
-        <View style={styles.listHeader}>
-          <DashboardSectionLabel>À compléter</DashboardSectionLabel>
-        </View>
-      ) : null}
+  const listHeader = isReviewMode ? null : (
+    <View>
+      <View style={styles.monthSection}>
+        <MonthSelector
+          month={budgetAnchor}
+          onPrevious={goPrevious}
+          onNext={goNext}
+          canGoPrevious={canGoPrevious}
+          canGoNext={canGoNext}
+          primaryLabel={navLabels.primary}
+          secondaryLabel={navLabels.secondary}
+          periodAccessibilityLabel={navLabels.a11y}
+          previousAccessibilityLabel={periodNavA11y(granularity, 'prev')}
+          nextAccessibilityLabel={periodNavA11y(granularity, 'next')}
+        />
+      </View>
+      <View style={styles.chartSection}>
+        <CumulativeSpendStepChart
+          series={spendSeries}
+          comparisonSeries={priorSpendSeries}
+          periodTotal={spendPeriodTotal}
+          activeIndex={spendActiveIndex}
+          budgetLimit={
+            granularity === 'month' && monthlyBudgetLimit > 0
+              ? monthlyBudgetLimit
+              : undefined
+          }
+          granularity={granularity}
+          getScrubLabel={getScrubLabel}
+          priorPeriodPhrase={spendTrendPriorPeriodLabel(granularity)}
+        />
+      </View>
+      <View style={styles.periodTabsSection}>
+        <SegmentedTabs
+          tabs={SPEND_TREND_TABS}
+          active={granularity}
+          onChange={handleGranularityChange}
+          size="section"
+          variant="bare"
+          showDivider={false}
+        />
+      </View>
+      <View style={styles.actionSection}>
+        <ProtoShortcutGrid items={actionTiles} />
+      </View>
     </View>
   );
 
   const listEmpty = showValidationList ? (
     <DashboardCard
       padding={spacing.lg}
-      innerStyle={[styles.emptyCard, isReviewMode && styles.emptyCardReview]}
+      innerStyle={[styles.emptyCard, styles.emptyCardReview]}
     >
       <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceElevated }]}>
         <AppIcon family="ionicons"
           name="checkmark-done-outline"
           size={22}
-          color={isReviewMode ? colors.accentGreen : colors.textMuted}
+          color={colors.accentGreen}
         />
       </View>
       <Text style={[styles.emptyTitle, typographyKit.bodyBold, { color: colors.text }]}>
-        {isReviewMode ? 'Tout est à jour' : 'Rien à valider'}
+        Tout est à jour
       </Text>
       <Text style={[styles.emptyHint, typographyKit.caption, { color: colors.textMuted }]}>
-        {isReviewMode
-          ? `Les ${REVIEW_TRANSACTION_WINDOW} dernières dépenses ont une catégorie et une description.`
-          : 'Les dépenses de ce mois ont une catégorie et des articles complets.'}
+        {`Les ${REVIEW_TRANSACTION_WINDOW} dernières dépenses ont une catégorie et une description.`}
       </Text>
     </DashboardCard>
   ) : null;
@@ -413,6 +415,8 @@ export default function TransactionsInsightsScreen() {
           />
         ) : null}
 
+        {fixedPageHeader}
+
         <FlatList
           data={showValidationList ? pendingValidation : []}
           keyExtractor={(item) => item.id}
@@ -429,74 +433,18 @@ export default function TransactionsInsightsScreen() {
             <View style={isReviewMode ? styles.reviewRowGap : styles.rowGap} />
           )}
           renderItem={({ item }) => {
-            const issues = getTransactionValidationIssues(item).filter((issue) =>
-              isReviewMode ? issue !== 'article_category' : true,
+            const issues = getTransactionValidationIssues(item).filter(
+              (issue) => issue !== 'article_category',
             );
 
-            if (isReviewMode) {
-              return (
-                <View style={styles.validationRowWrap}>
-                  <TransactionRow
-                    transaction={item}
-                    accounts={accounts}
-                    savingsGoals={savingsGoals}
-                    contactPhotoByKey={contactPhotoByKey}
-                    onPressId={handleEnterInfo}
-                  />
-                  {issues.length > 0 ? (
-                    <View style={styles.issueChips}>
-                      {issues.map((issue) => (
-                        <View
-                          key={issue}
-                          style={[
-                            styles.issueChip,
-                            {
-                              backgroundColor: colors.surfaceElevated,
-                              borderColor: colors.containerBorder,
-                            },
-                          ]}
-                        >
-                          <Text style={[typographyKit.caption, { color: colors.textMuted }]}>
-                            {validationIssueLabel(issue, item)}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : null}
-                  <View style={styles.reviewActions}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Ignorer cette transaction"
-                      onPress={() => handleIgnore(item.id)}
-                      style={({ pressed }) => [styles.reviewActionHit, pressed && styles.pressed]}
-                    >
-                      <Text style={[typographyKit.metaMedium, { color: colors.textMuted }]}>
-                        Ignorer
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Entrer les infos manquantes"
-                      onPress={() => handleEnterInfo(item.id)}
-                      style={({ pressed }) => [styles.reviewActionHit, pressed && styles.pressed]}
-                    >
-                      <Text style={[typographyKit.captionSemibold, { color: colors.text }]}>
-                        Entrer les infos
-                      </Text>
-                    </Pressable>
-                  </View>
-                </View>
-              );
-            }
-
             return (
-              <View style={[styles.validationRowWrap, styles.validationRowInset]}>
+              <View style={styles.validationRowWrap}>
                 <TransactionRow
                   transaction={item}
                   accounts={accounts}
                   savingsGoals={savingsGoals}
                   contactPhotoByKey={contactPhotoByKey}
-                  onPressId={handlePressTransaction}
+                  onPressId={handleEnterInfo}
                 />
                 {issues.length > 0 ? (
                   <View style={styles.issueChips}>
@@ -518,6 +466,28 @@ export default function TransactionsInsightsScreen() {
                     ))}
                   </View>
                 ) : null}
+                <View style={styles.reviewActions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Ignorer cette transaction"
+                    onPress={() => handleIgnore(item.id)}
+                    style={({ pressed }) => [styles.reviewActionHit, pressed && styles.pressed]}
+                  >
+                    <Text style={[typographyKit.metaMedium, { color: colors.textMuted }]}>
+                      Ignorer
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Entrer les infos manquantes"
+                    onPress={() => handleEnterInfo(item.id)}
+                    style={({ pressed }) => [styles.reviewActionHit, pressed && styles.pressed]}
+                  >
+                    <Text style={[typographyKit.captionSemibold, { color: colors.text }]}>
+                      Entrer les infos
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
             );
           }}
@@ -537,30 +507,6 @@ const styles = StyleSheet.create({
     height: 260,
     zIndex: 0,
   },
-  stackTopBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    paddingBottom: spacing.md,
-  },
-  stackBackButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stackTitle: {
-    flex: 1,
-    textAlign: 'center',
-    marginHorizontal: spacing.sm,
-    ...jakartaExtraBoldText,
-    fontSize: typography.body,
-    letterSpacing: -0.2,
-  },
-  stackTopBarSpacer: { width: 38 },
   reviewPageHeader: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     marginBottom: spacing.lg,
@@ -584,45 +530,22 @@ const styles = StyleSheet.create({
   reviewScope: {
     lineHeight: 18,
   },
-  donutSection: {
+  monthSection: {
+    marginTop: spacing.sm,
+    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+    zIndex: 1,
+  },
+  chartSection: {
+    marginTop: spacing.md,
+  },
+  periodTabsSection: {
+    marginTop: spacing.md,
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
-  distributionCard: {
-    gap: spacing.md,
-  },
-  validateSection: {
+  actionSection: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     marginTop: PORTFOLIO_SECTION_GAP,
-    gap: spacing.sm,
-  },
-  validateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    minHeight: UNIFORM_ACTION_BUTTON_MIN_HEIGHT,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  validateBadge: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-    marginLeft: spacing.xs,
-  },
-  validateHint: {
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  listHeader: {
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    marginTop: spacing.lg,
-    marginBottom: spacing.xs,
+    marginBottom: PORTFOLIO_SECTION_GAP,
   },
   rowGap: {
     height: spacing.md,

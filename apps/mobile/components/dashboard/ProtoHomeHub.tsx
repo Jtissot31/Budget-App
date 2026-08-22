@@ -14,25 +14,36 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { HomeAlertGlyph } from '@/components/alerts/HomeAlertGlyph';
 import { PageTransition } from '@/components/PageTransition';
-import { HomeSpendInvestCards } from '@/components/dashboard/HomeSpendInvestCards';
+import { PremiumSwitch } from '@/components/PremiumSwitch';
 import { ProtoGlassCard } from '@/components/proto/ProtoGlassCard';
+import {
+  ProtoShortcutRow,
+  SHORTCUT_TILE_GAP,
+  type ProtoShortcutItem,
+} from '@/components/proto/ProtoShortcutRow';
 import { ProtoSectionHeader } from '@/components/proto/ProtoSectionHeader';
+import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { SparklineChart } from '@/components/chat/SparklineChart';
 import { TransactionRow } from '@/components/TransactionRow';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
+import { onyxContainerPressedStyle } from '@/constants/planFinanceKit';
 import {
   FLOATING_NAV_CONTENT_PADDING,
   moneyAmountTypography,
   PAGE_PADDING_HORIZONTAL,
-  PAGE_TITLE_STYLE,
-  spacing,
   typographyKit,
 } from '@/constants/theme';
 import { useAlertCenter } from '@/hooks/useAlertCenter';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
-import { alertDetailRouteParams, type AlertCenterItem } from '@/lib/alerts';
-import { alertListShortReason } from '@/lib/alertPresentation';
+import { alertDetailRouteParams, formatAlertClockTime } from '@/lib/alerts';
+import {
+  alertHomeActionLine,
+  alertHomePrimaryTitle,
+  homeAlertPreviewAccent,
+  homeAlertPreviewSurface,
+} from '@/lib/alertPresentation';
 import {
   buildNetWorthDailySeries,
   buildNetWorthTrendFromTransactions,
@@ -47,17 +58,26 @@ import {
   getTransactionsSince,
 } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
-import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
+import {
+  COMPACT_DELTA_K_THRESHOLD,
+  formatDisplayMoneyAbsolute,
+  formatSignedDisplayMoney,
+} from '@/lib/formatDisplayMoney';
 import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import { tapHaptic } from '@/lib/haptics';
 import { syncWithServer } from '@/lib/sync';
 import { useAppTheme } from '@/lib/themeContext';
-import { getUserDisplayName } from '@/lib/userDisplay';
 import type { RecurringPayment, SimulatedAccount, Transaction } from '@/types';
 
 type ChartPeriod = '1M' | '3M' | '6M' | '1A' | '5A';
 
-const CHART_PERIODS: ChartPeriod[] = ['1M', '3M', '6M', '1A', '5A'];
+const PERIOD_TABS: { id: ChartPeriod; label: string }[] = [
+  { id: '1M', label: '1M' },
+  { id: '3M', label: '3M' },
+  { id: '6M', label: '6M' },
+  { id: '1A', label: '1A' },
+  { id: '5A', label: '5A' },
+];
 
 const PERIOD_DAY_COUNT: Record<ChartPeriod, number> = {
   '1M': 30,
@@ -67,34 +87,11 @@ const PERIOD_DAY_COUNT: Record<ChartPeriod, number> = {
   '5A': 365 * 5,
 };
 
-function greetingLine() {
-  const h = new Date().getHours();
-  if (h < 5) return 'Bonsoir';
-  if (h < 12) return 'Bon matin';
-  if (h < 18) return 'Bonjour';
-  return 'Bonsoir';
-}
-
-function monthEyebrow() {
-  const raw = new Date().toLocaleDateString('fr-CA', { month: 'long', year: 'numeric' });
-  return raw.charAt(0).toUpperCase() + raw.slice(1);
-}
-
 function sparklineSinceIso(dayCount: number): string {
   const since = new Date();
   since.setDate(since.getDate() - (dayCount + 1));
   since.setHours(0, 0, 0, 0);
   return since.toISOString();
-}
-
-function alertAccent(item: AlertCenterItem): { iconBg: string; iconColor: string; icon: keyof typeof import('@expo/vector-icons').Ionicons.glyphMap } {
-  if (item.severity === 'danger') {
-    return { iconBg: 'rgba(248,113,113,0.12)', iconColor: '#F87171', icon: 'card-outline' };
-  }
-  if (item.severity === 'warning') {
-    return { iconBg: 'rgba(251,191,36,0.12)', iconColor: '#FBBF24', icon: 'flash-outline' };
-  }
-  return { iconBg: 'rgba(96,165,250,0.12)', iconColor: '#60A5FA', icon: 'information-circle-outline' };
 }
 
 function downsampleSeries(values: number[], maxPoints: number): number[] {
@@ -107,11 +104,16 @@ function downsampleSeries(values: number[], maxPoints: number): number[] {
   return out;
 }
 
+/** Accueil: keep recent-tx data loaded; set true to show the Récentes block again. */
+const SHOW_RECENTES = false;
+
+/** Accueil NOTIFICATIONS & ALERTES — two cards, then an in-place expand for the rest. */
+const HOME_ALERT_PREVIEW_LIMIT = 2;
+
 export function ProtoHomeHub() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isLight, setMode } = useAppTheme();
-  const [displayName, setDisplayName] = useState('Sophie');
   const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
   const [incomeTransactions, setIncomeTransactions] = useState<Transaction[]>([]);
@@ -120,6 +122,7 @@ export function ProtoHomeHub() {
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('6M');
   const [chartWidth, setChartWidth] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [homeAlertsExpanded, setHomeAlertsExpanded] = useState(false);
 
   const {
     items: alertCenterItems,
@@ -132,15 +135,13 @@ export function ProtoHomeHub() {
   const load = useCallback(async () => {
     await ensureDbReady();
     const dayCount = PERIOD_DAY_COUNT[chartPeriod];
-    const [name, nextAccounts, payments, income, sparkTx, allTx] = await Promise.all([
-      getUserDisplayName(),
+    const [nextAccounts, payments, income, sparkTx, allTx] = await Promise.all([
       getSimulatedAccounts(),
       getRecurringPayments(),
       getRecentIncomeTransactions(),
       getTransactionsSince(sparklineSinceIso(dayCount)),
       getTransactions(),
     ]);
-    if (name?.trim()) setDisplayName(name.trim().split(/\s+/)[0] ?? name.trim());
     setAccounts(nextAccounts);
     setRecurringPayments(payments);
     setIncomeTransactions(income);
@@ -156,7 +157,7 @@ export function ProtoHomeHub() {
     });
   }, [load]);
 
-  useRefreshOnFocus(load);
+  useRefreshOnFocus(load, { minIntervalMs: 5_000 });
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -225,66 +226,36 @@ export function ProtoHomeHub() {
 
   const heroPositive = delta.amount >= 0;
   const displayHero = totalNetWorth;
-  const previewAlerts = alertCenterItems.slice(0, 3);
+  const remainingAlertCount = Math.max(0, alertCenterItems.length - HOME_ALERT_PREVIEW_LIMIT);
+  const moreAlertsCollapsedLabel =
+    remainingAlertCount === 1
+      ? 'Voir l’autre alerte'
+      : `Voir les ${remainingAlertCount} autres alertes`;
+  const previewAlerts =
+    homeAlertsExpanded || remainingAlertCount === 0
+      ? alertCenterItems
+      : alertCenterItems.slice(0, HOME_ALERT_PREVIEW_LIMIT);
 
   const onChartLayout = useCallback((event: LayoutChangeEvent) => {
     const next = Math.floor(event.nativeEvent.layout.width);
     setChartWidth((prev) => (prev === next ? prev : next));
   }, []);
 
-  const toggleTheme = useCallback(() => {
-    tapHaptic();
-    void setMode(isLight ? 'dark' : 'light');
-  }, [isLight, setMode]);
+  const onThemeSwitch = useCallback(
+    (light: boolean) => {
+      tapHaptic();
+      void setMode(light ? 'light' : 'dark');
+    },
+    [setMode],
+  );
 
   return (
     <PageTransition>
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <View
-          pointerEvents="box-none"
-          style={[styles.topChrome, { paddingTop: insets.top + 8 }]}
-        >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={isLight ? 'Passer en mode sombre' : 'Passer en mode clair'}
-            onPress={toggleTheme}
-            style={({ pressed }) => [
-              styles.themePill,
-              { backgroundColor: colors.surfaceElevated },
-              pressed && { opacity: 0.82 },
-            ]}
-          >
-            <AppIcon
-              family="ionicons"
-              name={isLight ? 'moon-outline' : 'sunny-outline'}
-              size={12}
-              color={isLight ? colors.textSecondary : '#FBBF24'}
-            />
-            <Text style={[styles.themePillLabel, { color: colors.textSecondary }]}>
-              {isLight ? 'Dark' : 'Light'}
-            </Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Ouvrir les réglages"
-            onPress={() => {
-              tapHaptic();
-              router.push('/settings');
-            }}
-            style={({ pressed }) => [
-              styles.avatarBtn,
-              { backgroundColor: colors.surfaceElevated },
-              pressed && { opacity: 0.82 },
-            ]}
-          >
-            <AppIcon family="ionicons" name="person-outline" size={14} color={colors.textSecondary} />
-          </Pressable>
-        </View>
-
         <ScrollView
           style={styles.screen}
           contentContainerStyle={{
-            paddingTop: insets.top + SCREEN_TOP_GUTTER + 36,
+            paddingTop: insets.top + SCREEN_TOP_GUTTER,
             paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING,
             paddingHorizontal: PAGE_PADDING_HORIZONTAL,
             gap: 18,
@@ -294,11 +265,50 @@ export function ProtoHomeHub() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
         >
-          <View style={styles.greetingBlock}>
-            <Text style={[styles.monthLabel, { color: colors.textMuted }]}>{monthEyebrow()}</Text>
-            <Text style={[styles.greeting, { color: colors.text }]}>
-              {greetingLine()}, {displayName} 👋
-            </Text>
+          <View style={styles.topChrome}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Ouvrir les réglages"
+              onPress={() => {
+                tapHaptic();
+                router.push('/settings');
+              }}
+              style={({ pressed }) => [
+                styles.profileBtn,
+                { backgroundColor: colors.containerBackground },
+                pressed && onyxContainerPressedStyle(),
+              ]}
+            >
+              <AppIcon family="ionicons" name="person-outline" size={22} color={colors.text} />
+            </Pressable>
+            <View style={styles.themeSwitchRow}>
+              <PremiumSwitch
+                value={isLight}
+                onValueChange={onThemeSwitch}
+                trackOnColor={
+                  isLight ? 'rgba(0, 0, 0, 0.18)' : 'rgba(255, 255, 255, 0.28)'
+                }
+                leftIcon={
+                  <AppIcon
+                    family="ionicons"
+                    name="sunny-outline"
+                    size={12}
+                    color={isLight ? '#FBBF24' : colors.textMuted}
+                  />
+                }
+                rightIcon={
+                  <AppIcon
+                    family="ionicons"
+                    name="moon-outline"
+                    size={12}
+                    color={isLight ? colors.textMuted : colors.textSecondary}
+                  />
+                }
+                accessibilityLabel={
+                  isLight ? 'Thème clair activé. Passer en mode sombre' : 'Thème sombre activé. Passer en mode clair'
+                }
+              />
+            </View>
           </View>
 
           <View style={styles.heroBlock}>
@@ -328,8 +338,11 @@ export function ProtoHomeHub() {
                     { color: heroPositive ? colors.accentGreen : colors.danger },
                   ]}
                 >
-                  {formatSignedDisplayMoney(delta.amount, { leadingPlusWhenPositive: true })} ·{' '}
-                  {heroPositive ? '+' : '−'}
+                  {formatSignedDisplayMoney(delta.amount, {
+                    leadingPlusWhenPositive: true,
+                    compactKThreshold: COMPACT_DELTA_K_THRESHOLD,
+                  })}{' '}
+                  · {heroPositive ? '+' : '−'}
                   {Math.abs(delta.pct).toFixed(1)}%
                 </Text>
               </View>
@@ -352,37 +365,19 @@ export function ProtoHomeHub() {
             </View>
 
             <View style={styles.periodRow}>
-              {CHART_PERIODS.map((period) => {
-                const active = period === chartPeriod;
-                return (
-                  <Pressable
-                    key={period}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    onPress={() => {
-                      tapHaptic();
-                      setChartPeriod(period);
-                    }}
-                    style={[
-                      styles.periodChip,
-                      active && { backgroundColor: colors.surfaceElevated },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.periodLabel,
-                        { color: active ? colors.text : colors.textMuted },
-                      ]}
-                    >
-                      {period}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+              <SegmentedTabs
+                tabs={PERIOD_TABS}
+                active={chartPeriod}
+                onChange={(id) => {
+                  tapHaptic();
+                  setChartPeriod(id);
+                }}
+                size="section"
+                variant="bare"
+                showDivider={false}
+              />
             </View>
           </View>
-
-          <HomeSpendInvestCards />
 
           <View>
             <ProtoSectionHeader
@@ -392,14 +387,18 @@ export function ProtoHomeHub() {
             />
             <View style={styles.alertStack}>
               {previewAlerts.length === 0 ? (
-                <ProtoGlassCard padding={14}>
+                <ProtoGlassCard style={homeAlertPreviewSurface(colors, isLight)} padding={14}>
                   <Text style={[styles.emptyCopy, { color: colors.textMuted }]}>
                     Aucune alerte pour le moment
                   </Text>
                 </ProtoGlassCard>
               ) : (
                 previewAlerts.map((item) => {
-                  const accent = alertAccent(item);
+                  const accent = homeAlertPreviewAccent(item, colors, isLight);
+                  const surface = homeAlertPreviewSurface(colors, isLight);
+                  const reason = alertHomePrimaryTitle(item);
+                  const action = alertHomeActionLine(item);
+                  const clock = formatAlertClockTime(item.timestamp);
                   return (
                     <Pressable
                       key={item.id}
@@ -413,72 +412,153 @@ export function ProtoHomeHub() {
                       }}
                       style={({ pressed }) => [pressed && { opacity: 0.85 }]}
                     >
-                      <ProtoGlassCard style={styles.alertCard} padding={0}>
+                      <ProtoGlassCard style={[styles.alertCard, surface]} padding={0}>
                         <View style={styles.alertInner}>
                           <View style={[styles.alertIcon, { backgroundColor: accent.iconBg }]}>
-                            <AppIcon family="ionicons" name={accent.icon} size={14} color={accent.iconColor} />
+                            <HomeAlertGlyph icon={accent.icon} color={accent.iconColor} size={16} />
                           </View>
                           <View style={styles.alertCopy}>
-                            <Text style={[styles.alertTitle, { color: colors.text }]} numberOfLines={1}>
-                              {item.title}
-                            </Text>
+                            <View style={styles.alertTitleRow}>
+                              <Text
+                                style={[styles.alertTitle, { color: colors.text }]}
+                                numberOfLines={2}
+                              >
+                                {reason}
+                              </Text>
+                              {clock ? (
+                                <Text
+                                  style={[styles.alertTime, { color: colors.textMuted }]}
+                                  numberOfLines={1}
+                                >
+                                  {clock}
+                                </Text>
+                              ) : null}
+                            </View>
                             <Text
-                              style={[styles.alertMeta, { color: colors.textMuted }]}
+                              style={[styles.alertMeta, { color: colors.textSecondary }]}
                               numberOfLines={1}
                             >
-                              {alertListShortReason(item)}
+                              {action}
                             </Text>
                           </View>
-                          {item.montant != null ? (
-                            <Text
-                              style={[
-                                moneyAmountTypography({ tier: 'row', fontSize: 13 }),
-                                { color: colors.text, letterSpacing: -0.2, flexShrink: 0, maxWidth: '34%' },
-                              ]}
-                              numberOfLines={1}
-                              adjustsFontSizeToFit
-                              minimumFontScale={0.75}
-                            >
-                              {formatDisplayMoneyAbsolute(Math.abs(item.montant))}
-                            </Text>
-                          ) : null}
                         </View>
                       </ProtoGlassCard>
                     </Pressable>
                   );
                 })
               )}
+              {remainingAlertCount > 0 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    homeAlertsExpanded
+                      ? 'Réduire la liste des alertes'
+                      : moreAlertsCollapsedLabel
+                  }
+                  onPress={() => {
+                    tapHaptic();
+                    setHomeAlertsExpanded((open) => !open);
+                  }}
+                  style={({ pressed }) => [pressed && { opacity: 0.85 }]}
+                >
+                  <ProtoGlassCard
+                    style={[styles.alertMoreCard, homeAlertPreviewSurface(colors, isLight)]}
+                    padding={0}
+                  >
+                    <View style={styles.alertMoreInner}>
+                      <Text style={[styles.alertMoreLabel, { color: colors.textMuted }]}>
+                        {homeAlertsExpanded ? 'Réduire' : moreAlertsCollapsedLabel}
+                      </Text>
+                      <AppIcon
+                        family="ionicons"
+                        name={homeAlertsExpanded ? 'chevron-up' : 'chevron-down'}
+                        size={14}
+                        color={colors.textMuted}
+                      />
+                    </View>
+                  </ProtoGlassCard>
+                </Pressable>
+              ) : null}
             </View>
           </View>
 
-          <View>
-            <ProtoSectionHeader
-              title="Récentes"
-              actionLabel="Tout voir"
-              onAction={() => router.push('/transactions')}
+          <View style={styles.shortcutGrid}>
+            <ProtoShortcutRow
+              items={
+                [
+                  {
+                    key: 'ai-chat',
+                    label: 'AI Chat',
+                    subtitle: 'Conseiller Fyn',
+                    icon: 'chatbubble-ellipses-outline',
+                    accessibilityLabel: 'Ouvrir AI Chat avec Fyn',
+                    onPress: () => router.push('/ai-chat'),
+                  },
+                  {
+                    key: 'strategies',
+                    label: 'Stratégies',
+                    subtitle: 'Finances',
+                    icon: 'compass-outline',
+                    accessibilityLabel: 'Explorer les stratégies financières',
+                    onPress: () => router.push('/plans/explore'),
+                  },
+                ] as const satisfies readonly [ProtoShortcutItem, ProtoShortcutItem]
+              }
             />
-            <ProtoGlassCard>
-              {recentTransactions.length === 0 ? (
-                <Text style={[styles.emptyCopy, { color: colors.textMuted, padding: 16 }]}>
-                  Aucune transaction récente
-                </Text>
-              ) : (
-                recentTransactions.map((tx, index) => (
-                  <View key={tx.id}>
-                    {index > 0 ? (
-                      <View style={[styles.rowDivider, { backgroundColor: colors.borderSubtle }]} />
-                    ) : null}
-                    <TransactionRow
-                      transaction={tx}
-                      accounts={accounts}
-                      embedded
-                      onPressId={openTransactionDetail}
-                    />
-                  </View>
-                ))
-              )}
-            </ProtoGlassCard>
+            <ProtoShortcutRow
+              items={
+                [
+                  {
+                    key: 'wealth',
+                    label: 'Patrimoine',
+                    subtitle: 'Explorer',
+                    icon: 'trending-up-outline',
+                    accessibilityLabel: 'Ouvrir le patrimoine',
+                    onPress: () => router.push('/patrimoine'),
+                  },
+                  {
+                    key: 'insights',
+                    label: 'Analyse',
+                    subtitle: 'Dépenses',
+                    icon: 'stats-chart-outline',
+                    accessibilityLabel: 'Ouvrir l’analyse des dépenses',
+                    onPress: () => router.push('/transactions-insights'),
+                  },
+                ] as const satisfies readonly [ProtoShortcutItem, ProtoShortcutItem]
+              }
+            />
           </View>
+
+          {SHOW_RECENTES ? (
+            <View>
+              <ProtoSectionHeader
+                title="Récentes"
+                actionLabel="Tout voir"
+                onAction={() => router.push('/transactions')}
+              />
+              <ProtoGlassCard>
+                {recentTransactions.length === 0 ? (
+                  <Text style={[styles.emptyCopy, { color: colors.textMuted, padding: 16 }]}>
+                    Aucune transaction récente
+                  </Text>
+                ) : (
+                  recentTransactions.map((tx, index) => (
+                    <View key={tx.id}>
+                      {index > 0 ? (
+                        <View style={[styles.rowDivider, { backgroundColor: colors.borderSubtle }]} />
+                      ) : null}
+                      <TransactionRow
+                        transaction={tx}
+                        accounts={accounts}
+                        embedded
+                        onPressId={openTransactionDetail}
+                      />
+                    </View>
+                  ))
+                )}
+              </ProtoGlassCard>
+            </View>
+          ) : null}
         </ScrollView>
       </View>
     </PageTransition>
@@ -488,48 +568,21 @@ export function ProtoHomeHub() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   topChrome: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    zIndex: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
+    justifyContent: 'space-between',
+    width: '100%',
   },
-  themePill: {
+  themeSwitchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
   },
-  themePillLabel: {
-    ...typographyKit.metaSemibold,
-    fontSize: 11,
-  },
-  avatarBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  profileBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  greetingBlock: {
-    paddingTop: spacing.md,
-    marginBottom: 64,
-  },
-  monthLabel: {
-    ...typographyKit.metaMedium,
-    fontSize: 12,
-    marginBottom: 5,
-  },
-  greeting: {
-    ...PAGE_TITLE_STYLE,
-    fontSize: 24,
-    letterSpacing: -0.35,
-    lineHeight: 28,
   },
   heroBlock: {
     alignItems: 'center',
@@ -563,47 +616,65 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   periodRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 1,
-    marginTop: 6,
+    width: '100%',
+    marginTop: 14,
   },
-  periodChip: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 7,
-  },
-  periodLabel: {
-    ...typographyKit.metaSemibold,
-    fontSize: 11,
-  },
+  shortcutGrid: { gap: SHORTCUT_TILE_GAP },
   alertStack: { gap: 8 },
   alertCard: { borderRadius: 16 },
-  alertInner: {
+  alertMoreCard: { borderRadius: 16 },
+  alertMoreInner: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  alertMoreLabel: {
+    ...typographyKit.metaSemibold,
+    fontSize: 13,
+  },
+  alertInner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
   alertIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 1,
   },
   alertCopy: { flex: 1, minWidth: 0, gap: 2 },
+  alertTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
   alertTitle: {
     ...typographyKit.rowTitle,
-    fontSize: 12,
-    lineHeight: 16,
-    letterSpacing: -0.1,
+    fontSize: 14,
+    lineHeight: 18,
+    letterSpacing: -0.15,
+    flex: 1,
+    minWidth: 0,
+  },
+  alertTime: {
+    ...typographyKit.micro,
+    fontSize: 11,
+    lineHeight: 14,
+    flexShrink: 0,
+    marginTop: 2,
   },
   alertMeta: {
     ...typographyKit.micro,
-    fontSize: 10,
-    lineHeight: 13,
+    fontSize: 11,
+    lineHeight: 14,
   },
   emptyCopy: {
     ...typographyKit.metaMedium,

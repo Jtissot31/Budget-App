@@ -26,7 +26,7 @@ type ConfirmButtonStyle = {
 };
 
 const NEUTRAL_DISMISS_BUTTON = (colors: AppColors): ConfirmButtonStyle => ({
-  backgroundColor: colors.input,
+  backgroundColor: colors.modalAction,
   borderColor: colors.containerBorder,
   borderWidth: StyleSheet.hairlineWidth,
   textColor: colors.text,
@@ -100,7 +100,7 @@ export function ThemedConfirmModal({
           style={[
             styles.card,
             {
-              backgroundColor: colors.containerBackground,
+              backgroundColor: colors.modalSurface,
               borderColor: colors.containerBorder,
             },
           ]}

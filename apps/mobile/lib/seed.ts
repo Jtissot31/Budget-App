@@ -10,7 +10,14 @@ import { DASHBOARD_ACCOUNTS } from '@/constants/dashboardMockAccounts';
 import { getTransactionAccountDeltas } from '@/lib/accountTransactionFlow';
 import { inferCategoryId } from '@/lib/categoryInference';
 import { dataEvents } from '@/lib/events';
-import type { Category } from '@/types';
+import {
+  buildArticlesNoteLine,
+  getTransactionArticlesBudget,
+  parseItemizedNote,
+  sumArticlePrices,
+  type ItemizedNote,
+} from '@/lib/itemizedNote';
+import type { Category, ReceiptStatus } from '@/types';
 import {
   adjustSimulatedAccountBalance,
   deleteSimulatedAccount,
@@ -31,7 +38,51 @@ import {
 import { isDemoSeedEnabled } from './demoSeedGate';
 import { seedLoansIfMissing } from './seedLoans';
 import { yieldEvery, yieldToEventLoop } from './yieldToEventLoop';
+import { Asset } from 'expo-asset';
 import { Platform } from 'react-native';
+
+/** Bundled cash-register receipt used for Documents → Reçus demo rows. */
+const MOCK_RECEIPT_ASSET = require('@/assets/receipts/mock-cash-receipt.png');
+
+/**
+ * Merchants that get a demo receipt (first occurrence of each label). `articles` seeds the
+ * itemized note so Reçus rows show real article names; entries without it stay plain receipts.
+ */
+const DEMO_RECEIPT_MERCHANTS: Array<{ label: string; articles?: ItemizedNote[] }> = [
+  {
+    label: 'IGA',
+    articles: [
+      { name: 'Lait 2 %', price: 5.49 },
+      { name: 'Pain de blé entier', price: 3.99 },
+      { name: 'Poulet haché', price: 12.75 },
+      { name: 'Pommes Gala', price: 6.2 },
+    ],
+  },
+  { label: 'Tim Hortons', articles: [{ name: 'Café moyen', price: 2.49 }] },
+  { label: 'Petro-Canada' },
+  { label: 'Jean Coutu' },
+];
+
+function resolveMockReceiptUri(): string {
+  return Asset.fromModule(MOCK_RECEIPT_ASSET).uri ?? '';
+}
+
+/** Demo articles are skipped when they would exceed the transaction's articles budget. */
+function fitArticlesToAmount(
+  articles: ItemizedNote[] | undefined,
+  transactionAmount: number,
+): ItemizedNote[] | undefined {
+  if (!articles || articles.length === 0) return undefined;
+  const fits = sumArticlePrices(articles) <= getTransactionArticlesBudget(transactionAmount);
+  return fits ? articles : undefined;
+}
+
+/** Appends the articles line while preserving `compte:` and any user-written note lines. */
+function withArticlesLine(note: string, articles: ItemizedNote[] | undefined): string {
+  if (!articles || articles.length === 0) return note;
+  const lines = note.split('\n').filter((line) => Boolean(line) && !line.startsWith('articles:'));
+  return [...lines, buildArticlesNoteLine(articles)].join('\n');
+}
 
 type SeedTransaction = {
   id: string;
@@ -40,6 +91,9 @@ type SeedTransaction = {
   type: 'expense' | 'income';
   date: string;
   accountId: string;
+  receiptUri?: string | null;
+  receiptStatus?: ReceiptStatus | null;
+  articles?: ItemizedNote[];
 };
 
 /** Native: 12 weeks (~170 rows). Web (opt-in seed): 2 weeks — keeps Accueil useful without freezing. */
@@ -49,7 +103,7 @@ const DEMO_WEEKS = Platform.OS === 'web' ? 2 : 12;
 export const DEMO_EXPECTED_VISIBLE_TX = Platform.OS === 'web' ? 40 : 170;
 
 /** Bump to force wipe + reseed of demo transactions (QC merchants). */
-const DEMO_TRANSACTIONS_SEED_VERSION = '2';
+const DEMO_TRANSACTIONS_SEED_VERSION = '3';
 const DEMO_TRANSACTIONS_SEED_KEY = 'demo_transactions_seed_version';
 
 /** In __DEV__, wipe and reseed when Historique has fewer visible rows than this. */
@@ -202,6 +256,37 @@ export async function ensureDemoAccounts(): Promise<void> {
   await syncDemoAccountMetadata();
 }
 
+/**
+ * Backfills article line items on demo receipt transactions already in SQLite, so the Reçus
+ * rows show article names without wiping history. Idempotent — skips rows already itemized.
+ */
+export async function ensureDemoReceiptArticles(): Promise<void> {
+  if (!isDemoSeedEnabled()) return;
+  const db = await getDb();
+  let patched = 0;
+
+  for (const entry of DEMO_RECEIPT_MERCHANTS) {
+    if (!entry.articles) continue;
+    const row = await db.getFirstAsync<{ id: string; amount: number; note: string | null }>(
+      `SELECT id, amount, note FROM transactions
+       WHERE label = ? AND receipt_status = 'attached'
+       ORDER BY date DESC LIMIT 1`,
+      [entry.label],
+    );
+    if (!row || parseItemizedNote(row.note ?? undefined).length > 0) continue;
+
+    const articles = fitArticlesToAmount(entry.articles, row.amount);
+    if (!articles) continue;
+    await db.runAsync('UPDATE transactions SET note = ? WHERE id = ?', [
+      withArticlesLine(row.note ?? accountNote(PAYMENT_ACCOUNT_IDS.checking), articles),
+      row.id,
+    ]);
+    patched += 1;
+  }
+
+  if (patched > 0) dataEvents.emit();
+}
+
 async function wipeAllTransactions(): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM transactions');
@@ -222,7 +307,9 @@ async function insertBuiltDemoTransactions(): Promise<number> {
         type: sample.type,
         date: sample.date,
         categoryId,
-        note: accountNote(sample.accountId),
+        receiptUri: sample.receiptUri ?? null,
+        receiptStatus: sample.receiptStatus ?? null,
+        note: withArticlesLine(accountNote(sample.accountId), sample.articles),
         syncStatus: 'pending',
       },
       { emit: false },
@@ -370,6 +457,21 @@ function buildDemoTransactions(now: Date): SeedTransaction[] {
       accountId: pickPaymentAccount(txIndex, 'expense', item.label),
     });
   });
+
+  // Attach the same bundled receipt to 4 different merchants for Documents → Reçus.
+  const receiptUri = resolveMockReceiptUri();
+  if (receiptUri) {
+    const remaining = new Map(DEMO_RECEIPT_MERCHANTS.map((entry) => [entry.label, entry]));
+    for (const tx of txs) {
+      const entry = tx.type === 'expense' ? remaining.get(tx.label) : undefined;
+      if (!entry) continue;
+      tx.receiptUri = receiptUri;
+      tx.receiptStatus = 'attached';
+      tx.articles = fitArticlesToAmount(entry.articles, tx.amount);
+      remaining.delete(tx.label);
+      if (remaining.size === 0) break;
+    }
+  }
 
   return txs;
 }

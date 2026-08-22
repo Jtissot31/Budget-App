@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GoalProgressFill } from '@/components/GoalProgressFill';
@@ -30,12 +31,17 @@ type Props = {
 function GoalProgressionIcon({ icon, color }: { icon: string; color: string }) {
   const mdiName = resolveStoredIconToMdi(icon) ?? resolveMdiOrLegacyIcon(icon);
   const isMdi = resolveStoredIconToMdi(icon) != null;
+  const useMaterialCommunity =
+    Object.prototype.hasOwnProperty.call(MaterialCommunityIcons.glyphMap, icon) &&
+    !Object.prototype.hasOwnProperty.call(Ionicons.glyphMap, icon);
 
-  return isMdi ? (
-    <MdiIcon name={mdiName} size={16} color={color} />
-  ) : (
-    <AppIcon family="ionicons" name={icon as IconName} size={16} color={color} />
-  );
+  if (isMdi) {
+    return <MdiIcon name={mdiName} size={16} color={color} />;
+  }
+  if (useMaterialCommunity) {
+    return <AppIcon family="material-community" name={icon} size={16} color={color} />;
+  }
+  return <AppIcon family="ionicons" name={icon as IconName} size={16} color={color} />;
 }
 
 const GOAL_PROGRESSION_BAR = detailProgressBarStyle();

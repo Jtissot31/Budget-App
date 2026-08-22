@@ -53,4 +53,11 @@ export function formatFrCaMoneyMainAndSeparatedDollarSuffix(value: number): {
   return formatDisplayMoney(value);
 }
 
-export { COMPACT_K_THRESHOLD, COMPACT_M_THRESHOLD, formatDisplayMoney, formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
+export {
+  COMPACT_DELTA_K_THRESHOLD,
+  COMPACT_K_THRESHOLD,
+  COMPACT_M_THRESHOLD,
+  formatDisplayMoney,
+  formatDisplayMoneyAbsolute,
+  formatSignedDisplayMoney,
+} from '@/lib/formatDisplayMoney';

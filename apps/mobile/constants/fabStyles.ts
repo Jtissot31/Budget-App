@@ -9,6 +9,18 @@ export const SHOW_TRANSACTIONS_TAB_FABS = true;
 
 export const TRANSACTIONS_FAB_ICON_COLOR_ORIGINAL = '#000000';
 
+/** Solid FAB diameter — green + and Agenda manage delete share this chrome. */
+export const TRANSACTIONS_FAB_SIZE = 54;
+
+/** Vertical breathing room between two stacked FABs. */
+export const TRANSACTIONS_FAB_STACK_GAP = 12;
+
+/**
+ * Height the stacked voice FAB adds above the primary + — list bottom padding must clear it.
+ * Both FABs share {@link TRANSACTIONS_FAB_SIZE}: same diameter, radius, halo and elevation.
+ */
+export const TRANSACTIONS_FAB_STACK_HEIGHT = TRANSACTIONS_FAB_SIZE + TRANSACTIONS_FAB_STACK_GAP;
+
 export const TRANSACTIONS_FAB_GLOW_ORIGINAL: Pick<
   ViewStyle,
   'shadowOffset' | 'shadowOpacity' | 'shadowRadius' | 'elevation'
@@ -20,19 +32,44 @@ export const TRANSACTIONS_FAB_GLOW_ORIGINAL: Pick<
 };
 
 export const TRANSACTIONS_FAB_STYLE_ORIGINAL: ViewStyle = {
-  width: 54,
-  height: 54,
-  borderRadius: 27,
+  width: TRANSACTIONS_FAB_SIZE,
+  height: TRANSACTIONS_FAB_SIZE,
+  borderRadius: TRANSACTIONS_FAB_SIZE / 2,
   alignItems: 'center',
   justifyContent: 'center',
   ...TRANSACTIONS_FAB_GLOW_ORIGINAL,
 };
 
-/** Blur + subtle green glow — Transactions Historique FAB only. */
-export const TRANSACTIONS_FAB_BLUR_INTENSITY = 68;
-export const TRANSACTIONS_FAB_BLUR_TINT = 'dark' as const;
-export const TRANSACTIONS_FAB_BLUR_OVERLAY = 'rgba(10, 10, 10, 0.38)';
-export const TRANSACTIONS_FAB_BLUR_BORDER = 'rgba(255, 255, 255, 0.12)';
+/** Solid accent FAB fill + matching colored elevation/halo (green + / danger trash / voice). */
+export function transactionsSolidFabStyle(fillColor: string): ViewStyle {
+  return {
+    ...TRANSACTIONS_FAB_STYLE_ORIGINAL,
+    backgroundColor: fillColor,
+    shadowColor: fillColor,
+  };
+}
+
+/**
+ * Soft colored bloom behind solid FABs — keeps lift visible on Android where
+ * `shadowColor` often collapses to a flat grey (or nothing in inspectors).
+ */
+export function transactionsSolidFabHaloStyle(fillColor: string): ViewStyle {
+  return {
+    position: 'absolute',
+    width: TRANSACTIONS_FAB_SIZE,
+    height: TRANSACTIONS_FAB_SIZE,
+    borderRadius: TRANSACTIONS_FAB_SIZE / 2,
+    backgroundColor: fillColor,
+    opacity: 0.28,
+    transform: [{ scale: 1.2 }],
+  };
+}
+
+/**
+ * Glass FAB chrome — blur via `TabBarDynamicBlur` / `GlassFab`.
+ * Keep + glyph dark so it stays readable on green-tinted glass.
+ */
+export const TRANSACTIONS_FAB_BLUR_BORDER = 'rgba(255, 255, 255, 0.28)';
 
 export const TRANSACTIONS_FAB_GLOW_BLUR: Pick<
   ViewStyle,
@@ -42,16 +79,17 @@ export const TRANSACTIONS_FAB_GLOW_BLUR: Pick<
   shadowOffset: { width: 0, height: 0 },
   shadowOpacity: 0.35,
   shadowRadius: 12,
+  /** iOS only — Android must stay 0 so SemBlur samples content. */
   elevation: 8,
 };
 
 export const TRANSACTIONS_FAB_STYLE_BLUR: ViewStyle = {
   ...TRANSACTIONS_FAB_STYLE_ORIGINAL,
   backgroundColor: 'transparent',
-  overflow: 'hidden',
   borderWidth: 1,
   borderColor: TRANSACTIONS_FAB_BLUR_BORDER,
   ...TRANSACTIONS_FAB_GLOW_BLUR,
 };
 
-export const TRANSACTIONS_FAB_ICON_COLOR_BLUR = '#FFFFFF';
+/** Dark + on green glass (same as solid-era glyph — not white). */
+export const TRANSACTIONS_FAB_ICON_COLOR_BLUR = '#000000';

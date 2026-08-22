@@ -30,22 +30,19 @@ import { SurfaceCard } from '@/components/SurfaceCard';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import {
   accountDetailHeroBlockStyle,
-  destructiveIconColor,
-  destructiveTextActionStyle,
   detailSectionLabelStyle,
   detailSectionsCardStyle,
   detailSubSectionHeaderStyle,
+  FLOATING_NAV_CONTENT_PADDING,
   jakartaExtraBoldText,
   radius,
   spacing,
-  subtleDeleteButtonStyle,
   typography,
   typographyKit,
   type AppColors,
 } from '@/constants/theme';
 import {
   deleteRecurringPayment,
-  deleteTransactionById,
   getCategoryBudgets,
   getRecurringPayments,
   getSimulatedAccounts,
@@ -58,7 +55,7 @@ import {
   loadRecurringPickerCategories,
 } from '@/lib/budgetCategories';
 import { INCOME_CATEGORY } from '@/constants/categoryOptions';
-import { dataEvents } from '@/lib/events';
+import { dataEvents, uiEvents } from '@/lib/events';
 import { HandledSaveError } from '@/lib/editableSaveError';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { toLocalDateInputValue } from '@/lib/localDateInput';
@@ -138,12 +135,9 @@ function formatPaymentDetailDate(isoDate: string): string {
 
 export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
   const router = useRouter();
-  const { colors, isLight } = useAppTheme();
+  const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [deleting, setDeleting] = useState(false);
-  const [confirmRecurringDeleteVisible, setConfirmRecurringDeleteVisible] = useState(false);
-  const [confirmIncomeTxDeleteVisible, setConfirmIncomeTxDeleteVisible] = useState(false);
   const [confirmFormDeleteVisible, setConfirmFormDeleteVisible] = useState(false);
   const [recurringEditorOpen, setRecurringEditorOpen] = useState(false);
   const [recurringForm, setRecurringForm] = useState<PaymentForm | null>(null);
@@ -172,12 +166,19 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
   };
 
   useEffect(() => {
-    setDeleting(false);
     setActiveOverride(null);
     setInlinePayment(null);
     setInlineAccounts([]);
     setInlineCategories([]);
   }, [detail?.sourceId]);
+
+  const paymentDetailOpen = Boolean(detail);
+  useEffect(() => {
+    uiEvents.setAgendaPaymentDetailOpen(paymentDetailOpen);
+    return () => {
+      uiEvents.setAgendaPaymentDetailOpen(false);
+    };
+  }, [paymentDetailOpen]);
 
   useEffect(() => {
     if (!detail) {
@@ -706,36 +707,6 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
     }
   };
 
-  const confirmDeleteRecurring = () => {
-    if (!recurringEditId || deleting) return;
-    tapHaptic();
-    setConfirmRecurringDeleteVisible(true);
-  };
-
-  const confirmDeleteIncomeTransaction = () => {
-    if (!agendaIncomeTxId || deleting) return;
-    tapHaptic();
-    setConfirmIncomeTxDeleteVisible(true);
-  };
-
-  const onPressDeleteFooter = () => {
-    if (recurringEditId) {
-      confirmDeleteRecurring();
-      return;
-    }
-    if (agendaIncomeTxId) confirmDeleteIncomeTransaction();
-  };
-
-  const deleteFooterLabel = recurringEditId
-    ? displayKind === 'income'
-      ? 'Supprimer le revenu récurrent'
-      : 'Supprimer le paiement récurrent'
-    : agendaIncomeTxId
-      ? 'Supprimer la transaction'
-      : '';
-
-  const showDeleteFooter = Boolean(recurringEditId || agendaIncomeTxId);
-
   const amountTint = displayKind === 'income' ? colors.success : colors.text;
   const formattedAmount = detail.recurring
     ? formatRecurringPaymentAmount(displayAmount, displayKind)
@@ -796,7 +767,9 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
         visible
         onClose={handleSheetClose}
         sheetStyle={styles.sheet}
-        scrollContentContainerStyle={styles.sheetContent}
+        scrollContentContainerStyle={{
+          paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING,
+        }}
       >
         <View style={styles.topBar}>
           <View style={styles.topBarSpacer} />
@@ -929,25 +902,6 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
               <CategoryBudgetProgress budget={detailCategoryBudget} />
             </SurfaceCard>
           ) : null}
-
-          {showDeleteFooter ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={deleteFooterLabel}
-              disabled={deleting}
-              onPress={onPressDeleteFooter}
-              style={({ pressed }) => [
-                subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
-                pressed && { opacity: 0.72 },
-                deleting && styles.disabled,
-              ]}
-            >
-              <AppIcon family="ionicons" name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
-              <Text style={destructiveTextActionStyle(isLight)}>
-                {deleting ? 'Suppression…' : deleteFooterLabel}
-              </Text>
-            </Pressable>
-          ) : null}
         </View>
     </BottomSheet>
 
@@ -968,46 +922,6 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
         onSave={() => void onSaveRecurring()}
         onDelete={onDeleteRecurringForm}
         feedback={recurringFeedback}
-      />
-
-      <ConfirmDeleteModal
-        visible={confirmRecurringDeleteVisible}
-        title={displayKind === 'income' ? 'Supprimer ce revenu récurrent ?' : 'Supprimer ce paiement récurrent ?'}
-        message={`${displayName} sera retiré de l'agenda. Les transactions déjà créées ne seront pas supprimées.`}
-        onConfirm={async () => {
-          if (!recurringEditId) return;
-          setConfirmRecurringDeleteVisible(false);
-          try {
-            setDeleting(true);
-            await deleteRecurringPayment(recurringEditId);
-            successHaptic();
-            onClose();
-            await onDeleted?.();
-          } catch {
-            setDeleting(false);
-          }
-        }}
-        onCancel={() => setConfirmRecurringDeleteVisible(false)}
-      />
-
-      <ConfirmDeleteModal
-        visible={confirmIncomeTxDeleteVisible}
-        title="Supprimer cette transaction ?"
-        message={`${displayName} sera retiré de l'historique.`}
-        onConfirm={async () => {
-          if (!agendaIncomeTxId) return;
-          setConfirmIncomeTxDeleteVisible(false);
-          try {
-            setDeleting(true);
-            await deleteTransactionById(agendaIncomeTxId);
-            successHaptic();
-            onClose();
-            await onDeleted?.();
-          } catch {
-            setDeleting(false);
-          }
-        }}
-        onCancel={() => setConfirmIncomeTxDeleteVisible(false)}
       />
 
       <ConfirmDeleteModal
@@ -1085,9 +999,6 @@ function createStyles(colors: AppColors) {
       backgroundColor: colors.background,
       borderTopLeftRadius: DETAIL_SHEET_TOP_RADIUS,
       borderTopRightRadius: DETAIL_SHEET_TOP_RADIUS,
-    },
-    sheetContent: {
-      paddingBottom: spacing.xl,
     },
     sheetBody: {
       gap: spacing.xl,

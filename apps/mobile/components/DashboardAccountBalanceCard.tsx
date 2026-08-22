@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -22,13 +22,17 @@ import {
   accountBalanceRowTitle,
   accountBalanceValueColor,
   accountKindTypeLabel,
+  isReleaseSafeLogoUri,
+  resolveSimulatedAccountLogoSources,
   type AccountBalanceDisplayAccount,
 } from '@/lib/accountBalancePresentation';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
 import { useAppTheme } from '@/lib/themeContext';
+import type { SimulatedAccount } from '@/types';
 
 type Props = {
   account: AccountBalanceDisplayAccount;
+  /** @deprecated Prefer account-based resolution via {@link resolveSimulatedAccountLogoSources}. */
   logoUrl?: string | null;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
@@ -52,14 +56,29 @@ export const DashboardAccountBalanceCard = memo(function DashboardAccountBalance
   const balanceColor = accountBalanceValueColor(account, colors.text);
   const typeLabel = accountKindTypeLabel(account.kind);
   const primary = accountBalanceRowTitle(account);
-  const resolvedLogo = logoUrl?.trim() || null;
-  const [logoFailed, setLogoFailed] = useState(false);
+
+  const sources = useMemo(() => {
+    const resolved = resolveSimulatedAccountLogoSources(account as SimulatedAccount);
+    const override = logoUrl?.trim();
+    if (override && isReleaseSafeLogoUri(override) && !resolved.urls.includes(override)) {
+      return { asset: resolved.asset, urls: [override, ...resolved.urls] };
+    }
+    return resolved;
+  }, [account, logoUrl]);
+
+  const [sourceIndex, setSourceIndex] = useState(0);
+  const [assetFailed, setAssetFailed] = useState(false);
+  const [remoteFailed, setRemoteFailed] = useState(false);
 
   useEffect(() => {
-    setLogoFailed(false);
-  }, [resolvedLogo]);
+    setSourceIndex(0);
+    setAssetFailed(false);
+    setRemoteFailed(false);
+  }, [sources.asset, sources.urls.join('|')]);
 
-  const showLogo = Boolean(resolvedLogo) && !logoFailed;
+  const preferAsset = sources.asset != null && !assetFailed;
+  const uri = !preferAsset && !remoteFailed ? sources.urls[sourceIndex] : null;
+  const showLogo = preferAsset || Boolean(uri);
 
   const card = (
     <PlanFinanceContainer style={[styles.card, style]}>
@@ -71,14 +90,29 @@ export const DashboardAccountBalanceCard = memo(function DashboardAccountBalance
           >
             {typeLabel}
           </Text>
-          {showLogo && resolvedLogo ? (
+          {showLogo ? (
             <View style={styles.logoSlot} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-              <RemoteLogoImage
-                uri={resolvedLogo}
-                size={LOGO_SIZE}
-                fullSize
-                onError={() => setLogoFailed(true)}
-              />
+              {preferAsset && sources.asset != null ? (
+                <RemoteLogoImage
+                  asset={sources.asset}
+                  size={LOGO_SIZE}
+                  fullSize
+                  onError={() => setAssetFailed(true)}
+                />
+              ) : uri ? (
+                <RemoteLogoImage
+                  uri={uri}
+                  size={LOGO_SIZE}
+                  fullSize
+                  onError={() => {
+                    if (sourceIndex < sources.urls.length - 1) {
+                      setSourceIndex((i) => i + 1);
+                    } else {
+                      setRemoteFailed(true);
+                    }
+                  }}
+                />
+              ) : null}
             </View>
           ) : null}
         </View>
@@ -156,10 +190,11 @@ const styles = StyleSheet.create({
   logoSlot: {
     width: LOGO_SIZE,
     height: LOGO_SIZE,
+    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
-    overflow: 'visible',
+    overflow: 'hidden',
   },
   identityRow: {
     flexDirection: 'row',

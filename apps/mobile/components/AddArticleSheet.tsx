@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
   type TextStyle,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
+import {
+  DraggableSheetScrollView,
+  DraggableSheetSurface,
+} from '@/components/DraggableSheetSurface';
+import { FormSheetModalBody, formSheetScrollViewStyle, useFormSheetHeight } from '@/lib/sheet/formSheetScroll';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BudgetCategoryPicker } from '@/components/BudgetCategoryPicker';
 import { DetailSubSection } from '@/components/DetailSectionRows';
@@ -92,8 +93,7 @@ export function AddArticleSheet({
 }: AddArticleSheetProps) {
   const { colors, isLight } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
-  const sheetHeight = Math.round(windowHeight * 0.88);
+  const sheetHeight = useFormSheetHeight(0.88);
   const isInline = variant === 'inline';
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -103,7 +103,7 @@ export function AddArticleSheet({
   const [categories, setCategories] = useState<Category[]>([]);
   const nameInputRef = useRef<TextInput>(null);
   const nameInputFocusedRef = useRef(false);
-  const sheetScrollRef = useRef<ScrollView>(null);
+  const sheetScrollRef = useRef<Animated.ScrollView>(null);
   const nameSectionY = useRef(0);
   const nameInputBottomY = useRef(0);
   const formExtentBottomY = useRef(0);
@@ -697,17 +697,15 @@ export function AddArticleSheet({
         {sheetNameField}
       </View>
 
-      <ScrollView
+      <DraggableSheetScrollView
         ref={sheetScrollRef}
         keyboardShouldPersistTaps="always"
-        nestedScrollEnabled
-        showsVerticalScrollIndicator={false}
-        style={styles.articleSheetScroll}
+        style={[styles.articleSheetScroll, formSheetScrollViewStyle()]}
         contentContainerStyle={styles.articleSheetScrollContent}
       >
         {sheetCategoryField}
         {sheetPriceField}
-      </ScrollView>
+      </DraggableSheetScrollView>
 
       {actionRow}
     </>
@@ -720,10 +718,7 @@ export function AddArticleSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <KeyboardAvoidingView
-          style={styles.sheetBackdrop}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
+        <FormSheetModalBody style={styles.sheetBackdrop}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Fermer"
@@ -745,7 +740,7 @@ export function AddArticleSheet({
             <View style={[styles.articleSheetHandle, { backgroundColor: colors.border }]} />
             {sheetFormBody}
           </DraggableSheetSurface>
-        </KeyboardAvoidingView>
+        </FormSheetModalBody>
       </GestureHandlerRootView>
     </Modal>
   );
@@ -769,7 +764,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.lg,
     gap: spacing.md,
-    maxHeight: '88%',
   },
   articleSheetHandle: {
     width: 38,
@@ -865,8 +859,8 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   articleSheetScroll: {
-    flexShrink: 1,
-    flexGrow: 0,
+    flex: 1,
+    minHeight: 0,
   },
   articleSheetScrollContent: {
     gap: spacing.md,

@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppIcon } from '@/components/icons/AppIcon';
 
 import {
-
-  Pressable,
 
   RefreshControl,
 
@@ -13,7 +10,6 @@ import {
 
   Text,
 
-  TextInput,
 
   View,
 
@@ -28,6 +24,8 @@ import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 
 import { DetailSingleLineRow, type DetailSection } from '@/components/DetailSectionRows';
 
+import { FixedScreenHeader } from '@/components/FixedScreenHeader';
+
 import { SurfaceCard } from '@/components/SurfaceCard';
 
 import { GoalProgressChart } from '@/components/GoalProgressChart';
@@ -38,11 +36,7 @@ import { OverflowMenuButton } from '@/components/OverflowMenuButton';
 
 import { PageTransition } from '@/components/PageTransition';
 
-import { SegmentedTabs } from '@/components/SegmentedTabs';
 
-import { TransactionRow } from '@/components/TransactionRow';
-
-import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 
 import {
 
@@ -53,12 +47,6 @@ import {
   detailSectionLabelStyle,
 
   detailSectionsCardStyle,
-
-  jakartaBoldText,
-
-  jakartaExtraBoldText,
-
-  radius,
 
   spacing,
 
@@ -100,6 +88,7 @@ import {
   type SavingsGoalContributionFrequency,
 } from '@/lib/savingsGoalContribution';
 import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
+import { formatFriendlyDateLabel } from '@/lib/formatFriendlyDateLabel';
 
 import type { FormFeedback } from '@/lib/formFeedback';
 
@@ -116,9 +105,7 @@ import {
 } from '@/lib/goalProjection';
 
 import { tapHaptic, successHaptic } from '@/lib/haptics';
-import { openTransactionDetail } from '@/lib/openTransactionDetail';
 
-import { parseItemizedNote } from '@/lib/itemizedNote';
 
 import {
 
@@ -134,23 +121,7 @@ import {
 
 import { useAppTheme } from '@/lib/themeContext';
 
-import { UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 
-import {
-
-  filterTransactionsByType,
-
-  formatTransactionGroupDateLabel,
-
-  groupTransactionsByDay,
-
-  HISTORY_FILTER_OPTIONS,
-
-  type HistoryTypeFilter,
-
-  transactionMatchesSearch,
-
-} from '@/lib/transactionListUtils';
 
 import type { CategoryBudget, DashboardSummary, RecurringPayment, SavingsGoal, SimulatedAccount, Transaction } from '@/types';
 
@@ -163,26 +134,6 @@ function formatMoney(value: number) {
 }
 
 
-
-function getTransactionTitle(tx: Transaction, fallbackTitle: string) {
-
-  if (tx.type === 'transfer') return tx.label;
-
-
-
-  const itemized = parseItemizedNote(tx.note);
-
-  if (itemized.length === 0) return fallbackTitle;
-
-
-
-  const names = itemized.slice(0, 2).map((item) => item.name);
-
-  const suffix = itemized.length > names.length ? ` + ${itemized.length - names.length}` : '';
-
-  return `${names.join(', ')}${suffix}`;
-
-}
 
 
 
@@ -401,6 +352,20 @@ function buildGoalDetailSections(
 
     }
 
+    if (projection.cashflowImpactWeekly != null) {
+
+      projectionRows.push({
+
+        label: 'Impact sur le cashflow',
+
+        value: `${formatSignedDisplayMoney(projection.cashflowImpactWeekly)} / sem`,
+
+        icon: 'water-outline',
+
+      });
+
+    }
+
 
 
     sections.push({ title: 'Projection', rows: projectionRows });
@@ -427,8 +392,6 @@ export default function GoalDetailScreen() {
 
   const scrollRef = useRef<ScrollView>(null);
 
-  const searchInputRef = useRef<TextInput>(null);
-
   const { colors, isLight } = useAppTheme();
 
 
@@ -448,14 +411,6 @@ export default function GoalDetailScreen() {
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
 
   const [refreshing, setRefreshing] = useState(false);
-
-  const [search, setSearch] = useState('');
-
-  const [searchExpanded, setSearchExpanded] = useState(false);
-
-  const [historyTypeFilter, setHistoryTypeFilter] = useState<HistoryTypeFilter>('all');
-
-  const [historyFiltersExpanded, setHistoryFiltersExpanded] = useState(false);
 
   const [editForm, setEditForm] = useState<GoalForm | null>(null);
 
@@ -545,25 +500,11 @@ export default function GoalDetailScreen() {
 
     scrollRef.current?.scrollTo({ y: 0, animated: false });
 
-    setSearch('');
-
-    setSearchExpanded(false);
-
     void load();
 
   }, [goalId, load]);
 
 
-
-  useEffect(() => {
-
-    if (!searchExpanded) return;
-
-    const timer = setTimeout(() => searchInputRef.current?.focus(), 50);
-
-    return () => clearTimeout(timer);
-
-  }, [searchExpanded]);
 
 
 
@@ -587,7 +528,13 @@ export default function GoalDetailScreen() {
 
     if (!goal) return null;
 
-    return projectedCompletionLabel(goal);
+    const label = projectedCompletionLabel(goal);
+
+    if (!label) return null;
+
+    if (label === 'Objectif atteint') return label;
+
+    return formatFriendlyDateLabel(label, 'fr-FR');
 
   }, [goal]);
 
@@ -623,7 +570,7 @@ export default function GoalDetailScreen() {
 
     if (!goal?.dueDate?.trim()) return EMPTY_DETAIL_VALUE;
 
-    return goal.dueDate.trim();
+    return formatFriendlyDateLabel(goal.dueDate.trim(), 'fr-FR');
 
   }, [goal]);
 
@@ -683,31 +630,9 @@ export default function GoalDetailScreen() {
 
 
 
-  const filteredTransactions = useMemo(() => {
-
-    const searched = search.trim()
-
-      ? transactions.filter((tx) => transactionMatchesSearch(tx, search))
-
-      : transactions;
-
-    return filterTransactionsByType(searched, historyTypeFilter);
-
-  }, [historyTypeFilter, search, transactions]);
 
 
 
-  const groupedTransactions = useMemo(
-
-    () => groupTransactionsByDay(filteredTransactions),
-
-    [filteredTransactions],
-
-  );
-
-
-
-  const historyHasActiveFilters = search.trim().length > 0 || historyTypeFilter !== 'all';
 
 
 
@@ -825,94 +750,36 @@ export default function GoalDetailScreen() {
 
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
 
-        <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.lg + spacing.md }]}>
-
-          <Pressable
-
-            accessibilityRole="button"
-
-            accessibilityLabel="Retour"
-
-            hitSlop={12}
-
-            style={({ pressed }) => [
-
-              styles.backButton,
-
-              { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
-
-              pressed && styles.pressed,
-
-            ]}
-
-            onPress={() => router.back()}
-
-          >
-
-            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
-
-          </Pressable>
-
-          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-
-            {displayTitle}
-
-          </Text>
-
-          {goal ? (
-
-            <OverflowMenuButton
-
-              accessibilityLabel="Options de l'objectif"
-
-              items={[
-
-                {
-
-                  key: 'edit',
-
-                  label: 'Modifier',
-
-                  onPress: openEditForm,
-
-                },
-
-                {
-
-                  key: 'delete',
-
-                  label: 'Supprimer',
-
-                  icon: 'trash-outline',
-
-                  destructive: true,
-
-                  onPress: confirmDelete,
-
-                },
-
-              ]}
-
-            />
-
-          ) : (
-
-            <View style={styles.topBarSpacer} />
-
-          )}
-
-        </View>
-
-
+        <FixedScreenHeader
+          title={displayTitle}
+          onBack={() => router.back()}
+          trailing={
+            goal ? (
+              <OverflowMenuButton
+                accessibilityLabel="Options de l'objectif"
+                items={[
+                  {
+                    key: 'edit',
+                    label: 'Modifier',
+                    onPress: openEditForm,
+                  },
+                  {
+                    key: 'delete',
+                    label: 'Supprimer',
+                    icon: 'trash-outline',
+                    destructive: true,
+                    onPress: confirmDelete,
+                  },
+                ]}
+              />
+            ) : undefined
+          }
+        />
 
         <ScrollView
-
           ref={scrollRef}
-
           showsVerticalScrollIndicator={false}
-
           contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom + spacing.xl, 56) }]}
-
           refreshControl={
 
             <RefreshControl
@@ -943,14 +810,7 @@ export default function GoalDetailScreen() {
 
               <View style={styles.heroSection}>
 
-                <SavingsGoalDetailGamification
-                  goal={goal}
-                  goals={goals}
-                  transactions={transactions}
-                  accounts={accounts}
-                  weeklyContributionLabel={weeklyContributionLabel}
-                  plannedDates={plannedDates}
-                />
+                <SavingsGoalDetailGamification goal={goal} />
 
                 <View style={styles.chartSection}>
                   <Text style={[planDetailFonts.sectionCaps, { color: colors.textMuted }]}>
@@ -1027,280 +887,6 @@ export default function GoalDetailScreen() {
                   </SurfaceCard>
 
                 ))}
-
-              </View>
-
-
-
-              <FlowDivider />
-
-
-
-              <View style={styles.transactionList}>
-
-                {searchExpanded ? (
-
-                  <View style={[styles.searchRow, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
-
-                    <AppIcon family="ionicons" name="search-outline" size={18} color={colors.textMuted} />
-
-                    <TextInput
-
-                      ref={searchInputRef}
-
-                      style={[styles.searchInput, { color: colors.text }]}
-
-                      placeholder="Rechercher"
-
-                      placeholderTextColor={colors.textMuted}
-
-                      value={search}
-
-                      onChangeText={setSearch}
-
-                      returnKeyType="search"
-
-                    />
-
-                    <Pressable
-
-                      accessibilityRole="button"
-
-                      accessibilityLabel={search.trim().length > 0 ? 'Effacer la recherche' : 'Fermer la recherche'}
-
-                      hitSlop={8}
-
-                      onPress={collapseSearch}
-
-                      style={styles.clearSearchBtn}
-
-                    >
-
-                      <AppIcon family="ionicons" name="close-circle" size={18} color={colors.textMuted} />
-
-                    </Pressable>
-
-                    <Pressable
-
-                      accessibilityRole="button"
-
-                      accessibilityLabel="Filtres"
-
-                      accessibilityState={{ expanded: historyFiltersExpanded }}
-
-                      hitSlop={8}
-
-                      onPress={() => {
-
-                        tapHaptic();
-
-                        setHistoryFiltersExpanded((expanded) => !expanded);
-
-                      }}
-
-                      style={styles.filterIconBtn}
-
-                    >
-
-                      <AppIcon family="ionicons" 
-
-                        name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
-
-                        size={20}
-
-                        color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
-
-                      />
-
-                    </Pressable>
-
-                  </View>
-
-                ) : (
-
-                  <View style={styles.searchToolbarRow}>
-
-                    <Pressable
-
-                      accessibilityRole="button"
-
-                      accessibilityLabel="Rechercher"
-
-                      hitSlop={8}
-
-                      onPress={expandSearch}
-
-                      style={({ pressed }) => [
-
-                        styles.searchIconBtn,
-
-                        { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
-
-                        pressed && styles.pressed,
-
-                      ]}
-
-                    >
-
-                      <AppIcon family="ionicons" 
-
-                        name="search-outline"
-
-                        size={20}
-
-                        color={search.trim().length > 0 ? colors.primary : colors.textMuted}
-
-                      />
-
-                    </Pressable>
-
-                    <Pressable
-
-                      accessibilityRole="button"
-
-                      accessibilityLabel="Filtres"
-
-                      accessibilityState={{ expanded: historyFiltersExpanded }}
-
-                      hitSlop={8}
-
-                      onPress={() => {
-
-                        tapHaptic();
-
-                        setHistoryFiltersExpanded((expanded) => !expanded);
-
-                      }}
-
-                      style={({ pressed }) => [
-
-                        styles.searchIconBtn,
-
-                        { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
-
-                        pressed && styles.pressed,
-
-                      ]}
-
-                    >
-
-                      <AppIcon family="ionicons" 
-
-                        name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
-
-                        size={20}
-
-                        color={historyTypeFilter !== 'all' ? colors.primary : colors.textMuted}
-
-                      />
-
-                    </Pressable>
-
-                  </View>
-
-                )}
-
-                {historyFiltersExpanded ? (
-
-                  <View style={styles.historyFilterWrap}>
-
-                    <SegmentedTabs
-
-                      tabs={HISTORY_FILTER_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
-
-                      active={historyTypeFilter}
-
-                      onChange={(id) => {
-
-                        tapHaptic();
-
-                        setHistoryTypeFilter(id);
-
-                      }}
-
-                      showDivider={false}
-
-                      trackBgColor="transparent"
-
-                      activeBgColor="rgba(255,255,255,0.07)"
-
-                      activeLabelColor="rgba(255,255,255,0.85)"
-
-                      inactiveLabelColor="rgba(255,255,255,0.28)"
-
-                    />
-
-                  </View>
-
-                ) : null}
-
-
-
-                {groupedTransactions.length > 0 ? (
-
-                  groupedTransactions.map(([date, txs]) => (
-
-                    <View key={date} style={styles.transactionGroup}>
-
-                      <View style={styles.groupHeaderRow}>
-
-                        <Text style={[styles.transactionGroupLabel, { color: colors.textMuted }]}>
-
-                          {formatTransactionGroupDateLabel(date)}
-
-                        </Text>
-
-                      </View>
-
-                      <View style={styles.groupTransactions}>
-
-                        {txs.map((tx) => (
-
-                          <TransactionRow
-
-                            key={tx.id}
-
-                            transaction={{
-
-                              ...tx,
-
-                              label: getTransactionTitle(tx, tx.categoryName?.trim() || tx.label || goal.name),
-
-                            }}
-
-                            accounts={accounts}
-
-                            onPress={() => {
-
-                              tapHaptic();
-
-                              openTransactionDetail(tx.id);
-
-                            }}
-
-                          />
-
-                        ))}
-
-                      </View>
-
-                    </View>
-
-                  ))
-
-                ) : (
-
-                  <Text style={[styles.emptyInline, { color: colors.textMuted }]}>
-
-                    {historyHasActiveFilters
-
-                      ? 'Aucun résultat. Essaie un autre filtre ou une autre recherche.'
-
-                      : 'Aucun dépôt ni transfert lié à cet objectif.'}
-
-                  </Text>
-
-                )}
 
               </View>
 
@@ -1382,54 +968,6 @@ const styles = StyleSheet.create({
 
   screen: { flex: 1, backgroundColor: 'transparent' },
 
-  topBar: {
-
-    flexDirection: 'row',
-
-    alignItems: 'center',
-
-    justifyContent: 'space-between',
-
-    paddingHorizontal: spacing.lg,
-
-    paddingBottom: spacing.lg,
-
-  },
-
-  backButton: {
-
-    width: 38,
-
-    height: 38,
-
-    borderRadius: 19,
-
-    borderWidth: StyleSheet.hairlineWidth,
-
-    alignItems: 'center',
-
-    justifyContent: 'center',
-
-  },
-
-  title: {
-
-    flex: 1,
-
-    textAlign: 'center',
-
-    marginHorizontal: spacing.sm,
-
-    ...jakartaExtraBoldText,
-
-    fontSize: typography.body,
-
-    letterSpacing: -0.2,
-
-  },
-
-  topBarSpacer: { width: 38 },
-
   content: {
 
     paddingHorizontal: spacing.lg,
@@ -1462,136 +1000,6 @@ const styles = StyleSheet.create({
 
   },
 
-  pressed: { opacity: 0.78 },
-
-  transactionList: {
-
-    gap: spacing.lg,
-
-    paddingTop: spacing.sm,
-
-  },
-
-  searchToolbarRow: {
-
-    flexDirection: 'row',
-
-    alignItems: 'center',
-
-    justifyContent: 'flex-end',
-
-    gap: spacing.sm,
-
-    minHeight: 44,
-
-  },
-
-  searchIconBtn: {
-
-    width: 44,
-
-    height: 44,
-
-    borderRadius: radius.card,
-
-    borderWidth: 1,
-
-    alignItems: 'center',
-
-    justifyContent: 'center',
-
-  },
-
-  searchRow: {
-
-    flexDirection: 'row',
-
-    alignItems: 'center',
-
-    gap: spacing.sm,
-
-    paddingHorizontal: spacing.md,
-
-    paddingVertical: spacing.md,
-
-    minHeight: 44,
-
-    borderRadius: radius.card,
-
-    borderWidth: 1,
-
-  },
-
-  searchInput: {
-
-    flex: 1,
-
-    fontSize: typography.body,
-
-    padding: 0,
-
-  },
-
-  clearSearchBtn: {
-
-    padding: 4,
-
-  },
-
-  filterIconBtn: {
-
-    padding: 4,
-
-    marginLeft: spacing.xs,
-
-  },
-
-  historyFilterWrap: {
-
-    marginBottom: spacing.md,
-
-  },
-
-  transactionGroup: {
-
-    marginBottom: spacing.xl,
-
-  },
-
-  groupHeaderRow: {
-
-    flexDirection: 'row',
-
-    alignItems: 'center',
-
-    justifyContent: 'space-between',
-
-    gap: spacing.sm,
-
-    minHeight: UNIFORM_SECTION_HEADER_MIN_HEIGHT,
-
-    marginBottom: spacing.lg,
-
-  },
-
-  transactionGroupLabel: {
-
-    fontSize: typography.caption,
-
-    textTransform: 'capitalize',
-
-    flex: 1,
-
-    minWidth: 0,
-
-  },
-
-  groupTransactions: {
-
-    gap: spacing.lg,
-
-  },
-
   empty: {
 
     fontSize: typography.caption,
@@ -1601,16 +1009,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
 
     paddingVertical: spacing.lg,
-
-  },
-
-  emptyInline: {
-
-    fontSize: typography.caption,
-
-    lineHeight: 20,
-
-    paddingVertical: spacing.sm,
 
   },
 

@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
-import { PLAN_FINANCE_CONTAINER } from '@/constants/planFinanceKit';
-import { interMediumText, interSemiboldText, spacing, typography } from '@/constants/theme';
+import { ProtoGlassCard } from '@/components/proto/ProtoGlassCard';
+import { ProtoSectionHeader } from '@/components/proto/ProtoSectionHeader';
+import { spacing, typographyKit } from '@/constants/theme';
 import {
   generateAlertProblemInsight,
   type AlertInsightContext,
 } from '@/lib/ai/alertInsightService';
+import { homeAlertPreviewSurface } from '@/lib/alertPresentation';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
@@ -15,8 +16,9 @@ type Props = {
   fallbackBody: string;
 };
 
+/** Short tip card — secondary to the hero graphic and action list. */
 export function AlertProblemInsightCard({ context, fallbackBody }: Props) {
-  const { colors } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
   const [insight, setInsight] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -48,51 +50,50 @@ export function AlertProblemInsightCard({ context, fallbackBody }: Props) {
 
   const body = insight ?? fallbackBody;
   const bodyColor = loading && !insight ? colors.textMuted : colors.text;
+  const surface = homeAlertPreviewSurface(colors, isLight);
 
   return (
-    <PlanFinanceContainer style={styles.card}>
-      <View style={styles.badgeRow}>
-        <AppIcon family="material" name="auto-awesome" size={13} color={colors.accentGreen} />
-        <Text style={[styles.badgeText, { color: colors.accentGreen }, interSemiboldText]}>
-          INSIGHT
+    <View style={styles.section}>
+      <ProtoSectionHeader
+        title="CONSEIL"
+        trailing={
+          <View style={styles.headerTrailing}>
+            <AppIcon family="material" name="auto-awesome" size={14} color={colors.accentGreen} />
+            {loading ? (
+              <ActivityIndicator
+                size="small"
+                color={colors.textMuted}
+                accessibilityLabel="Analyse en cours"
+              />
+            ) : null}
+          </View>
+        }
+      />
+      <ProtoGlassCard style={[styles.card, surface]} padding={12}>
+        <Text style={[styles.body, { color: bodyColor }]} numberOfLines={4}>
+          {body}
         </Text>
-        {loading ? (
-          <ActivityIndicator
-            size="small"
-            color={colors.textMuted}
-            style={styles.loader}
-            accessibilityLabel="Analyse en cours"
-          />
-        ) : null}
-      </View>
-
-      <Text style={[styles.body, { color: bodyColor }, interMediumText]}>{body}</Text>
-    </PlanFinanceContainer>
+      </ProtoGlassCard>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
+  section: {
     alignSelf: 'stretch',
-    padding: PLAN_FINANCE_CONTAINER.padding.card,
-    gap: spacing.sm,
   },
-  badgeRow: {
+  headerTrailing: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
-  badgeText: {
-    fontSize: 11,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    flex: 1,
-  },
-  loader: {
-    marginLeft: spacing.xs,
+  card: {
+    alignSelf: 'stretch',
+    borderRadius: 16,
   },
   body: {
-    fontSize: typography.micro,
-    lineHeight: typography.micro + 4,
+    ...typographyKit.bodyMedium,
+    fontSize: 13,
+    lineHeight: 19,
   },
 });

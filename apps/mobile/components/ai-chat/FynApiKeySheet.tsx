@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -11,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { FormSheetModalBody } from '@/lib/sheet/formSheetScroll';
 import {
   jakartaBoldText,
   jakartaMediumText,
@@ -115,10 +115,7 @@ export function FynApiKeySheet({
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={handleClose}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <FormSheetModalBody style={styles.flex}>
         <View style={[styles.backdrop, { backgroundColor: isLight ? 'rgba(25,22,18,0.28)' : 'rgba(0,0,0,0.58)' }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} accessibilityLabel="Fermer" />
           <View
@@ -240,7 +237,7 @@ export function FynApiKeySheet({
             </View>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </FormSheetModalBody>
     </Modal>
   );
 }

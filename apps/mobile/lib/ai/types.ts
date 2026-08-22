@@ -277,6 +277,18 @@ export interface AIAlert {
 
   createdAt: string;
 
+  /** Stable identity (type + entity + period) — upsert/dedupe key, never derived from copy. */
+
+  dedupeKey?: string;
+
+  /** Last time this identity was surfaced as unread — drives the anti-spam cooldown. */
+
+  raisedAt?: string;
+
+  /** Amount at the last raise, to detect a materially worse situation. */
+
+  raisedMontant?: number | null;
+
   /** True when dataMode is manual and the alert is based on user-entered data. */
 
   estimee?: boolean;

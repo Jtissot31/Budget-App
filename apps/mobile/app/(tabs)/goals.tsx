@@ -3,7 +3,7 @@
  * List-row tap → PaymentDetailSheet (opaque detail).
  * FAB → RecurringPaymentFormModal via uiEvents.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,6 +33,8 @@ export default function AgendaTab() {
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
+  /** Accueil (and other tabs) may request add before Agenda is focused. */
+  const pendingAddVariantRef = useRef<RecurringPaymentAddVariant | null>(null);
 
   const [paymentDetail, setPaymentDetail] = useState<PaymentDetailPayload | null>(null);
   const [recurringForm, setRecurringForm] = useState<PaymentForm | null>(null);
@@ -69,11 +71,22 @@ export default function AgendaTab() {
   useEffect(
     () =>
       uiEvents.subscribeNewRecurringPayment((variant) => {
-        if (!isFocused) return;
+        if (!isFocused) {
+          pendingAddVariantRef.current = variant;
+          return;
+        }
         void openNewRecurringPayment(variant);
       }),
     [isFocused, openNewRecurringPayment],
   );
+
+  useEffect(() => {
+    if (!isFocused) return;
+    const pending = pendingAddVariantRef.current;
+    if (!pending) return;
+    pendingAddVariantRef.current = null;
+    void openNewRecurringPayment(pending);
+  }, [isFocused, openNewRecurringPayment]);
 
   const saveRecurringPayment = async () => {
     if (!recurringForm) return;
@@ -92,7 +105,10 @@ export default function AgendaTab() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ProtoAgendaScreen onOpenPaymentDetail={setPaymentDetail} />
+      <ProtoAgendaScreen
+        onOpenPaymentDetail={setPaymentDetail}
+        onAddRecurringPayment={openNewRecurringPayment}
+      />
 
       <PaymentDetailSheet
         detail={paymentDetail}

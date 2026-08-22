@@ -5,7 +5,6 @@ import {
   Dimensions,
   InteractionManager,
   Keyboard,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -20,6 +19,17 @@ import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-ha
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  FORM_SHEET_CONTENT_PADDING_TOP,
+  FORM_SHEET_TOP_MARGIN,
+  FormSheetChromeHeader,
+  FormSheetModalBody,
+  formSheetDragHeight,
+  formSheetPanelStyle,
+  formSheetScrollPaddingBottom,
+  useFormSheetKeyboardInset,
+  type FormSheetHostValue,
+} from '@/lib/sheet/formSheetScroll';
 import { useDraggableSheetGesture } from '@/lib/sheet/useDraggableSheetGesture';
 import {
   isInlineArticleScrollTargetReady,
@@ -200,6 +210,7 @@ type TransferEndpoint = {
   isSimulated: boolean;
   icon: string;
   logoUrl?: string | null;
+  logoAsset?: number | null;
   color: string;
 };
 function amountFontSize(raw: string) {
@@ -276,6 +287,7 @@ export default function AddTransactionScreen() {
     type?: string;
     label?: string;
     accountId?: string;
+    categoryId?: string;
     scanItems?: string;
     merchant?: string;
     amount?: string;
@@ -287,6 +299,7 @@ export default function AddTransactionScreen() {
   const routeType = typeof params.type === 'string' ? params.type : '';
   const routeLabel = typeof params.label === 'string' ? params.label : '';
   const routeAccountId = typeof params.accountId === 'string' ? params.accountId : '';
+  const routeCategoryId = typeof params.categoryId === 'string' ? params.categoryId : '';
   const routeScanItems = typeof params.scanItems === 'string' ? params.scanItems : '';
   const routeScanAmount = typeof params.amount === 'string' ? params.amount : '';
   const [categories, setCategories] = useState<Category[]>([]);
@@ -310,6 +323,8 @@ export default function AddTransactionScreen() {
   const [destinationAccountId, setDestinationAccountId] = useState<string>(MANUAL_ENTRY_ACCOUNTS[1].id);
   /** Once the user (or route/edit/income flow) picks an account, stop auto-syncing to most-used. */
   const accountManuallySelectedRef = useRef(Boolean(routeAccountId));
+  /** Route category (voice dictation) waits for the picker list, then applies once. */
+  const routeCategoryAppliedRef = useRef(false);
   const [transferMode, setTransferMode] = useState<TransferMode>('accounts');
   const [transferReason, setTransferReason] = useState('');
   const [transferReasonSuggestions, setTransferReasonSuggestions] = useState<string[]>([]);
@@ -323,6 +338,11 @@ export default function AddTransactionScreen() {
   const [fallbackIcon, setFallbackIcon] = useState<string>(EXPENSE_MDI_ICON);
   const [articles, setArticles] = useState<ItemizedNote[]>([]);
   const [inlineArticleExpanded, setInlineArticleExpanded] = useState(false);
+  const formSheetKeyboardInset = useFormSheetKeyboardInset();
+  const [hostHeight, setHostHeight] = useState(() => Dimensions.get('window').height);
+  const onHostMetrics = useCallback((metrics: FormSheetHostValue) => {
+    setHostHeight((prev) => (prev === metrics.hostHeight ? prev : metrics.hostHeight));
+  }, []);
   const [keyboardInset, setKeyboardInset] = useState(0);
   const [scanPrefillApplied, setScanPrefillApplied] = useState(false);
   const [iconPickedManually, setIconPickedManually] = useState(false);
@@ -450,23 +470,27 @@ export default function AddTransactionScreen() {
           Boolean(parseExpediteurFromNote(editingTransaction.note));
         if (editingTransaction.type === type || (isPersonTransferEdit && type === 'transfer')) return;
       }
+      // Voice/route category is applied in a separate effect — don't overwrite it on reload.
+      if (!editId && (routeCategoryId || routeCategoryAppliedRef.current)) return;
+
+      // Expense / person transfer: leave category empty until the user picks one.
+      // Do not pre-select the first budget category (e.g. « Appartement / maison »).
       if (type === 'transfer' && (transferMode === 'person' || transferMode === 'person_from')) {
-        const budgetOnly = cats.filter(
-          (c) => c.name !== 'Revenus' && c.id !== TRANSFER_CATEGORY.id && budgetIds.has(c.id),
-        );
-        const defaultCat = budgetOnly[0] ?? null;
         setCategoryManuallySelected(false);
-        setCategoryId(defaultCat?.id ?? null);
+        setCategoryId(null);
+        return;
+      }
+      if (type === 'expense') {
+        setCategoryManuallySelected(false);
+        setCategoryId(null);
         return;
       }
       const defaultCat =
         type === 'transfer'
           ? cats.find((c) => c.id === TRANSFER_CATEGORY.id) ?? TRANSFER_CATEGORY
-          : type === 'income'
-            ? cats.find((c) => c.id === INCOME_CATEGORY.id || c.name === 'Revenus') ?? INCOME_CATEGORY
-            : cats.find((c) => c.name !== 'Revenus' && budgetIds.has(c.id)) ?? null;
+          : cats.find((c) => c.id === INCOME_CATEGORY.id || c.name === 'Revenus') ?? INCOME_CATEGORY;
       setCategoryManuallySelected(false);
-      setCategoryId(defaultCat?.id ?? null);
+      setCategoryId(defaultCat.id);
     };
 
     void loadPickerCategories();
@@ -478,7 +502,7 @@ export default function AddTransactionScreen() {
       cancelled = true;
       unsubscribe();
     };
-  }, [editId, editingTransaction, prefilledEditId, transferMode, type]);
+  }, [editId, editingTransaction, prefilledEditId, routeCategoryId, transferMode, type]);
 
   useEffect(() => {
     if (editId) return;
@@ -492,6 +516,15 @@ export default function AddTransactionScreen() {
     }
     if (routeScanAmount && !amount) setAmount(formatMoneyInput(parseMoney(routeScanAmount)));
   }, [amount, editId, routeAccountId, routeLabel, routeScanAmount, routeType]);
+
+  // Applied after the picker list resolves, so it wins over the type-based default.
+  useEffect(() => {
+    if (editId || !routeCategoryId || routeCategoryAppliedRef.current) return;
+    if (!categories.some((category) => category.id === routeCategoryId)) return;
+    routeCategoryAppliedRef.current = true;
+    setCategoryManuallySelected(true);
+    setCategoryId(routeCategoryId);
+  }, [categories, editId, routeCategoryId]);
 
   useEffect(() => {
     if (scanPrefillApplied || !routeScanItems) return;
@@ -624,6 +657,7 @@ export default function AddTransactionScreen() {
               fieldLabel: row.fieldLabel,
               icon: row.icon,
               logoUrl: row.logoUrl,
+              logoAsset: row.logoAsset,
             };
           })
         : (() => {
@@ -656,6 +690,7 @@ export default function AddTransactionScreen() {
               isSimulated: true,
               icon: row.icon,
               logoUrl: row.logoUrl,
+              logoAsset: row.logoAsset,
               color: colors.textSecondary,
             };
           })
@@ -710,6 +745,7 @@ export default function AddTransactionScreen() {
               : undefined,
           icon: endpoint.icon,
           logoUrl: endpoint.logoUrl,
+          logoAsset: endpoint.logoAsset,
         };
       }),
     [transferEndpoints],
@@ -1041,7 +1077,7 @@ export default function AddTransactionScreen() {
   const INLINE_ARTICLE_NAME_VIEWPORT_RATIO = 0.22;
   const INLINE_ARTICLE_NAME_MIN_TOP = spacing.lg + INLINE_ARTICLE_FORM_TOP_OFFSET;
   const INLINE_ARTICLE_SCROLL_OFFSET = 24;
-  const SHEET_TOP_MARGIN = 88;
+  const SHEET_TOP_MARGIN = FORM_SHEET_TOP_MARGIN;
   const inlineArticleForcedScrollExtent = Math.round(windowHeight * 0.12);
 
   const estimateInlineArticleKeyboardInset = useCallback(() => {
@@ -1277,11 +1313,20 @@ export default function AddTransactionScreen() {
     return [
       styles.sheetContent,
       {
-        paddingBottom: activePaddingBottom,
+        paddingBottom: Math.max(
+          activePaddingBottom,
+          // Stable panel height: pad for IME instead of shrinking chrome.
+          formSheetScrollPaddingBottom(
+            insets.bottom,
+            Math.max(formSheetKeyboardInset, keyboardInset),
+            windowHeight,
+          ),
+        ),
         ...(minHeight != null ? { minHeight } : {}),
       },
     ];
   }, [
+    formSheetKeyboardInset,
     inlineArticleExpanded,
     inlineArticleForcedScrollExtent,
     insets.bottom,
@@ -1443,6 +1488,20 @@ export default function AddTransactionScreen() {
     pendingIncomeContactScrollRef.current = false;
     scrollToIncomeContactSelectedSection();
   }, [incomeContactPickStatus, scrollToIncomeContactSelectedSection, type]);
+
+  const handleExpenseAutoFillScan = useCallback(() => {
+    tapHaptic();
+    const trimmedLabel = label.trim();
+    const amountValue = parseMoney(amount);
+    router.push({
+      pathname: '/scan',
+      params: {
+        ...(editId ? { editId } : {}),
+        ...(trimmedLabel ? { merchant: trimmedLabel, label: trimmedLabel } : {}),
+        ...(amountValue > 0 ? { amount: String(amountValue) } : {}),
+      },
+    });
+  }, [amount, editId, label, router]);
 
   const selectTransferReasonSuggestion = (reason: string) => {
     tapHaptic();
@@ -1899,7 +1958,13 @@ export default function AddTransactionScreen() {
     }
   };
 
-  const sheetDragHeight = Math.min(windowHeight * 0.92, Math.max(windowHeight - SHEET_TOP_MARGIN, 1));
+  // Android: clamp with measured host + capped keyboard inset — never also use KAV padding.
+  const sheetDragHeight = formSheetDragHeight(
+    windowHeight,
+    Math.max(formSheetKeyboardInset, keyboardInset),
+    hostHeight,
+    Dimensions.get('screen').height,
+  );
   const closeSheet = useCallback(() => {
     router.back();
   }, [router]);
@@ -1914,6 +1979,8 @@ export default function AddTransactionScreen() {
   } = useDraggableSheetGesture({
     onClose: closeSheet,
     sheetHeight: sheetDragHeight,
+    // Form ScrollView owns vertical pans — grabber-only drag (no mid detent on keyboard).
+    handleOnly: true,
     scrollable: true,
   });
 
@@ -1927,18 +1994,34 @@ export default function AddTransactionScreen() {
       <Animated.View style={[styles.dragBackdrop, themed.modalBackdrop, backdropAnimatedStyle]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={requestClose} accessibilityLabel="Fermer" />
       </Animated.View>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.modalKeyboard}
-      >
+      <FormSheetModalBody style={styles.modalKeyboard} onHostMetrics={onHostMetrics}>
         <GestureDetector gesture={panGesture}>
-          <Animated.View style={[styles.sheet, themed.sheet, sheetAnimatedStyle]}>
+          <Animated.View
+            style={[
+              styles.sheet,
+              themed.sheet,
+              formSheetPanelStyle(sheetDragHeight),
+              sheetAnimatedStyle,
+            ]}
+          >
+            <View style={styles.sheetChrome}>
+              <FormSheetChromeHeader
+                title={sheetTitle}
+                onClose={requestClose}
+                titleColor={colors.text}
+                closeIconColor={colors.textMuted}
+                handleColor={colors.borderStrong}
+                closeButtonStyle={themed.closeButton}
+                headerStyle={styles.sheetHeaderPad}
+              />
+            </View>
             <GestureDetector gesture={scrollNativeGesture}>
               <Animated.ScrollView
                 ref={sheetScrollRef}
                 style={styles.sheetScroll}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
+                nestedScrollEnabled
                 onScrollBeginDrag={() => Keyboard.dismiss()}
                 onScroll={scrollHandler}
                 scrollEventThrottle={16}
@@ -1950,18 +2033,6 @@ export default function AddTransactionScreen() {
                 onContentSizeChange={handleSheetContentSizeChange}
               >
               <View ref={scrollContentRef} collapsable={false} style={styles.sheetContentInner}>
-              <View style={styles.handleHitArea}>
-                <View style={[styles.handle, themed.handle]} />
-              </View>
-              <View style={styles.sheetHeader}>
-                <Text style={[styles.sheetTitle, themed.text]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
-                  {sheetTitle}
-                </Text>
-                <Pressable onPress={requestClose} hitSlop={12} style={[styles.sheetClose, themed.closeButton]}>
-                  <AppIcon family="ionicons" name="close" size={19} color={colors.textMuted} />
-                </Pressable>
-              </View>
-
               {!routeType && (
                 <View style={styles.section}>
                   <DashboardSectionLabel style={sectionLabelStyle}>Type</DashboardSectionLabel>
@@ -2019,6 +2090,29 @@ export default function AddTransactionScreen() {
                   style={styles.section}
                   onLayout={(e) => { nameSectionYRef.current = e.nativeEvent.layout.y; }}
                 >
+                  {type === 'expense' ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Remplissage auto avec scan de facture"
+                      onPress={handleExpenseAutoFillScan}
+                      style={({ pressed }) => [
+                        styles.inlineScanControl,
+                        {
+                          backgroundColor: colors.surfaceElevated,
+                          borderColor: colors.border,
+                        },
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <View style={styles.inlineScanLabel}>
+                        <AppIcon family="ionicons" name="scan-outline" size={14} color={colors.textMuted} />
+                        <Text style={[styles.inlineScanText, { color: colors.textSecondary }]} numberOfLines={1}>
+                          Remplissage auto
+                        </Text>
+                      </View>
+                      <AppIcon family="ionicons" name="receipt-outline" size={13} color={colors.textMuted} />
+                    </Pressable>
+                  ) : null}
                   <DashboardSectionLabel style={sectionLabelStyle}>
                     {type === 'income'
                       ? 'Employeur / Client'
@@ -2615,7 +2709,7 @@ export default function AddTransactionScreen() {
             </GestureDetector>
           </Animated.View>
         </GestureDetector>
-      </KeyboardAvoidingView>
+      </FormSheetModalBody>
     </GestureHandlerRootView>
   );
 }
@@ -2635,56 +2729,32 @@ const styles = StyleSheet.create({
   modalKeyboard: { flex: 1, justifyContent: 'flex-end' },
   pressed: { opacity: 0.72 },
   sheet: {
-    marginTop: 88,
-    maxHeight: '92%',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
+  sheetChrome: {
+    flexShrink: 0,
+    paddingTop: FORM_SHEET_CONTENT_PADDING_TOP,
+  },
+  sheetHeaderPad: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
   sheetScroll: {
-    flexGrow: 0,
+    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    minHeight: 0,
   },
   sheetContent: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
   },
   sheetContentInner: {
     // Major form blocks (merchant, amount, date, payment, category, articles)
     gap: spacing.xl,
-  },
-  handleHitArea: {
-    alignSelf: 'stretch',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 4,
-    paddingBottom: 8,
-    minHeight: 28,
-  },
-  handle: {
-    alignSelf: 'center',
-    width: 44,
-    height: 4,
-    borderRadius: radius.pill,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  sheetTitle: {
-    flex: 1,
-    ...jakartaExtraBoldText,
-    fontSize: typography.title,
-    letterSpacing: -0.4,
-  },
-  sheetClose: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   amountWrap: {
     alignItems: 'center',
@@ -2939,26 +3009,29 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   inlineScanControl: {
-    minHeight: 38,
+    alignSelf: 'flex-end',
+    maxWidth: '100%',
+    minHeight: 32,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
+    justifyContent: 'flex-start',
+    gap: 8,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   inlineScanLabel: {
     minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
   inlineScanText: {
     flexShrink: 1,
-    ...jakartaExtraBoldText,
-    fontSize: typography.meta,
+    ...jakartaMediumText,
+    fontSize: typography.micro,
+    letterSpacing: 0.1,
   },
   logoSection: {
     borderRadius: radius.lg,

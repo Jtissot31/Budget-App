@@ -12,7 +12,6 @@ import {
   ICON_WELL_SIZE,
   jakartaMediumText,
   jakartaSemiboldText,
-  moneyAmountTypography,
   spacing,
   transactionRowAmountTypography,
   typographyKit,
@@ -77,15 +76,16 @@ function getTransactionRowMeta(
   accounts?: readonly SimulatedAccount[],
   savingsGoals?: readonly { id: string; name: string }[],
 ): string | null {
-  const subtitle = resolveTransactionHistorySubtitle(transaction, { accounts, savingsGoals });
-  const resolvedSubtitle =
-    subtitle && !isUnresolvedHistorySubtitle(transaction, subtitle) ? subtitle : null;
-
   if (transaction.type === 'transfer') {
+    const subtitle = resolveTransactionHistorySubtitle(transaction, { accounts, savingsGoals });
+    const resolvedSubtitle =
+      subtitle && !isUnresolvedHistorySubtitle(transaction, subtitle) ? subtitle : null;
     return resolvedSubtitle ?? getTransactionTypeLabel('transfer');
   }
 
-  return resolvedSubtitle;
+  return (
+    transaction.categoryName?.trim() || getTransactionTypeLabel(transaction.type)
+  );
 }
 
 type TransactionRowBaseProps = Props & {
@@ -134,7 +134,7 @@ const TransactionRowBase = memo(function TransactionRowBase({
 
   const pressable = onPress || onPressId;
   const avatarSize = embedded ? EMBEDDED_ICON_WELL_SIZE : ICON_WELL_SIZE;
-  // Amounts: Inter 800 ExtraBold (scoped exception — merchant name/subtitle stay Jakarta).
+  // Amounts: Inter 600 SemiBold (merchant name/subtitle stay Jakarta).
   const amountTextStyle = embedded
     ? styles.embeddedAmount
     : transactionRowAmountTypography();
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.1,
   },
   embeddedAmount: {
-    ...moneyAmountTypography({
+    ...transactionRowAmountTypography({
       fontSize: EMBEDDED_ROW_TITLE_SIZE,
       lineHeight: 20,
       letterSpacing: -0.2,

@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Image } from 'expo-image';
 import { StyleSheet, Text, View } from 'react-native';
 import { COLORS, SPACING, RADIUS, TYPOGRAPHY } from '@/constants/design-tokens';
@@ -8,6 +9,7 @@ import {
   jakartaSemiboldText,
   moneyAmountTypography,
 } from '@/constants/theme';
+import { resolveSimulatedAccountLogoSources } from '@/lib/accountBalancePresentation';
 import { creditUsedFromBalance } from '@/lib/creditLimitUtilization';
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
 import type { AccountKind, SimulatedAccount } from '@/types';
@@ -133,29 +135,67 @@ function resolveCreditAvailable(account: SimulatedAccount) {
 
 type BankAccountCardProps = {
   account: SimulatedAccount;
+  /** @deprecated Logo is resolved from the account; kept for call-site compat. */
   logoUrl?: string | null;
 };
 
-export function BankAccountCard({ account, logoUrl }: BankAccountCardProps) {
+export function BankAccountCard({ account }: BankAccountCardProps) {
   const balanceDisplay = resolveBalanceDisplay(account);
   const creditAvailable =
     account.kind === 'credit' ? resolveCreditAvailable(account) : undefined;
   const badgeLabel = kindBadgeLabel(account.kind, account);
+  const sources = useMemo(() => resolveSimulatedAccountLogoSources(account), [account]);
+  const [sourceIndex, setSourceIndex] = useState(0);
+  const [assetFailed, setAssetFailed] = useState(false);
+  const [remoteFailed, setRemoteFailed] = useState(false);
+
+  useEffect(() => {
+    setSourceIndex(0);
+    setAssetFailed(false);
+    setRemoteFailed(false);
+  }, [sources.asset, sources.urls.join('|')]);
+
+  const preferAsset = sources.asset != null && !assetFailed;
+  const uri = !preferAsset && !remoteFailed ? sources.urls[sourceIndex] : null;
+  const showLogo = preferAsset || Boolean(uri);
 
   return (
     <View style={styles.card}>
       <View style={styles.accentStripe} pointerEvents="none" />
 
       <View style={styles.topRow}>
-        {logoUrl ? (
-          <Image
-            source={{ uri: logoUrl }}
-            style={styles.bankLogo}
-            contentFit="contain"
-            transition={150}
-            cachePolicy="memory-disk"
-            recyclingKey={logoUrl}
-          />
+        {showLogo ? (
+          preferAsset && sources.asset != null ? (
+            <Image
+              source={sources.asset}
+              style={styles.bankLogo}
+              contentFit="contain"
+              contentPosition="center"
+              transition={150}
+              cachePolicy="memory-disk"
+              recyclingKey={`bank-asset-${sources.asset}`}
+              onError={() => setAssetFailed(true)}
+            />
+          ) : uri ? (
+            <Image
+              source={{ uri }}
+              style={styles.bankLogo}
+              contentFit="contain"
+              contentPosition="center"
+              transition={150}
+              cachePolicy="memory-disk"
+              recyclingKey={uri}
+              onError={() => {
+                if (sourceIndex < sources.urls.length - 1) {
+                  setSourceIndex((i) => i + 1);
+                } else {
+                  setRemoteFailed(true);
+                }
+              }}
+            />
+          ) : (
+            <View style={styles.bankLogoPlaceholder} />
+          )
         ) : (
           <View style={styles.bankLogoPlaceholder} />
         )}

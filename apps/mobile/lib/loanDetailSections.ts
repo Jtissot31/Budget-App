@@ -60,6 +60,7 @@ function buildPaymentRows(
       label: 'Montant',
       value: formatDisplayMoneyAbsolute(loan.monthlyPayment),
       icon: 'cash-outline',
+      valueLayout: 'amount',
     });
   }
 
@@ -118,6 +119,7 @@ function buildMortgageSections(
           label: 'Montant emprunté',
           value: loan.principal > 0 ? formatDisplayMoneyAbsolute(loan.principal) : EMPTY_DETAIL_VALUE,
           icon: 'home-outline',
+          valueLayout: 'amount',
         },
         {
           label: 'Mise de fonds',
@@ -126,11 +128,13 @@ function buildMortgageSections(
               ? formatDisplayMoneyAbsolute(loan.downPayment)
               : EMPTY_DETAIL_VALUE,
           icon: 'cash-outline',
+          valueLayout: 'amount',
         },
         {
           label: 'Solde restant',
           value: formatLoanDebtAmount(loan.balanceRemaining),
           icon: 'wallet-outline',
+          valueLayout: 'amount',
         },
       ],
     },
@@ -177,11 +181,13 @@ function buildPersonalLoanSections(
       label: 'Montant emprunté',
       value: loan.principal > 0 ? formatDisplayMoneyAbsolute(loan.principal) : EMPTY_DETAIL_VALUE,
       icon: 'cash-outline',
+      valueLayout: 'amount',
     },
     {
       label: 'Solde restant',
       value: formatLoanDebtAmount(loan.balanceRemaining),
       icon: 'wallet-outline',
+      valueLayout: 'amount',
     },
   ];
 
@@ -243,11 +249,13 @@ function buildLineOfCreditSections(
       label: 'Limite',
       value: loan.principal > 0 ? formatDisplayMoneyAbsolute(loan.principal) : EMPTY_DETAIL_VALUE,
       icon: 'card-outline',
+      valueLayout: 'amount',
     },
     {
       label: 'Solde utilisé',
       value: formatLoanDebtAmount(loan.balanceRemaining),
       icon: 'wallet-outline',
+      valueLayout: 'amount',
     },
   ];
 
@@ -256,6 +264,7 @@ function buildLineOfCreditSections(
       label: 'Disponible',
       value: formatDisplayMoneyAbsolute(available),
       icon: 'checkmark-circle-outline',
+      valueLayout: 'amount',
     });
   }
 
@@ -294,6 +303,7 @@ function buildFriendDebtSections(
       label: 'Solde restant',
       value: formatLoanDebtAmount(loan.balanceRemaining),
       icon: 'wallet-outline',
+      valueLayout: 'amount',
     },
   ];
 
@@ -318,6 +328,7 @@ function buildFriendDebtSections(
       label: 'Montant initial',
       value: formatDisplayMoneyAbsolute(loan.principal),
       icon: 'cash-outline',
+      valueLayout: 'amount',
     });
   }
 
@@ -399,6 +410,7 @@ function buildChildSupportSections(
       label: 'Montant de base (mensuel)',
       value: formatDisplayMoneyAbsolute(fields.baseMonthly),
       icon: 'cash-outline',
+      valueLayout: 'amount',
     });
   }
 
@@ -407,6 +419,7 @@ function buildChildSupportSections(
       label: 'Frais particuliers (mensuel)',
       value: formatDisplayMoneyAbsolute(fields.specialFeesMonthly),
       icon: 'add-circle-outline',
+      valueLayout: 'amount',
     });
   }
 
@@ -416,6 +429,7 @@ function buildChildSupportSections(
       label: 'Total mensuel',
       value: totalMonthly,
       icon: 'calculator-outline',
+      valueLayout: 'amount',
     });
   }
 

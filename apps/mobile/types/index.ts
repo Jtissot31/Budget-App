@@ -69,6 +69,8 @@ export interface SimulatedAccount {
   dueDay?: number;
   interestRate?: number;
   logoUrl?: string;
+  /** Manual icon override (MDI / Ionicons). Null/undefined = auto logo from name/institution. */
+  icon?: string | null;
   linkedSavingsGoalId?: string | null;
   hidden?: boolean;
   displayOrder?: number | null;

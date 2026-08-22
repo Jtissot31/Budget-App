@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { SwipeBackExclusion } from '@/components/gestures/SwipeBackExclusion';
 import { interSemiboldText, spacing, typography } from '@/constants/theme';
 import { PLAN_CATEGORIES, type PlanCategory } from '@/lib/plans/Plan';
 import { PLAN_HUB, planCategoryLabel } from '@/lib/plans/planCardPresentation';
@@ -24,44 +25,46 @@ const CHIP_FADE_WIDTH = 28;
 export function PlanCategoryFilterChips({ value, onChange }: Props) {
   return (
     <View style={styles.wrap}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        {FILTER_OPTIONS.map((option) => {
-          const active = value === option.id;
-          return (
-            <Pressable
-              key={option.id}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              onPress={() => {
-                tapHaptic();
-                onChange(option.id);
-              }}
-              style={({ pressed }) => [
-                styles.chip,
-                active
-                  ? styles.chipActive
-                  : { borderColor: PLAN_HUB.border, backgroundColor: 'transparent' },
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.chipLabel,
-                  interSemiboldText,
-                  { color: active ? '#0E0E10' : 'rgba(255, 255, 255, 0.55)' },
+      <SwipeBackExclusion>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          {FILTER_OPTIONS.map((option) => {
+            const active = value === option.id;
+            return (
+              <Pressable
+                key={option.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                onPress={() => {
+                  tapHaptic();
+                  onChange(option.id);
+                }}
+                style={({ pressed }) => [
+                  styles.chip,
+                  active
+                    ? styles.chipActive
+                    : { borderColor: PLAN_HUB.border, backgroundColor: 'transparent' },
+                  pressed && styles.pressed,
                 ]}
               >
-                {option.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+                <Text
+                  style={[
+                    styles.chipLabel,
+                    interSemiboldText,
+                    { color: active ? '#0E0E10' : 'rgba(255, 255, 255, 0.55)' },
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </SwipeBackExclusion>
 
       <LinearGradient
         pointerEvents="none"

@@ -1,39 +1,44 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { AlertProblemInsightCard } from '@/components/alerts/AlertProblemInsightCard';
+import { AlertDetailActionsList } from '@/components/alerts/AlertDetailActionsList';
+import { AlertDetailHeroCard } from '@/components/alerts/AlertDetailHeroCard';
+import { AlertSolutionDetailSheet } from '@/components/alerts/AlertSolutionDetailSheet';
+import { BudgetOverrunDiagnostic } from '@/components/alerts/BudgetOverrunDiagnostic';
+import { BudgetOverrunTransactions } from '@/components/alerts/BudgetOverrunTransactions';
 import { CreditLimitProblemTimeline } from '@/components/alerts/CreditLimitProblemTimeline';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PageTransition } from '@/components/PageTransition';
 import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
-import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
-import {
-  planDetailFonts,
-  usePlanDetailTheme,
-} from '@/components/plans/planDetailTheme';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
+import { ONYX_CONTAINER } from '@/constants/planFinanceKit';
 import {
-  PLAN_FINANCE_CONTAINER,
-  planFinanceContainerPressedStyle,
-  planFinanceContainerRowLayoutStyle,
-} from '@/constants/planFinanceKit';
-import { interExtraBoldText, interMediumText, interSemiboldText, spacing } from '@/constants/theme';
+  jakartaExtraBoldText,
+  screenHorizontalGutter,
+  spacing,
+  typography,
+} from '@/constants/theme';
 import { useAlertCenter, useAlertCenterSources } from '@/hooks/useAlertCenter';
 import { tapHaptic } from '@/lib/haptics';
-import type { AlertCenterItem, AlertCenterKind, AlertCenterSeverity } from '@/lib/alerts';
+import type { AlertCenterItem, AlertCenterKind } from '@/lib/alerts';
 import {
+  alertHomePrimaryTitle,
   alertTypeHeaderTitle,
   buildAlertDetailContent,
   resolveAlertAccountIdentity,
+  resolveAlertCreditAccount,
   type AlertSolution,
 } from '@/lib/alertPresentation';
+import { buildCreditLimitAlertReason } from '@/lib/creditLimitAlertCopy';
 import { generateAlertSolutions } from '@/lib/ai/alertSolutionService';
 import {
   acceptPlanAdaptation,
   dismissPlanAdaptation,
   getPlanAdaptationProposal,
 } from '@/lib/plans/planAdaptationProposals';
+import { dataEvents } from '@/lib/events';
+import { resolveBudgetOverrunData, type BudgetOverrunData } from '@/lib/resolveBudgetOverrun';
 import { resolveCreditLimitTimelineData } from '@/lib/resolveCreditLimitTimeline';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -55,53 +60,11 @@ function parseKind(value: string): AlertCenterKind {
   return KINDS.includes(value as AlertCenterKind) ? (value as AlertCenterKind) : 'fyn';
 }
 
-function resolveSeverityColor(
-  severity: AlertCenterSeverity,
-  colors: ReturnType<typeof useAppTheme>['colors'],
-  accent: string,
-): string {
-  switch (severity) {
-    case 'danger':
-      return colors.danger;
-    case 'warning':
-      return colors.warning;
-    case 'success':
-      return accent;
-    default:
-      return colors.textMuted;
-  }
-}
-
-function solutionIcon(solution: AlertSolution): { family: 'ionicons' | 'material-community'; name: string } {
-  if (solution.localAction === 'accept_adaptation') {
-    return { family: 'ionicons', name: 'checkmark-circle-outline' };
-  }
-  if (solution.localAction === 'dismiss_adaptation') {
-    return { family: 'ionicons', name: 'close-circle-outline' };
-  }
-  if (solution.href?.includes('ai-chat')) {
-    return { family: 'ionicons', name: 'chatbubble-ellipses-outline' };
-  }
-  if (solution.href?.includes('plans') || solution.href?.includes('goals')) {
-    return { family: 'ionicons', name: 'layers-outline' };
-  }
-  if (solution.href?.includes('budget')) {
-    return { family: 'ionicons', name: 'pie-chart-outline' };
-  }
-  if (solution.href?.includes('account') || solution.href?.includes('accounts')) {
-    return { family: 'ionicons', name: 'wallet-outline' };
-  }
-  if (solution.href?.includes('transaction')) {
-    return { family: 'ionicons', name: 'calendar-outline' };
-  }
-  return { family: 'ionicons', name: 'arrow-forward-circle-outline' };
-}
-
 export default function AlertDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useAppTheme();
-  const theme = usePlanDetailTheme();
+  const contentGutter = Platform.OS === 'web' ? 0 : screenHorizontalGutter(insets);
   const params = useLocalSearchParams<{
     id?: string;
     kind?: string;
@@ -126,6 +89,7 @@ export default function AlertDetailScreen() {
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [confirmMessage, setConfirmMessage] = useState('');
+  const [selectedSolution, setSelectedSolution] = useState<AlertSolution | null>(null);
   const [resultModal, setResultModal] = useState<{
     visible: boolean;
     title: string;
@@ -188,6 +152,7 @@ export default function AlertDetailScreen() {
   );
 
   const [solutions, setSolutions] = useState(detail.solutions);
+  const [budgetOverrun, setBudgetOverrun] = useState<BudgetOverrunData | null>(null);
 
   useEffect(() => {
     setSolutions(detail.solutions);
@@ -215,39 +180,61 @@ export default function AlertDetailScreen() {
     };
   }, [detail.solutions, item]);
 
-  const severity = item?.severity ?? 'warning';
-  const isCreditLimit = item?.kind === 'credit_limit';
-  /** Plan-style accent for credit-limit; severity tone for other alerts. */
-  const problemLabelColor = isCreditLimit
-    ? theme.accent
-    : resolveSeverityColor(severity, colors, theme.accent);
-
-  const insightContext = useMemo(
-    () =>
-      item
-        ? {
-            id: item.id,
-            kind: item.kind,
-            title: item.title,
-            message: item.message,
-            montant: item.montant,
-            recurring: item.recurring,
-            paymentName: item.paymentName,
-            categoryLabel: detail.eyebrow,
-          }
-        : null,
-    [detail.eyebrow, item],
-  );
-
   const creditLimitTimeline = useMemo(() => {
     if (!item || item.kind !== 'credit_limit') return null;
     return resolveCreditLimitTimelineData(item, { simulatedAccounts, recurringPayments });
   }, [item, recurringPayments, simulatedAccounts]);
 
+  useEffect(() => {
+    if (!item || item.kind !== 'budget_over') {
+      setBudgetOverrun(null);
+      return;
+    }
+
+    let cancelled = false;
+    const load = () => {
+      void resolveBudgetOverrunData(item).then((data) => {
+        if (!cancelled) setBudgetOverrun(data);
+      });
+    };
+    load();
+    const unsubscribe = dataEvents.subscribe(load);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [item]);
+
   const alertAccountLine = useMemo(() => {
     if (!item) return null;
     return resolveAlertAccountIdentity(item, simulatedAccounts);
   }, [item, simulatedAccounts]);
+
+  const creditAccount = useMemo(() => {
+    if (!item || item.kind !== 'credit_limit') return null;
+    return resolveAlertCreditAccount(item, simulatedAccounts);
+  }, [item, simulatedAccounts]);
+
+  const conditionTitle = useMemo(() => {
+    if (!item) return detail.eyebrow || 'Alerte';
+    if (item.kind === 'credit_limit' && creditLimitTimeline) {
+      return buildCreditLimitAlertReason(
+        item.paymentName,
+        creditLimitTimeline.utilizationAfterPct,
+        creditLimitTimeline.isOverLimit,
+      );
+    }
+    return alertHomePrimaryTitle(item);
+  }, [item, creditLimitTimeline, detail.eyebrow]);
+
+  const heroMeta = useMemo(() => {
+    if (item?.kind === 'credit_limit' && creditLimitTimeline) return null;
+    if (item?.kind === 'budget_over') {
+      // Category is already in the condition title (« Budget Épicerie dépassé »).
+      return null;
+    }
+    return alertAccountLine;
+  }, [alertAccountLine, creditLimitTimeline, item?.kind]);
 
   const handleBack = useCallback(() => {
     tapHaptic();
@@ -318,31 +305,55 @@ export default function AlertDetailScreen() {
         void handleDismissAdaptation();
         return;
       }
-      if (!solution.href) return;
       tapHaptic();
+      setSelectedSolution(solution);
+    },
+    [handleDismissAdaptation],
+  );
+
+  const handleSolutionSheetClose = useCallback(() => {
+    setSelectedSolution(null);
+  }, []);
+
+  const handleSolutionContinue = useCallback(
+    (solution: AlertSolution) => {
+      if (!solution.href) {
+        setSelectedSolution(null);
+        return;
+      }
+      tapHaptic();
+      setSelectedSolution(null);
       router.push({ pathname: solution.href as never, params: solution.params });
     },
-    [handleDismissAdaptation, router],
+    [router],
   );
 
   return (
     <PageTransition>
-      <View style={[styles.screen, { backgroundColor: theme.background }]}>
-        <View style={[styles.header, { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.md }]}>
+      <View style={[styles.screen, { backgroundColor: colors.background }]}>
+        <View
+          style={[
+            styles.header,
+            {
+              paddingTop: insets.top + SCREEN_TOP_GUTTER,
+              paddingHorizontal: contentGutter,
+            },
+          ]}
+        >
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Retour"
             hitSlop={12}
             onPress={handleBack}
             style={({ pressed }) => [
-              styles.backButton,
-              { backgroundColor: theme.surface, borderColor: theme.border },
+              styles.backHit,
+              { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
               pressed && styles.pressed,
             ]}
           >
-            <AppIcon family="material" name="arrow-back" size={22} color={theme.text} />
+            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: theme.text }, interExtraBoldText]} numberOfLines={1}>
+          <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
             {alertTypeHeaderTitle(item?.kind ?? 'fyn')}
           </Text>
           <View style={styles.headerSpacer} />
@@ -353,98 +364,44 @@ export default function AlertDetailScreen() {
           contentContainerStyle={[
             styles.content,
             {
+              paddingHorizontal: contentGutter,
               paddingBottom: Math.max(insets.bottom + spacing.xl, 56),
-              gap: theme.sectionGap,
             },
           ]}
         >
-          {/* 1. Le problème — same Onyx shell as INSIGHT / action rows */}
-          <PlanFinanceContainer style={[styles.problemCard, styles.problemShell]}>
-            <Text style={[planDetailFonts.sectionCaps, { color: problemLabelColor }]}>
-              {detail.problemLabel}
-            </Text>
-            {alertAccountLine ? (
-              <Text style={[planDetailFonts.detailLabel, styles.accountLine, { color: theme.textMuted }]} numberOfLines={1}>
-                {alertAccountLine}
-              </Text>
-            ) : null}
-            <Text style={[planDetailFonts.body, { color: theme.text }]}>{detail.problemBody}</Text>
-            {creditLimitTimeline ? <CreditLimitProblemTimeline data={creditLimitTimeline} /> : null}
-          </PlanFinanceContainer>
-
-          {/* 2. Conseil préventif INSIGHT (Gemini ou fallback statique) */}
-          {insightContext ? (
-            <AlertProblemInsightCard
-              context={insightContext}
-              fallbackBody={detail.insightFallbackBody}
-            />
-          ) : (
-            <View style={styles.fixSection}>
-              <Text style={[planDetailFonts.body, { color: theme.text }]}>
-                {detail.insightFallbackBody}
-              </Text>
-            </View>
-          )}
-
-          {/* 3. Tes actions */}
-          <View style={styles.actionsSection}>
-            <Text style={[planDetailFonts.sectionCaps, { color: theme.textMuted }]}>
-              {detail.actionsLabel}
-            </Text>
-
-            <View style={styles.actionsList}>
-              {solutions.map((solution, index) => {
-                const interactive = Boolean(solution.href) || Boolean(solution.localAction);
-                const icon = solutionIcon(solution);
-
-                const card = (
-                  <PlanFinanceContainer style={planFinanceContainerRowLayoutStyle()}>
-                    <View style={[styles.stepBadge, { backgroundColor: colors.input }]}>
-                      <Text style={[styles.stepNumber, { color: colors.textSecondary }, interSemiboldText]}>
-                        {index + 1}
-                      </Text>
-                    </View>
-                    <View style={styles.actionCopy}>
-                      <Text style={[styles.actionTitle, { color: theme.text }, interSemiboldText]}>
-                        {solution.title}
-                      </Text>
-                      <Text style={[styles.actionBody, { color: theme.textMuted }, interMediumText]}>
-                        {solution.description}
-                      </Text>
-                    </View>
-                    {interactive ? (
-                      <View style={styles.actionTrailing}>
-                        <AppIcon family={icon.family} name={icon.name} size={18} color={theme.accent} />
-                        <AppIcon family="ionicons" name="chevron-forward" size={16} color={theme.accent} />
-                      </View>
-                    ) : null}
-                  </PlanFinanceContainer>
-                );
-
-                if (!interactive) {
-                  return (
-                    <View key={solution.id} style={styles.actionItem}>
-                      {card}
-                    </View>
-                  );
-                }
-
-                return (
-                  <Pressable
-                    key={solution.id}
-                    accessibilityRole="button"
-                    accessibilityLabel={solution.ctaLabel}
-                    onPress={() => handleSolutionPress(solution)}
-                    style={({ pressed }) => [styles.actionItem, pressed && planFinanceContainerPressedStyle()]}
-                  >
-                    {card}
-                  </Pressable>
-                );
-              })}
-            </View>
+          <View style={styles.section}>
+            <AlertDetailHeroCard
+              title={conditionTitle}
+              meta={heroMeta}
+              body={budgetOverrun || creditLimitTimeline ? null : detail.problemBody}
+            >
+              {creditLimitTimeline ? (
+                <CreditLimitProblemTimeline
+                  data={creditLimitTimeline}
+                  accountLabel={alertAccountLine ?? creditLimitTimeline.accountLabel}
+                  account={creditAccount}
+                />
+              ) : null}
+              {budgetOverrun ? <BudgetOverrunDiagnostic data={budgetOverrun} /> : null}
+            </AlertDetailHeroCard>
           </View>
+
+          {budgetOverrun ? <BudgetOverrunTransactions data={budgetOverrun} /> : null}
+
+          <AlertDetailActionsList
+            label={detail.actionsLabel}
+            solutions={solutions}
+            onPressSolution={handleSolutionPress}
+          />
         </ScrollView>
       </View>
+
+      <AlertSolutionDetailSheet
+        visible={selectedSolution != null}
+        solution={selectedSolution}
+        onClose={handleSolutionSheetClose}
+        onContinue={handleSolutionContinue}
+      />
 
       <ThemedConfirmModal
         visible={confirmVisible}
@@ -486,81 +443,33 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    gap: spacing.md,
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
   },
-  backButton: {
+  backHit: {
     width: 38,
     height: 38,
-    borderRadius: 8,
+    borderRadius: 19,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   headerTitle: {
     flex: 1,
-    fontSize: 20,
-    letterSpacing: -0.3,
+    textAlign: 'center',
+    marginHorizontal: spacing.sm,
+    ...jakartaExtraBoldText,
+    fontSize: typography.body,
+    letterSpacing: -0.2,
+    minWidth: 0,
   },
   headerSpacer: { width: 38 },
   content: {
-    paddingHorizontal: spacing.lg,
+    gap: spacing.xl,
   },
-  problemShell: {
-    alignSelf: 'stretch',
-    padding: PLAN_FINANCE_CONTAINER.padding.card,
-  },
-  problemCard: {
-    gap: spacing.md,
-  },
-  accountLine: {
-    marginTop: -spacing.xs,
-    letterSpacing: -0.1,
-  },
-  fixSection: {
-    gap: spacing.sm,
-    paddingHorizontal: spacing.xs,
-  },
-  actionsSection: {
-    gap: spacing.md,
-  },
-  actionsList: {
-    gap: spacing.sm,
-  },
-  actionItem: {
+  section: {
     alignSelf: 'stretch',
   },
-  stepBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  stepNumber: {
-    fontSize: 13,
-  },
-  actionCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  actionTitle: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  actionBody: {
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  actionTrailing: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    flexShrink: 0,
-    alignSelf: 'center',
-  },
-  pressed: { opacity: 0.78 },
+  pressed: { opacity: ONYX_CONTAINER.pressedOpacity },
 });

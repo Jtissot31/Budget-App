@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Modal,
@@ -11,7 +12,14 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { MODIFIER_ICON_NAME, MODIFIER_ICON_SIZE } from '@/components/ModifierButton';
-import { destructiveTextActionStyle, jakartaBoldText, radius, spacing, typography } from '@/constants/theme';
+import {
+  destructiveTextActionStyle,
+  FLOATING_NAV_CONTENT_PADDING,
+  jakartaBoldText,
+  radius,
+  spacing,
+  typography,
+} from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -36,6 +44,7 @@ export function OverflowMenuButton({
   style,
 }: Props) {
   const { colors, isLight } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const [visible, setVisible] = useState(false);
 
   const close = () => setVisible(false);
@@ -63,13 +72,19 @@ export function OverflowMenuButton({
       </Pressable>
 
       <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
-        <View style={styles.backdrop}>
+        <View
+          style={[
+            styles.backdrop,
+            { paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING },
+          ]}
+        >
           <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="Fermer le menu" />
           <View
             style={[
               styles.sheet,
               {
-                backgroundColor: colors.containerBackground,
+                // Opaque — containerBackground is glass and shows through nested modals.
+                backgroundColor: colors.modalSurface,
                 borderColor: colors.containerBorder,
               },
             ]}
@@ -121,7 +136,7 @@ export function OverflowMenuButton({
               onPress={close}
               style={({ pressed }) => [
                 styles.cancelRow,
-                { backgroundColor: colors.surfaceElevated },
+                { backgroundColor: colors.modalAction },
                 pressed && styles.pressed,
               ]}
             >
@@ -146,7 +161,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
     justifyContent: 'flex-end',
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.lg,
   },
   sheet: {
     borderRadius: radius.lg,

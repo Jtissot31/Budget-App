@@ -1,6 +1,7 @@
 import { dataEvents } from '@/lib/events';
 import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 import {
+  getDeletedRecurringPaymentIds,
   getRecurringPayments,
   getSetting,
   setSetting,
@@ -8,7 +9,11 @@ import {
 } from '@/lib/db';
 import type { RecurringPayment } from '@/types';
 
-/** Bump to force a re-seed of the demo recurring payments (only when the user has none). */
+/**
+ * Bump only to introduce *new* demo rows on fresh empty installs.
+ * Never use a bump to re-fill ids the user deleted — deletions are tombstoned
+ * in `deleted_recurring_payment_ids` and skipped below.
+ */
 const RECURRING_PAYMENTS_SEED_VERSION = '3';
 const RECURRING_PAYMENTS_SEED_KEY = 'recurring_payments_seed_version';
 
@@ -90,9 +95,9 @@ function buildMockRecurringPayments(now: Date): RecurringPayment[] {
 
 /**
  * Insère la liste mockup de paiements récurrents quand l'utilisateur n'en a aucun.
- * Idempotent : gardé par un setting de version, ne clobbe jamais des données existantes.
- * L'agenda (onglet Agenda) se rafraîchit via dataEvents et affiche les paiements
- * sur le calendrier (lignes ambre) + dans « À venir ».
+ * Idempotent via version key. Never clobbers existing rows and never resurrects
+ * ids the user deleted (tombstoned in `deleted_recurring_payment_ids`).
+ * L'agenda se rafraîchit via dataEvents.
  */
 export async function seedRecurringPaymentsIfMissing(): Promise<boolean> {
   if (!isDemoSeedEnabled()) return false;
@@ -101,22 +106,24 @@ export async function seedRecurringPaymentsIfMissing(): Promise<boolean> {
   if (version === RECURRING_PAYMENTS_SEED_VERSION) return false;
 
   const existing = await getRecurringPayments();
+  // User already has recurring rows — mark seed complete without filling "missing"
+  // seed ids (that path used to resurrect deleted demo bills like Loyer).
+  if (existing.length > 0) {
+    await setSetting(RECURRING_PAYMENTS_SEED_KEY, RECURRING_PAYMENTS_SEED_VERSION);
+    return false;
+  }
+
+  const deletedIds = await getDeletedRecurringPaymentIds();
+  const payments = buildMockRecurringPayments(new Date());
   let seeded = false;
 
-  const payments = buildMockRecurringPayments(new Date());
-  const existingIds = new Set(existing.map((payment) => payment.id));
-
-  if (existing.length === 0) {
-    for (const payment of payments) {
-      await upsertRecurringPayment(payment);
-    }
+  for (const payment of payments) {
+    if (deletedIds.has(payment.id)) continue;
+    // Re-check: user may delete while this loop is still inserting.
+    const latestDeleted = await getDeletedRecurringPaymentIds();
+    if (latestDeleted.has(payment.id)) continue;
+    await upsertRecurringPayment(payment);
     seeded = true;
-  } else {
-    for (const payment of payments) {
-      if (existingIds.has(payment.id)) continue;
-      await upsertRecurringPayment(payment);
-      seeded = true;
-    }
   }
 
   await setSetting(RECURRING_PAYMENTS_SEED_KEY, RECURRING_PAYMENTS_SEED_VERSION);

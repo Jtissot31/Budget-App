@@ -1,0 +1,21 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.samsungliquidglass'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.samsungliquidglass"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}
+
+dependencies {
+  // SemBlurInfo is a non-SDK Samsung API; required on Android 15/16 (S25).
+  // classes.jar (not the AAR) — AGP forbids local AAR deps when this module itself is an AAR.
+  implementation(files("libs/hiddenapibypass-6.1-classes.jar"))
+}

@@ -1,3 +1,4 @@
+import { useIsFocused } from '@react-navigation/native';
 import { useEffect, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 import { MotiView } from 'moti';
@@ -22,6 +23,7 @@ type PageTransitionProps = {
  */
 export function PageTransition({ children, style, animate = true }: PageTransitionProps) {
   const { colors } = useAppTheme();
+  const isFocused = useIsFocused();
   const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
@@ -48,7 +50,11 @@ export function PageTransition({ children, style, animate = true }: PageTransiti
     </View>
   );
 
-  if (!animate || reduceMotion) {
+  /**
+   * Tab `freezeOnBlur` can suspend a Moti enter mid-flight (opacity stuck at 0).
+   * While blurred, render the static shell so returning to the tab is never blank.
+   */
+  if (!animate || reduceMotion || !isFocused) {
     return shell;
   }
 

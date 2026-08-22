@@ -1,13 +1,16 @@
 /**
- * Budget Proto transaction row — square arrow well, Category · Account, signed amount.
+ * Budget Proto transaction row — square arrow well, category subtitle, signed amount.
+ * Merchant logos replace the income glyph / expense arrow when a logo is available.
  */
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { IncomeIcon } from '@/components/icons/IncomeIcon';
+import { RemoteLogoImage } from '@/components/IconFrame';
 import {
   jakartaMediumText,
   jakartaSemiboldText,
-  moneyAmountTypography,
+  transactionRowAmountTypography,
 } from '@/constants/theme';
 import {
   getTransactionTypeLabel,
@@ -15,10 +18,18 @@ import {
 } from '@/lib/accountTransactionFlow';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { tapHaptic } from '@/lib/haptics';
+import { getLocalMerchantLogoAsset, getMerchantLogoUrls } from '@/lib/merchantLogo';
 import { useAppTheme } from '@/lib/themeContext';
 import type { SimulatedAccount, Transaction } from '@/types';
 
 const ICON_WELL = 40;
+/**
+ * Glyph size inside the pale well.
+ * Income PNG has transparent padding (~65% ink), so use a larger box than
+ * Ionicons fallbacks so the wallet artwork reads closer to ~24–28px ink.
+ */
+const ICON_GLYPH_FALLBACK = 24;
+const ICON_GLYPH_INCOME = 30;
 
 type Props = {
   transaction: Transaction;
@@ -53,18 +64,42 @@ export const ProtoTransactionRow = memo(function ProtoTransactionRow({
         getTransactionTypeLabel('transfer')
       );
     }
-    const category =
-      transaction.categoryName?.trim() || getTransactionTypeLabel(transaction.type);
-    const account = resolveTransactionPaymentMethodLabel(transaction, {
-      accounts,
-      savingsGoals,
-    });
-    return account ? `${category} · ${account}` : category;
+    // List rows: category only — not "Épicerie · Desjardins · 4521".
+    return transaction.categoryName?.trim() || getTransactionTypeLabel(transaction.type);
   }, [accounts, isTransfer, savingsGoals, transaction]);
+
+  const localLogoAsset = useMemo(() => {
+    if (isTransfer) return null;
+    return getLocalMerchantLogoAsset(transaction.label);
+  }, [isTransfer, transaction.label]);
+
+  const merchantLogoUrls = useMemo(() => {
+    if (isTransfer) return [] as string[];
+    // Prefer remote candidates only — bundled assets load via `asset` module id.
+    // getMerchantLogoUrls still includes a Metro URI for locals; skip those when we
+    // already have a require() module (avoids the flaky Asset.uri path).
+    const urls = getMerchantLogoUrls(transaction.label);
+    if (localLogoAsset == null) return urls;
+    return urls.filter((url) => /^https?:\/\//i.test(url));
+  }, [isTransfer, localLogoAsset, transaction.label]);
+
+  const [logoSourceIndex, setLogoSourceIndex] = useState(0);
+  const [localFailed, setLocalFailed] = useState(false);
+  const [remoteGiveUp, setRemoteGiveUp] = useState(false);
+
+  useEffect(() => {
+    setLogoSourceIndex(0);
+    setLocalFailed(false);
+    setRemoteGiveUp(false);
+  }, [localLogoAsset, merchantLogoUrls]);
+
+  const logoUri = merchantLogoUrls[logoSourceIndex];
+  const showLocalLogo = localLogoAsset != null && !localFailed;
+  const showRemoteLogo = !showLocalLogo && Boolean(logoUri) && !remoteGiveUp;
+  const showMerchantLogo = showLocalLogo || showRemoteLogo;
 
   const amountColor = isIncome ? colors.accentGreen : isTransfer ? colors.textMuted : colors.text;
   const iconColor = isIncome ? colors.accentGreen : colors.textMuted;
-  const iconName = isIncome ? 'trending-up' : 'trending-down';
   const abs = Math.abs(transaction.amount);
   const signed =
     isIncome
@@ -87,11 +122,41 @@ export const ProtoTransactionRow = memo(function ProtoTransactionRow({
         pressed && styles.pressed,
       ]}
     >
-      <View style={[styles.iconWell, { backgroundColor: colors.surfaceElevated }]}>
-        <AppIcon family="ionicons" name={iconName} size={18} color={iconColor} />
+      <View
+        style={[
+          styles.iconWell,
+          !showMerchantLogo && { backgroundColor: colors.surfaceElevated },
+          showMerchantLogo && styles.iconWellLogo,
+        ]}
+      >
+        {showLocalLogo && localLogoAsset != null ? (
+          <RemoteLogoImage
+            asset={localLogoAsset}
+            size={ICON_WELL}
+            recyclingKey={`merchant-local-${transaction.label}`}
+            onError={() => setLocalFailed(true)}
+          />
+        ) : showRemoteLogo && logoUri ? (
+          <RemoteLogoImage
+            uri={logoUri}
+            size={ICON_WELL}
+            recyclingKey={logoUri}
+            onError={() => {
+              if (logoSourceIndex < merchantLogoUrls.length - 1) {
+                setLogoSourceIndex((i) => i + 1);
+              } else {
+                setRemoteGiveUp(true);
+              }
+            }}
+          />
+        ) : isIncome ? (
+          <IncomeIcon size={ICON_GLYPH_INCOME} color={iconColor} />
+        ) : (
+          <AppIcon family="ionicons" name="trending-down" size={ICON_GLYPH_FALLBACK} color={iconColor} />
+        )}
       </View>
       <View style={styles.copy}>
-        <Text style={[styles.title, jakartaSemiboldText, { color: colors.text }]} numberOfLines={1}>
+        <Text style={[styles.title, jakartaSemiboldText, { color: colors.text }]} numberOfLines={2}>
           {title}
         </Text>
         <Text style={[styles.subtitle, jakartaMediumText, { color: colors.textMuted }]} numberOfLines={1}>
@@ -100,7 +165,8 @@ export const ProtoTransactionRow = memo(function ProtoTransactionRow({
       </View>
       <Text
         style={[
-          moneyAmountTypography({ tier: 'row', fontSize: 15, lineHeight: 20 }),
+          styles.amount,
+          transactionRowAmountTypography({ fontSize: 15, lineHeight: 20 }),
           { color: amountColor, letterSpacing: -0.3 },
         ]}
         numberOfLines={1}
@@ -128,8 +194,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
+  iconWellLogo: {
+    overflow: 'hidden',
+    position: 'relative',
+  },
   copy: {
     flex: 1,
+    flexShrink: 1,
     minWidth: 0,
     gap: 2,
   },
@@ -141,6 +212,9 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 12.5,
     lineHeight: 16,
+  },
+  amount: {
+    flexShrink: 0,
   },
   pressed: { opacity: 0.78 },
 });

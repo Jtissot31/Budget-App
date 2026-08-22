@@ -8,9 +8,10 @@ import {
   Text,
   View,
 } from 'react-native';
+import { SwipeBackExclusion } from '@/components/gestures/SwipeBackExclusion';
+import { GoalSparkChart, GOAL_SPARK_TOTAL_H, sortGoalsForChartCarousel } from '@/components/GoalSparkChart';
 import { typography } from '@/constants/theme';
 import type { SavingsGoal } from '@/types';
-import { GoalSparkChart, GOAL_SPARK_TOTAL_H, sortGoalsForChartCarousel } from '@/components/GoalSparkChart';
 
 export type GoalSparkChartCarouselProps = {
   goals: SavingsGoal[];
@@ -91,22 +92,24 @@ export function GoalSparkChartCarousel({
         </Text>
       ) : null}
       {pageWidth > 0 ? (
-        <ScrollView
-          ref={scrollRef}
-          horizontal
-          pagingEnabled
-          nestedScrollEnabled
-          keyboardShouldPersistTaps="handled"
-          showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={onMomentumScrollEnd}
-          scrollEventThrottle={16}
-        >
-          {sortedGoals.map((g) => (
-            <View key={g.id} style={{ width: pageWidth }}>
-              <GoalSparkChart goal={g} stroke={stroke} areaFill={areaFill} gridColor={gridColor} labelColor={labelColor} />
-            </View>
-          ))}
-        </ScrollView>
+        <SwipeBackExclusion>
+          <ScrollView
+            ref={scrollRef}
+            horizontal
+            pagingEnabled
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={onMomentumScrollEnd}
+            scrollEventThrottle={16}
+          >
+            {sortedGoals.map((g) => (
+              <View key={g.id} style={{ width: pageWidth }}>
+                <GoalSparkChart goal={g} stroke={stroke} areaFill={areaFill} gridColor={gridColor} labelColor={labelColor} />
+              </View>
+            ))}
+          </ScrollView>
+        </SwipeBackExclusion>
       ) : (
         <View style={{ height: GOAL_SPARK_TOTAL_H + 8 }} />
       )}

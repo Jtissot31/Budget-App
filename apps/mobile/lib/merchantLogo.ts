@@ -1,14 +1,22 @@
 /**
  * Logos marchands : assets locaux haute résolution en priorité, puis favicons publics
  * (domaine déduit du nom). Clearbit (logo.clearbit.com) est déprécié / souvent bloqué —
- * on utilise une chaîne Google s2 favicons → icône DDG en secours.
+ * on utilise une chaîne gstatic faviconV2 → Google s2 → icône DDG en secours.
+ *
+ * Bundled PNGs under `assets/merchants/` must use a real alpha channel (no baked black/white
+ * square pad) so marks sit on the glass icon well. Opaque brand-color tiles (e.g. Couche-Tard
+ * blue, Petro-Canada red/white plate) are intentional exceptions.
  *
  * Logos banques / institutions : catalogue dans `bankInstitutions.ts`.
- * `getAccountLogoUrl` délègue à cette banque d’institutions.
+ * `getAccountLogoUrl` / `getAccountLogoAsset` délèguent à cette banque d’institutions.
+ * En APK release, toujours préférer `getAccountLogoAsset` + `source={asset}` plutôt que
+ * `Asset.fromModule().uri` (URIs Metro/fichier qui cassent ou déforment le placeholder).
  */
 
 import { Asset } from 'expo-asset';
 import {
+  faviconUrlsForDomain,
+  getBankInstitutionLogoAsset,
   getBankInstitutionLogoUrls,
   KNOWN_BANK_INSTITUTION_LABELS,
   matchBankInstitution,
@@ -28,26 +36,25 @@ const COUCHE_TARD_LOGO = require('@/assets/merchants/couche-tard.png');
 const MCDONALDS_LOGO = require('@/assets/merchants/mcdonalds.png');
 const SUPER_C_LOGO = require('@/assets/merchants/super-c.png');
 
-/** Normalized merchant key → bundled asset module id */
+/**
+ * Normalized merchant key → bundled asset module id.
+ * Keys use {@link normalizeMerchantKey} form (dashes collapsed to spaces).
+ */
 const MERCHANT_LOCAL_ASSET_BY_KEY: Record<string, number> = {
   timhortons: TIM_HORTONS_LOGO,
   'tim hortons': TIM_HORTONS_LOGO,
   iga: IGA_LOGO,
   stm: STM_LOGO,
   'stm opus': STM_LOGO,
-  'stm — opus': STM_LOGO,
   netflix: NETFLIX_LOGO,
   rem: REM_LOGO,
-  'rem — billet': REM_LOGO,
   'rem billet': REM_LOGO,
   'jean coutu': JEAN_COUTU_LOGO,
   jeancoutu: JEAN_COUTU_LOGO,
   pjc: JEAN_COUTU_LOGO,
-  'petro-canada': PETRO_CANADA_LOGO,
   petrocanada: PETRO_CANADA_LOGO,
   'petro canada': PETRO_CANADA_LOGO,
   maxi: MAXI_LOGO,
-  'couche-tard': COUCHE_TARD_LOGO,
   'couche tard': COUCHE_TARD_LOGO,
   couchetard: COUCHE_TARD_LOGO,
   mcdonalds: MCDONALDS_LOGO,
@@ -56,23 +63,21 @@ const MERCHANT_LOCAL_ASSET_BY_KEY: Record<string, number> = {
   superc: SUPER_C_LOGO,
 };
 
-/** Partial label match → bundled asset (seed labels, bank descriptors). */
+/** Partial label match → bundled asset (seed labels, bank descriptors). Longer needles first. */
 const MERCHANT_LOCAL_ASSET_KEYWORDS: Array<[string, number]> = [
   ['tim hortons', TIM_HORTONS_LOGO],
-  ['iga', IGA_LOGO],
-  ['stm', STM_LOGO],
   ['stm opus', STM_LOGO],
-  ['stm — opus', STM_LOGO],
-  ['netflix', NETFLIX_LOGO],
-  ['rem — billet', REM_LOGO],
+  ['rem billet', REM_LOGO],
   ['jean coutu', JEAN_COUTU_LOGO],
-  ['petro-canada', PETRO_CANADA_LOGO],
   ['petro canada', PETRO_CANADA_LOGO],
-  ['couche-tard', COUCHE_TARD_LOGO],
   ['couche tard', COUCHE_TARD_LOGO],
-  ['mcdonald', MCDONALDS_LOGO],
   ['super c', SUPER_C_LOGO],
+  ['netflix', NETFLIX_LOGO],
+  ['mcdonald', MCDONALDS_LOGO],
   ['maxi', MAXI_LOGO],
+  ['stm', STM_LOGO],
+  ['rem', REM_LOGO],
+  ['iga', IGA_LOGO],
 ];
 
 /** Normalized merchant display name → registrable domain */
@@ -117,11 +122,10 @@ const MERCHANT_DOMAIN_MAP: Record<string, string> = {
   canadiantire: 'canadiantire.ca',
   'canadian tire': 'canadiantire.ca',
   shell: 'shell.com',
-  'couchetard': 'couche-tard.com',
+  couchetard: 'couche-tard.com',
   'couche tard': 'couche-tard.com',
-  'couche-tard': 'couche-tard.com',
   petrocanada: 'petro-canada.ca',
-  'petro-canada': 'petro-canada.ca',
+  'petro canada': 'petro-canada.ca',
   esso: 'esso.ca',
   dominos: 'dominos.com',
   "domino's": 'dominos.com',
@@ -166,7 +170,6 @@ const MERCHANT_DOMAIN_MAP: Record<string, string> = {
   videotron: 'videotron.com',
   fizz: 'fizz.ca',
   'fizz mobile': 'fizz.ca',
-  'hydro-quebec': 'hydroquebec.com',
   'hydro quebec': 'hydroquebec.com',
   hydroquebec: 'hydroquebec.com',
   'costco wholesale': 'costco.com',
@@ -174,7 +177,6 @@ const MERCHANT_DOMAIN_MAP: Record<string, string> = {
   provigo: 'provigo.ca',
   loblaws: 'loblaws.ca',
   'bureau en gros': 'bureauengros.com',
-  'st-hubert': 'st-hubert.com',
   'st hubert': 'st-hubert.com',
   econofitness: 'econofitness.com',
   'sport expert': 'sportsexperts.ca',
@@ -192,7 +194,6 @@ const MERCHANT_KEYWORD_DOMAIN_MAP: Array<[string, string]> = [
   ['provigo', 'provigo.ca'],
   ['loblaws', 'loblaws.ca'],
   ['bureau en gros', 'bureauengros.com'],
-  ['st-hubert', 'st-hubert.com'],
   ['st hubert', 'st-hubert.com'],
   ['econofitness', 'econofitness.com'],
   ['sport expert', 'sportsexperts.ca'],
@@ -206,7 +207,6 @@ const MERCHANT_KEYWORD_DOMAIN_MAP: Array<[string, string]> = [
   ['indigo', 'indigopark.com'],
   ['icloud', 'icloud.com'],
   ['disney', 'disneyplus.com'],
-  ['hydro-quebec', 'hydroquebec.com'],
   ['hydro quebec', 'hydroquebec.com'],
   ['videotron', 'videotron.com'],
   ['fizz mobile', 'fizz.ca'],
@@ -219,9 +219,8 @@ const MERCHANT_KEYWORD_DOMAIN_MAP: Array<[string, string]> = [
   ['canadian tire', 'canadiantire.ca'],
   ['home depot', 'homedepot.com'],
   ['jean coutu', 'jeancoutu.com'],
-  ['couche-tard', 'couche-tard.com'],
   ['couche tard', 'couche-tard.com'],
-  ['petro-canada', 'petro-canada.ca'],
+  ['petro canada', 'petro-canada.ca'],
   ['dollarama', 'dollarama.com'],
   ['pharmaprix', 'pharmaprix.ca'],
   ['saq', 'saq.com'],
@@ -381,10 +380,16 @@ function stripDiacritics(input: string): string {
   return input.normalize('NFD').replace(/\p{M}/gu, '');
 }
 
+/**
+ * Canonical merchant lookup key: lowercase, no diacritics, fancy dashes → spaces.
+ * So "Petro-Canada", "STM — Opus", and "Couche Tard" share stable keys.
+ */
 export function normalizeMerchantKey(name: string): string {
   return stripDiacritics(name.trim().toLowerCase())
-    .replace(/['`’]/g, "'")
+    .replace(/['`’']/g, "'")
     .replace(/\s*\+\s*$/g, '')
+    // hyphen / en / em / minus / figure dash → space (then collapse)
+    .replace(/[\u2010-\u2015\u2212—–−-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -505,17 +510,10 @@ export function resolveTransactionMerchantLogo(
   return { logoUrl: null, merchantLabel: label, manualIcon: null };
 }
 
-function faviconUrlsForDomain(domain: string): string[] {
-  const enc = encodeURIComponent(domain);
-  return [
-    `https://www.google.com/s2/favicons?domain=${enc}&sz=128`,
-    `https://icons.duckduckgo.com/ip3/${domain}.ico`,
-  ];
-}
-
 function resolveLocalMerchantAsset(name: string): number | null {
   const key = normalizeMerchantKey(name);
   if (!key) return null;
+  if (GENERIC_TRANSACTION_LABELS.has(key)) return null;
   const direct = MERCHANT_LOCAL_ASSET_BY_KEY[key];
   if (direct) return direct;
   for (const [needle, asset] of MERCHANT_LOCAL_ASSET_KEYWORDS) {
@@ -524,9 +522,20 @@ function resolveLocalMerchantAsset(name: string): number | null {
   return null;
 }
 
+/**
+ * Bundled `require()` module id for a merchant label (preferred Image `source`).
+ * Prefer this over {@link getLocalMerchantLogoUri} — Metro asset URIs via
+ * `Asset.fromModule().uri` often fail in Expo Go / expo-image `{ uri }` loads.
+ */
+export function getLocalMerchantLogoAsset(name: string): number | null {
+  return resolveLocalMerchantAsset(name);
+}
+
 /** Resolve a bundled `require()` asset to a URI on native and web. */
-function resolveBundledAssetUri(asset: number): string {
-  return Asset.fromModule(asset).uri;
+function resolveBundledAssetUri(asset: number): string | null {
+  const resolved = Asset.fromModule(asset);
+  const uri = (resolved.localUri || resolved.uri || '').trim();
+  return uri || null;
 }
 
 /** URI for a bundled merchant logo, or null when only remote favicons apply. */
@@ -538,11 +547,16 @@ export function getLocalMerchantLogoUri(name: string): string | null {
 
 /** Plusieurs URLs à essayer dans l’ordre (premier succès affiché). */
 export function getMerchantLogoUrls(name: string): string[] {
+  const urls: string[] = [];
   const local = getLocalMerchantLogoUri(name);
-  if (local) return [local];
+  if (local) urls.push(local);
   const domain = resolveMerchantDomain(name);
-  if (!domain) return [];
-  return faviconUrlsForDomain(domain);
+  if (domain) {
+    for (const url of faviconUrlsForDomain(domain)) {
+      if (!urls.includes(url)) urls.push(url);
+    }
+  }
+  return urls;
 }
 
 /** Première URL candidate, ou null (rétrocompat). */
@@ -554,6 +568,8 @@ export function getMerchantLogoUrl(name: string): string | null {
 /**
  * Account / institution logos — prefers the bank institution catalog
  * (`bankInstitutions.ts`), then merchant domain map / hostname fallback.
+ *
+ * Remote https URLs only. Bundled marks → {@link getAccountLogoAsset}.
  */
 export function getAccountLogoUrls(name: string): string[] {
   const fromBank = getBankInstitutionLogoUrls(name);
@@ -571,6 +587,22 @@ export function getAccountLogoUrls(name: string): string[] {
 
 export function getAccountLogoUrl(name: string): string | null {
   return getAccountLogoUrls(name)[0] ?? null;
+}
+
+/** Bundled institution PNG module id when the catalog wires `localAsset` (e.g. Visa). */
+export function getAccountLogoAsset(name: string): number | null {
+  return getBankInstitutionLogoAsset(name);
+}
+
+/**
+ * Persistable logo URL for SQLite — https favicon only (never Metro / Asset.uri).
+ * Release APKs cannot load Expo Go packager asset URLs saved during __DEV__.
+ */
+export function getStableAccountLogoUrl(name: string): string | null {
+  for (const url of getAccountLogoUrls(name)) {
+    if (/^https:\/\//i.test(url)) return url;
+  }
+  return null;
 }
 
 /** @see KNOWN_BANK_INSTITUTION_LABELS in bankInstitutions.ts */

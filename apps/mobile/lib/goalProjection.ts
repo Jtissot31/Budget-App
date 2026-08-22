@@ -1,6 +1,9 @@
 import { savingsGoalIncrementalProgress } from '@/lib/savingsGoalProgress';
 import type { CategoryBudget, DashboardSummary, RecurringPayment, SavingsGoal } from '@/types';
 
+/** Weeks-per-month used for budget / obligation weekly conversion (same as projection card). */
+export const GOAL_PROJECTION_WEEKS_PER_MONTH = 4;
+
 export type GoalProjection = {
   progress: number;
   remaining: number;
@@ -8,6 +11,8 @@ export type GoalProjection = {
   requiredWeekly: number | null;
   monthlyContribution: number;
   weeklyObligationsTotal: number;
+  /** Weekly free cashflow after budgets, outside-budget obligations, and goal contribution. */
+  cashflowImpactWeekly: number | null;
   budgetUseRatio: number | null;
   freeMoneyLeftRatio: number | null;
   targetDate: string | null;
@@ -28,6 +33,64 @@ export function projectedCompletionLabel(goal: SavingsGoal): string | null {
   return null;
 }
 
+/**
+ * Shared cashflow math for goal projection cards.
+ *
+ * Impact ≈ weeklyIncome − (budgetLimits / 4) − weeklyObligationsOutsideBudget − weeklyGoalContribution
+ *
+ * Recurring expenses linked to a budget category (categoryId with a limit) are excluded from
+ * obligations so they are not double-counted with category allocations.
+ */
+export function computeGoalCashflowProjection(input: {
+  weeklyContribution: number;
+  requiredWeekly: number | null;
+  dashboard: DashboardSummary | null;
+  categoryBudgets: CategoryBudget[];
+  recurringPayments: RecurringPayment[];
+}): Pick<
+  GoalProjection,
+  | 'monthlyContribution'
+  | 'weeklyObligationsTotal'
+  | 'cashflowImpactWeekly'
+  | 'budgetUseRatio'
+  | 'freeMoneyLeftRatio'
+  | 'hint'
+> {
+  const { weeklyContribution, requiredWeekly, dashboard, categoryBudgets, recurringPayments } = input;
+  const monthlyContribution = (weeklyContribution * 52) / 12;
+  const monthlyIncome = resolveMonthlyIncome(dashboard, recurringPayments);
+  const categoryLimits = sumCategoryBudgetLimits(categoryBudgets);
+  const recurringOutsideBudget = sumMonthlyRecurringExpensesOutsideBudget(
+    recurringPayments,
+    categoryBudgets,
+  );
+  const monthlyLoadWithoutGoal = categoryLimits + recurringOutsideBudget;
+  const weeklyObligationsTotal =
+    monthlyLoadWithoutGoal / GOAL_PROJECTION_WEEKS_PER_MONTH + weeklyContribution;
+  const weeklyIncome = monthlyIncome / GOAL_PROJECTION_WEEKS_PER_MONTH;
+  const cashflowImpactWeekly =
+    monthlyIncome > 0 ? weeklyIncome - weeklyObligationsTotal : null;
+  const plannedTotal = monthlyLoadWithoutGoal + monthlyContribution;
+  const freeMoneyLeft = monthlyIncome > 0 ? monthlyIncome - plannedTotal : null;
+  const budgetUseRatio =
+    monthlyIncome > 0 && monthlyContribution > 0 ? monthlyContribution / monthlyIncome : null;
+  const freeMoneyLeftRatio =
+    monthlyIncome > 0 && freeMoneyLeft != null ? freeMoneyLeft / monthlyIncome : null;
+
+  return {
+    monthlyContribution,
+    weeklyObligationsTotal,
+    cashflowImpactWeekly,
+    budgetUseRatio,
+    freeMoneyLeftRatio,
+    hint: getSavingsHint(freeMoneyLeftRatio, requiredWeekly, weeklyContribution),
+  };
+}
+
+/**
+ * Full projection for a persisted savings goal (detail screen).
+ * Form editing uses a parallel helper in `SavingsGoalsForm`.
+ */
 export function getGoalProjection(
   goal: SavingsGoal,
   dashboard: DashboardSummary | null,
@@ -49,34 +112,29 @@ export function getGoalProjection(
     return null;
   }
 
-  const initialForProgress = Math.min(Math.max(goal.initialSavedAmount ?? currentAmount, 0), currentAmount);
-  const remaining = Math.max(0, targetAmount - currentAmount);
-  const weeksToGoal = weeklyContribution > 0 && remaining > 0
-    ? Math.ceil(remaining / weeklyContribution)
-    : null;
-  const requiredWeekly = getRequiredWeekly(remaining, goal.dueDate);
-  const monthlyContribution = (weeklyContribution * 52) / 12;
-  const monthlyIncome = dashboard?.monthlyIncome ?? 0;
-  const categoryLimits = categoryBudgets.reduce((sum, item) => sum + toPositiveAmount(item.limitAmount), 0);
-  const recurringPaymentsTotal = recurringPayments.reduce(
-    (sum, payment) => sum + (payment.active && payment.kind !== 'income' ? monthlyEquivalent(payment) : 0),
-    0,
+  const initialForProgress = Math.min(
+    Math.max(goal.initialSavedAmount ?? currentAmount, 0),
+    currentAmount,
   );
-  const monthlyObligationsTotal = categoryLimits + recurringPaymentsTotal;
-  const weeklyObligationsTotal = monthlyObligationsTotal / 4 + weeklyContribution;
-  const plannedTotal = monthlyObligationsTotal + monthlyContribution;
-  const freeMoneyLeft = monthlyIncome > 0 ? monthlyIncome - plannedTotal : null;
-  const budgetUseRatio = monthlyIncome > 0 && monthlyContribution > 0
-    ? monthlyContribution / monthlyIncome
-    : null;
-  const freeMoneyLeftRatio = monthlyIncome > 0 && freeMoneyLeft != null
-    ? freeMoneyLeft / monthlyIncome
-    : null;
-  const targetDate = weeklyContribution > 0 && remaining > 0
-    ? addWeeks(new Date(), Math.ceil(remaining / weeklyContribution))
-    : remaining <= 0
-      ? new Date()
+  const remaining = Math.max(0, targetAmount - currentAmount);
+  const weeksToGoal =
+    weeklyContribution > 0 && remaining > 0
+      ? Math.ceil(remaining / weeklyContribution)
       : null;
+  const requiredWeekly = getRequiredWeekly(remaining, goal.dueDate);
+  const cashflow = computeGoalCashflowProjection({
+    weeklyContribution,
+    requiredWeekly,
+    dashboard,
+    categoryBudgets,
+    recurringPayments,
+  });
+  const targetDate =
+    weeklyContribution > 0 && remaining > 0
+      ? addWeeks(new Date(), Math.ceil(remaining / weeklyContribution))
+      : remaining <= 0
+        ? new Date()
+        : null;
 
   return {
     progress: savingsGoalIncrementalProgress({
@@ -87,12 +145,8 @@ export function getGoalProjection(
     remaining,
     weeksToGoal,
     requiredWeekly,
-    monthlyContribution,
-    weeklyObligationsTotal,
-    budgetUseRatio,
-    freeMoneyLeftRatio,
+    ...cashflow,
     targetDate: targetDate ? formatDateKey(targetDate) : null,
-    hint: getSavingsHint(freeMoneyLeftRatio, requiredWeekly, weeklyContribution),
   };
 }
 
@@ -118,6 +172,54 @@ export function formatGoalProjectionPercent(value: number) {
   return `${Math.round(value * 100)} %`;
 }
 
+/** Category ids that have a positive monthly limit (covers linked recurrings). */
+export function budgetedCategoryIdSet(categoryBudgets: CategoryBudget[]): Set<string> {
+  const ids = new Set<string>();
+  for (const budget of categoryBudgets) {
+    if (toPositiveAmount(budget.limitAmount) > 0 && budget.categoryId) {
+      ids.add(budget.categoryId);
+    }
+  }
+  return ids;
+}
+
+export function sumCategoryBudgetLimits(categoryBudgets: CategoryBudget[]): number {
+  return categoryBudgets.reduce((sum, item) => sum + toPositiveAmount(item.limitAmount), 0);
+}
+
+/**
+ * Active non-income recurrings whose category is not already covered by a budget limit.
+ * Matches the linked-category pattern used by recurring impact summaries.
+ */
+export function sumMonthlyRecurringExpensesOutsideBudget(
+  recurringPayments: RecurringPayment[],
+  categoryBudgets: CategoryBudget[],
+): number {
+  const budgetedIds = budgetedCategoryIdSet(categoryBudgets);
+  return recurringPayments.reduce((sum, payment) => {
+    if (!payment.active || payment.kind === 'income') return sum;
+    const categoryId = payment.categoryId?.trim();
+    if (categoryId && budgetedIds.has(categoryId)) return sum;
+    return sum + monthlyEquivalent(payment);
+  }, 0);
+}
+
+export function sumMonthlyRecurringIncome(recurringPayments: RecurringPayment[]): number {
+  return recurringPayments.reduce((sum, payment) => {
+    if (!payment.active || payment.kind !== 'income') return sum;
+    return sum + monthlyEquivalent(payment);
+  }, 0);
+}
+
+export function resolveMonthlyIncome(
+  dashboard: DashboardSummary | null,
+  recurringPayments: RecurringPayment[],
+): number {
+  const fromRecurring = sumMonthlyRecurringIncome(recurringPayments);
+  if (fromRecurring > 0) return fromRecurring;
+  return toPositiveAmount(dashboard?.monthlyIncome);
+}
+
 function getRequiredWeekly(remaining: number, dueDate?: string) {
   const trimmedDueDate = dueDate?.trim() ?? '';
   const date = new Date(trimmedDueDate);
@@ -127,6 +229,16 @@ function getRequiredWeekly(remaining: number, dueDate?: string) {
     Math.ceil((date.getTime() - Date.now()) / (7 * 24 * 60 * 60 * 1000)),
   );
   return Math.max(remaining, 0) / weeks;
+}
+
+function addWeeks(date: Date, weeks: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + weeks * 7);
+  return next;
+}
+
+function formatDateKey(date: Date) {
+  return date.toISOString().slice(0, 10);
 }
 
 function getSavingsHint(
@@ -151,22 +263,12 @@ function getSavingsHint(
 
 function monthlyEquivalent(payment: RecurringPayment) {
   const amount = toPositiveAmount(payment.amount);
-  if (payment.frequency === 'weekly') return amount * 52 / 12;
-  if (payment.frequency === 'biweekly') return amount * 26 / 12;
+  if (payment.frequency === 'weekly') return (amount * 52) / 12;
+  if (payment.frequency === 'biweekly') return (amount * 26) / 12;
   if (payment.frequency === 'yearly') return amount / 12;
   return amount;
 }
 
 function toPositiveAmount(value: number | null | undefined) {
   return Number.isFinite(value) ? Math.max(0, value ?? 0) : 0;
-}
-
-function addWeeks(date: Date, weeks: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + weeks * 7);
-  return next;
-}
-
-function formatDateKey(date: Date) {
-  return date.toISOString().slice(0, 10);
 }

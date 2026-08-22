@@ -1,0 +1,17 @@
+---
+description: Android form-sheet keyboard — never double-shift (resize + KAV)
+globs: apps/mobile/**/*.{tsx,ts}
+alwaysApply: false
+---
+
+# Form sheet keyboard (Android)
+
+When editing Modal / `DraggableSheetSurface` / `BottomSheet` form sheets:
+
+1. Wrap the body in `FormSheetModalBody` (`lib/sheet/formSheetScroll.ts`)
+2. Let `DraggableSheetSurface` / `BottomSheet` clamp height (host measure + capped IME inset)
+3. **Never** enable `KeyboardAvoidingView` behavior/padding/height on **Android** around these sheets — that double-shifts with `softwareKeyboardLayoutMode: "resize"` and the sheet vanishes
+4. Keep `android.softwareKeyboardLayoutMode: "resize"` in `app.json`
+5. Do not touch `TransactionDetailSheet.tsx` unless explicitly requested
+
+Math + tests: `lib/sheet/formSheetKeyboardMath.ts` (+ `.test.ts`). Docs: `lib/sheet/FORM_SHEET_KEYBOARD.md`.

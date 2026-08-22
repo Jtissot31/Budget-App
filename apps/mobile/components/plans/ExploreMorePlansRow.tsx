@@ -17,7 +17,7 @@ type Props = {
   prominent?: boolean;
 };
 
-const LABEL = 'Explorer plus de plans';
+const LABEL = 'Bibliothèque de stratégies';
 
 /** Onyx row CTA — soft accent glyph only (well stays neutral). */
 export function ExploreMorePlansRow({ onPress, prominent: _prominent = false }: Props) {
@@ -26,7 +26,7 @@ export function ExploreMorePlansRow({ onPress, prominent: _prominent = false }: 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Explorer plus de plans financiers"
+      accessibilityLabel="Ouvrir la bibliothèque de stratégies financières"
       onPress={() => {
         tapHaptic();
         onPress();

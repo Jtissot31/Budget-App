@@ -1,4 +1,4 @@
-import { useId, useMemo } from 'react';
+import { memo, useId, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Pattern, Stop } from 'react-native-svg';
 import { chartTokens, radius } from '@/constants/theme';
@@ -21,6 +21,10 @@ type Props = {
   strokeWidth?: number;
   /** Solid dot at the latest point (stock detail charts). */
   showEndpointDot?: boolean;
+  /** Dot on every data point — e.g. one marker per versement. */
+  showPointDots?: boolean;
+  /** When set with showPointDots, only these indices get dots. */
+  pointDotIndices?: readonly number[];
   /** Optional chart area background (e.g. pure black on stock detail). Defaults to transparent. */
   backgroundColor?: string;
 };
@@ -32,7 +36,7 @@ function stockStrokeColor(positive: boolean, isLight: boolean): string {
   return isLight ? chartTokens.negativeLight : chartTokens.stockNegative;
 }
 
-export function SparklineChart({
+export const SparklineChart = memo(function SparklineChart({
   data = [],
   width = 220,
   height = 56,
@@ -41,6 +45,8 @@ export function SparklineChart({
   showFill,
   strokeWidth,
   showEndpointDot = false,
+  showPointDots = false,
+  pointDotIndices,
   backgroundColor,
 }: Props) {
   const { isLight } = useAppTheme();
@@ -49,34 +55,40 @@ export function SparklineChart({
   const stippleId = `${gradientId}-stipple`;
   const fillGradId = `${gradientId}-fill`;
 
-  const { linePath, fillPath, strokeColor, lastPoint } = useMemo(() => {
+  const { linePath, fillPath, strokeColor, lastPoint, points } = useMemo(() => {
     if (safeData.length < 2) {
-      return { linePath: '', fillPath: '', strokeColor: chartTokens.line, lastPoint: null };
+      return {
+        linePath: '',
+        fillPath: '',
+        strokeColor: chartTokens.line,
+        lastPoint: null,
+        points: [] as { x: number; y: number }[],
+      };
     }
 
     const isStock = variant === 'stock';
     const paddingX = isStock ? STOCK_HORIZONTAL_PADDING : 4;
     const paddingY = isStock ? STOCK_VERTICAL_PADDING : 4;
-    const endpointInset = showEndpointDot ? STOCK_ENDPOINT_DOT_R + 0.5 : 0;
+    const endpointInset = showEndpointDot || showPointDots ? STOCK_ENDPOINT_DOT_R + 0.5 : 0;
     const min = Math.min(...safeData);
     const max = Math.max(...safeData);
     const range = max - min || 1;
     const innerW = width - paddingX * 2 - endpointInset;
     const innerH = height - paddingY * 2;
 
-    const points = safeData.map((value, index) => {
+    const mappedPoints = safeData.map((value, index) => {
       const x = paddingX + (index / (safeData.length - 1)) * innerW;
       const y = paddingY + innerH - ((value - min) / range) * innerH;
       return { x, y };
     });
 
-    const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ');
+    const line = mappedPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ');
 
-    let fill = `${line} L ${points[points.length - 1].x.toFixed(2)} ${height - paddingY} L ${points[0].x.toFixed(2)} ${height - paddingY} Z`;
+    let fill = `${line} L ${mappedPoints[mappedPoints.length - 1].x.toFixed(2)} ${height - paddingY} L ${mappedPoints[0].x.toFixed(2)} ${height - paddingY} Z`;
     if (isStock) {
-      const lowestY = Math.max(...points.map((p) => p.y));
+      const lowestY = Math.max(...mappedPoints.map((p) => p.y));
       const fillBottom = Math.min(lowestY + innerH * STOCK_FILL_DEPTH_RATIO, height - paddingY);
-      fill = `${line} L ${points[points.length - 1].x.toFixed(2)} ${fillBottom.toFixed(2)} L ${points[0].x.toFixed(2)} ${fillBottom.toFixed(2)} Z`;
+      fill = `${line} L ${mappedPoints[mappedPoints.length - 1].x.toFixed(2)} ${fillBottom.toFixed(2)} L ${mappedPoints[0].x.toFixed(2)} ${fillBottom.toFixed(2)} Z`;
     }
 
     const isUp = safeData[safeData.length - 1] >= safeData[0];
@@ -98,15 +110,19 @@ export function SparklineChart({
       linePath: line,
       fillPath: fill,
       strokeColor: color,
-      lastPoint: points[points.length - 1],
+      lastPoint: mappedPoints[mappedPoints.length - 1],
+      points: mappedPoints,
     };
-  }, [positive, safeData, showEndpointDot, variant, height, isLight, width]);
+  }, [positive, safeData, showEndpointDot, showPointDots, variant, height, isLight, width]);
 
   if (safeData.length < 2) return null;
 
   const isStock = variant === 'stock';
   const fillVisible = showFill ?? !isStock;
   const lineStrokeWidth = strokeWidth ?? (isStock ? 1 : 2);
+  const pointDotR = showPointDots ? 2.75 : STOCK_ENDPOINT_DOT_R;
+  const dotIndexSet =
+    pointDotIndices != null ? new Set(pointDotIndices) : null;
 
   return (
     <View
@@ -157,13 +173,26 @@ export function SparklineChart({
           strokeLinejoin={isStock ? 'miter' : 'round'}
           strokeMiterlimit={isStock ? 2 : undefined}
         />
-        {showEndpointDot && lastPoint ? (
+        {showPointDots
+          ? points.map((point, index) =>
+              dotIndexSet == null || dotIndexSet.has(index) ? (
+                <Circle
+                  key={`pt-${index}`}
+                  cx={point.x}
+                  cy={point.y}
+                  r={pointDotR}
+                  fill={strokeColor}
+                />
+              ) : null,
+            )
+          : null}
+        {!showPointDots && showEndpointDot && lastPoint ? (
           <Circle cx={lastPoint.x} cy={lastPoint.y} r={STOCK_ENDPOINT_DOT_R} fill={strokeColor} />
         ) : null}
       </Svg>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

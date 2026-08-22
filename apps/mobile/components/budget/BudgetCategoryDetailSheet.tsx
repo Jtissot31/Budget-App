@@ -367,59 +367,60 @@ export function BudgetCategoryDetailSheet({
       onClose={onClose}
       sheetStyle={[styles.sheet, { backgroundColor: colors.background }]}
       scrollContentContainerStyle={styles.scrollContent}
+      header={
+        <View style={styles.header}>
+          <BudgetCategoryIcon icon={category.icon} name={localName} id={category.id} />
+
+          <View style={styles.headerText}>
+            <EditableField
+              type="text"
+              value={localName}
+              onSave={handleSaveName}
+              accessibilityLabel="Modifier le nom de la catégorie"
+              textStyle={styles.heroLabel}
+              containerStyle={styles.heroLabelField}
+              placeholder="Nom de catégorie"
+            />
+          </View>
+
+          <View style={styles.headerActions}>
+            <OverflowMenuButton
+              accessibilityLabel="Options de la catégorie"
+              items={[
+                {
+                  key: 'edit',
+                  label: 'Modifier',
+                  onPress: handlePressEdit,
+                },
+                {
+                  key: 'delete',
+                  label: 'Supprimer',
+                  icon: 'trash-outline',
+                  destructive: true,
+                  onPress: handlePressDelete,
+                },
+              ]}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Fermer les détails"
+              hitSlop={10}
+              onPress={onClose}
+              style={({ pressed }) => [
+                styles.closeButton,
+                {
+                  backgroundColor: colors.surfaceSolid,
+                  borderColor: colors.borderStrong,
+                },
+                pressed && styles.pressed,
+              ]}
+            >
+              <AppIcon family="ionicons" name="close" size={18} color={colors.text} />
+            </Pressable>
+          </View>
+        </View>
+      }
     >
-      <View style={styles.header}>
-        <BudgetCategoryIcon icon={category.icon} name={localName} id={category.id} />
-
-        <View style={styles.headerText}>
-          <EditableField
-            type="text"
-            value={localName}
-            onSave={handleSaveName}
-            accessibilityLabel="Modifier le nom de la catégorie"
-            textStyle={styles.heroLabel}
-            containerStyle={styles.heroLabelField}
-            placeholder="Nom de catégorie"
-          />
-        </View>
-
-        <View style={styles.headerActions}>
-          <OverflowMenuButton
-            accessibilityLabel="Options de la catégorie"
-            items={[
-              {
-                key: 'edit',
-                label: 'Modifier',
-                onPress: handlePressEdit,
-              },
-              {
-                key: 'delete',
-                label: 'Supprimer',
-                icon: 'trash-outline',
-                destructive: true,
-                onPress: handlePressDelete,
-              },
-            ]}
-          />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Fermer les détails"
-            hitSlop={10}
-            onPress={onClose}
-            style={({ pressed }) => [
-              styles.closeButton,
-              {
-                backgroundColor: colors.surfaceSolid,
-                borderColor: colors.borderStrong,
-              },
-              pressed && styles.pressed,
-            ]}
-          >
-            <AppIcon family="ionicons" name="close" size={18} color={colors.text} />
-          </Pressable>
-        </View>
-      </View>
-
       <View style={[accountDetailHeroBlockStyle(), styles.heroBlock]}>
         <View style={styles.heroAmountRow}>
           <Text style={[detailHeroAmount, styles.heroSpent, { color: colors.text }]}>
@@ -595,7 +596,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginBottom: spacing.xs,
   },
   headerText: {
     flex: 1,

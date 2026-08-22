@@ -65,9 +65,11 @@ export function SettingsSelectField({
 
   const selectedBudgetIcon = selectedOption?.budgetCategoryIcon;
   const selectedLogoUrl = selectedOption?.logoUrl;
+  const selectedLogoAsset = selectedOption?.logoAsset;
   const selectedIcon = selectedOption?.icon;
   const showAccountLeading =
-    !selectedBudgetIcon && Boolean(selectedLogoUrl?.trim() || selectedIcon);
+    !selectedBudgetIcon &&
+    Boolean(selectedLogoAsset != null || selectedLogoUrl?.trim() || selectedIcon);
   const disabled = options.length === 0;
 
   return (
@@ -104,6 +106,7 @@ export function SettingsSelectField({
               <PickerLeadingTile
                 icon={selectedIcon}
                 logoUrl={selectedLogoUrl}
+                logoAsset={selectedLogoAsset}
                 label={selectedLabel}
                 iconColor={colors.textSecondary}
                 wellBackground={colors.input}

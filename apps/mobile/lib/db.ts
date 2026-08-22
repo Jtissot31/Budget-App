@@ -422,6 +422,7 @@ async function initializeDatabaseSchema(db: SQLite.SQLiteDatabase): Promise<void
           due_day INTEGER,
           interest_rate REAL,
           logo_url TEXT,
+          icon TEXT,
           linked_savings_goal_id TEXT,
           hidden INTEGER NOT NULL DEFAULT 0,
           display_order INTEGER,
@@ -611,6 +612,9 @@ async function ensureSimulatedAccountColumns(db: SQLite.SQLiteDatabase): Promise
   }
   if (!columns.some((column) => column.name === 'display_order')) {
     await db.execAsync('ALTER TABLE simulated_accounts ADD COLUMN display_order INTEGER');
+  }
+  if (!columns.some((column) => column.name === 'icon')) {
+    await db.execAsync('ALTER TABLE simulated_accounts ADD COLUMN icon TEXT');
   }
 }
 
@@ -826,6 +830,7 @@ export async function getSimulatedAccounts(): Promise<SimulatedAccount[]> {
        due_day AS dueDay,
        interest_rate AS interestRate,
        logo_url AS logoUrl,
+       icon,
        linked_savings_goal_id AS linkedSavingsGoalId,
        COALESCE(hidden, 0) AS hidden,
        display_order AS displayOrder,
@@ -845,8 +850,8 @@ export async function insertSimulatedAccount(account: SimulatedAccount): Promise
   await db.runAsync(
     `INSERT OR REPLACE INTO simulated_accounts (
        id, name, kind, balance, institution, last4, credit_limit, due_day,
-       interest_rate, logo_url, linked_savings_goal_id, hidden, display_order, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       interest_rate, logo_url, icon, linked_savings_goal_id, hidden, display_order, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       account.id,
       account.name,
@@ -858,6 +863,7 @@ export async function insertSimulatedAccount(account: SimulatedAccount): Promise
       account.dueDay ?? null,
       account.interestRate ?? null,
       account.logoUrl ?? null,
+      account.icon?.trim() || null,
       account.linkedSavingsGoalId ?? null,
       account.hidden ? 1 : 0,
       account.displayOrder ?? null,
@@ -876,17 +882,18 @@ export async function ensureCashAccount(): Promise<void> {
   await db.runAsync(
     `INSERT INTO simulated_accounts (
        id, name, kind, balance, institution, last4, credit_limit, due_day,
-       interest_rate, logo_url, linked_savings_goal_id, hidden, display_order, created_at
+       interest_rate, logo_url, icon, linked_savings_goal_id, hidden, display_order, created_at
      )
-     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
      WHERE NOT EXISTS (SELECT 1 FROM simulated_accounts WHERE kind = 'cash')`,
-    ['argent-cash-seed', 'Argent Cash', 'cash', 0, null, null, null, null, null, null, null, 0, null, new Date().toISOString()],
+    ['argent-cash-seed', 'Argent Cash', 'cash', 0, null, null, null, null, null, null, null, null, 0, null, new Date().toISOString()],
   );
 }
 
 export async function updateSimulatedAccountPreferences(
   id: string,
   preferences: Pick<SimulatedAccount, 'hidden' | 'displayOrder'>,
+  options?: { emit?: boolean },
 ): Promise<void> {
   const trimmed = id.trim();
   if (!trimmed) return;
@@ -896,6 +903,29 @@ export async function updateSimulatedAccountPreferences(
     'UPDATE simulated_accounts SET hidden = ?, display_order = ? WHERE id = ?',
     [preferences.hidden ? 1 : 0, preferences.displayOrder ?? null, trimmed],
   );
+  if (options?.emit !== false) {
+    dataEvents.emit();
+  }
+}
+
+/** Persist MES COMPTES tile order — single emit after all rows update. */
+export async function persistSimulatedAccountsDisplayOrder(
+  orderedAccounts: readonly SimulatedAccount[],
+): Promise<void> {
+  if (orderedAccounts.length === 0) return;
+
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    for (let index = 0; index < orderedAccounts.length; index += 1) {
+      const account = orderedAccounts[index]!;
+      const trimmed = account.id.trim();
+      if (!trimmed) continue;
+      await db.runAsync(
+        'UPDATE simulated_accounts SET display_order = ? WHERE id = ?',
+        [index, trimmed],
+      );
+    }
+  });
   dataEvents.emit();
 }
 
@@ -1150,7 +1180,9 @@ export async function deleteLoan(id: string): Promise<void> {
   }
   await db.runAsync('DELETE FROM loans WHERE id = ?', [trimmed]);
   if (row?.recurringPaymentId) {
-    await db.runAsync('DELETE FROM recurring_payments WHERE id = ?', [row.recurringPaymentId]);
+    // Prefer shared delete so the id is tombstoned and cannot be re-seeded.
+    await deleteRecurringPayment(row.recurringPaymentId);
+    return;
   }
   dataEvents.emit();
 }
@@ -1487,10 +1519,56 @@ export async function getRecurringPayments(): Promise<RecurringPayment[]> {
       await db.runAsync('UPDATE recurring_payments SET icon = ? WHERE id = ?', [payment.icon, payment.id]);
     }
   }
-  return normalized;
+  const deletedIds = await getDeletedRecurringPaymentIds();
+  if (deletedIds.size === 0) return normalized;
+
+  // Defense in depth: hide + purge any row that was deleted but somehow reappeared.
+  const visible: typeof normalized = [];
+  for (const payment of normalized) {
+    if (deletedIds.has(payment.id)) {
+      await db.runAsync('DELETE FROM recurring_payments WHERE id = ?', [payment.id]);
+      continue;
+    }
+    visible.push(payment);
+  }
+  return visible;
+}
+
+/** Persist IDs the user deleted so demo seed never resurrects them. */
+export const DELETED_RECURRING_PAYMENT_IDS_KEY = 'deleted_recurring_payment_ids';
+
+function parseDeletedRecurringPaymentIds(raw: string): string[] {
+  if (!raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
+  } catch {
+    return [];
+  }
+}
+
+export async function getDeletedRecurringPaymentIds(): Promise<Set<string>> {
+  const raw = await getSetting(DELETED_RECURRING_PAYMENT_IDS_KEY, '[]');
+  return new Set(parseDeletedRecurringPaymentIds(raw));
+}
+
+async function rememberDeletedRecurringPaymentId(id: string): Promise<void> {
+  const trimmed = id.trim();
+  if (!trimmed) return;
+  const existing = await getDeletedRecurringPaymentIds();
+  if (existing.has(trimmed)) return;
+  existing.add(trimmed);
+  await setSetting(DELETED_RECURRING_PAYMENT_IDS_KEY, JSON.stringify([...existing]), { emit: false });
 }
 
 export async function upsertRecurringPayment(payment: RecurringPayment): Promise<void> {
+  const trimmedId = payment.id.trim();
+  if (!trimmedId) return;
+  // Hard block: never recreate an id the user deleted (demo seed / loan sync / races).
+  const deletedIds = await getDeletedRecurringPaymentIds();
+  if (deletedIds.has(trimmedId)) return;
+
   const db = await getDb();
   await db.runAsync(
     `INSERT OR REPLACE INTO recurring_payments (
@@ -1498,7 +1576,7 @@ export async function upsertRecurringPayment(payment: RecurringPayment): Promise
        due_day, next_date, end_date, active, icon, color, logo_url, created_at
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      payment.id,
+      trimmedId,
       payment.name,
       payment.amount,
       payment.kind ?? 'payment',
@@ -1520,8 +1598,17 @@ export async function upsertRecurringPayment(payment: RecurringPayment): Promise
 }
 
 export async function deleteRecurringPayment(id: string): Promise<void> {
+  const trimmed = id.trim();
+  if (!trimmed) return;
+  // Tombstone before DELETE so a concurrent/re-run seed cannot re-insert this id.
+  await rememberDeletedRecurringPaymentId(trimmed);
   const db = await getDb();
-  await db.runAsync('DELETE FROM recurring_payments WHERE id = ?', [id]);
+  await db.runAsync('DELETE FROM recurring_payments WHERE id = ?', [trimmed]);
+  // Drop loan link so a later loan sync cannot recreate the same recurring row.
+  await db.runAsync(
+    'UPDATE loans SET recurring_payment_id = NULL WHERE recurring_payment_id = ?',
+    [trimmed],
+  );
   dataEvents.emit();
 }
 

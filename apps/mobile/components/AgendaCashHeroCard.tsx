@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { DashboardCard } from '@/components/DashboardCard';
+import { SwipeBackExclusion } from '@/components/gestures/SwipeBackExclusion';
 import { AppIcon } from '@/components/icons/AppIcon';
 import {
   moneyAmountTypography,
@@ -511,105 +512,107 @@ export function AgendaCashHeroCard({
         ) : null}
       </View>
 
-      <ScrollView
-        horizontal
-        nestedScrollEnabled
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.dayStrip}
-        scrollEventThrottle={16}
-        onScroll={onDayStripScroll}
-      >
-        {daySquares.map((day, index) => {
-          const isPaycheck = day.isPaycheck;
-          const isToday = day.isToday;
-          const isSelected = selectedDateKey === day.dateKey;
-          return (
-            <Fragment key={day.dateKey}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected: isSelected }}
-                accessibilityLabel={
-                  isToday
-                    ? `Aujourd'hui ${day.weekday} ${day.dayNum}`
-                    : isPaycheck
-                      ? `Paie estimée le ${day.weekday} ${day.dayNum}`
-                      : day.hasPayment
-                        ? `Paiement le ${day.weekday} ${day.dayNum}`
-                        : `${day.weekday} ${day.dayNum}`
-                }
-                disabled={!onDayPress}
-                onPress={(event) => {
-                  event.stopPropagation?.();
-                  onDayPress?.(day.dateKey);
-                }}
-                style={({ pressed }) => [
-                  styles.daySquare,
-                  {
-                    // keep #D0D0D0 — today square fill/border not in COLORS (near light border)
-                    backgroundColor: isToday
-                      ? '#D0D0D0'
-                      : isSelected
-                        ? colors.surfaceElevated
-                        : 'transparent',
-                    borderColor: isToday
-                      ? isSelected
-                        ? colors.primary
-                        : '#D0D0D0'
-                      : isSelected
-                        ? colors.primary
-                        : 'transparent',
-                  },
-                  pressed && onDayPress ? styles.daySquarePressed : null,
-                ]}
-              >
-                <Text
-                  style={[
-                    typographyKit.micro,
-                    styles.dayWeekday,
+      <SwipeBackExclusion>
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.dayStrip}
+          scrollEventThrottle={16}
+          onScroll={onDayStripScroll}
+        >
+          {daySquares.map((day, index) => {
+            const isPaycheck = day.isPaycheck;
+            const isToday = day.isToday;
+            const isSelected = selectedDateKey === day.dateKey;
+            return (
+              <Fragment key={day.dateKey}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
+                  accessibilityLabel={
+                    isToday
+                      ? `Aujourd'hui ${day.weekday} ${day.dayNum}`
+                      : isPaycheck
+                        ? `Paie estimée le ${day.weekday} ${day.dayNum}`
+                        : day.hasPayment
+                          ? `Paiement le ${day.weekday} ${day.dayNum}`
+                          : `${day.weekday} ${day.dayNum}`
+                  }
+                  disabled={!onDayPress}
+                  onPress={(event) => {
+                    event.stopPropagation?.();
+                    onDayPress?.(day.dateKey);
+                  }}
+                  style={({ pressed }) => [
+                    styles.daySquare,
                     {
-                      color: isToday
-                        ? colors.background
+                      // keep #D0D0D0 — today square fill/border not in COLORS (near light border)
+                      backgroundColor: isToday
+                        ? '#D0D0D0'
+                        : isSelected
+                          ? colors.surfaceElevated
+                          : 'transparent',
+                      borderColor: isToday
+                        ? isSelected
+                          ? colors.primary
+                          : '#D0D0D0'
                         : isSelected
                           ? colors.primary
-                          : colors.textMuted,
+                          : 'transparent',
                     },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {day.weekday.replace('.', '')}
-                </Text>
-                <Text
-                  style={[
-                    typographyKit.rowTitle,
-                    styles.dayNum,
-                    {
-                      color: isToday
-                        ? colors.background
-                        : isSelected
-                          ? colors.primary
-                          : colors.textSecondary,
-                    },
+                    pressed && onDayPress ? styles.daySquarePressed : null,
                   ]}
                 >
-                  {day.dayNum}
-                </Text>
-                <View style={styles.dayMarkerSlot}>
-                  {isPaycheck ? (
-                    <AppIcon family="ionicons" name="cash-outline" size={10} color={colors.success} />
-                  ) : day.hasPayment ? (
-                    <View style={[styles.dayDot, { backgroundColor: colors.warning }]} />
-                  ) : (
-                    <View style={styles.dayDotSpacer} />
-                  )}
-                </View>
-              </Pressable>
-              {index < daySquares.length - 1 ? (
-                <View style={[styles.dayDivider, { backgroundColor: daySegmentColor }]} />
-              ) : null}
-            </Fragment>
-          );
-        })}
-      </ScrollView>
+                  <Text
+                    style={[
+                      typographyKit.micro,
+                      styles.dayWeekday,
+                      {
+                        color: isToday
+                          ? colors.background
+                          : isSelected
+                            ? colors.primary
+                            : colors.textMuted,
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {day.weekday.replace('.', '')}
+                  </Text>
+                  <Text
+                    style={[
+                      typographyKit.rowTitle,
+                      styles.dayNum,
+                      {
+                        color: isToday
+                          ? colors.background
+                          : isSelected
+                            ? colors.primary
+                            : colors.textSecondary,
+                      },
+                    ]}
+                  >
+                    {day.dayNum}
+                  </Text>
+                  <View style={styles.dayMarkerSlot}>
+                    {isPaycheck ? (
+                      <AppIcon family="ionicons" name="cash-outline" size={10} color={colors.success} />
+                    ) : day.hasPayment ? (
+                      <View style={[styles.dayDot, { backgroundColor: colors.warning }]} />
+                    ) : (
+                      <View style={styles.dayDotSpacer} />
+                    )}
+                  </View>
+                </Pressable>
+                {index < daySquares.length - 1 ? (
+                  <View style={[styles.dayDivider, { backgroundColor: daySegmentColor }]} />
+                ) : null}
+              </Fragment>
+            );
+          })}
+        </ScrollView>
+      </SwipeBackExclusion>
 
       {paycheck && !paycheckInStrip ? (
         <View style={styles.paycheckMeta}>

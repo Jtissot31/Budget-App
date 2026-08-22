@@ -145,6 +145,7 @@ export default function PlanCreateScreen() {
           fieldLabel: row.fieldLabel,
           icon: row.icon,
           logoUrl: row.logoUrl,
+          logoAsset: row.logoAsset,
         };
       });
     }
@@ -225,7 +226,9 @@ export default function PlanCreateScreen() {
   const selectedAccountLabel =
     selectedAccountOption?.fieldLabel?.trim() || selectedAccountOption?.label?.trim() || '';
   const showAccountLeading = Boolean(
-    selectedAccountOption?.logoUrl?.trim() || selectedAccountOption?.icon,
+    selectedAccountOption?.logoAsset != null ||
+      selectedAccountOption?.logoUrl?.trim() ||
+      selectedAccountOption?.icon,
   );
   const cadenceSuffix = useMemo(
     () => cadenceOptions.find((o) => o.id === cadenceFrequency)?.suffix ?? 'semaine',
@@ -442,6 +445,7 @@ export default function PlanCreateScreen() {
                 <PickerLeadingTile
                   icon={selectedAccountOption?.icon}
                   logoUrl={selectedAccountOption?.logoUrl}
+                  logoAsset={selectedAccountOption?.logoAsset}
                   label={selectedAccountLabel}
                   iconColor={pf.textMuted}
                   wellBackground={pf.input}

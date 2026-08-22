@@ -1,0 +1,84 @@
+﻿# EAS packs from the git repo root. This file replaces all .gitignore files
+# when present — keep it complete.
+
+# Dependencies / tooling
+node_modules/
+**/node_modules/
+.expo/
+**/.expo/
+.expo-*/
+bin/
+obj/
+.vs/
+.idea/
+.DS_Store
+*.user
+*.suo
+
+# Mobile local build outputs / previous APKs (were bloating upload ~324MB)
+apps/mobile/dist/
+apps/mobile/dist/**
+*.apk
+
+# Agent / scratch
+apps/mobile/.agent-tmp/
+apps/mobile/.agent-tmp-export/
+apps/mobile/.agent-tmp-*/
+apps/mobile/_figma-import/
+**/.agent-tmp*/
+**/_figma-import/
+
+# Env / secrets / signing
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Screenshots / ADB verify captures
+apps/mobile/verify-*.png
+apps/mobile/verify-*.xml
+apps/mobile/*-screenshot*.png
+apps/mobile/android-screenshot*.png
+apps/mobile/back-*.png
+apps/mobile/budget-*.png
+apps/mobile/cap-*.png
+apps/mobile/dashboard-*.png
+apps/mobile/donut-*.png
+apps/mobile/final-*.png
+apps/mobile/paycheck-*.png
+apps/mobile/recents.png
+apps/mobile/ref-ui-*.png
+apps/mobile/tab_nav_*.png
+apps/mobile/tap-*.png
+apps/mobile/tap1.png
+apps/mobile/tap2.png
+apps/mobile/tap3.png
+apps/mobile/test-*.png
+apps/mobile/tmp-*.png
+apps/mobile/tmp-*.xml
+apps/mobile/ui-*.xml
+apps/mobile/app-open2.png
+apps/mobile/.android-screenshot.png
+
+# Docs / noise
+apps/mobile/docs/
+apps/mobile/manual-entry-forms.html
+apps/mobile/MIGRATION-FORMS.md
+apps/mobile/icon-usage-audit.md
+apps/mobile/VERIFY_BUILD.txt
+apps/mobile/RUN-MIGRATION.bat
+apps/mobile/*.log
+apps/mobile/tsc-check.log
+apps/mobile/expo.log
+apps/mobile/web-build/
+apps/mobile/expo-env.d.ts
+
+# Git metadata (shallow clone noise)
+.git/

@@ -20,9 +20,9 @@ Legacy name `PlanFinanceContainer` / `PLAN_FINANCE_CONTAINER` is the same shell 
 
 ## Shell properties
 
-- Fill: `colors.containerBackground` (`#111111` dark)
+- Fill: `colors.containerBackground` (glass `rgba(255,255,255,0.055)` dark — Budget Proto)
 - Outline: `colors.containerBorder` + `StyleSheet.hairlineWidth`
-- Radius: **13px**
+- Radius: **18px**
 - Halo: charcoal lift (default `halo`)
 - Press: wrap `Pressable` + `onyxContainerPressedStyle()` (opacity **0.82**)
 

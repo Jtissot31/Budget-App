@@ -7,7 +7,7 @@
  */
 
 import {
-  getLocalMerchantLogoUri,
+  getLocalMerchantLogoAsset,
   getMerchantLogoUrl,
   normalizeMerchantKey,
   QUEBEC_DEMO_MERCHANT_NAMES,
@@ -73,8 +73,8 @@ export function logoUrlForMerchantMemory(merchantName: string, preferredUrl?: st
     }
   }
 
-  if (getLocalMerchantLogoUri(merchantName)) {
-    // Bundled asset — remember by name only; runtime resolves via getMerchantLogoUrls.
+  if (getLocalMerchantLogoAsset(merchantName)) {
+    // Bundled asset — remember by name only; runtime resolves via getLocalMerchantLogoAsset.
     return null;
   }
 
@@ -90,6 +90,7 @@ export function merchantLabelHasResolvableLogo(
     return Boolean(override.logoUrl?.trim() || override.icon);
   }
   if (override?.logoUrl?.trim()) return true;
+  if (getLocalMerchantLogoAsset(label) != null) return true;
   return getMerchantLogoUrl(label) != null;
 }
 

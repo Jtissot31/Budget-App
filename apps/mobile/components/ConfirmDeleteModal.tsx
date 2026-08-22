@@ -88,7 +88,7 @@ function ConfirmDeleteDialog({
 
           {
 
-            backgroundColor: colors.containerBackground,
+            backgroundColor: colors.modalSurface,
 
             borderColor: colors.containerBorder,
 
@@ -98,7 +98,7 @@ function ConfirmDeleteDialog({
 
       >
 
-        <View style={[styles.iconWrap, { backgroundColor: colors.surfaceElevated }]}>
+        <View style={[styles.iconWrap, { backgroundColor: colors.modalAction }]}>
 
           <AppIcon family="ionicons" name="trash-outline" size={20} color={colors.textSecondary} />
 
@@ -126,7 +126,7 @@ function ConfirmDeleteDialog({
 
               {
 
-                backgroundColor: colors.input,
+                backgroundColor: colors.modalAction,
 
                 borderColor: colors.containerBorder,
 
@@ -156,7 +156,7 @@ function ConfirmDeleteDialog({
 
               {
 
-                backgroundColor: colors.input,
+                backgroundColor: colors.modalAction,
 
                 borderColor: colors.containerBorder,
 

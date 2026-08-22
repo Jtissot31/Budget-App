@@ -41,7 +41,9 @@ export function IconFrame({ size = 46, style, children }: IconFrameProps) {
 
 
 type RemoteLogoImageProps = {
-  uri: string;
+  uri?: string | null;
+  /** Bundled `require()` module — preferred for local merchant / stock PNGs. */
+  asset?: number | null;
   size: number;
   contentFit?: ImageContentFit;
   /** When true, logo uses the full box (no padded inset) — for frameless calendar markers. */
@@ -59,6 +61,7 @@ type RemoteLogoImageProps = {
 /** Remote favicon/logo — integer box, centered contain, no stretch. */
 export function RemoteLogoImage({
   uri,
+  asset,
   size,
   contentFit = 'contain',
   fullSize = false,
@@ -71,16 +74,19 @@ export function RemoteLogoImage({
     ? { width: size, height: size }
     : remoteLogoImageStyle(size, insetRatio);
 
+  const source = asset != null ? asset : uri?.trim() ? { uri: uri.trim() } : null;
+  if (!source) return null;
+
   return (
     <Image
-      source={{ uri }}
+      source={source}
       style={imageStyle}
       contentFit={contentFit}
       contentPosition="center"
       placeholderContentFit="contain"
       transition={size <= 46 ? 0 : 150}
       cachePolicy="memory-disk"
-      recyclingKey={recyclingKey ?? uri}
+      recyclingKey={recyclingKey ?? (typeof source === 'number' ? `asset-${source}` : uri ?? undefined)}
       onError={onError}
       onLoad={onLoad}
     />
@@ -88,7 +94,9 @@ export function RemoteLogoImage({
 }
 
 type LogoIconFrameProps = {
-  uri: string;
+  uri?: string | null;
+  /** Bundled `require()` module — preferred over uri for release APKs. */
+  asset?: number | null;
   size?: number;
   style?: StyleProp<ViewStyle>;
   contentFit?: ImageContentFit;
@@ -96,9 +104,10 @@ type LogoIconFrameProps = {
   onError?: () => void;
 };
 
-/** Remote logo inside the shared rounded-square frame (no tint). */
+/** Remote logo inside the shared rounded-square frame (transparent — no plate). */
 export function LogoIconFrame({
   uri,
+  asset,
   size = 46,
   style,
   contentFit = 'contain',
@@ -111,6 +120,7 @@ export function LogoIconFrame({
     <View style={[logoIconWellStyle(size, isLight), styles.logoWell, style]}>
       <RemoteLogoImage
         uri={uri}
+        asset={asset}
         size={size}
         contentFit={contentFit}
         recyclingKey={recyclingKey}

@@ -1,29 +1,26 @@
-import { Pressable, StyleSheet } from 'react-native';
-import { AppIcon } from '@/components/icons/AppIcon';
+import { GlassFab } from '@/components/GlassFab';
+import { PlusFabIcon } from '@/components/icons/PlusFabIcon';
 import { useRouter } from 'expo-router';
 import {
   FLOATING_FAB_ICON_SIZE,
   FLOATING_FAB_SIZE,
   FLOATING_SCROLL_SIZE,
-  floatingGlassButtonPressed,
-  floatingGlassFabSurface,
 } from '@/constants/floatingGlassButton';
-import { useAppTheme } from '@/lib/themeContext';
+import { TRANSACTIONS_FAB_ICON_COLOR_BLUR } from '@/constants/fabStyles';
+import { StyleSheet } from 'react-native';
 
 export function Fab() {
   const router = useRouter();
-  const { colors, ghostCardShadow, isLight } = useAppTheme();
-  const surface = floatingGlassFabSurface(colors, isLight);
 
   return (
-    <Pressable
-      style={({ pressed }) => [styles.fab, surface, ghostCardShadow, pressed && floatingGlassButtonPressed]}
+    <GlassFab
+      size={FLOATING_FAB_SIZE}
+      style={styles.fab}
       onPress={() => router.push('/add-transaction')}
-      accessibilityRole="button"
       accessibilityLabel="Nouvelle transaction"
     >
-      <AppIcon family="ionicons" name="add" size={FLOATING_FAB_ICON_SIZE} color={colors.text} />
-    </Pressable>
+      <PlusFabIcon size={FLOATING_FAB_ICON_SIZE} color={TRANSACTIONS_FAB_ICON_COLOR_BLUR} />
+    </GlassFab>
   );
 }
 

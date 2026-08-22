@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react';
-import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Modal,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
+import {
+  FORM_SHEET_CONTENT_PADDING_TOP,
+  FormSheetChromeHeader,
+  FormSheetModalBody,
+  useFormSheetHeight,
+} from '@/lib/sheet/formSheetScroll';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { PremiumSwitch } from '@/components/PremiumSwitch';
@@ -31,8 +35,7 @@ type Props = {
 
 export function ContactFormModal({ visible, bottomInset = 0, onClose, onSaved }: Props) {
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
-  const sheetHeight = Math.round(windowHeight * 0.55);
+  const sheetHeight = useFormSheetHeight(0.55);
   const { colors, isLight } = useAppTheme();
   const [nameDraft, setNameDraft] = useState('');
   const [isEmployer, setIsEmployer] = useState(false);
@@ -77,6 +80,7 @@ export function ContactFormModal({ visible, bottomInset = 0, onClose, onSaved }:
             style={StyleSheet.absoluteFill}
             onPress={onClose}
           />
+          <FormSheetModalBody>
           <DraggableSheetSurface
             onClose={onClose}
             sheetHeight={sheetHeight}
@@ -89,19 +93,18 @@ export function ContactFormModal({ visible, bottomInset = 0, onClose, onSaved }:
               },
             ]}
           >
-        <View style={[styles.handle, { backgroundColor: colors.borderStrong }]} />
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: colors.text }]}>Ajouter un contact</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Fermer"
-            hitSlop={12}
-            onPress={onClose}
-            style={[styles.closeButton, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
-          >
-            <AppIcon family="ionicons" name="close" size={19} color={colors.textMuted} />
-          </Pressable>
-        </View>
+        <FormSheetChromeHeader
+          title="Ajouter un contact"
+          onClose={onClose}
+          titleColor={colors.text}
+          closeIconColor={colors.textMuted}
+          handleColor={colors.borderStrong}
+          closeButtonStyle={{
+            backgroundColor: colors.surfaceElevated,
+            borderColor: colors.border,
+            borderWidth: StyleSheet.hairlineWidth,
+          }}
+        />
 
         <View style={styles.section}>
           <DashboardSectionLabel>Nom</DashboardSectionLabel>
@@ -152,6 +155,7 @@ export function ContactFormModal({ visible, bottomInset = 0, onClose, onSaved }:
           disabled={saving}
         />
           </DraggableSheetSurface>
+          </FormSheetModalBody>
         </View>
       </GestureHandlerRootView>
     </Modal>
@@ -168,35 +172,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingTop: FORM_SHEET_CONTENT_PADDING_TOP,
     gap: spacing.md,
-  },
-  handle: {
-    alignSelf: 'center',
-    width: 44,
-    height: 4,
-    borderRadius: radius.pill,
-    marginBottom: 4,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  title: {
-    flex: 1,
-    fontSize: typography.title,
-    fontWeight: '800',
-    letterSpacing: -0.4,
-  },
-  closeButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   section: {
     gap: spacing.sm,

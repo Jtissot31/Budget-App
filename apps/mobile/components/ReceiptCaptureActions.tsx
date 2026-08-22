@@ -1,92 +1,43 @@
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { containerSurfaceStyle, radius, spacing } from '@/constants/theme';
+import { OnyxContainer } from '@/components/OnyxContainer';
+import {
+  ONYX_CONTAINER,
+  onyxContainerPressedStyle,
+  onyxContainerRowLayoutStyle,
+} from '@/constants/planFinanceKit';
+import { spacing } from '@/constants/theme';
 import { typographyKit } from '@/constants/typographyKit';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
-  onScan: () => void;
   onImport: () => void;
   onCapture: () => void;
-  compact?: boolean;
-  variant?: 'grid' | 'premium';
-  label?: string;
-  /** Detail sheet: elevated fill without container outline. */
-  flat?: boolean;
 };
 
-export function ReceiptCaptureActions({
-  onScan,
-  onImport,
-  onCapture,
-  compact = false,
-  variant = 'grid',
-  label = 'Importer ou scanner un reçu',
-  flat = false,
-}: Props) {
-  const { colors, isLight } = useAppTheme();
-  const surface = flat
-    ? { backgroundColor: colors.surfaceElevated, borderWidth: 0, borderColor: 'transparent' as const }
-    : containerSurfaceStyle(isLight);
-
-  const openPremiumMenu = () => {
-    tapHaptic();
-    Alert.alert(label, 'Choisis une source pour le reçu.', [
-      { text: 'Scanner le reçu', onPress: onScan },
-      { text: 'Prendre une photo', onPress: onCapture },
-      { text: 'Importer de la galerie', onPress: onImport },
-      { text: 'Annuler', style: 'cancel' },
-    ]);
-  };
-
-  if (variant === 'premium') {
-    return (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        onPress={openPremiumMenu}
-        style={({ pressed }) => [styles.premiumBtn, surface, pressed && styles.pressed]}
-      >
-        <View style={[styles.premiumIconWell, { backgroundColor: colors.surfaceElevated }]}>
-          <AppIcon family="ionicons" name="receipt-outline" size={20} color={colors.text} />
-        </View>
-        <View style={styles.premiumCopy}>
-          <Text style={[styles.premiumLabel, { color: colors.text }]}>{label}</Text>
-          <Text style={[styles.premiumHint, { color: colors.textMuted }]}>Scan, photo ou galerie</Text>
-        </View>
-        <AppIcon family="ionicons" name="chevron-forward" size={17} color={colors.textMuted} />
-      </Pressable>
-    );
-  }
+export function ReceiptCaptureActions({ onImport, onCapture }: Props) {
+  const { colors } = useAppTheme();
 
   const actions = [
     {
-      key: 'scan',
-      icon: 'scan-outline' as const,
-      label: 'Scanner',
-      hint: 'Extraction rapide',
-      onPress: onScan,
-      accent: true,
-    },
-    {
       key: 'camera',
       icon: 'camera-outline' as const,
-      label: 'Photo',
-      hint: 'Caméra',
+      label: 'Caméra',
+      hint: 'Prendre une photo',
       onPress: onCapture,
     },
     {
-      key: 'import',
+      key: 'gallery',
       icon: 'image-outline' as const,
-      label: 'Importer',
-      hint: 'Galerie',
+      label: 'Galerie',
+      hint: 'Choisir une image',
       onPress: onImport,
     },
   ];
 
   return (
-    <View style={[styles.grid, compact && styles.gridCompact]}>
+    <View style={styles.stack}>
       {actions.map((action) => (
         <Pressable
           key={action.key}
@@ -96,18 +47,18 @@ export function ReceiptCaptureActions({
             tapHaptic();
             action.onPress();
           }}
-          style={({ pressed }) => [
-            styles.action,
-            surface,
-            action.accent && { borderColor: colors.primary },
-            pressed && styles.pressed,
-          ]}
+          style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
         >
-          <View style={[styles.iconWell, { backgroundColor: action.accent ? colors.successMuted : colors.input }]}>
-            <AppIcon family="ionicons" name={action.icon} size={18} color={action.accent ? colors.primary : colors.textSecondary} />
-          </View>
-          <Text style={[styles.label, { color: colors.text }]}>{action.label}</Text>
-          {!compact ? <Text style={[styles.hint, { color: colors.textMuted }]}>{action.hint}</Text> : null}
+          <OnyxContainer style={[onyxContainerRowLayoutStyle(), styles.actionInner]}>
+            <View style={[styles.iconWell, { backgroundColor: colors.input }]}>
+              <AppIcon family="ionicons" name={action.icon} size={24} color={colors.text} />
+            </View>
+            <View style={styles.copy}>
+              <Text style={[styles.label, { color: colors.text }]}>{action.label}</Text>
+              <Text style={[styles.hint, { color: colors.textMuted }]}>{action.hint}</Text>
+            </View>
+            <AppIcon family="ionicons" name="chevron-forward" size={18} color={colors.textMuted} />
+          </OnyxContainer>
         </Pressable>
       ))}
     </View>
@@ -115,66 +66,30 @@ export function ReceiptCaptureActions({
 }
 
 const styles = StyleSheet.create({
-  premiumBtn: {
-    minHeight: 58,
-    borderRadius: radius.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+  stack: {
+    gap: ONYX_CONTAINER.listGap,
   },
-  premiumIconWell: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+  actionInner: {
+    minHeight: 72,
+    paddingVertical: spacing.md + 2,
+  },
+  iconWell: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  premiumCopy: {
+  copy: {
     flex: 1,
     minWidth: 0,
     gap: 2,
   },
-  premiumLabel: {
-    ...typographyKit.caption,
-  },
-  premiumHint: {
-    ...typographyKit.microMedium,
-  },
-  grid: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  gridCompact: {
-    gap: spacing.xs,
-  },
-  action: {
-    flex: 1,
-    minHeight: 78,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.sm,
-  },
-  iconWell: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   label: {
-    ...typographyKit.caption,
-    textAlign: 'center',
+    ...typographyKit.sectionTitle,
+    fontSize: 17,
   },
   hint: {
-    ...typographyKit.microMedium,
-    textAlign: 'center',
-  },
-  pressed: {
-    opacity: 0.74,
+    ...typographyKit.metaMedium,
   },
 });

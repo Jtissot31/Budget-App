@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -136,7 +136,17 @@ export default function SavingsGoalTransactionsScreen() {
   }, [transactions]);
 
   const displayName = goal?.name ?? 'Objectif';
-  const iconName = goal?.icon && goal.icon in Ionicons.glyphMap ? goal.icon : 'flag-outline';
+  const storedIcon = goal?.icon ?? '';
+  const useMaterialCommunityIcon =
+    Boolean(storedIcon) &&
+    storedIcon in MaterialCommunityIcons.glyphMap &&
+    !(storedIcon in Ionicons.glyphMap);
+  const iconName =
+    storedIcon && storedIcon in Ionicons.glyphMap
+      ? storedIcon
+      : useMaterialCommunityIcon
+        ? storedIcon
+        : 'flag-outline';
   const sheetHorizontalGutter = Math.max(insets.left, insets.right, spacing.md);
   const listShowing = loading && transactions.length === 0 ? [] : groupedTransactions;
 
@@ -204,7 +214,12 @@ export default function SavingsGoalTransactionsScreen() {
                 ]}
               >
                 <View style={[stylesMemo.heroIcon, { backgroundColor: ghost.obsidianSoft }]}>
-                  <AppIcon family="ionicons" name={iconName as keyof typeof Ionicons.glyphMap} size={30} color={colors.primary} />
+                  <AppIcon
+                    family={useMaterialCommunityIcon ? 'material-community' : 'ionicons'}
+                    name={iconName}
+                    size={30}
+                    color={colors.primary}
+                  />
                 </View>
                 <View style={stylesMemo.heroCopy}>
                   <Text style={[stylesMemo.goalName, { color: colors.text }]} numberOfLines={3}>

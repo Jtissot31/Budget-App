@@ -38,10 +38,10 @@ Nommage : `verify-s25-<ecran>-<before|after>.png` dans `apps/mobile/`.
 
 ## Référence thème (dark Budget Tracker)
 
-- Fond `#0a0a0a`, cartes `#111111`
-- Accent `#4ADE80` — Disponible / succès uniquement
+- Fond `#070709`, cartes glass `rgba(255,255,255,0.055)` (Budget Proto Figma)
+- Accent `#22C55E` — Disponible / succès uniquement
 - Fonte : **Plus Jakarta Sans** (pas DM Mono hors articles — voir `dm-mono-articles-only`)
-- Radius cartes ~13px ; bordures `rgba(255,255,255,0.12–0.15)`
+- Radius cartes ~18px ; bordures `rgba(255,255,255,0.1)`
 
 ## Fichier protégé
 

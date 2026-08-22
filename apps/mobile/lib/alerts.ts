@@ -3,8 +3,17 @@ import { evaluateAlerts, markAlertRead } from '@/lib/ai/alertService';
 import type { AIAlert, AlertCategory } from '@/lib/ai/types';
 import {
   ALERT_SECTION_LABELS_REASSURING,
+  normalizeAlertDisplayTitle,
   paymentKindFromSourceTitle,
+  suppressGenericBudgetOverAlerts,
 } from '@/lib/alertPresentation';
+import { capAlertsPerType } from '@/lib/alertGuardrails';
+import {
+  dedupeAlertItemsByIdentity,
+  paymentAlertIdentityKey,
+  resolveAlertIdentityKey,
+  type AlertKindKey,
+} from '@/lib/alertIdentity';
 
 export type AlertCenterKind =
   | 'low_funds'
@@ -41,6 +50,8 @@ export type AlertCenterItem = {
   adaptationProposalId?: string;
   /** Plan id for plan_adaptation alerts. */
   relatedPlanId?: string;
+  /** Stable identity (type + entity + period) — two items never share one key. */
+  dedupeKey?: string;
 };
 
 export const ALERT_SECTION_ORDER: AlertCenterSection[] = ['urgent', 'opportunities'];
@@ -72,7 +83,14 @@ function aiCategoryToKind(alert: {
   if (alert.categorie === 'solde_bas' || alert.categorie === 'fonds_insuffisants') return 'low_funds';
   if (alert.categorie === 'budget') return 'budget_over';
   const lowerTitle = alert.titre.toLowerCase();
-  if (alert.categorie === 'credit' && lowerTitle.includes('dette')) return 'high_interest_debt';
+  if (
+    alert.categorie === 'credit' &&
+    (lowerTitle.includes('dette') ||
+      lowerTitle.includes('taux élevé') ||
+      lowerTitle.includes('prioriser le remboursement'))
+  ) {
+    return 'high_interest_debt';
+  }
   if (alert.categorie === 'credit') return 'credit_limit';
   return 'fyn';
 }
@@ -84,10 +102,20 @@ export function alertSectionForKind(kind: AlertCenterKind): AlertCenterSection {
   return 'urgent';
 }
 
-export function paymentAlertSeverityFromTitle(title: string): AlertCenterSeverity {
-  const kind = paymentKindFromSourceTitle(title);
-  if (kind === 'credit_limit') return 'warning';
+/**
+ * Payment-sourced Accueil severity.
+ * Default **warning** (yellow / à venir). Callers may set `PaymentAlertSource.severity`
+ * to `danger` when the risk is already true now (e.g. credit `over_limit`).
+ */
+export function paymentAlertSeverityFromTitle(_title: string): AlertCenterSeverity {
   return 'warning';
+}
+
+export function paymentAlertSeverityForSource(
+  source: Pick<PaymentAlertSource, 'title' | 'kind' | 'severity'>,
+): AlertCenterSeverity {
+  if (source.severity) return source.severity;
+  return paymentAlertSeverityFromTitle(source.title);
 }
 
 export function paymentAlertKindFromTitle(title: string): AlertCenterKind {
@@ -119,6 +147,11 @@ export type PaymentAlertSource = {
   accountId?: string;
   /** Prefer explicit kind over title heuristics. */
   kind?: AlertCenterKind;
+  /**
+   * Optional override — `danger` when already critical now (e.g. over limit);
+   * omit for default upcoming `warning` (yellow).
+   */
+  severity?: AlertCenterSeverity;
   /** True when the alert is tied to a recurring bill. */
   recurring?: boolean;
   /** Merchant or label for the payment tied to this alert. */
@@ -134,9 +167,10 @@ export async function paymentSourcesToCenterItems(
     return {
       id: `payment-${source.id}`,
       kind,
+      dedupeKey: paymentAlertIdentityKey(kind, source.id),
       section: alertSectionForKind(kind),
-      severity: paymentAlertSeverityFromTitle(source.title),
-      title: source.title,
+      severity: paymentAlertSeverityForSource(source),
+      title: normalizeAlertDisplayTitle(source.title),
       message: source.body,
       timestamp: (source.paymentDateRaw ?? new Date()).toISOString(),
       read: readFlags[index] ?? false,
@@ -152,9 +186,10 @@ function aiAlertToCenterItem(alert: AIAlert): AlertCenterItem {
   return {
     id: `fyn-${alert.id}`,
     kind,
+    dedupeKey: resolveAlertIdentityKey(alert),
     section: alertSectionForKind(kind),
     severity: aiSeverityToCenter(alert.type),
-    title: alert.titre,
+    title: normalizeAlertDisplayTitle(alert.titre),
     message: alert.message,
     timestamp: alert.createdAt,
     read: alert.lu,
@@ -169,20 +204,79 @@ function aiAlertToCenterItem(alert: AIAlert): AlertCenterItem {
 export async function loadFynAlertCenterItems(): Promise<AlertCenterItem[]> {
   // evaluateAlerts already runs evaluateAndSurfacePlanAdaptations first.
   const alerts = await evaluateAlerts();
-  return alerts.map(aiAlertToCenterItem);
+  return suppressGenericBudgetOverAlerts(
+    alerts.map(aiAlertToCenterItem).filter((item) => item.kind !== 'high_interest_debt'),
+  );
+}
+
+/** Single summary row standing in for alerts hidden by the per-type cap. */
+function buildAggregateAlertItem(
+  kind: AlertCenterKind,
+  hidden: AlertCenterItem[],
+): AlertCenterItem | null {
+  if (hidden.length === 0) return null;
+  const newest = hidden.reduce((latest, item) =>
+    new Date(item.timestamp).getTime() > new Date(latest.timestamp).getTime() ? item : latest,
+  );
+
+  const title =
+    kind === 'budget_over'
+      ? `${hidden.length} autres enveloppes dépassées`
+      : `${hidden.length} autres alertes similaires`;
+  const message =
+    kind === 'budget_over'
+      ? 'Plusieurs enveloppes ont dépassé leur plafond ce mois-ci. Revoir la répartition remet le budget dans le rythme.'
+      : 'D’autres alertes du même type attendent. Ouvre la liste complète pour les passer en revue.';
+
+  return {
+    id: `aggregate-${kind}`,
+    kind,
+    dedupeKey: `aggregate:${kind}`,
+    section: alertSectionForKind(kind),
+    severity: newest.severity,
+    title,
+    message,
+    timestamp: newest.timestamp,
+    read: hidden.every((item) => item.read),
+  };
 }
 
 export async function composeAlertCenterItems(
   paymentSources: PaymentAlertSource[],
 ): Promise<AlertCenterItem[]> {
-  const [paymentItems, fynItems] = await Promise.all([
+  const { filterAlertItemsByPreferences, getAlertTypePreferences, preferenceIdForAlertItem } =
+    await import('@/lib/alertTypePreferences');
+  const [paymentItems, fynItems, prefs] = await Promise.all([
     paymentSourcesToCenterItems(paymentSources),
     loadFynAlertCenterItems(),
+    getAlertTypePreferences(),
   ]);
 
-  const merged = [...paymentItems, ...fynItems];
+  // High-interest debt is not an alert/notification — exclude Accueil + « Tout voir ».
+  const merged = suppressGenericBudgetOverAlerts(
+    filterAlertItemsByPreferences(
+      [...paymentItems, ...fynItems].filter((item) => item.kind !== 'high_interest_debt'),
+      prefs,
+    ),
+  );
   merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  return merged;
+
+  // Backstop: even if a generator regresses, one identity yields at most one row.
+  const deduped = dedupeAlertItemsByIdentity(merged);
+
+  return capAlertsPerType(deduped, {
+    typeOf: (item): AlertKindKey | null => preferenceIdForAlertItem(item),
+    aggregate: (_type, hidden) => buildAggregateAlertItem(hidden[0].kind, hidden),
+  });
+}
+
+/** Compact 24h clock for alert cards (e.g. « 09:00 », « 14:32 »). */
+export function formatAlertClockTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
 }
 
 export function countUnreadAlerts(items: AlertCenterItem[]): number {

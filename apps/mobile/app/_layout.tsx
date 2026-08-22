@@ -10,7 +10,7 @@ import { InteractionManager, Platform, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DMMono_400Regular, DMMono_500Medium } from '@expo-google-fonts/dm-mono';
-import { Inter_800ExtraBold } from '@expo-google-fonts/inter';
+import { Inter_600SemiBold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
 import {
   PlusJakartaSans_400Regular,
   PlusJakartaSans_500Medium,
@@ -20,6 +20,7 @@ import {
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { AppBackgroundGradient } from '@/components/AppBackgroundGradient';
 import { RootErrorBoundary } from '@/components/RootErrorBoundary';
+import { SwipeBackHost } from '@/components/gestures/SwipeBackHost';
 import { ensureDbReady } from '@/lib/init';
 import { preloadVectorIconFonts } from '@/lib/preloadVectorIconFonts';
 import { useAppFonts } from '@/lib/useAppFonts';
@@ -65,6 +66,7 @@ function RootLayoutContent() {
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
     PlusJakartaSans_800ExtraBold,
+    Inter_600SemiBold,
     Inter_800ExtraBold,
   });
 
@@ -123,6 +125,7 @@ function RootLayoutContent() {
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <AppBackgroundGradient />
         <View style={{ flex: 1, zIndex: 1 }}>
+          <SwipeBackHost>
           <Stack
             screenOptions={{
               headerStyle: { backgroundColor: 'transparent' },
@@ -135,12 +138,16 @@ function RootLayoutContent() {
               },
               animation: 'fade_from_bottom',
               animationDuration: 250,
+              // iOS interactive pop (full-width). Android uses SwipeBackHost.
               gestureEnabled: true,
               fullScreenGestureEnabled: true,
               contentStyle: { backgroundColor: 'transparent' },
             }}
           >
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="(tabs)"
+              options={{ headerShown: false, gestureEnabled: false }}
+            />
             <Stack.Screen
               name="onboarding"
               options={{
@@ -181,17 +188,23 @@ function RootLayoutContent() {
             <Stack.Screen name="budget-category-transactions" options={{ headerShown: false }} />
             <Stack.Screen name="savings-goals" options={{ headerShown: false }} />
             <Stack.Screen name="transactions-insights" options={{ headerShown: false }} />
+            <Stack.Screen name="subscriptions-insights" options={{ headerShown: false }} />
+            <Stack.Screen name="documents-library" options={{ headerShown: false }} />
             <Stack.Screen name="paycheck-allocation" options={{ headerShown: false }} />
             <Stack.Screen name="lucide-icons" options={{ headerShown: false }} />
             <Stack.Screen name="fyn-ui-lab" options={{ headerShown: false }} />
+            <Stack.Screen name="account-card-prototypes" options={{ headerShown: false }} />
+            <Stack.Screen name="patrimoine" options={{ headerShown: false }} />
             <Stack.Screen name="plans" options={{ headerShown: false }} />
-            <Stack.Screen name="scan" options={{ title: 'Scanner', presentation: 'modal' }} />
+            <Stack.Screen name="scan" options={{ headerShown: false, presentation: 'modal' }} />
             <Stack.Screen name="ai-chat" options={{ headerShown: false }} />
             <Stack.Screen name="ai-advisor" options={{ headerShown: false }} />
             <Stack.Screen name="fyn-chat" options={{ headerShown: false }} />
             <Stack.Screen name="alert-center" options={{ headerShown: false }} />
             <Stack.Screen name="alert-detail" options={{ headerShown: false }} />
+            <Stack.Screen name="alert-types" options={{ headerShown: false }} />
           </Stack>
+          </SwipeBackHost>
         </View>
       </View>
     </>

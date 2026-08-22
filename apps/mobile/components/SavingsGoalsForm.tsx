@@ -1,24 +1,36 @@
 import { type Dispatch, type SetStateAction, useMemo } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
 import {
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
+  type StyleProp,
+  type TextStyle,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
+import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
+import {
+  DraggableSheetScrollView,
+  DraggableSheetSurface,
+} from '@/components/DraggableSheetSurface';
+import {
+  FORM_SHEET_CONTENT_PADDING_TOP,
+  FormSheetChromeHeader,
+  FormSheetModalBody,
+  formSheetScrollContentStyle,
+  formSheetScrollPaddingBottom,
+  formSheetScrollViewStyle,
+  useFormSheetHeight,
+  useFormSheetKeyboardInset,
+} from '@/lib/sheet/formSheetScroll';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DatePickerField } from '@/components/MinimalDatePicker';
-import { GoalSparkChartCarousel } from '@/components/GoalSparkChartCarousel';
-import { PlanFinanceContainer } from '@/components/plans/PlanFinanceContainer';
+import { MdiIcon } from '@/components/MdiIcon';
+import { OnyxContainer } from '@/components/OnyxContainer';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
@@ -33,17 +45,14 @@ import {
   toWeeklyContributionAmount,
   type SavingsGoalContributionFrequency,
 } from '@/lib/savingsGoalContribution';
-import { UserPickedIconWell } from '@/components/UserPickedIconWell';
-import { SCREEN_TOP_GUTTER, ghost, ghostCardShadow } from '@/constants/ghostUi';
-import { LINEAR_CHART_ACCENT_LIGHT } from '@/constants/linearChart';
+import { ghost } from '@/constants/ghostUi';
+import { ONYX_CONTAINER, planFinanceKit } from '@/constants/planFinanceKit';
 import {
-  ONYX_CONTAINER,
-  planFinanceKit,
-} from '@/constants/planFinanceKit';
-import {
-  FLOATING_NAV_CONTENT_PADDING,
-  containerSurfaceStyle,
+  FORM_SECTION_LABEL_STYLE,
   getGoalGreenShade,
+  jakartaBoldText,
+  jakartaMediumText,
+  jakartaSemiboldText,
   moneyAmountTypography,
   PAGE_TITLE_CONTENT_GAP,
   colors,
@@ -52,11 +61,22 @@ import {
   typography,
   typographyKit,
 } from '@/constants/theme';
+import { BUDGET_CATEGORY_ICON_GLYPH_COLOR } from '@/lib/budgetCategoryIcon';
 import { upsertSavingsGoal } from '@/lib/db';
+import {
+  DEFAULT_GOAL_ICON,
+  getAutomaticGoalIcon,
+} from '@/lib/getAutomaticGoalIcon';
+import {
+  computeGoalCashflowProjection,
+  formatGoalDuration,
+  type GoalProjection,
+} from '@/lib/goalProjection';
+import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
+import { parseFormattedNumber, sanitizeNumericInput, formatNumberDisplay } from '@/lib/formatNumber';
+import { isMdiIconName } from '@/lib/mdiIconCatalog';
 import { savingsGoalIncrementalProgress } from '@/lib/savingsGoalProgress';
 import { useAppTheme } from '@/lib/themeContext';
-import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
-import { parseFormattedNumber, sanitizeNumericInput, formatNumberDisplay } from '@/lib/formatNumber';
 import type { CategoryBudget, DashboardSummary, RecurringPayment, SavingsGoal } from '@/types';
 
 export type GoalForm = {
@@ -78,8 +98,7 @@ export type GoalForm = {
 type IconName = keyof typeof Ionicons.glyphMap;
 type IconSelectionMode = 'auto' | 'manual';
 
-const DEFAULT_COLOR = LINEAR_CHART_ACCENT_LIGHT;
-const DEFAULT_ICON: IconName = 'flag-outline';
+const DEFAULT_ICON = DEFAULT_GOAL_ICON;
 
 export function createNewGoalForm(): GoalForm {
   const id = createLocalId();
@@ -164,8 +183,8 @@ export function SavingsGoalFormModal({
   onSave: () => void | Promise<void>;
 }) {
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
-  const sheetHeight = Math.round(windowHeight * 0.92);
+  const sheetHeight = useFormSheetHeight(0.92);
+  const keyboardInset = useFormSheetKeyboardInset();
   const { colors: themeColors, isLight } = useAppTheme();
   const projection = useMemo(
     () => getGoalProjection(form, dashboard, categoryBudgets, recurringPayments, goals),
@@ -194,6 +213,10 @@ export function SavingsGoalFormModal({
     !Number.isNaN(enteredWeekly) &&
     enteredWeekly >= 0 &&
     enteredWeekly < suggestedWeekly * 0.995;
+  const sectionLabelStyle = useMemo(
+    () => [FORM_SECTION_LABEL_STYLE, { color: themeColors.text }],
+    [themeColors.text],
+  );
   const themed = useMemo(
     () => ({
       modalBackdrop: { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' },
@@ -201,8 +224,17 @@ export function SavingsGoalFormModal({
         backgroundColor: themeColors.background,
         borderColor: themeColors.containerBorder,
       },
-      handle: { backgroundColor: themeColors.borderStrong },
-      closeButton: containerSurfaceStyle(isLight),
+      closeButton: {
+        backgroundColor: themeColors.surfaceElevated,
+        borderColor: themeColors.border,
+        borderWidth: StyleSheet.hairlineWidth,
+      },
+      /** Same glass input shell as add-budget-category / add-transaction. */
+      controlStrong: {
+        backgroundColor: themeColors.input,
+        borderColor: themeColors.border,
+        borderWidth: StyleSheet.hairlineWidth,
+      },
       text: { color: themeColors.text },
       textMuted: { color: themeColors.textMuted },
       warningCard: {
@@ -213,234 +245,218 @@ export function SavingsGoalFormModal({
     }),
     [isLight, themeColors],
   );
-  const fieldLabelStyle = useMemo(
-    () => ({ ...typographyKit.eyebrow, color: themeColors.textMuted }),
-    [themeColors.textMuted],
-  );
-  const selectedColor = form ? getGoalGreenShade(form.id, isLight) : LINEAR_CHART_ACCENT_LIGHT;
-  const chartCarouselTone = useMemo(
-    () => ({
-      stroke: selectedColor,
-      grid: isLight ? 'rgba(15,23,42,0.2)' : 'rgba(255,255,255,0.14)',
-      fill: isLight ? 'rgba(5,150,105,0.08)' : 'rgba(0,250,154,0.09)',
-    }),
-    [isLight, selectedColor],
-  );
   const resolvedIcon = form ? getAutomaticGoalIcon(form.name) : DEFAULT_ICON;
   const isEditingExistingGoal =
     form != null && goals.some((goal) => goal.id === form.id);
 
+  // Don't mount sheet chrome (date picker, etc.) while closed — wallet hub keeps this modal mounted.
+  if (form == null) return null;
+
   return (
-    <Modal visible={form != null} animationType="slide" transparent onRequestClose={onDismiss}>
+    <Modal visible animationType="slide" transparent onRequestClose={onDismiss}>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={[styles.modalBackdrop, themed.modalBackdrop]}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.modalKeyboard}
-          >
+          <FormSheetModalBody>
             <DraggableSheetSurface
               onClose={onDismiss}
               sheetHeight={sheetHeight}
               style={[styles.modalCard, themed.sheet]}
             >
-              <View style={[styles.handle, themed.handle]} />
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, themed.text]}>
-                {isEditingExistingGoal ? 'Modifier' : 'Nouvel objectif'}
-              </Text>
-              <Pressable
-                onPress={onDismiss}
-                hitSlop={12}
-                style={[styles.modalClose, themed.closeButton]}
-              >
-                <AppIcon family="ionicons" name="close" size={19} color={themeColors.textMuted} />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={[
-                styles.modalContent,
-                { paddingBottom: Math.max(insets.bottom, spacing.xl) },
-              ]}
-            >
-              <GoalKindHeader
-                name={form?.name ?? ''}
-                resolvedIcon={resolvedIcon}
-                onChangeName={(value) =>
-                  setForm((cur) =>
-                    cur
-                      ? {
-                          ...cur,
-                          name: value,
-                          icon: getAutomaticGoalIcon(value),
-                          iconMode: 'auto',
-                        }
-                      : cur,
-                  )
-                }
+              <FormSheetChromeHeader
+                title={isEditingExistingGoal ? 'Modifier' : 'Nouvel objectif'}
+                onClose={onDismiss}
+                titleColor={themeColors.text}
+                closeIconColor={themeColors.textMuted}
+                handleColor={themeColors.borderStrong}
+                closeButtonStyle={themed.closeButton}
               />
 
-              {isEditingExistingGoal ? (
-                <GoalSparkChartCarousel
-                  goals={goals}
-                  focusGoalId={form.id}
-                  stroke={chartCarouselTone.stroke}
-                  areaFill={chartCarouselTone.fill}
-                  gridColor={chartCarouselTone.grid}
-                  labelColor={themeColors.textMuted}
-                  captionColor={themeColors.textSecondary}
-                  captionTemplate="Courbe · %s"
-                />
-              ) : null}
+              <DraggableSheetScrollView
+                style={formSheetScrollViewStyle()}
+                keyboardDismissMode="on-drag"
+                contentContainerStyle={[
+                  styles.modalContent,
+                  formSheetScrollContentStyle,
+                  { paddingBottom: formSheetScrollPaddingBottom(insets.bottom, keyboardInset) },
+                ]}
+              >
+                <View style={styles.formBody}>
+                  <View style={styles.section}>
+                    <DashboardSectionLabel style={sectionLabelStyle}>
+                      Nom de l'objectif
+                    </DashboardSectionLabel>
+                    <GoalKindHeader
+                      name={form?.name ?? ''}
+                      resolvedIcon={resolvedIcon}
+                      onChangeName={(value) =>
+                        setForm((cur) =>
+                          cur
+                            ? {
+                                ...cur,
+                                name: value,
+                                icon: getAutomaticGoalIcon(value),
+                                iconMode: 'auto',
+                              }
+                            : cur,
+                        )
+                      }
+                    />
+                    <Text style={[styles.fieldHint, themed.textMuted]}>
+                      Icône auto selon le nom
+                    </Text>
+                  </View>
 
-              <View style={styles.sectionBlock}>
-                <View style={styles.twoCols}>
                   <FormField
-                    label="Cible"
+                    label="Montant cible"
                     value={form?.targetAmount ?? ''}
                     placeholder="5 000"
                     keyboardType="decimal-pad"
+                    controlStrong={themed.controlStrong}
+                    sectionLabelStyle={sectionLabelStyle}
                     onChangeText={(value) =>
-                      setForm((cur) => (cur ? { ...cur, targetAmount: sanitizeAmount(value) } : cur))
+                      setForm((cur) =>
+                        cur ? { ...cur, targetAmount: sanitizeAmount(value) } : cur,
+                      )
                     }
                   />
                   <FormField
-                    label="Épargné"
+                    label="Montant déjà épargné"
                     value={form?.currentAmount ?? ''}
                     placeholder="0"
                     keyboardType="decimal-pad"
+                    controlStrong={themed.controlStrong}
+                    sectionLabelStyle={sectionLabelStyle}
                     onChangeText={(value) =>
-                      setForm((cur) => (cur ? { ...cur, currentAmount: sanitizeAmount(value) } : cur))
+                      setForm((cur) =>
+                        cur ? { ...cur, currentAmount: sanitizeAmount(value) } : cur,
+                      )
                     }
                   />
-                </View>
-              </View>
 
-              <View style={styles.sectionBlock}>
-                <DatePickerField
-                  label="Date cible (optionnelle)"
-                  value={form?.dueDate ?? ''}
-                  placeholder="Aucune date maximale"
-                  allowClear
-                  variant="sheet"
-                  labelStyle={fieldLabelStyle}
-                  onChangeDate={(value) => setForm((cur) => (cur ? { ...cur, dueDate: value } : cur))}
-                />
-              </View>
-
-              <View style={styles.sectionBlock}>
-                <FormField
-                  label="Montant des versements"
-                  value={form?.weeklyContribution ?? ''}
-                  placeholder={contributionPlaceholder}
-                  keyboardType="decimal-pad"
-                  onChangeText={(value) =>
-                    setForm((cur) => (cur ? { ...cur, weeklyContribution: sanitizeAmount(value) } : cur))
-                  }
-                />
-                <ContributionFrequencyField
-                  frequency={contributionFrequency}
-                  onSelectFrequency={(frequency) =>
-                    setForm((cur) => {
-                      if (!cur) return cur;
-                      const currentAmount = cur.weeklyContribution.trim()
-                        ? parseAmount(cur.weeklyContribution)
-                        : null;
-                      let nextAmount = cur.weeklyContribution;
-                      if (
-                        currentAmount != null &&
-                        !Number.isNaN(currentAmount) &&
-                        currentAmount > 0 &&
-                        frequency !== cur.contributionFrequency
-                      ) {
-                        nextAmount = formatSuggestedAmount(
-                          convertContributionAmountBetweenFrequencies(
-                            currentAmount,
-                            cur.contributionFrequency,
-                            frequency,
-                          ),
-                        );
+                  <View style={styles.section}>
+                    <DatePickerField
+                      label="Date cible"
+                      value={form?.dueDate ?? ''}
+                      placeholder="Optionnelle · aucune date max"
+                      allowClear
+                      variant="sheet"
+                      labelStyle={sectionLabelStyle}
+                      surfaceStyle={themed.controlStrong}
+                      onChangeDate={(value) =>
+                        setForm((cur) => (cur ? { ...cur, dueDate: value } : cur))
                       }
-                      return {
-                        ...cur,
-                        contributionFrequency: frequency,
-                        weeklyContribution: nextAmount,
-                      };
-                    })
-                  }
-                />
-                {suggestedWeekly != null ? (
-                  <Text style={[styles.minimumHint, themed.textMuted]}>
-                    Minimum requis pour atteindre la date cible:{' '}
-                    {formatSuggestedAmount(suggestedAtFrequency ?? suggestedWeekly)} ${' '}
-                    {savingsGoalContributionFrequencyLabel(contributionFrequency).toLowerCase()}.
-                  </Text>
-                ) : null}
-                {isWeeklyBelowSuggestion && suggestedWeekly != null ? (
-                  <View style={[styles.weeklyWarning, themed.warningCard]}>
-                    <Text style={[styles.weeklyWarningText, themed.warningText]}>
-                      Ce montant ne permettra pas d'atteindre la date cible. Entre au moins{' '}
-                      {formatSuggestedAmount(suggestedAtFrequency ?? suggestedWeekly)} ${' '}
-                      {savingsGoalContributionFrequencyLabel(contributionFrequency).toLowerCase()} pour
-                      la respecter.
+                    />
+                    <Text style={[styles.fieldHint, themed.textMuted]}>
+                      Facultatif · sert à calculer le versement minimum
                     </Text>
                   </View>
-                ) : null}
-                {!isWeeklyBelowSuggestion && weeklyFeedback ? (
-                  <Text style={[styles.minimumHint, themed.textMuted]}>{weeklyFeedback}</Text>
-                ) : null}
-              </View>
 
-              {projection ? <GoalProjectionCard projection={projection} /> : null}
+                  <View style={styles.section}>
+                    <DashboardSectionLabel style={sectionLabelStyle}>
+                      Montant des versements
+                    </DashboardSectionLabel>
+                    <ThemeSegmentedControl
+                      tabs={SAVINGS_GOAL_CONTRIBUTION_FREQUENCIES}
+                      active={contributionFrequency}
+                      size="sm"
+                      variant="section"
+                      showDivider={false}
+                      onChange={(frequency) => {
+                        tapHaptic();
+                        setForm((cur) => {
+                          if (!cur) return cur;
+                          const currentAmount = cur.weeklyContribution.trim()
+                            ? parseAmount(cur.weeklyContribution)
+                            : null;
+                          let nextAmount = cur.weeklyContribution;
+                          if (
+                            currentAmount != null &&
+                            !Number.isNaN(currentAmount) &&
+                            currentAmount > 0 &&
+                            frequency !== cur.contributionFrequency
+                          ) {
+                            nextAmount = formatSuggestedAmount(
+                              convertContributionAmountBetweenFrequencies(
+                                currentAmount,
+                                cur.contributionFrequency,
+                                frequency,
+                              ),
+                            );
+                          }
+                          return {
+                            ...cur,
+                            contributionFrequency: frequency,
+                            weeklyContribution: nextAmount,
+                          };
+                        });
+                      }}
+                    />
+                    <FormField
+                      label=""
+                      hideLabel
+                      value={form?.weeklyContribution ?? ''}
+                      placeholder={contributionPlaceholder}
+                      keyboardType="decimal-pad"
+                      controlStrong={themed.controlStrong}
+                      sectionLabelStyle={sectionLabelStyle}
+                      onChangeText={(value) =>
+                        setForm((cur) =>
+                          cur ? { ...cur, weeklyContribution: sanitizeAmount(value) } : cur,
+                        )
+                      }
+                    />
+                    {suggestedWeekly != null ? (
+                      <Text style={[styles.fieldHint, themed.textMuted]}>
+                        Minimum pour la date cible :{' '}
+                        {formatSuggestedAmount(suggestedAtFrequency ?? suggestedWeekly)} ${' '}
+                        {savingsGoalContributionFrequencyLabel(contributionFrequency).toLowerCase()}
+                      </Text>
+                    ) : (
+                      <Text style={[styles.fieldHint, themed.textMuted]}>
+                        Facultatif
+                        {isEditingExistingGoal ? ' · estime la projection' : ''}
+                      </Text>
+                    )}
+                    {isWeeklyBelowSuggestion && suggestedWeekly != null ? (
+                      <View style={[styles.weeklyWarning, themed.warningCard]}>
+                        <Text style={[styles.weeklyWarningText, themed.warningText]}>
+                          Ce montant ne permettra pas d'atteindre la date cible. Entre au moins{' '}
+                          {formatSuggestedAmount(suggestedAtFrequency ?? suggestedWeekly)} ${' '}
+                          {savingsGoalContributionFrequencyLabel(contributionFrequency).toLowerCase()}{' '}
+                          pour la respecter.
+                        </Text>
+                      </View>
+                    ) : null}
+                    {!isWeeklyBelowSuggestion && weeklyFeedback ? (
+                      <Text style={[styles.fieldHint, themed.textMuted]}>{weeklyFeedback}</Text>
+                    ) : null}
+                  </View>
 
-              {feedback ? (
-                <ThemedFormMessage
-                  variant={feedback.variant}
-                  title={feedback.title}
-                  message={feedback.message}
-                />
-              ) : null}
+                  {isEditingExistingGoal && projection ? (
+                    <GoalProjectionCard projection={projection} />
+                  ) : null}
 
-              <PrimarySaveButton
-                label={saving ? 'Enregistrement...' : 'Enregistrer'}
-                onPress={() => void onSave()}
-                disabled={saving}
-              />
-            </ScrollView>
+                  {feedback ? (
+                    <ThemedFormMessage
+                      variant={feedback.variant}
+                      title={feedback.title}
+                      message={feedback.message}
+                    />
+                  ) : null}
+
+                  <PrimarySaveButton
+                    label={saving ? 'Enregistrement...' : 'Enregistrer'}
+                    onPress={() => void onSave()}
+                    disabled={saving}
+                    loading={saving}
+                  />
+                </View>
+              </DraggableSheetScrollView>
             </DraggableSheetSurface>
-          </KeyboardAvoidingView>
+          </FormSheetModalBody>
         </View>
       </GestureHandlerRootView>
     </Modal>
-  );
-}
-
-function ContributionFrequencyField({
-  frequency,
-  onSelectFrequency,
-}: {
-  frequency: SavingsGoalContributionFrequency;
-  onSelectFrequency: (frequency: SavingsGoalContributionFrequency) => void;
-}) {
-  const { colors } = useAppTheme();
-
-  return (
-    <View style={styles.frequencyField}>
-      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>Fréquence des versements</Text>
-      <ThemeSegmentedControl
-        tabs={SAVINGS_GOAL_CONTRIBUTION_FREQUENCIES}
-        active={frequency}
-        onChange={(next) => {
-          tapHaptic();
-          onSelectFrequency(next);
-        }}
-        size="section"
-        variant="section"
-        showDivider={false}
-      />
-    </View>
   );
 }
 
@@ -450,34 +466,40 @@ function FormField({
   placeholder,
   keyboardType,
   onChangeText,
+  controlStrong,
+  sectionLabelStyle,
+  hideLabel = false,
 }: {
   label: string;
   value: string;
   placeholder: string;
   keyboardType?: 'default' | 'decimal-pad';
   onChangeText: (value: string) => void;
+  controlStrong: { backgroundColor: string; borderColor: string; borderWidth: number };
+  sectionLabelStyle: StyleProp<TextStyle>;
+  hideLabel?: boolean;
 }) {
-  const { colors, isLight } = useAppTheme();
+  const { colors } = useAppTheme();
   const InputComponent = keyboardType === 'decimal-pad' ? NumericAmountInput : TextInput;
-  const inputSurface = containerSurfaceStyle(isLight);
   const isAmount = keyboardType === 'decimal-pad';
 
   return (
     <View style={styles.field}>
-      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{label}</Text>
-      <View style={[styles.inputShell, inputSurface]}>
+      {!hideLabel && label ? (
+        <DashboardSectionLabel style={sectionLabelStyle}>{label}</DashboardSectionLabel>
+      ) : null}
+      <View style={[styles.inputShell, controlStrong]}>
         <InputComponent
-          style={[
-            styles.input,
-            isAmount ? styles.amountInput : styles.textInput,
-            { color: colors.text },
-          ]}
+          style={[styles.inputWithSuffix, { color: colors.text }]}
           value={value}
           onChangeText={onChangeText}
           keyboardType={keyboardType}
           placeholder={placeholder}
           placeholderTextColor={colors.textMuted}
         />
+        {isAmount ? (
+          <Text style={[styles.suffix, { color: colors.textSecondary }]}>$</Text>
+        ) : null}
       </View>
     </View>
   );
@@ -492,42 +514,91 @@ function GoalKindHeader({
   resolvedIcon: string;
   onChangeName: (value: string) => void;
 }) {
-  const { colors } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
+  const trimmedName = name.trim();
+  const glyphColor = isLight ? 'rgba(17,17,17,0.82)' : BUDGET_CATEGORY_ICON_GLYPH_COLOR;
+  const mdiName = isMdiIconName(resolvedIcon) ? resolvedIcon : null;
+  const useMaterialCommunity = isMaterialCommunityOnlyIcon(resolvedIcon);
+  const glyphName = resolveGoalIdentityGlyph(resolvedIcon);
 
   return (
-    <View style={styles.goalKindHeader}>
-      <UserPickedIconWell icon={resolvedIcon} size={44} wellGlyphWhite noBackground />
+    <View style={styles.identityRow}>
+      <View style={styles.iconAffordance}>
+        {trimmedName ? (
+          <View style={styles.iconSlot}>
+            {mdiName ? (
+              <MdiIcon name={mdiName} size={22} color={glyphColor} />
+            ) : useMaterialCommunity ? (
+              <AppIcon family="material-community" name={resolvedIcon} size={22} color={glyphColor} />
+            ) : (
+              <AppIcon family="ionicons" name={glyphName} size={22} color={glyphColor} />
+            )}
+          </View>
+        ) : (
+          <View style={styles.iconGhostSlot} accessibilityElementsHidden>
+            <AppIcon
+              family="ionicons"
+              name="flag-outline"
+              size={20}
+              color={colors.textMuted}
+            />
+          </View>
+        )}
+      </View>
       <TextInput
-        style={[styles.goalKindName, { color: colors.text }]}
+        style={[
+          styles.nameInput,
+          {
+            color: colors.text,
+            borderBottomColor: colors.border,
+            borderBottomWidth: StyleSheet.hairlineWidth,
+          },
+        ]}
         value={name}
         onChangeText={onChangeName}
         placeholder="Ex. Fonds d'urgence"
         placeholderTextColor={colors.textMuted}
         accessibilityLabel="Nom de l'objectif"
+        returnKeyType="next"
       />
     </View>
   );
 }
 
+/** Same filled-Ionicons treatment as add-budget-category identity glyph. */
+function resolveGoalIdentityGlyph(icon: string): IconName {
+  const normalized =
+    icon === 'shield-check-outline'
+      ? 'shield-checkmark-outline'
+      : icon === 'shield-check'
+        ? 'shield-checkmark'
+        : icon;
+  if (normalized.endsWith('-outline')) {
+    const filled = normalized.slice(0, -'-outline'.length) as IconName;
+    if (Object.prototype.hasOwnProperty.call(Ionicons.glyphMap, filled)) {
+      return filled;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(Ionicons.glyphMap, normalized)) {
+    return normalized as IconName;
+  }
+  return 'flag';
+}
 
-type GoalProjection = {
-  progress: number;
-  remaining: number;
-  weeksToGoal: number | null;
-  requiredWeekly: number | null;
-  monthlyContribution: number;
-  weeklyObligationsTotal: number;
-  budgetUseRatio: number | null;
-  freeMoneyLeftRatio: number | null;
-  targetDate: string | null;
-  hint: string;
-};
+/** MCI-only names (e.g. palm-tree) — avoid ionicons/MCI overlaps like flag-outline. */
+function isMaterialCommunityOnlyIcon(icon: string): boolean {
+  return (
+    Object.prototype.hasOwnProperty.call(MaterialCommunityIcons.glyphMap, icon) &&
+    !Object.prototype.hasOwnProperty.call(Ionicons.glyphMap, icon)
+  );
+}
+
 
 function GoalProjectionCard({ projection }: { projection: GoalProjection }) {
   const { colors } = useAppTheme();
 
   return (
-    <PlanFinanceContainer style={styles.projectionCard} halo={false}>
+    <OnyxContainer halo={false} style={styles.projectionCard}>
       <Text style={[styles.projectionTitle, { color: colors.textMuted }]}>Projection</Text>
       <ProjectionRow label="Progression" value={formatPercent(projection.progress)} />
       <ProjectionRow
@@ -565,8 +636,15 @@ function GoalProjectionCard({ projection }: { projection: GoalProjection }) {
           monetary
         />
       ) : null}
+      {projection.cashflowImpactWeekly != null ? (
+        <ProjectionRow
+          label="Impact sur le cashflow"
+          value={`${formatSignedDisplayMoney(projection.cashflowImpactWeekly)} / semaine`}
+          monetary
+        />
+      ) : null}
       <Text style={[styles.projectionHint, { color: colors.textMuted }]}>{projection.hint}</Text>
-    </PlanFinanceContainer>
+    </OnyxContainer>
   );
 }
 
@@ -666,7 +744,7 @@ function getGoalProjection(
   dashboard: DashboardSummary | null,
   categoryBudgets: CategoryBudget[],
   recurringPayments: RecurringPayment[],
-  goals: SavingsGoal[],
+  _goals: SavingsGoal[],
 ): GoalProjection | null {
   if (!form) return null;
   const targetAmount = parseAmount(form.targetAmount || '0');
@@ -705,23 +783,13 @@ function getGoalProjection(
     ? Math.ceil(remaining / weeklyContribution)
     : null;
   const requiredWeekly = getRequiredWeekly(remaining, form.dueDate);
-  const monthlyContribution = (weeklyContribution * 52) / 12;
-  const monthlyIncome = dashboard?.monthlyIncome ?? 0;
-  const categoryLimits = categoryBudgets.reduce((sum, item) => sum + toPositiveAmount(item.limitAmount), 0);
-  const recurringPaymentsTotal = recurringPayments.reduce(
-    (sum, payment) => sum + (payment.active && payment.kind !== 'income' ? monthlyEquivalent(payment) : 0),
-    0,
-  );
-  const monthlyObligationsTotal = categoryLimits + recurringPaymentsTotal;
-  const weeklyObligationsTotal = monthlyObligationsTotal / 4 + weeklyContribution;
-  const plannedTotal = monthlyObligationsTotal + monthlyContribution;
-  const freeMoneyLeft = monthlyIncome > 0 ? monthlyIncome - plannedTotal : null;
-  const budgetUseRatio = monthlyIncome > 0 && monthlyContribution > 0
-    ? monthlyContribution / monthlyIncome
-    : null;
-  const freeMoneyLeftRatio = monthlyIncome > 0 && freeMoneyLeft != null
-    ? freeMoneyLeft / monthlyIncome
-    : null;
+  const cashflow = computeGoalCashflowProjection({
+    weeklyContribution,
+    requiredWeekly,
+    dashboard,
+    categoryBudgets,
+    recurringPayments,
+  });
   const targetDate = weeklyContribution > 0 && remaining > 0
     ? addWeeks(new Date(), Math.ceil(remaining / weeklyContribution))
     : remaining <= 0
@@ -737,12 +805,8 @@ function getGoalProjection(
     remaining,
     weeksToGoal,
     requiredWeekly,
-    monthlyContribution,
-    weeklyObligationsTotal,
-    budgetUseRatio,
-    freeMoneyLeftRatio,
+    ...cashflow,
     targetDate: targetDate ? formatDateKey(targetDate) : null,
-    hint: getSavingsHint(freeMoneyLeftRatio, requiredWeekly, weeklyContribution),
   };
 }
 
@@ -754,26 +818,6 @@ function getRequiredWeekly(remaining: number, dueDate: string) {
     Math.ceil((date.getTime() - Date.now()) / (7 * 24 * 60 * 60 * 1000)),
   );
   return Math.max(remaining, 0) / weeks;
-}
-
-function getSavingsHint(
-  freeMoneyLeftRatio: number | null,
-  requiredWeekly: number | null,
-  weeklyContribution: number,
-) {
-  if (requiredWeekly != null && weeklyContribution > 0 && weeklyContribution < requiredWeekly) {
-    return 'À ce rythme, la date cible risque de ne pas être atteinte.';
-  }
-  if (freeMoneyLeftRatio == null) {
-    return 'Entre une contribution hebdomadaire pour estimer sa place dans ton budget.';
-  }
-  if (freeMoneyLeftRatio < 0) {
-    return 'Projection prudente: les limites, paiements récurrents et objectifs dépassent les revenus connus.';
-  }
-  if (freeMoneyLeftRatio < 0.1) {
-    return 'Projection serrée: garde une marge pour les imprévus.';
-  }
-  return 'Projection confortable après les limites, paiements récurrents et objectifs.';
 }
 
 function getWeeklyContributionFeedback(projection: GoalProjection) {
@@ -788,18 +832,6 @@ function getWeeklyContributionFeedback(projection: GoalProjection) {
     : null;
 }
 
-function monthlyEquivalent(payment: RecurringPayment) {
-  const amount = toPositiveAmount(payment.amount);
-  if (payment.frequency === 'weekly') return amount * 52 / 12;
-  if (payment.frequency === 'biweekly') return amount * 26 / 12;
-  if (payment.frequency === 'yearly') return amount / 12;
-  return amount;
-}
-
-function toPositiveAmount(value: number | null | undefined) {
-  return Number.isFinite(value) ? Math.max(0, value ?? 0) : 0;
-}
-
 function addWeeks(date: Date, weeks: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + weeks * 7);
@@ -810,54 +842,8 @@ function formatDateKey(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-function formatGoalDuration(weeks: number) {
-  if (weeks < 4) return `${weeks} sem.`;
-
-  const totalDays = weeks * 7;
-  const months = Math.floor(totalDays / 30);
-  const days = totalDays % 30;
-  const parts: string[] = [];
-
-  if (months > 0) {
-    parts.push(`${months} mois`);
-  }
-  if (days > 0) {
-    parts.push(`${days} jour${days > 1 ? 's' : ''}`);
-  }
-
-  return parts.join(' et ') || '0 jour';
-}
-
 function getSelectedGoalIcon(form: GoalForm): string {
   return getAutomaticGoalIcon(form.name);
-}
-
-function getAutomaticGoalIcon(name: string): string {
-  const normalized = normalizeSearchText(name);
-  if (matchesAny(normalized, ['urgence', 'emergency', 'securite', 'securité'])) return 'shield-check-outline';
-  if (matchesAny(normalized, ['voyage', 'vacance', 'vacances', 'travel', 'trip', 'avion'])) return 'airplane-outline';
-  if (matchesAny(normalized, ['maison', 'condo', 'logement', 'hypotheque', 'home'])) return 'home-outline';
-  if (matchesAny(normalized, ['auto', 'voiture', 'vehicule', 'car'])) return 'car-outline';
-  if (matchesAny(normalized, ['ecole', 'etude', 'universite', 'cours', 'school'])) return 'school-outline';
-  if (matchesAny(normalized, ['cadeau', 'noel', 'anniversaire', 'gift'])) return 'gift-outline';
-  if (matchesAny(normalized, ['mariage', 'amour', 'couple', 'coeur'])) return 'heart-outline';
-  if (matchesAny(normalized, ['entreprise', 'business', 'travail', 'projet'])) return 'briefcase-outline';
-  if (matchesAny(normalized, ['velo', 'bicycle'])) return 'bicycle-outline';
-  if (matchesAny(normalized, ['retraite', 'placement', 'investissement', 'reer', 'celi'])) return 'trophy-outline';
-  if (matchesAny(normalized, ['luxe', 'bijou', 'diamant'])) return 'diamond-outline';
-  if (matchesAny(normalized, ['cash', 'argent', 'epargne', 'fonds'])) return 'cash-outline';
-  return DEFAULT_ICON;
-}
-
-function normalizeSearchText(value: string) {
-  return value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-}
-
-function matchesAny(value: string, terms: string[]) {
-  return terms.some((term) => value.includes(term));
 }
 
 function sanitizeAmount(value: string) {
@@ -946,124 +932,99 @@ const styles = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.62)',
   },
   modalKeyboard: {
     flex: 1,
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: colors.background,
-    marginTop: 88,
-    borderTopLeftRadius: radius.xxl,
-    borderTopRightRadius: radius.xxl,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     borderWidth: StyleSheet.hairlineWidth,
-    maxHeight: '92%',
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-  },
-  handle: {
-    alignSelf: 'center',
-    width: 44,
-    height: 4,
-    borderRadius: radius.pill,
-    marginBottom: spacing.md,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    marginBottom: spacing.xs,
-  },
-  modalTitle: {
-    flex: 1,
-    ...typographyKit.sectionTitle,
-  },
-  modalClose: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingTop: FORM_SHEET_CONTENT_PADDING_TOP,
   },
   modalContent: {
-    gap: planFinanceKit.layout.sectionGap,
-    paddingTop: planFinanceKit.layout.headerFieldGap - spacing.sm,
+    paddingTop: spacing.xl,
   },
-  sectionBlock: {
-    gap: planFinanceKit.layout.fieldGap,
+  formBody: {
+    gap: spacing.lg,
   },
-  field: { flex: 1, gap: spacing.sm },
-  fieldLabel: {
-    ...typographyKit.eyebrow,
+  section: {
+    gap: spacing.sm,
   },
+  field: { gap: spacing.sm },
   inputShell: {
-    borderRadius: planFinanceKit.radius.card,
-    paddingHorizontal: spacing.md,
     minHeight: 50,
-    justifyContent: 'center',
-  },
-  input: {
-    paddingVertical: spacing.sm,
-    backgroundColor: 'transparent',
-  },
-  amountInput: {
-    ...moneyAmountTypography({ tier: 'card' }),
-  },
-  textInput: {
-    ...typographyKit.bodyMedium,
-  },
-  twoCols: { flexDirection: 'row', gap: spacing.md },
-  frequencyField: { gap: spacing.sm },
-  goalKindHeader: {
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
   },
-  goalKindName: {
+  inputWithSuffix: {
     flex: 1,
     minWidth: 0,
-    ...typographyKit.sectionTitle,
-    paddingVertical: 4,
+    paddingVertical: spacing.md,
+    fontSize: typography.body,
+    ...jakartaBoldText,
   },
-  minimumHint: {
+  suffix: {
     ...typographyKit.metaMedium,
-    lineHeight: 19,
   },
-  suggestionCard: {
+  identityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: spacing.md,
-    borderRadius: planFinanceKit.radius.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
+    minHeight: 48,
   },
-  suggestionText: {
+  iconAffordance: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  iconSlot: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    backgroundColor: 'transparent',
+  },
+  iconGhostSlot: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.42,
+  },
+  nameInput: {
     flex: 1,
-    ...typographyKit.caption,
-    lineHeight: 18,
+    minWidth: 0,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: 0,
+    fontSize: typography.body,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    ...jakartaSemiboldText,
+  },
+  fieldHint: {
+    ...typographyKit.metaMedium,
+    lineHeight: 16,
+    opacity: 0.85,
   },
   weeklyWarning: {
-    borderRadius: planFinanceKit.radius.small,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
   },
   weeklyWarningText: {
-    ...typographyKit.metaMedium,
+    ...jakartaMediumText,
+    fontSize: typography.meta,
     lineHeight: 20,
   },
-  suggestionButton: {
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-  },
-  suggestionButtonText: { color: '#000000', fontSize: typography.micro, fontWeight: '800' },
   projectionCard: {
     padding: ONYX_CONTAINER.padding.card,
     gap: spacing.sm,

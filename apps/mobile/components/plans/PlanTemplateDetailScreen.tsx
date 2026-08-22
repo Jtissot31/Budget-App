@@ -17,7 +17,13 @@ import {
   planFinanceKit,
   planFinancePrimaryButtonStyle,
 } from '@/constants/planFinanceKit';
-import { interMediumText, interSemiboldText, spacing } from '@/constants/theme';
+import {
+  FLOATING_TAB_BAR_PILL_HEIGHT,
+  getFloatingTabBarBottomInset,
+  interMediumText,
+  interSemiboldText,
+  spacing,
+} from '@/constants/theme';
 import { typographyKit } from '@/constants/typographyKit';
 import { tapHaptic } from '@/lib/haptics';
 import { enrichPlanTemplateWhy } from '@/lib/ai/planAdaptationService';
@@ -45,6 +51,10 @@ export function PlanTemplateDetailScreen({ subtype, raison }: Props) {
   const staticWhy = config.fullDescription;
   const [whyText, setWhyText] = useState(raison?.trim() || staticWhy);
   const strategyText = config.strategy;
+  /** Keep green CTA above the translucent FloatingTabBar so accent doesn't bleed into the pill. */
+  const footerAboveTabBar =
+    getFloatingTabBarBottomInset(insets.bottom) + FLOATING_TAB_BAR_PILL_HEIGHT + spacing.sm;
+  const footerBlockHeight = 48 + spacing.md * 2;
 
   const roadmapSteps = useMemo(
     () =>
@@ -124,7 +134,7 @@ export function PlanTemplateDetailScreen({ subtype, raison }: Props) {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.content,
-            { paddingBottom: insets.bottom + spacing.xl + 88 },
+            { paddingBottom: footerAboveTabBar + footerBlockHeight + spacing.xl },
           ]}
         >
           {subtype === 'snowball' ? (
@@ -169,7 +179,8 @@ export function PlanTemplateDetailScreen({ subtype, raison }: Props) {
           style={[
             styles.footer,
             {
-              paddingBottom: Math.max(insets.bottom, spacing.md),
+              bottom: footerAboveTabBar,
+              paddingBottom: spacing.md,
               backgroundColor: colors.screenCanvas || pf.background,
               borderTopColor: colors.containerBorder,
             },
@@ -236,7 +247,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 0,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,

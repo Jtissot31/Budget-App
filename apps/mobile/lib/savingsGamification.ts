@@ -1,3 +1,4 @@
+import { resolveSavingsGoalDisplayIcon } from '@/lib/getAutomaticGoalIcon';
 import {
   buildSavingsGoalDepositEvents,
   type SavingsGoalDepositEvent,
@@ -245,7 +246,7 @@ export function buildGoalProgressions(goals: readonly SavingsGoal[]): GoalProgre
     return {
       goalId: goal.id,
       name: goal.name,
-      icon: goal.icon || 'flag-outline',
+      icon: resolveSavingsGoalDisplayIcon(goal),
       progress,
       pct,
       currentAmount: goal.currentAmount,

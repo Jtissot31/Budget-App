@@ -12,10 +12,10 @@ import {
   type ListRenderItem,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
-import { AddBudgetCategoryCta } from '@/components/budget/AddBudgetCategoryCta';
+import { BudgetCategoriesHeaderActions } from '@/components/budget/BudgetCategoriesHeaderActions';
 import { BudgetCategoryDetailSheet } from '@/components/budget/BudgetCategoryDetailSheet';
 import { BudgetCategoryRow } from '@/components/budget/BudgetCategoryRow';
 import { BudgetCategorySuggestionTile } from '@/components/budget/BudgetCategorySuggestionTile';
@@ -41,9 +41,9 @@ import {
   spacing,
   subtleDeleteButtonStyle,
 } from '@/constants/theme';
-import { useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
+import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import {
-  clearAllBudgetCategories,
+  deleteCategory,
   getCategoriesForMonth,
   initializeCategories,
 } from '@/lib/budgetCategories';
@@ -62,7 +62,7 @@ import {
   startOfMonth,
 } from '@/lib/budgetMonth';
 import { getMockBudgetEarliestMonthStart } from '@/lib/budgetMonthMock';
-import { getEarliestExpenseMonthStart } from '@/lib/db';
+import { deleteCategoryBudget, getEarliestExpenseMonthStart } from '@/lib/db';
 import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 import { dataEvents } from '@/lib/events';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
@@ -121,8 +121,10 @@ export default function BudgetScreen() {
 
   const [categories, setCategories] = useState<BudgetCategoryUiModel[]>([]);
   const [detailCategoryId, setDetailCategoryId] = useState<string | null>(null);
-  const [confirmDeleteAllVisible, setConfirmDeleteAllVisible] = useState(false);
-  const [deletingAll, setDeletingAll] = useState(false);
+  const [managingCategories, setManagingCategories] = useState(false);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
+  const [confirmDeleteSelectedVisible, setConfirmDeleteSelectedVisible] = useState(false);
+  const [deletingSelected, setDeletingSelected] = useState(false);
   /** Month shown in the hero and category list — always matches `categories`. */
   const [displayMonth, setDisplayMonth] = useState(currentMonthStart);
   /** Month shown in the selector — may lead `displayMonth` while data loads. */
@@ -170,15 +172,18 @@ export default function BudgetScreen() {
       pendingMonthRef.current = next;
       setPendingMonth(next);
       setDetailCategoryId(null);
+      setManagingCategories(false);
+      setSelectedCategoryIds([]);
       void loadMonth(next);
     },
     [loadMonth],
   );
 
-  useFocusEffect(
+  useRefreshOnFocus(
     useCallback(() => {
       navigateToMonth(currentMonthStart());
     }, [navigateToMonth]),
+    { minIntervalMs: 5_000 },
   );
 
   const refreshDisplayedMonth = useCallback(() => {
@@ -226,39 +231,79 @@ export default function BudgetScreen() {
     setDetailCategoryId(id);
   }, []);
 
+  const toggleManagingCategories = useCallback(() => {
+    tapHaptic();
+    setManagingCategories((prev) => {
+      if (prev) setSelectedCategoryIds([]);
+      return !prev;
+    });
+  }, []);
+
+  const toggleCategorySelection = useCallback((id: string) => {
+    setSelectedCategoryIds((prev) =>
+      prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id],
+    );
+  }, []);
+
+  const onCategoryRowPress = useCallback(
+    (id: string) => {
+      if (managingCategories) {
+        toggleCategorySelection(id);
+        return;
+      }
+      openCategoryDetail(id);
+    },
+    [managingCategories, openCategoryDetail, toggleCategorySelection],
+  );
+
   const openBlankCreate = useCallback(() => {
     tapHaptic();
-    router.push('/add-budget-category');
-  }, [router]);
+    router.push({
+      pathname: '/add-budget-category',
+      params: {
+        month: `${displayMonth.getFullYear()}-${String(displayMonth.getMonth() + 1).padStart(2, '0')}`,
+      },
+    });
+  }, [displayMonth, router]);
 
   const openSuggestionCreate = useCallback(
     (suggestion: BudgetCategorySuggestion) => {
       router.push({
         pathname: '/add-budget-category',
-        params: { name: suggestion.name, icon: suggestion.icon },
+        params: {
+          name: suggestion.name,
+          icon: suggestion.icon,
+          month: `${displayMonth.getFullYear()}-${String(displayMonth.getMonth() + 1).padStart(2, '0')}`,
+        },
       });
     },
-    [router],
+    [displayMonth, router],
   );
 
-  const openDeleteAllConfirm = useCallback(() => {
+  const openDeleteSelectedConfirm = useCallback(() => {
+    if (deletingSelected || selectedCategoryIds.length === 0) return;
     tapHaptic();
-    setConfirmDeleteAllVisible(true);
-  }, []);
+    setConfirmDeleteSelectedVisible(true);
+  }, [deletingSelected, selectedCategoryIds.length]);
 
-  const handleConfirmDeleteAll = useCallback(async () => {
-    if (deletingAll) return;
-    setConfirmDeleteAllVisible(false);
-    setDeletingAll(true);
+  const handleConfirmDeleteSelected = useCallback(async () => {
+    if (deletingSelected || selectedCategoryIds.length === 0) return;
+    const ids = [...selectedCategoryIds];
+    setConfirmDeleteSelectedVisible(false);
+    setDeletingSelected(true);
     try {
       setDetailCategoryId(null);
-      await clearAllBudgetCategories();
+      await Promise.all(
+        ids.flatMap((id) => [deleteCategoryBudget(id), deleteCategory(id)]),
+      );
+      setSelectedCategoryIds([]);
+      setManagingCategories(false);
       successHaptic();
       refreshDisplayedMonth();
     } finally {
-      setDeletingAll(false);
+      setDeletingSelected(false);
     }
-  }, [deletingAll, refreshDisplayedMonth]);
+  }, [deletingSelected, refreshDisplayedMonth, selectedCategoryIds]);
 
   const detailCategory = useMemo(
     () => categories.find((category) => category.id === detailCategoryId) ?? null,
@@ -280,17 +325,6 @@ export default function BudgetScreen() {
   }, [budgetMonth, navigateToMonth]);
 
   const renderItem: ListRenderItem<BudgetCategoryUiModel> = useCallback(() => null, []);
-
-  const addCategoryCta = showAddButton ? (
-    <View
-      style={[
-        pageStyles.addCtaBlock,
-        listCategories.length === 0 && pageStyles.addCtaUnderHero,
-      ]}
-    >
-      <AddBudgetCategoryCta onPress={openBlankCreate} />
-    </View>
-  ) : null;
 
   const listHeaderComponent = useMemo(
     () => (
@@ -331,8 +365,17 @@ export default function BudgetScreen() {
             <View style={pageStyles.listHeader}>
               <ProtoSectionHeader
                 title="CATÉGORIES"
-                actionLabel={showAddButton ? '+ Nouveau' : undefined}
-                onAction={showAddButton ? openBlankCreate : undefined}
+                trailing={
+                  <BudgetCategoriesHeaderActions
+                    managing={managingCategories}
+                    canAdd={showAddButton}
+                    onEdit={toggleManagingCategories}
+                    onAdd={openBlankCreate}
+                    editAccessibilityLabel="Sélectionner des catégories"
+                    editDoneAccessibilityLabel="Terminer la sélection"
+                    addAccessibilityLabel="Ajouter une catégorie"
+                  />
+                }
               />
             </View>
 
@@ -342,43 +385,52 @@ export default function BudgetScreen() {
                   <BudgetCategoryRow
                     key={item.id}
                     category={item}
-                    onPress={openCategoryDetail}
+                    selecting={managingCategories}
+                    selected={selectedCategoryIds.includes(item.id)}
+                    onPress={onCategoryRowPress}
                     isLast={index === listCategories.length - 1}
                   />
                 ))}
               </ProtoGlassCard>
             </View>
 
-            {addCategoryCta}
-
-            <View style={pageStyles.deleteAllBlock}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Supprimer toutes les catégories"
-                disabled={deletingAll}
-                onPress={openDeleteAllConfirm}
-                style={({ pressed }) => [
-                  subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
-                  pressed && pageStyles.pressed,
-                  deletingAll && pageStyles.disabled,
-                ]}
-              >
-                <AppIcon
-                  family="ionicons"
-                  name="trash-outline"
-                  size={16}
-                  color={destructiveIconColor(isLight)}
-                />
-                <Text style={destructiveTextActionStyle(isLight)}>
-                  {deletingAll ? 'Suppression…' : 'Supprimer toutes les catégories'}
-                </Text>
-              </Pressable>
-            </View>
+            {managingCategories ? (
+              <View style={pageStyles.deleteSelectedBlock}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    selectedCategoryIds.length === 0
+                      ? 'Sélectionne des catégories à supprimer'
+                      : `Supprimer ${selectedCategoryIds.length} catégorie${selectedCategoryIds.length > 1 ? 's' : ''}`
+                  }
+                  disabled={deletingSelected || selectedCategoryIds.length === 0}
+                  onPress={openDeleteSelectedConfirm}
+                  style={({ pressed }) => [
+                    subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
+                    pressed && pageStyles.pressed,
+                    (deletingSelected || selectedCategoryIds.length === 0) &&
+                      pageStyles.disabled,
+                  ]}
+                >
+                  <AppIcon
+                    family="ionicons"
+                    name="trash-outline"
+                    size={16}
+                    color={destructiveIconColor(isLight)}
+                  />
+                  <Text style={destructiveTextActionStyle(isLight)}>
+                    {deletingSelected
+                      ? 'Suppression…'
+                      : selectedCategoryIds.length === 0
+                        ? 'Sélectionne des catégories'
+                        : `Supprimer ${selectedCategoryIds.length} catégorie${selectedCategoryIds.length > 1 ? 's' : ''}`}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
           </>
         ) : (
           <>
-            {addCategoryCta}
-
             <View style={pageStyles.listHeader}>
               <ProtoSectionHeader title="SUGGESTIONS" />
             </View>
@@ -413,22 +465,26 @@ export default function BudgetScreen() {
       </View>
     ),
     [
-      addCategoryCta,
       budgetMonth,
       canGoBudgetNext,
       canGoBudgetPrevious,
+      categoryCellWidthFor,
       listCategories,
-      deletingAll,
+      deletingSelected,
       displayMonth,
       goBudgetNext,
       goBudgetPrevious,
       insets.top,
       isLight,
+      managingCategories,
+      onCategoriesGridLayout,
+      onCategoryRowPress,
       openBlankCreate,
-      openCategoryDetail,
-      openDeleteAllConfirm,
+      openDeleteSelectedConfirm,
       openSuggestionCreate,
+      selectedCategoryIds,
       showAddButton,
+      toggleManagingCategories,
       totals.totalAllocated,
       totals.totalSpent,
     ],
@@ -473,12 +529,16 @@ export default function BudgetScreen() {
         />
 
         <ConfirmDeleteModal
-          visible={confirmDeleteAllVisible}
-          title="Supprimer toutes les catégories ?"
-          message="Retirer toutes les allocations budget ? Les transactions existantes restent dans l'historique."
-          confirmLabel="Tout supprimer"
-          onConfirm={() => void handleConfirmDeleteAll()}
-          onCancel={() => setConfirmDeleteAllVisible(false)}
+          visible={confirmDeleteSelectedVisible}
+          title={
+            selectedCategoryIds.length <= 1
+              ? 'Supprimer cette catégorie ?'
+              : `Supprimer ${selectedCategoryIds.length} catégories ?`
+          }
+          message="Retirer ces allocations budget ? Les transactions existantes restent dans l'historique."
+          confirmLabel="Supprimer"
+          onConfirm={() => void handleConfirmDeleteSelected()}
+          onCancel={() => setConfirmDeleteSelectedVisible(false)}
         />
       </View>
     </PageTransition>
@@ -530,18 +590,11 @@ const pageStyles = StyleSheet.create({
     flexShrink: 0,
     alignSelf: 'flex-start',
   },
-  addCtaBlock: {
+  deleteSelectedBlock: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     marginBottom: spacing.md,
   },
-  /** Breathing room when CTA sits directly under the ring/summary card. */
-  addCtaUnderHero: {
-    marginTop: spacing.lg,
-  },
-  deleteAllBlock: {
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-    marginBottom: spacing.md,
-  },
+
   pressed: {
     opacity: 0.82, // COMPONENTS.onyxContainer.pressedOpacity
   },

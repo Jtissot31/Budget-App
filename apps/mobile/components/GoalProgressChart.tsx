@@ -1,113 +1,45 @@
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
-import { HeroChartDelta } from '@/components/HeroChartDelta';
-import { NetWorthAmountRow } from '@/components/NetWorthAmountRow';
+import { useMemo, useState } from 'react';
+import { DetailPeriodSparkChart } from '@/components/DetailPeriodSparkChart';
 import {
-  PortfolioChartCard,
-  type NetWorthChartPeriod,
-  type PortfolioChartCardHandle,
-  type PortfolioChartCardPeriodData,
-} from '@/components/PortfolioChartCard';
-import { spacing } from '@/constants/theme';
-import {
-  buildSingleGoalTrendSeries,
-  getCurrentSingleGoalAmount,
+  buildSingleGoalContributionSparkline,
+  type GoalContributionChartPeriod,
 } from '@/lib/buildSavingsGoalsTrendSeries';
 import type { SavingsGoal, SimulatedAccount, Transaction } from '@/types';
 
-const GOAL_CHART_LINE = '#22C55E';
-const GOAL_CHART_PERIODS: NetWorthChartPeriod[] = ['1M', '3M', '6M', 'CA', '1A'];
+type Props = {
+  goal: SavingsGoal;
+  transactions?: readonly Transaction[];
+  accounts?: readonly SimulatedAccount[];
+  /**
+   * @deprecated Accueil-style chart no longer shows a total amount hero.
+   * Kept for call-site compatibility; ignored.
+   */
+  showAmountHero?: boolean;
+};
 
-export type GoalProgressChartHandle = PortfolioChartCardHandle;
+/**
+ * Goal contribution chart — Accueil valeur-nette language via shared
+ * DetailPeriodSparkChart (delta pill, sparkline, period chips).
+ */
+export function GoalProgressChart({
+  goal,
+  transactions = [],
+  accounts = [],
+}: Props) {
+  const [chartPeriod, setChartPeriod] = useState<GoalContributionChartPeriod>('6M');
 
-export const GoalProgressChart = forwardRef<
-  GoalProgressChartHandle,
-  {
-    goal: SavingsGoal;
-    transactions?: readonly Transaction[];
-    accounts?: readonly SimulatedAccount[];
-    /** When false, only the chart is shown (hero amount lives elsewhere on the screen). */
-    showAmountHero?: boolean;
-  }
->(function GoalProgressChart({ goal, transactions = [], accounts = [], showAmountHero = true }, ref) {
-  const chartRef = useRef<PortfolioChartCardHandle>(null);
-  const [periodData, setPeriodData] = useState<PortfolioChartCardPeriodData | null>(null);
-  const points = useMemo(
-    () => buildSingleGoalTrendSeries(goal, transactions, accounts),
-    [accounts, goal, transactions],
+  const sparkline = useMemo(
+    () =>
+      buildSingleGoalContributionSparkline(goal, transactions, accounts, chartPeriod),
+    [accounts, chartPeriod, goal, transactions],
   );
-  const fallbackTotal = useMemo(
-    () => getCurrentSingleGoalAmount(goal, transactions, accounts),
-    [accounts, goal, transactions],
-  );
-
-  const handlePeriodData = useCallback((data: PortfolioChartCardPeriodData) => {
-    setPeriodData((prev) => {
-      if (
-        prev &&
-        prev.period === data.period &&
-        prev.currentValue === data.currentValue &&
-        prev.delta === data.delta &&
-        prev.deltaPercent === data.deltaPercent &&
-        prev.selectedIndex === data.selectedIndex &&
-        prev.selectedLabel === data.selectedLabel
-      ) {
-        return prev;
-      }
-      return data;
-    });
-  }, []);
-
-  const clearSelection = useCallback(() => {
-    chartRef.current?.clearSelection();
-  }, []);
-
-  useImperativeHandle(ref, () => ({ clearSelection }), [clearSelection]);
 
   return (
-    <View style={styles.wrapper}>
-      {showAmountHero ? (
-        <Pressable
-          onPress={clearSelection}
-          style={styles.heroBlock}
-          accessibilityRole="none"
-          accessibilityLabel="Effacer la sélection du graphique"
-        >
-          <DashboardSectionLabel style={styles.heroEyebrow}>PROGRESSION</DashboardSectionLabel>
-          <NetWorthAmountRow totalBalance={periodData?.currentValue ?? fallbackTotal} />
-          <HeroChartDelta periodData={periodData} />
-        </Pressable>
-      ) : null}
-      <Pressable
-        onPress={clearSelection}
-        accessibilityRole="none"
-        accessibilityLabel="Effacer la sélection du graphique"
-      >
-        <PortfolioChartCard
-          ref={chartRef}
-          points={points}
-          onPeriodData={handlePeriodData}
-          lineColor={GOAL_CHART_LINE}
-          allowedPeriods={GOAL_CHART_PERIODS}
-        />
-      </Pressable>
-    </View>
+    <DetailPeriodSparkChart
+      sparkline={sparkline}
+      period={chartPeriod}
+      onPeriodChange={setChartPeriod}
+      risingIsPositive
+    />
   );
-});
-
-const styles = StyleSheet.create({
-  wrapper: {
-    alignSelf: 'stretch',
-    width: '100%',
-    gap: 0,
-  },
-  heroBlock: {
-    alignItems: 'flex-start',
-    gap: 0,
-    marginBottom: spacing.sm,
-  },
-  heroEyebrow: {
-    marginBottom: 6,
-  },
-});
+}

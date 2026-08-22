@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { type ViewStyle } from 'react-native';
 import { getCategoryIconName, isIconName, type IconName } from '@/constants/categoryOptions';
 import { EXPENSE_DEFAULT_ICON, isExpenseDefaultIcon, resolveExpenseFallbackIcon } from '@/lib/expenseIcon';
+import { INCOME_HISTORY_ICON, type IncomeHistoryIcon } from '@/lib/incomeIcon';
 import { resolveTransactionMerchantLogo } from '@/lib/merchantLogo';
 import { merchantLabelHasResolvableLogo } from '@/lib/merchantLogoMemory';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
@@ -143,7 +144,7 @@ export function TransactionAvatar({
       color={iconColor}
       size={size}
       iconSize={resolvedIconSize}
-      wellGlyphWhite={wellGlyphWhite}
+      wellGlyphWhite={wellGlyphWhite && transaction.type !== 'income'}
       logoUrl={merchantLogo?.logoUrl ?? null}
       merchantLabel={merchantLogo?.merchantLabel ?? null}
       coverImageUri={showContactTransferIcon ? null : trimmedContactPhoto || null}
@@ -160,9 +161,14 @@ export function hasMerchantLogoCandidate(
   return merchantLabelHasResolvableLogo(label, override);
 }
 
-function getFallbackIcon(transaction: Transaction): IconName | typeof EXPENSE_DEFAULT_ICON {
+function getFallbackIcon(
+  transaction: Transaction,
+): IconName | typeof EXPENSE_DEFAULT_ICON | IncomeHistoryIcon {
   if (transaction.type === 'expense') {
     return resolveExpenseFallbackIcon(transaction.transactionIcon);
+  }
+  if (transaction.type === 'income') {
+    return INCOME_HISTORY_ICON;
   }
   if (isIconName(transaction.transactionIcon)) return transaction.transactionIcon;
   return getCategoryIconName(transaction);

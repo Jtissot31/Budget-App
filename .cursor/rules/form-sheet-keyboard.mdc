@@ -1,0 +1,26 @@
+---
+description: Android form-sheet keyboard + chrome — do not regress
+globs: apps/mobile/**/*.{tsx,ts}
+alwaysApply: false
+---
+
+# Form sheets — keyboard + header chrome
+
+## Keyboard (S25 / Android)
+
+- `app.json` → `android.softwareKeyboardLayoutMode: **"pan"**` (stable host height).
+- Wrap Modals in **`FormSheetModalBody`**; panel via **`DraggableSheetSurface`** / **`BottomSheet`**.
+- **`FORM_SHEET_STABLE_ANDROID_PANEL_HEIGHT`**: never shrink sheet chrome by IME inset.
+  Clear fields with `formSheetScrollPaddingBottom(safe, keyboardInset)` / `useFormSheetScrollPaddingBottom`.
+- Android: **no** `KeyboardAvoidingView` around these sheets (iOS KAV only inside `FormSheetModalBody`).
+- Details: `apps/mobile/lib/sheet/FORM_SHEET_KEYBOARD.md`
+
+## Header (title + X)
+
+- Use **`FormSheetChromeHeader`** / tokens in `lib/sheet/formSheetChrome.ts`.
+- Do **not** reinflate visual `handleHitArea` to 56px (`SHEET_HANDLE_DRAG_ZONE_HEIGHT` is gesture-only).
+- Visual hit height = `FORM_SHEET_HANDLE_HIT_HEIGHT` (32); content `paddingTop` = `FORM_SHEET_CONTENT_PADDING_TOP`.
+
+## Protected
+
+- Do not modify `TransactionDetailSheet.tsx` unless explicitly requested.

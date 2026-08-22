@@ -91,13 +91,13 @@ export function PlanExplorerSection({
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded }}
-        accessibilityLabel="Explorer les plans"
+        accessibilityLabel="Bibliothèque de stratégies financières"
         onPress={handleToggle}
         style={({ pressed }) => [styles.headerRow, pressed && styles.pressed]}
       >
         <View style={styles.headerLeft}>
           <AppIcon family="material" name="auto-awesome" size={16} color={PLAN_HUB.accent} />
-          <Text style={[styles.headerTitle, interSemiboldText]}>Explorer les plans</Text>
+          <Text style={[styles.headerTitle, interSemiboldText]}>Stratégies financières</Text>
         </View>
         <Animated.View style={{ transform: [{ rotate: chevronSpin }] }}>
           <AppIcon family="material" name="keyboard-arrow-down" size={22} color="rgba(255, 255, 255, 0.55)" />

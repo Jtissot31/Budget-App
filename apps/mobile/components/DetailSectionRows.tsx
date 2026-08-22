@@ -106,7 +106,7 @@ export function DetailSectionsList({
           key={section.title}
           section={section}
           colors={colors}
-          showTopBorder={sectionIndex === 0}
+          showTopBorder
           style={sectionIndex > 0 ? styles.sectionGap : undefined}
           rowPaddingVertical={rowPaddingVertical}
           subSectionHeaderGap={subSectionHeaderGap}
@@ -150,7 +150,10 @@ export function DetailSubSection({
       <View
         style={[
           styles.rows,
-          showTopBorder && { borderTopColor: colors.border },
+          // `styles.rows` sets hairline width; color must be themed or RN uses black.
+          showTopBorder
+            ? { borderTopColor: colors.border }
+            : { borderTopWidth: 0 },
         ]}
       >
         {section.rows.map((row, rowIndex) => (

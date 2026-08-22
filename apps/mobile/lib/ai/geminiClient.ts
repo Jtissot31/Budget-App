@@ -129,6 +129,49 @@ export function isGeminiAvailable(): boolean {
   return Boolean(getGeminiApiKey());
 }
 
+export type GeminiAudioOptions = {
+  /** Clip encodé en base64 — inline data, donc < 20 Mo requête totale. */
+  base64: string;
+  mimeType: string;
+  prompt: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  signal?: AbortSignal;
+};
+
+/**
+ * Envoie un clip audio inline (transcription vocale). Lance `GeminiApiError` en cas d'échec —
+ * l'appelant distingue ainsi « pas de clé », « réseau », et « format refusé ».
+ */
+export async function generateGeminiFromAudio(options: GeminiAudioOptions): Promise<string> {
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) {
+    throw new GeminiApiError('Clé API Gemini absente', { userMessage: 'clé API absente' });
+  }
+
+  const { base64, mimeType, prompt, temperature = 0, maxOutputTokens = 256, signal } = options;
+
+  const text = await postGemini(
+    apiKey,
+    {
+      contents: [
+        {
+          role: 'user',
+          parts: [{ inlineData: { mimeType, data: base64 } }, { text: prompt }],
+        },
+      ],
+      generationConfig: { temperature, maxOutputTokens },
+    },
+    { throwOnFailure: true, signal },
+  );
+
+  if (!text) {
+    throw new GeminiApiError('Réponse Gemini vide', { userMessage: 'réponse vide' });
+  }
+
+  return text;
+}
+
 export type GeminiChatTurn = {
   role: 'user' | 'assistant';
   content: string;

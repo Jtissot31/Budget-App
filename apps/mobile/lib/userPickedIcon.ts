@@ -10,8 +10,11 @@ export const USER_PICKED_ICON_WELL_BG_DARK = darkColors.surfaceElevated;
 /** Light theme icon well background (user-picked glyphs). */
 export const USER_PICKED_ICON_WELL_BG_LIGHT = '#F2F3F4';
 
-/** Light theme well for remote logos (bank favicons with white backing). */
-export const USER_PICKED_ICON_LOGO_WELL_BG_LIGHT = '#FFFFFF';
+/**
+ * @deprecated Logo wells are always transparent — kept for call-site compatibility.
+ * Prefer {@link resolveLogoIconWellBackground}.
+ */
+export const USER_PICKED_ICON_LOGO_WELL_BG_LIGHT = 'transparent';
 
 /** @deprecated Prefer {@link resolveUserPickedIconWellBackground}. */
 export const USER_PICKED_ICON_WELL_BG = USER_PICKED_ICON_WELL_BG_DARK;
@@ -19,16 +22,16 @@ export const USER_PICKED_ICON_WELL_BG = USER_PICKED_ICON_WELL_BG_DARK;
 /** Logo glyph inset inside the rounded-square frame (contain + padding). */
 export const USER_PICKED_ICON_LOGO_INSET_RATIO = 0.68;
 
-/** Off-white glyph when no user color is set (light theme). */
+/** @deprecated Light glyphs now use `colors.text` via {@link resolveUserPickedIconGlyphColor}. */
 export const USER_PICKED_ICON_GLYPH_LIGHT_DEFAULT = '#E7E9EE';
 
 export function resolveUserPickedIconWellBackground(isLight: boolean): string {
   return isLight ? USER_PICKED_ICON_WELL_BG_LIGHT : USER_PICKED_ICON_WELL_BG_DARK;
 }
 
-/** Logo frames: white in light (matches favicon backing), charcoal in dark. */
-export function resolveLogoIconWellBackground(isLight: boolean): string {
-  return isLight ? USER_PICKED_ICON_LOGO_WELL_BG_LIGHT : USER_PICKED_ICON_WELL_BG_DARK;
+/** Logo frames: always transparent so remote marks sit on the parent surface. */
+export function resolveLogoIconWellBackground(_isLight?: boolean): string {
+  return 'transparent';
 }
 
 export function userPickedIconCornerRadius(size: number): number {
@@ -78,7 +81,7 @@ export function resolveUserPickedIconGlyphColor(
 ): string {
   const normalized = normalizeUserIconColor(color);
   if (normalized) return normalized;
-  return isLight ? USER_PICKED_ICON_GLYPH_LIGHT_DEFAULT : colors.textSecondary;
+  return isLight ? colors.text : colors.textSecondary;
 }
 
 function iconWellStyleBase(size: number, backgroundColor: string): ViewStyle {

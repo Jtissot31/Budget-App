@@ -6,8 +6,36 @@ const { getDefaultConfig } = require('expo/metro-config');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
-// Stale export/verify artifact dirs (`.expo-bundle-test`, etc.) slow Metro's file
-// crawl and watcher on Windows — exclude them from resolution and watching.
+// Metro crawls and watches every directory under `projectRoot`. Windows has no
+// Watchman here, so the fallback watcher opens one handle per directory and large
+// artifact trees push the process into `EMFILE: too many open files`. Everything
+// blocked below is build output, agent scratch, or capture artifacts — never bundled.
+//
+// Metro matches blockList entries against absolute native paths (backslashes on
+// Windows, forward slashes elsewhere), hence the separator-agnostic patterns.
+const ANY_SEPARATOR = '[\\\\/]';
+const escapeForRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const toPathPattern = (absolutePath) =>
+  absolutePath.split(/[\\/]/).map(escapeForRegExp).join(ANY_SEPARATOR);
+
+const projectRootPattern = toPathPattern(__dirname);
+
+// Anchored to `__dirname`: an unanchored `dist` would also block the `dist/` folder
+// most npm packages publish from. Trailing `(?:sep|$)` matches the directory itself
+// too, so the watcher prunes the whole subtree instead of just the files inside it.
+const blockedProjectDirs = [
+  'dist', // web export + ~320MB of stale APKs
+  '.expo', // dev-server scratch; Expo already blocks `.expo/types`
+  '_figma-import', // design reference PNGs/CSS
+  'android', // absent (managed workflow) — pre-empts a future `expo prebuild`
+  'ios',
+].map(
+  (dir) =>
+    new RegExp(
+      `^${projectRootPattern}${ANY_SEPARATOR}${escapeForRegExp(dir)}(?:${ANY_SEPARATOR}|$)`
+    )
+);
+
 const existingBlockList = config.resolver.blockList;
 config.resolver.blockList = [
   ...(Array.isArray(existingBlockList)
@@ -16,6 +44,24 @@ config.resolver.blockList = [
       ? [existingBlockList]
       : []),
   /\.expo-[^/\\]+[\\/].*/,
+  ...blockedProjectDirs,
+  // Agent scratch: `.agent-tmp/` and `.agent-tmp-*.tsx` are unused copies of files
+  // that already live under `components/`, so keep the duplicates out of the graph.
+  new RegExp(`^${projectRootPattern}${ANY_SEPARATOR}\\.agent-tmp`),
+  // Screenshot / UI-dump artifacts sit directly at the app root (223 `.png`, 21
+  // `.xml`), and both are asset extensions, so Metro maps every one. Root-level
+  // only — real assets live in `assets/`, which stays watched.
+  new RegExp(
+    `^${projectRootPattern}${ANY_SEPARATOR}[^\\\\/]+\\.(?:png|jpe?g|gif|webp|xml|html|log|apk)$`
+  ),
+  // Skia ships large native trees (cpp/libs/android). On Windows without Watchman
+  // those directories inflate the crawler and can leave JS subpaths (Image,
+  // imageFilters) missing from Metro's file map → UnableToResolveError / 500.
+  new RegExp(
+    `^${toPathPattern(
+      path.resolve(__dirname, 'node_modules', '@shopify', 'react-native-skia')
+    )}${ANY_SEPARATOR}(?:android|apple|cpp|libs|dist)(?:${ANY_SEPARATOR}|$)`
+  ),
 ];
 
 // expo-sqlite web: bundle the wa-sqlite WASM module.

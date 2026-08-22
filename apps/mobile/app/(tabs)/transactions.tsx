@@ -1,5 +1,5 @@
 /**
- * Transactions tab — Budget Proto (cashflow hero + type filters + date-grouped list).
+ * Transactions tab — Budget Proto (type filters + date-grouped list).
  * FAB → add-transaction; row tap → transaction detail. Agenda / merchants live elsewhere.
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -15,15 +15,23 @@ import {
 import { AppIcon } from '@/components/icons/AppIcon';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MinimalDatePicker } from '@/components/MinimalDatePicker';
 import { PageTransition } from '@/components/PageTransition';
 import { ProtoGlassCard } from '@/components/proto/ProtoGlassCard';
+import {
+  ProtoActiveFilterChip,
+  ProtoSearchField,
+  ProtoToolbarIconButton,
+} from '@/components/proto/ProtoSearchToolbar';
+import { SpendAndSaveCard } from '@/components/dashboard/SpendAndSaveCard';
 import { ProtoTransactionRow } from '@/components/transactions/ProtoTransactionRow';
-import { TransactionsCashflowHero } from '@/components/transactions/TransactionsCashflowHero';
 import {
   TransactionsTypeFilter,
   TransactionsViewHeader,
   type HistoryTypeFilter,
 } from '@/components/transactions/TransactionsViewHeader';
+import { VoiceTransactionSheet } from '@/components/VoiceTransactionSheet';
+import { TRANSACTIONS_FAB_STACK_HEIGHT } from '@/constants/fabStyles';
 import {
   FLOATING_NAV_CONTENT_PADDING,
   jakartaExtraBoldText,
@@ -34,13 +42,19 @@ import {
   typography,
   typographyKit,
 } from '@/constants/theme';
+import { formatFriendlyDateLabel } from '@/lib/formatFriendlyDateLabel';
 import {
   formatProtoDaySectionLabel,
   todayDayKey,
 } from '@/lib/transactionListSectionFormat';
+import {
+  getLocalDayKey,
+  transactionMatchesSearch,
+} from '@/lib/transactionListUtils';
 import { getTransactions, getSimulatedAccounts } from '@/lib/db';
 import { ensureDbReady } from '@/lib/init';
-import { dataEvents } from '@/lib/events';
+import { dataEvents, uiEvents } from '@/lib/events';
+import { KNOWN_MERCHANT_NAMES, QUEBEC_DEMO_MERCHANT_NAMES } from '@/lib/merchantLogo';
 import { tapHaptic } from '@/lib/haptics';
 import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import { UNIFORM_ACTION_BUTTON_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
@@ -48,15 +62,6 @@ import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFo
 import { useSavingsGoals } from '@/hooks/useSavingsGoals';
 import { useAppTheme } from '@/lib/themeContext';
 import type { SimulatedAccount, Transaction } from '@/types';
-
-function getLocalDayKey(isoDate: string) {
-  const date = new Date(isoDate);
-  if (Number.isNaN(date.getTime())) return isoDate.slice(0, 10);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 type ProtoDayGroupProps = {
   date: string;
@@ -110,6 +115,10 @@ export default function TransactionsScreen() {
   const [items, setItems] = useState<Transaction[]>([]);
   const [simulatedAccounts, setSimulatedAccounts] = useState<SimulatedAccount[]>([]);
   const [historyTypeFilter, setHistoryTypeFilter] = useState<HistoryTypeFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [voiceSheetOpen, setVoiceSheetOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const savingsGoals = useSavingsGoals();
 
@@ -130,6 +139,8 @@ export default function TransactionsScreen() {
     });
   }, [load]);
 
+  useEffect(() => uiEvents.subscribeVoiceTransaction(() => setVoiceSheetOpen(true)), []);
+
   useRefreshOnFocus(load, { minIntervalMs: 5_000 });
   useScrollToTopOnFocus(
     useCallback(() => {
@@ -138,9 +149,14 @@ export default function TransactionsScreen() {
   );
 
   const filteredItems = useMemo(() => {
-    if (historyTypeFilter === 'all') return items;
-    return items.filter((tx) => tx.type === historyTypeFilter);
-  }, [historyTypeFilter, items]);
+    const query = searchQuery.trim();
+    return items.filter((tx) => {
+      if (historyTypeFilter !== 'all' && tx.type !== historyTypeFilter) return false;
+      if (dateFilter && getLocalDayKey(tx.date) !== dateFilter) return false;
+      if (query && !transactionMatchesSearch(tx, query)) return false;
+      return true;
+    });
+  }, [dateFilter, historyTypeFilter, items, searchQuery]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, Transaction[]>();
@@ -153,46 +169,78 @@ export default function TransactionsScreen() {
     return [...map.entries()].sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0));
   }, [filteredItems]);
 
-  const monthCashflow = useMemo(() => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth();
-    let totalIncome = 0;
-    let totalSpend = 0;
+  /** Catalogue Québec/Canada + commerces déjà saisis — base de reconnaissance de la dictée. */
+  const knownMerchantNames = useMemo(() => {
+    const names = new Set<string>([...QUEBEC_DEMO_MERCHANT_NAMES, ...KNOWN_MERCHANT_NAMES]);
     for (const tx of items) {
-      const d = new Date(tx.date);
-      if (Number.isNaN(d.getTime()) || d.getFullYear() !== y || d.getMonth() !== m) continue;
-      if (tx.type === 'income') totalIncome += Math.abs(tx.amount);
-      else if (tx.type === 'expense') totalSpend += Math.abs(tx.amount);
+      if (tx.type !== 'expense') continue;
+      const label = tx.label.trim();
+      if (label) names.add(label);
     }
-    const monthLabel = now.toLocaleDateString('fr-CA', { month: 'long', year: 'numeric' });
-    return { totalIncome, totalSpend, monthLabel };
+    return [...names];
   }, [items]);
 
   const handlePressTransaction = useCallback((transactionId: string) => {
     openTransactionDetail(transactionId);
   }, []);
 
+  const openDatePicker = useCallback(() => {
+    tapHaptic();
+    setDatePickerOpen(true);
+  }, []);
+
+  const clearDateFilter = useCallback(() => {
+    tapHaptic();
+    setDateFilter('');
+  }, []);
+
   const listHeader = useMemo(
     () => (
       <View style={{ paddingHorizontal: contentGutter, marginBottom: spacing.md }}>
-        <View style={{ marginBottom: spacing.lg }}>
-          <TransactionsCashflowHero
-            monthLabel={monthCashflow.monthLabel}
-            totalIncome={monthCashflow.totalIncome}
-            totalSpend={monthCashflow.totalSpend}
-          />
-        </View>
-        <TransactionsTypeFilter value={historyTypeFilter} onChange={setHistoryTypeFilter} />
+        <SpendAndSaveCard />
       </View>
     ),
-    [
-      contentGutter,
-      historyTypeFilter,
-      monthCashflow.monthLabel,
-      monthCashflow.totalIncome,
-      monthCashflow.totalSpend,
-    ],
+    [contentGutter],
+  );
+
+  const fixedChrome = (
+    <>
+      <TransactionsViewHeader topInset={insets.top} titleColor={colors.text} />
+      <View style={{ paddingHorizontal: contentGutter, marginBottom: spacing.md }}>
+        <View style={styles.searchToolbar}>
+          <ProtoSearchField
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            accessibilityLabel="Rechercher une transaction"
+          />
+          <ProtoToolbarIconButton
+            icon="receipt-outline"
+            onPress={() => {
+              tapHaptic();
+              router.push('/documents-library');
+            }}
+            accessibilityLabel="Bibliothèque de documents"
+          />
+          <ProtoToolbarIconButton
+            icon={dateFilter ? 'calendar' : 'calendar-outline'}
+            active={Boolean(dateFilter)}
+            onPress={openDatePicker}
+            accessibilityLabel="Rechercher par date"
+          />
+        </View>
+        {dateFilter ? (
+          <ProtoActiveFilterChip
+            icon="calendar"
+            label={formatFriendlyDateLabel(dateFilter)}
+            onPress={openDatePicker}
+            onClear={clearDateFilter}
+            accessibilityLabel={`Date filtrée : ${formatFriendlyDateLabel(dateFilter)}. Modifier`}
+            clearAccessibilityLabel="Effacer le filtre de date"
+          />
+        ) : null}
+        <TransactionsTypeFilter value={historyTypeFilter} onChange={setHistoryTypeFilter} />
+      </View>
+    </>
   );
 
   const renderDayGroup = useCallback(
@@ -209,27 +257,32 @@ export default function TransactionsScreen() {
     [contentGutter, handlePressTransaction, savingsGoals, simulatedAccounts],
   );
 
-  const hasActiveFilter = historyTypeFilter !== 'all';
+  const hasActiveFilter =
+    historyTypeFilter !== 'all' || searchQuery.trim().length > 0 || Boolean(dateFilter);
 
   return (
     <PageTransition>
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <TransactionsViewHeader topInset={insets.top} titleColor={colors.text} />
-
+        {fixedChrome}
         <FlatList
           ref={listRef}
           style={styles.listViewport}
           data={grouped}
           keyExtractor={([date]) => date}
-          extraData={`${historyTypeFilter}:${simulatedAccounts.length}`}
+          extraData={`${historyTypeFilter}:${searchQuery}:${dateFilter}:${simulatedAccounts.length}`}
           initialNumToRender={8}
           maxToRenderPerBatch={6}
           windowSize={7}
           removeClippedSubviews={Platform.OS !== 'web'}
           ListHeaderComponent={listHeader}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={[
             styles.listWithHeader,
-            { paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING },
+            // + hauteur du FAB micro empilé au-dessus du + vert.
+            {
+              paddingBottom:
+                insets.bottom + FLOATING_NAV_CONTENT_PADDING + TRANSACTIONS_FAB_STACK_HEIGHT,
+            },
           ]}
           refreshControl={
             <RefreshControl
@@ -253,7 +306,7 @@ export default function TransactionsScreen() {
                 </Text>
                 <Text style={[styles.emptyHint, { color: colors.textMuted }]}>
                   {hasActiveFilter
-                    ? 'Essaie un autre filtre.'
+                    ? 'Essaie une autre recherche, une autre date ou un autre filtre.'
                     : 'Ajoute une transaction avec le bouton +.'}
                 </Text>
                 {!hasActiveFilter ? (
@@ -280,6 +333,24 @@ export default function TransactionsScreen() {
           }
           renderItem={renderDayGroup}
         />
+
+        <MinimalDatePicker
+          visible={datePickerOpen}
+          value={dateFilter}
+          allowClear
+          onCancel={() => setDatePickerOpen(false)}
+          onConfirm={(value) => {
+            setDateFilter(value);
+            setDatePickerOpen(false);
+          }}
+        />
+
+        <VoiceTransactionSheet
+          visible={voiceSheetOpen}
+          onClose={() => setVoiceSheetOpen(false)}
+          accounts={simulatedAccounts}
+          merchantNames={knownMerchantNames}
+        />
       </View>
     </PageTransition>
   );
@@ -290,6 +361,12 @@ const styles = StyleSheet.create({
   listViewport: { flex: 1 },
   listWithHeader: {
     paddingBottom: FLOATING_NAV_CONTENT_PADDING,
+  },
+  searchToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
   emptyCard: {
     alignItems: 'center',

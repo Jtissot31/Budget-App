@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
+import { FormSheetModalBody } from '@/lib/sheet/formSheetScroll';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
@@ -122,6 +123,7 @@ export function AIChatSettingsSheet({ visible, onClose, onHistoryCleared }: Prop
           <View style={[styles.backdrop, { backgroundColor: backdropColor }]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} accessibilityLabel="Fermer" />
 
+            <FormSheetModalBody>
             <DraggableSheetSurface
               onClose={handleClose}
               sheetHeight={sheetHeight}
@@ -251,6 +253,7 @@ export function AIChatSettingsSheet({ visible, onClose, onHistoryCleared }: Prop
               </Pressable>
             </View>
             </DraggableSheetSurface>
+            </FormSheetModalBody>
 
           <ConfirmDeleteModal
             embedded

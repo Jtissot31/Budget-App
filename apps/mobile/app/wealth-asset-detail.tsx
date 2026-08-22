@@ -12,6 +12,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { DetailSectionsCard } from '@/components/DetailSectionRows';
+import { FixedScreenHeader } from '@/components/FixedScreenHeader';
 import { GlassContainer } from '@/components/GlassContainer';
 import { OverflowMenuButton } from '@/components/OverflowMenuButton';
 import { PageTransition } from '@/components/PageTransition';
@@ -23,7 +24,6 @@ import {
 } from '@/components/PortfolioChartCard';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { TransactionRow } from '@/components/TransactionRow';
-import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   DASHBOARD_VALUE_GREEN,
   DASHBOARD_VALUE_RED,
@@ -411,45 +411,31 @@ export default function WealthAssetDetailScreen() {
   return (
     <PageTransition>
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.lg + spacing.md }]}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retour"
-            hitSlop={12}
-            style={({ pressed }) => [
-              styles.backButton,
-              { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
-              pressed && styles.pressed,
-            ]}
-            onPress={() => router.back()}
-          >
-            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
-          </Pressable>
-          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-            {displayTitle}
-          </Text>
-          {asset ? (
-            <OverflowMenuButton
-              accessibilityLabel="Options du patrimoine"
-              items={[
-                {
-                  key: 'edit',
-                  label: 'Modifier',
-                  onPress: navigateToEdit,
-                },
-                {
-                  key: 'delete',
-                  label: 'Supprimer',
-                  icon: 'trash-outline',
-                  destructive: true,
-                  onPress: confirmDelete,
-                },
-              ]}
-            />
-          ) : (
-            <View style={styles.topBarSpacer} />
-          )}
-        </View>
+        <FixedScreenHeader
+          title={displayTitle}
+          onBack={() => router.back()}
+          trailing={
+            asset ? (
+              <OverflowMenuButton
+                accessibilityLabel="Options du patrimoine"
+                items={[
+                  {
+                    key: 'edit',
+                    label: 'Modifier',
+                    onPress: navigateToEdit,
+                  },
+                  {
+                    key: 'delete',
+                    label: 'Supprimer',
+                    icon: 'trash-outline',
+                    destructive: true,
+                    onPress: confirmDelete,
+                  },
+                ]}
+              />
+            ) : undefined
+          }
+        />
 
         <ScrollView
           ref={scrollRef}
@@ -601,30 +587,6 @@ export default function WealthAssetDetailScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-  },
-  backButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    flex: 1,
-    textAlign: 'center',
-    marginHorizontal: spacing.sm,
-    ...jakartaExtraBoldText,
-    fontSize: typography.body,
-    letterSpacing: -0.2,
-  },
-  topBarSpacer: { width: 38 },
   content: {
     paddingHorizontal: spacing.lg,
     gap: spacing.lg,

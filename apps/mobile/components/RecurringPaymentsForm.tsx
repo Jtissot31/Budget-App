@@ -2,68 +2,80 @@ import { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
 import {
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
-import { Image } from 'expo-image';
-import { MotiView } from 'moti';
+import {
+  DraggableSheetScrollView,
+  DraggableSheetSurface,
+} from '@/components/DraggableSheetSurface';
+import {
+  FORM_SHEET_CONTENT_PADDING_TOP,
+  FormSheetChromeHeader,
+  FormSheetModalBody,
+  formSheetScrollContentStyle,
+  formSheetScrollPaddingBottom,
+  formSheetScrollViewStyle,
+  useFormSheetHeight,
+  useFormSheetKeyboardInset,
+} from '@/lib/sheet/formSheetScroll';
+import { BudgetCategoryPicker } from '@/components/BudgetCategoryPicker';
 import { CategoryBudgetProgress } from '@/components/CategoryBudgetProgress';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
-import { PrimarySaveButton } from '@/components/PrimarySaveButton';
-import { ThemedFormMessage } from '@/components/ThemedFormMessage';
-import { formValidationError, type FormFeedback, type FormSaveResult } from '@/lib/formFeedback';
-import { IconFrame, LogoIconFrame } from '@/components/IconFrame';
+import { LogoIconFrame } from '@/components/IconFrame';
 import { MdiIconPicker } from '@/components/MdiIconPicker';
+import { NumericAmountInput } from '@/components/NumericAmountInput';
+import { PremiumSwitch } from '@/components/PremiumSwitch';
+import { PrimarySaveButton } from '@/components/PrimarySaveButton';
+import { SettingsSelectField } from '@/components/SettingsSelectField';
+import type { SettingsPickerOption } from '@/components/SettingsPickerSheet';
+import { ThemeSegmentedControl } from '@/components/ThemeSegmentedControl';
+import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
-import { GhostNumpad } from '@/components/GhostNumpad';
-import { formatMoneyAmountInput } from '@/lib/formatMoneyAmountInput';
+import { formValidationError, type FormFeedback, type FormSaveResult } from '@/lib/formFeedback';
 import { parseFormattedNumber, sanitizeNumericInput } from '@/lib/formatNumber';
 import { DatePickerField } from '@/components/MinimalDatePicker';
-import { getCategoryIconName } from '@/constants/categoryOptions';
-import { EXPENSE_MDI_ICON, type MdiIconName } from '@/lib/mdiIconCatalog';
+import { type MdiIconName } from '@/lib/mdiIconCatalog';
 import { MANUAL_ENTRY_ACCOUNTS } from '@/constants/manualEntryAccounts';
-import { ghost, ghostCardShadow } from '@/constants/ghostUi';
+import { ghost } from '@/constants/ghostUi';
 import {
   destructiveIconColor,
   destructiveTextActionStyle,
-  CHIP_BORDER_WIDTH,
-  CHIP_PADDING_HORIZONTAL,
+  FORM_SECTION_LABEL_STYLE,
   colors,
   ICON_WELL_SIZE,
   jakartaBoldText,
   jakartaExtraBoldText,
+  jakartaSemiboldText,
   moneyAmountTypography,
   jakartaMediumText,
   radius,
   spacing,
   subtleDeleteButtonStyle,
   typography,
+  typographyKit,
 } from '@/constants/theme';
-import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
+import {
+  accountBalanceIconForKind,
+  accountPickerRowPresentation,
+} from '@/lib/accountBalancePresentation';
 import {
   getLoans,
   upsertRecurringPayment,
 } from '@/lib/db';
-import { BUDGET_CATEGORY_PICKER_EMPTY_HINT } from '@/lib/budgetCategories';
 import { getChildSupportSalaryNotices } from '@/lib/childSupportLoan';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { getMerchantLogoUrl, RECURRING_SERVICE_LOGO_OPTIONS } from '@/lib/merchantLogo';
 import { resolveRecurringPaymentDisplayIcon } from '@/lib/recurringPaymentPresentation';
 import { useAppTheme } from '@/lib/themeContext';
-import { TransactionAmountLabel, recurringPaymentAmountDirection } from '@/components/TransactionAmountLabel';
 import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
 import type { AccountKind, Category, CategoryBudget, Loan, RecurringPayment, RecurringPaymentFrequency, RecurringPaymentKind, SimulatedAccount } from '@/types';
-import { PaymentMethodField, type PaymentMethodAccount } from '@/components/PaymentMethodField';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type LogoSelectionMode = 'auto' | 'logo' | 'icon';
@@ -73,6 +85,12 @@ export type AccountOption = {
   label: string;
   tint: string;
   kind?: AccountKind;
+  /** Sheet primary line (institution / account name). */
+  pickerLabel?: string;
+  description?: string;
+  fieldLabel?: string;
+  icon?: string | null;
+  logoUrl?: string | null;
 };
 
 type RecurringCategoryRule = {
@@ -89,6 +107,8 @@ export type PaymentForm = {
   name: string;
   amount: string;
   kind: RecurringPaymentKind;
+  /** UI variant for add/edit — locks title + fields (chooser sets this; edit infers it). */
+  addVariant: RecurringPaymentAddVariant;
   accountId: string;
   accountLabel: string;
   categoryId: string | null;
@@ -102,6 +122,8 @@ export type PaymentForm = {
   logoUrl: string | null;
   logoMode: LogoSelectionMode;
   createdAt: string;
+  /** True while creating — hide impact/projection until the item exists. */
+  isNew?: boolean;
 };
 
 const FREQUENCIES: Array<{ id: RecurringPaymentFrequency; label: string }> = [
@@ -113,6 +135,13 @@ const FREQUENCIES: Array<{ id: RecurringPaymentFrequency; label: string }> = [
 const DEFAULT_COLOR = '#00A854';
 const DEFAULT_ICON = 'RecurringEvent';
 const COMPACT_CATEGORY_LIMIT = 5;
+
+const MANUAL_ACCOUNT_ICONS: Record<string, string> = {
+  checking: 'wallet-outline',
+  credit: 'card-outline',
+  savings: 'cash-outline',
+  cash: 'cash-banknotes-outline',
+};
 
 const INCOME_CATEGORY_TERMS = ['revenu', 'revenus', 'salaire', 'paie', 'paye', 'payroll', 'income'];
 
@@ -204,34 +233,29 @@ const RECURRING_FALLBACK_CATEGORY_TERMS = [
   'divers',
 ];
 
-function amountFontSize(raw: string) {
-  const len = (raw || '0').replace(/[^0-9]/g, '').length;
-  return Math.max(36, 64 - Math.min(len, 12) * 2.2);
-}
-
 const SUBSCRIPTION_CATEGORY_TERMS = ['abonnement', 'subscription', 'loisir', 'loisirs', 'divertissement'];
 const SUBSCRIPTION_DEFAULT_ICON = 'Movie';
 const SUBSCRIPTION_DEFAULT_COLOR = '#F43F5E';
 
 export function createNewRecurringPaymentForm(
-  accounts: AccountOption[],
-  categories: Category[],
+  _accounts: AccountOption[],
+  _categories: Category[],
   variant: RecurringPaymentAddVariant = 'bill',
 ): PaymentForm {
   const kind: RecurringPaymentKind = variant === 'income' ? 'income' : 'payment';
-  const account = accounts[0] ?? manualAccountOptions()[0];
   const isSubscription = variant === 'subscription';
   return {
     id: createLocalId(),
     name: '',
     amount: '',
     kind,
-    accountId: account.id,
-    accountLabel: account.label,
-    categoryId: getDefaultCategoryIdForVariant(categories, variant),
+    addVariant: variant,
+    accountId: '',
+    accountLabel: '',
+    categoryId: null,
     frequency: 'monthly',
     dueDay: '',
-    nextDate: new Date().toISOString().slice(0, 10),
+    nextDate: '',
     endDate: '',
     active: true,
     icon: kind === 'income' ? 'AttachMoney' : isSubscription ? SUBSCRIPTION_DEFAULT_ICON : DEFAULT_ICON,
@@ -239,7 +263,58 @@ export function createNewRecurringPaymentForm(
     logoUrl: null,
     logoMode: isSubscription ? 'icon' : 'auto',
     createdAt: new Date().toISOString(),
+    isNew: true,
   };
+}
+
+function formAddVariant(form: PaymentForm): RecurringPaymentAddVariant {
+  return form.addVariant ?? (form.kind === 'income' ? 'income' : 'bill');
+}
+
+export function recurringFormTitle(variant: RecurringPaymentAddVariant): string {
+  if (variant === 'income') return 'Revenu récurrent';
+  if (variant === 'subscription') return 'Abonnement';
+  return 'Paiement récurrent';
+}
+
+function nameFieldLabel(variant: RecurringPaymentAddVariant): string {
+  if (variant === 'income') return 'Source du revenu';
+  if (variant === 'subscription') return 'Service / abonnement';
+  return 'Marchand / paiement';
+}
+
+function nameFieldPlaceholder(variant: RecurringPaymentAddVariant): string {
+  if (variant === 'income') return 'Ex. Paie, pension, allocation...';
+  if (variant === 'subscription') return 'Ex. Netflix, Spotify, iCloud...';
+  return 'Ex. Loyer, Hydro, assurance...';
+}
+
+function nextDateFieldLabel(variant: RecurringPaymentAddVariant): string {
+  if (variant === 'subscription') return 'Renouvellement';
+  if (variant === 'income') return 'Prochaine date';
+  return 'Prochaine échéance';
+}
+
+function impactFieldLabel(variant: RecurringPaymentAddVariant): string {
+  if (variant === 'income') return 'Projection revenu';
+  if (variant === 'subscription') return 'Coût abonnement';
+  return 'Impact budget';
+}
+
+function identityGhostIcon(variant: RecurringPaymentAddVariant): IconName {
+  if (variant === 'income') return 'trending-up-outline';
+  if (variant === 'subscription') return 'repeat-outline';
+  return 'receipt-outline';
+}
+
+export function inferRecurringAddVariant(payment: RecurringPayment): RecurringPaymentAddVariant {
+  if ((payment.kind ?? 'payment') === 'income') return 'income';
+  if (payment.categoryId === 'cat-fun') return 'subscription';
+  const categoryName = payment.categoryName?.trim() ?? '';
+  if (categoryName && SUBSCRIPTION_CATEGORY_TERMS.some((term) => searchMatchesKeyword(categoryName, term))) {
+    return 'subscription';
+  }
+  return 'bill';
 }
 
 function PaymentFormModal({
@@ -270,10 +345,13 @@ function PaymentFormModal({
   feedback?: FormFeedback | null;
 }) {
   const { colors: themeColors, isLight } = useAppTheme();
-  const { height: windowHeight } = useWindowDimensions();
-  const sheetHeight = Math.round(windowHeight * 0.92);
+  const sheetHeight = useFormSheetHeight(0.92);
+  const keyboardInset = useFormSheetKeyboardInset();
+  const sectionLabelStyle = useMemo(
+    () => [FORM_SECTION_LABEL_STYLE, { color: themeColors.text }],
+    [themeColors.text],
+  );
   const [showLogoPicker, setShowLogoPicker] = useState(false);
-  const [showAllCategories, setShowAllCategories] = useState(false);
   const [loans, setLoans] = useState<Loan[]>([]);
 
   useEffect(() => {
@@ -284,33 +362,37 @@ function PaymentFormModal({
   useEffect(() => {
     if (!visible) {
       setShowLogoPicker(false);
-      setShowAllCategories(false);
     }
   }, [visible]);
 
   useEffect(() => {
-    setShowAllCategories(false);
     setShowLogoPicker(false);
   }, [form?.id, form?.kind]);
 
-  const paymentMethodAccounts = useMemo<PaymentMethodAccount[]>(
+  const accountPickerOptions = useMemo<SettingsPickerOption<string>[]>(
     () =>
-      accounts.map((a) => {
-        const parts = a.label.split(' • ');
-        return {
-          id: a.id,
-          name: parts[0] ?? a.label,
-          last4: parts[1],
-          kind: a.kind ?? 'checking',
-        };
-      }),
+      accounts.map((account) => ({
+        id: account.id,
+        label: account.pickerLabel ?? account.label.split(' • ')[0] ?? account.label,
+        description: account.description,
+        fieldLabel: account.fieldLabel ?? account.label,
+        icon:
+          account.icon ??
+          (account.kind ? accountBalanceIconForKind(account.kind) : 'wallet-outline'),
+        logoUrl: account.logoUrl ?? null,
+      })),
     [accounts],
   );
 
   const themed = useMemo(
     () => ({
       modalBackdrop: { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' },
-      sheet: { backgroundColor: themeColors.containerBackground, borderColor: themeColors.containerBorder },
+      sheet: {
+        backgroundColor: themeColors.background,
+        borderColor: themeColors.containerBorder,
+      },
+      /** Must override StyleSheet — static `colors` is always dark. */
+      sheetScroller: { backgroundColor: themeColors.background },
       handle: { backgroundColor: themeColors.borderStrong },
       closeButton: {
         backgroundColor: themeColors.surfaceElevated,
@@ -354,113 +436,65 @@ function PaymentFormModal({
   );
 
   if (!form) return null;
-  const displayAmount = `${formatMoneyAmountInput(form.amount || '0')} $`;
+  const addVariant = formAddVariant(form);
+  const isIncome = addVariant === 'income';
+  const isSubscription = addVariant === 'subscription';
+  const isBill = addVariant === 'bill';
   const canSubmit = Boolean(form.name.trim()) && parseAmount(form.amount) > 0 && Boolean(form.accountId) && Boolean(form.nextDate.trim());
   const visibleCategories = getRecurringCategoryBase(categories, form.kind);
-  const suggestedCategories = getRelevantRecurringCategoryChoices(form.name, visibleCategories, form.categoryId, form.kind);
-  const categoriesToShow = showAllCategories ? visibleCategories : suggestedCategories;
-  const shownCategoryIds = new Set(suggestedCategories.map((category) => category.id));
-  const hasHiddenCategories = visibleCategories.some((category) => !shownCategoryIds.has(category.id));
   const autoLogoUrl = getMerchantLogoUrl(form.name.trim());
   const previewLogoUrl = form.logoMode === 'logo' ? form.logoUrl : form.logoMode === 'auto' ? autoLogoUrl : null;
-  const previewIcon = form.logoMode === 'icon' ? form.icon : form.kind === 'income' ? 'AttachMoney' : DEFAULT_ICON;
+  const previewIcon =
+    form.logoMode === 'icon'
+      ? form.icon
+      : isIncome
+        ? 'AttachMoney'
+        : isSubscription
+          ? SUBSCRIPTION_DEFAULT_ICON
+          : DEFAULT_ICON;
   const impactSummary = getRecurringImpactSummary(form, categoryBudgets);
   const selectedCategoryBudget =
-    form.kind === 'payment' && form.categoryId
+    !isIncome && form.categoryId
       ? categoryBudgets.find((item) => item.categoryId === form.categoryId) ?? null
       : null;
+  const showBudgetProgress =
+    isBill &&
+    selectedCategoryBudget != null &&
+    (selectedCategoryBudget.limitAmount > 0 || selectedCategoryBudget.spent > 0);
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={[styles.modalBackdrop, themed.modalBackdrop]}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalKeyboard}>
+          <FormSheetModalBody>
             <DraggableSheetSurface
               onClose={onClose}
               sheetHeight={sheetHeight}
               style={[styles.sheet, themed.sheet]}
             >
-              <View style={[styles.handle, themed.handle]} />
-              <View style={styles.sheetHeader}>
-                <Text style={[styles.sheetTitle, themed.text]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
-                  {form.kind === 'income' ? 'Revenu récurrent' : 'Paiement récurrent'}
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Fermer le paiement récurrent"
-                  onPress={onClose}
-                  hitSlop={12}
-                  style={[styles.sheetClose, themed.closeButton]}
-                >
-                  <AppIcon family="ionicons" name="close" size={19} color={themeColors.textMuted} />
-                </Pressable>
-              </View>
-              <ScrollView
-              style={styles.sheetScroller}
-              keyboardShouldPersistTaps="always"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={[styles.sheetContent, { paddingBottom: Math.max(bottomInset, 20) }]}
-            >
-
-            <View style={styles.section}>
-              <DashboardSectionLabel>Type</DashboardSectionLabel>
-              <View style={styles.wrapRow}>
-                {(['payment', 'income'] as const).map((kind) => {
-                  const on = form.kind === kind;
-                  return (
-                    <Pressable
-                      key={kind}
-                      onPress={() => {
-                        tapHaptic();
-                        onChange((current) =>
-                          current
-                            ? {
-                                ...current,
-                                kind,
-                                categoryId: getDefaultCategoryId(categories, kind),
-                                icon: kind === 'income' ? 'AttachMoney' : DEFAULT_ICON,
-                                color: kind === 'income' ? ghost.mint : DEFAULT_COLOR,
-                              }
-                            : current,
-                        );
-                      }}
-                      style={[styles.chip, themed.control, styles.chipShell, on && themed.selected]}
-                    >
-                      <Text
-                        style={[styles.chipText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                        {...chipLabelTextProps()}
-                      >
-                        {kind === 'income' ? 'Revenu' : 'Paiement'}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            <View style={styles.section}>
-              <DashboardSectionLabel>{form.kind === 'income' ? 'Source du revenu' : 'Marchand / paiement'}</DashboardSectionLabel>
-              <TextInput
-                style={[styles.input, themed.controlStrong, themed.text]}
-                placeholder={form.kind === 'income' ? 'Ex. Paie, pension, allocation...' : 'Ex. Loyer, Netflix, Hydro...'}
-                placeholderTextColor={themeColors.textMuted}
-                value={form.name}
-                onChangeText={(name) =>
-                  onChange((current) =>
-                    current
-                      ? {
-                          ...current,
-                          name,
-                          logoUrl: current.logoMode === 'auto' ? null : current.logoUrl,
-                        }
-                      : current,
-                  )
-                }
+              <FormSheetChromeHeader
+                title={recurringFormTitle(addVariant)}
+                onClose={onClose}
+                titleColor={themeColors.text}
+                closeIconColor={themeColors.textMuted}
+                handleColor={themeColors.borderStrong}
+                closeButtonStyle={themed.closeButton}
+                headerStyle={styles.sheetHeaderPad}
               />
-            </View>
+              <DraggableSheetScrollView
+                style={[styles.sheetScroller, themed.sheetScroller, formSheetScrollViewStyle()]}
+                keyboardShouldPersistTaps="always"
+                keyboardDismissMode="on-drag"
+                contentContainerStyle={[
+                  styles.sheetContent,
+                  formSheetScrollContentStyle,
+                  { paddingBottom: formSheetScrollPaddingBottom(bottomInset, keyboardInset) },
+                ]}
+              >
 
-            <View style={[styles.logoSection, themed.logoPanel]}>
-              <View style={styles.logoHeader}>
+            <View style={styles.section}>
+              <DashboardSectionLabel>{nameFieldLabel(addVariant)}</DashboardSectionLabel>
+              <View style={styles.identityRow}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Changer le logo ou l'icône"
@@ -468,43 +502,105 @@ function PaymentFormModal({
                     tapHaptic();
                     setShowLogoPicker((shown) => !shown);
                   }}
+                  style={({ pressed }) => [styles.iconAffordance, pressed && styles.pressed]}
                 >
                   {previewLogoUrl ? (
-                    <LogoIconFrame uri={previewLogoUrl} size={52} />
+                    <LogoIconFrame uri={previewLogoUrl} size={40} />
+                  ) : form.name.trim() || form.logoMode === 'icon' ? (
+                    <View style={styles.iconSlot}>
+                      <UserPickedIconBadge icon={previewIcon} size={40} iconSize={22} wellGlyphWhite />
+                    </View>
                   ) : (
-                    <UserPickedIconBadge icon={previewIcon} size={52} iconSize={22} wellGlyphWhite />
+                    <View style={styles.iconGhostSlot} accessibilityElementsHidden>
+                      <AppIcon
+                        family="ionicons"
+                        name={identityGhostIcon(addVariant)}
+                        size={28}
+                        color={themeColors.textMuted}
+                      />
+                    </View>
                   )}
+                  <AppIcon
+                    family="ionicons"
+                    name="create-outline"
+                    size={16}
+                    color={themeColors.textMuted}
+                  />
                 </Pressable>
-                <View style={styles.logoCopy}>
-                  <DashboardSectionLabel>Logo</DashboardSectionLabel>
-                  <Text style={[styles.logoHint, themed.textMuted]}>
-                    {form.logoMode === 'auto'
-                      ? autoLogoUrl
-                        ? 'Logo automatique trouvé avec le nom.'
-                        : 'Touche l\'icône pour choisir dans la bibliothèque MDI.'
-                      : form.logoMode === 'logo'
-                        ? 'Logo manuel sélectionné.'
-                        : 'Icône MDI sélectionnée.'}
-                  </Text>
-                </View>
+                <TextInput
+                  style={[
+                    styles.nameInput,
+                    {
+                      color: themeColors.text,
+                      borderBottomColor: themeColors.border,
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                    },
+                  ]}
+                  placeholder={nameFieldPlaceholder(addVariant)}
+                  placeholderTextColor={themeColors.textMuted}
+                  value={form.name}
+                  onChangeText={(name) =>
+                    onChange((current) =>
+                      current
+                        ? {
+                            ...current,
+                            name,
+                            logoUrl: current.logoMode === 'auto' ? null : current.logoUrl,
+                          }
+                        : current,
+                    )
+                  }
+                  returnKeyType="next"
+                />
               </View>
+            </View>
 
-              {showLogoPicker ? (
-                <View style={styles.logoPicker}>
-                  <View style={styles.logoPickerTitleRow}>
-                    <Text style={[styles.logoPickerHint, themed.textMuted]} numberOfLines={1}>
-                      Auto ou manuel
-                    </Text>
-                    <Text style={[styles.logoPickerHint, themed.textMuted]} numberOfLines={1}>
-                      Services populaires
-                    </Text>
-                  </View>
-                  <View style={styles.logoOptionRow}>
+            {showLogoPicker ? (
+              <View style={styles.section}>
+                <DashboardSectionLabel>Logo / icône</DashboardSectionLabel>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.logoOptionRow}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <RecurringLogoOption
+                    label="Auto"
+                    selected={form.logoMode === 'auto'}
+                    logoUrl={autoLogoUrl}
+                    fallbackIcon="sparkles-outline"
+                    fallbackColor={themeColors.textMuted}
+                    onPress={() => {
+                      tapHaptic();
+                      onChange((current) =>
+                        current
+                          ? {
+                              ...current,
+                              logoMode: 'auto',
+                              logoUrl: null,
+                              icon:
+                                formAddVariant(current) === 'subscription'
+                                  ? SUBSCRIPTION_DEFAULT_ICON
+                                  : defaultIconForKind(current.kind),
+                              color:
+                                current.kind === 'income'
+                                  ? ghost.mint
+                                  : formAddVariant(current) === 'subscription'
+                                    ? SUBSCRIPTION_DEFAULT_COLOR
+                                    : DEFAULT_COLOR,
+                            }
+                          : current,
+                      );
+                      setShowLogoPicker(false);
+                    }}
+                  />
+                  {RECURRING_SERVICE_LOGO_OPTIONS.map((option) => (
                     <RecurringLogoOption
-                      label="Auto"
-                      selected={form.logoMode === 'auto'}
-                      logoUrl={autoLogoUrl}
-                      fallbackIcon="sparkles-outline"
+                      key={option.id}
+                      label={option.label}
+                      selected={form.logoMode === 'logo' && form.logoUrl === option.logoUrl}
+                      logoUrl={option.logoUrl}
+                      fallbackIcon="storefront-outline"
                       fallbackColor={themeColors.textMuted}
                       onPress={() => {
                         tapHaptic();
@@ -512,8 +608,8 @@ function PaymentFormModal({
                           current
                             ? {
                                 ...current,
-                                logoMode: 'auto',
-                                logoUrl: null,
+                                logoMode: 'logo',
+                                logoUrl: option.logoUrl,
                                 icon: defaultIconForKind(current.kind),
                                 color: current.kind === 'income' ? ghost.mint : DEFAULT_COLOR,
                               }
@@ -522,219 +618,168 @@ function PaymentFormModal({
                         setShowLogoPicker(false);
                       }}
                     />
-                    {RECURRING_SERVICE_LOGO_OPTIONS.map((option) => (
-                      <RecurringLogoOption
-                        key={option.id}
-                        label={option.label}
-                        selected={form.logoMode === 'logo' && form.logoUrl === option.logoUrl}
-                        logoUrl={option.logoUrl}
-                        fallbackIcon="storefront-outline"
-                        fallbackColor={themeColors.textMuted}
-                        onPress={() => {
-                          tapHaptic();
-                          onChange((current) =>
-                            current
-                              ? {
-                                  ...current,
-                                  logoMode: 'logo',
-                                  logoUrl: option.logoUrl,
-                                  icon: defaultIconForKind(current.kind),
-                                  color: current.kind === 'income' ? ghost.mint : DEFAULT_COLOR,
-                                }
-                              : current,
-                          );
-                          setShowLogoPicker(false);
-                        }}
-                      />
-                    ))}
-                  </View>
-
-                  <Text style={[styles.logoPickerHint, themed.textMuted]}>Icônes MDI</Text>
-                  <MdiIconPicker
-                    selectedIcon={form.logoMode === 'icon' ? form.icon : previewIcon}
-                    onSelect={(icon: MdiIconName) => {
-                      onChange((current) =>
-                        current
-                          ? {
-                              ...current,
-                              logoMode: 'icon',
-                              logoUrl: null,
-                              icon,
-                              color: current.kind === 'income' ? ghost.mint : DEFAULT_COLOR,
-                            }
-                          : current,
-                      );
-                      setShowLogoPicker(false);
-                    }}
-                  />
-                </View>
-              ) : null}
-            </View>
-
-            <View style={styles.amountWrap}>
-              <TransactionAmountLabel
-                amount={displayAmount}
-                direction={recurringPaymentAmountDirection(form.kind)}
-                color={themed.text.color ?? colors.text}
-                textStyle={[styles.amountText, themed.text, { fontSize: amountFontSize(form.amount) }]}
-                iconSize={Math.max(18, Math.round(amountFontSize(form.amount) * 0.38))}
-                containerStyle={{ justifyContent: 'center' }}
-              />
-            </View>
-
-            <MotiView from={{ opacity: 0, translateY: 8 }} animate={{ opacity: 1, translateY: 0 }} transition={{ type: 'timing', duration: 260 }}>
-              <GhostNumpad value={form.amount} onChange={(amount) => onChange((current) => (current ? { ...current, amount } : current))} />
-            </MotiView>
-
-            <View style={[styles.impactCard, themed.logoPanel]}>
-              <DashboardSectionLabel>
-                {form.kind === 'income' ? 'Projection revenu' : 'Impact budget'}
-              </DashboardSectionLabel>
-              <Text
-                style={[
-                  styles.impactValue,
-                  themed.text,
-                  form.kind === 'income' && { color: themeColors.primary },
-                ]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.72}
-              >
-                {impactSummary.primary}
-              </Text>
-              <Text style={[styles.impactHint, themed.textMuted]}>{impactSummary.secondary}</Text>
-              {selectedCategoryBudget &&
-              (selectedCategoryBudget.limitAmount > 0 || selectedCategoryBudget.spent > 0) ? (
-                <View style={styles.impactBudgetProgress}>
-                  <CategoryBudgetProgress budget={selectedCategoryBudget} />
-                </View>
-              ) : null}
-            </View>
+                  ))}
+                </ScrollView>
+                <Text style={[styles.logoPickerHint, themed.textMuted]}>Icônes MDI</Text>
+                <MdiIconPicker
+                  selectedIcon={form.logoMode === 'icon' ? form.icon : previewIcon}
+                  onSelect={(icon: MdiIconName) => {
+                    onChange((current) =>
+                      current
+                        ? {
+                            ...current,
+                            logoMode: 'icon',
+                            logoUrl: null,
+                            icon,
+                            color:
+                              current.kind === 'income'
+                                ? ghost.mint
+                                : formAddVariant(current) === 'subscription'
+                                  ? SUBSCRIPTION_DEFAULT_COLOR
+                                  : DEFAULT_COLOR,
+                          }
+                        : current,
+                    );
+                    setShowLogoPicker(false);
+                  }}
+                />
+              </View>
+            ) : null}
 
             <View style={styles.section}>
-              <DashboardSectionLabel>Fréquence</DashboardSectionLabel>
-              <View style={styles.wrapRow}>
-                {FREQUENCIES.map((frequency) => {
-                  const on = form.frequency === frequency.id;
-                  return (
-                    <Pressable
-                      key={frequency.id}
-                      onPress={() => {
-                        tapHaptic();
-                        onChange((current) => (current ? { ...current, frequency: frequency.id } : current));
-                      }}
-                      style={[styles.chip, themed.control, styles.chipShell, on && themed.selected]}
-                    >
-                      <Text
-                        style={[styles.chipText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                        {...chipLabelTextProps()}
-                      >
-                        {frequency.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+              <DashboardSectionLabel style={sectionLabelStyle}>Montant</DashboardSectionLabel>
+              <View style={[styles.inputShell, themed.controlStrong]}>
+                <NumericAmountInput
+                  value={form.amount}
+                  onChangeText={(amount) =>
+                    onChange((current) => (current ? { ...current, amount } : current))
+                  }
+                  placeholder="0"
+                  placeholderTextColor={themeColors.textMuted}
+                  style={[styles.inputWithSuffix, { color: themeColors.text }]}
+                />
+                <Text style={[styles.suffix, { color: themeColors.textSecondary }]}>$</Text>
               </View>
             </View>
 
+            <View style={styles.section}>
+              <DashboardSectionLabel style={sectionLabelStyle}>Fréquence</DashboardSectionLabel>
+              <ThemeSegmentedControl
+                tabs={FREQUENCIES}
+                active={form.frequency}
+                size="sm"
+                variant="section"
+                onChange={(frequency) => {
+                  tapHaptic();
+                  onChange((current) => (current ? { ...current, frequency } : current));
+                }}
+              />
+            </View>
+
+            {!form.isNew ? (
+              <View style={[styles.impactCard, themed.logoPanel]}>
+                <DashboardSectionLabel style={sectionLabelStyle}>
+                  {impactFieldLabel(addVariant)}
+                </DashboardSectionLabel>
+                <Text
+                  style={[
+                    styles.impactValue,
+                    themed.text,
+                    isIncome && { color: themeColors.primary },
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                >
+                  {impactSummary.primary}
+                </Text>
+                <Text style={[styles.impactHint, themed.textMuted]}>{impactSummary.secondary}</Text>
+                {showBudgetProgress && selectedCategoryBudget ? (
+                  <View style={styles.impactBudgetProgress}>
+                    <CategoryBudgetProgress budget={selectedCategoryBudget} />
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
+            <View style={[styles.activeRow, themed.control]}>
+              <Text style={[sectionLabelStyle, styles.activeRowLabel]}>Actif</Text>
+              <PremiumSwitch
+                accessibilityLabel={form.active ? 'Paiement actif' : 'Paiement inactif'}
+                value={form.active}
+                onValueChange={(active) => {
+                  tapHaptic();
+                  onChange((current) => (current ? { ...current, active } : current));
+                }}
+              />
+            </View>
+
             <DatePickerField
-              label="Prochaine date"
+              label={nextDateFieldLabel(addVariant)}
               value={form.nextDate}
               placeholder="Choisir une date"
               variant="sheet"
+              labelStyle={sectionLabelStyle}
               onChangeDate={(nextDate) => onChange((current) => (current ? { ...current, nextDate } : current))}
             />
 
-            <DatePickerField
-              label="Date de fin (optionnelle)"
-              value={form.endDate}
-              placeholder="Aucune date de fin"
-              allowClear
-              variant="sheet"
-              onChangeDate={(endDate) => onChange((current) => (current ? { ...current, endDate } : current))}
-            />
+            {isBill || isSubscription ? (
+              <DatePickerField
+                label="Date de fin (optionnelle)"
+                value={form.endDate}
+                placeholder="Aucune date de fin"
+                allowClear
+                variant="sheet"
+                labelStyle={sectionLabelStyle}
+                onChangeDate={(endDate) => onChange((current) => (current ? { ...current, endDate } : current))}
+              />
+            ) : null}
 
             <View style={styles.section}>
-              <PaymentMethodField
-                label={form.kind === 'income' ? 'Compte de dépôt' : 'Méthode de paiement'}
-                accounts={paymentMethodAccounts}
-                selectedAccountId={form.accountId}
-                onSelectAccount={(accountId) => {
+              <SettingsSelectField
+                label={isIncome ? 'Compte de dépôt' : 'Méthode de paiement'}
+                options={accountPickerOptions}
+                selectedId={form.accountId}
+                onSelect={(accountId) => {
                   tapHaptic();
                   const account = accounts.find((a) => a.id === accountId);
                   if (!account) return;
-                  onChange((current) => (current ? { ...current, accountId: account.id, accountLabel: account.label } : current));
+                  onChange((current) =>
+                    current
+                      ? { ...current, accountId: account.id, accountLabel: account.label }
+                      : current,
+                  );
                 }}
-                chipControlStyle={themed.control}
-                chipSelectedStyle={themed.selected}
-                selectedTextStyle={themed.selectedText}
-                textSecondaryStyle={themed.textSecondary}
+                pickerTitle={isIncome ? 'Compte de dépôt' : 'Compte de paiement'}
+                placeholder="Choisir un compte"
+                emptyHint="Ajoute un compte pour enregistrer."
+                labelStyle={sectionLabelStyle}
               />
             </View>
 
             {childSupportSalaryNotices.map((notice) => (
               <ThemedFormMessage
                 key={`${notice.variant}-${notice.title}`}
-                variant={notice.variant}
+                variant={notice.variant === 'info' ? 'success' : notice.variant}
                 title={notice.title}
                 message={notice.message}
               />
             ))}
 
-            {visibleCategories.length ? (
+            {!isIncome ? (
               <View style={styles.section}>
-                <DashboardSectionLabel>Catégorie</DashboardSectionLabel>
-                <View style={styles.wrapRow}>
-                  {categoriesToShow.map((category) => {
-                    const on = form.categoryId === category.id;
-                    return (
-                      <Pressable
-                        key={category.id}
-                        onPress={() => {
-                          tapHaptic();
-                          onChange((current) => (current ? { ...current, categoryId: on ? null : category.id } : current));
-                        }}
-                        style={[styles.categoryChip, themed.control, styles.chipShell, on && themed.selected]}
-                      >
-                        <AppIcon family="ionicons"
-                          name={getCategoryIconName(category)}
-                          size={14}
-                          color={on ? themeColors.primary : themeColors.textSecondary}
-                          style={styles.categoryChipIcon}
-                        />
-                        <Text
-                          style={[styles.categoryChipText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                          numberOfLines={2}
-                          ellipsizeMode="tail"
-                          adjustsFontSizeToFit
-                          minimumFontScale={0.82}
-                        >
-                          {category.name}
-                        </Text>
-                      </Pressable>
+                <BudgetCategoryPicker
+                  categories={visibleCategories}
+                  searchText={form.name}
+                  selectedId={form.categoryId}
+                  labelStyle={sectionLabelStyle}
+                  onSelect={(categoryId) => {
+                    tapHaptic();
+                    onChange((current) =>
+                      current ? { ...current, categoryId } : current,
                     );
-                  })}
-                  {!showAllCategories && hasHiddenCategories ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Voir les autres catégories"
-                      onPress={() => {
-                        tapHaptic();
-                        setShowAllCategories(true);
-                      }}
-                      style={({ pressed }) => [styles.categoryMoreChip, themed.control, pressed && styles.pressed]}
-                    >
-                      <AppIcon family="ionicons" name="ellipsis-horizontal" size={18} color={themeColors.textMuted} />
-                    </Pressable>
-                  ) : null}
-                </View>
-              </View>
-            ) : form.kind === 'payment' ? (
-              <View style={styles.section}>
-                <DashboardSectionLabel>Catégorie</DashboardSectionLabel>
-                <Text style={[styles.categoryEmptyHint, { color: themeColors.textMuted }]}>
-                  {BUDGET_CATEGORY_PICKER_EMPTY_HINT}
-                </Text>
+                  }}
+                />
               </View>
             ) : null}
 
@@ -765,9 +810,9 @@ function PaymentFormModal({
                 <Text style={destructiveTextActionStyle(isLight)}>Supprimer</Text>
               </Pressable>
             ) : null}
-            </ScrollView>
+            </DraggableSheetScrollView>
             </DraggableSheetSurface>
-          </KeyboardAvoidingView>
+          </FormSheetModalBody>
         </View>
       </GestureHandlerRootView>
     </Modal>
@@ -826,25 +871,39 @@ function RecurringLogoOption({
 }
 
 export function toAccountOptions(accounts: SimulatedAccount[]): AccountOption[] {
-  return accounts.map((account) => ({
-    id: account.id,
-    label: account.last4 ? `${account.name} • ${account.last4}` : account.name,
-    kind: account.kind,
-    tint:
-      account.kind === 'checking'
-        ? ghost.mint
-        : account.kind === 'cash'
-          ? '#22C55E'
-          : account.kind === 'credit'
-            ? '#d4d4d8'
-            : '#A78BFA',
-  }));
+  return accounts.map((account) => {
+    const row = accountPickerRowPresentation(account);
+    return {
+      id: account.id,
+      label: row.fieldLabel,
+      pickerLabel: row.label,
+      description: row.description,
+      fieldLabel: row.fieldLabel,
+      icon: row.icon,
+      logoUrl: row.logoUrl,
+      kind: account.kind,
+      tint:
+        account.kind === 'checking'
+          ? ghost.mint
+          : account.kind === 'cash'
+            ? '#22C55E'
+            : account.kind === 'credit'
+              ? '#d4d4d8'
+              : '#A78BFA',
+    };
+  });
 }
 
 export function manualAccountOptions(): AccountOption[] {
   return MANUAL_ENTRY_ACCOUNTS.map((account) => ({
     id: account.id,
     label: account.label,
+    pickerLabel: account.label,
+    description:
+      account.id === 'checking' ? 'Chèque' : account.id === 'credit' ? 'Crédit' : 'Épargne',
+    fieldLabel: account.label,
+    icon: MANUAL_ACCOUNT_ICONS[account.id] ?? 'wallet-outline',
+    logoUrl: null,
     tint: account.tint,
     kind: account.id as AccountKind,
   }));
@@ -1037,26 +1096,6 @@ function getRelevantRecurringCategoryChoices(
   return compact;
 }
 
-function getDefaultCategoryId(categories: Category[], kind: RecurringPaymentKind) {
-  const category = getRecurringCategoryBase(categories, kind)[0];
-  return category?.id ?? null;
-}
-
-function getDefaultCategoryIdForVariant(categories: Category[], variant: RecurringPaymentAddVariant) {
-  if (variant === 'income') {
-    return getDefaultCategoryId(categories, 'income');
-  }
-
-  if (variant === 'subscription') {
-    const subscriptionCategory =
-      categories.find((category) => category.id === 'cat-fun') ??
-      findCategoriesByName(categories, SUBSCRIPTION_CATEGORY_TERMS)[0];
-    return subscriptionCategory?.id ?? getDefaultCategoryId(categories, 'payment');
-  }
-
-  return getDefaultCategoryId(categories, 'payment');
-}
-
 function defaultIconForKind(kind: RecurringPaymentKind): string {
   return kind === 'income' ? 'AttachMoney' : DEFAULT_ICON;
 }
@@ -1082,11 +1121,14 @@ function resolveRecurringLogoUrl(form: PaymentForm, savedName: string) {
 }
 
 export function recurringPaymentToForm(payment: RecurringPayment): PaymentForm {
+  const kind = payment.kind ?? 'payment';
+  const addVariant = inferRecurringAddVariant(payment);
   return {
     id: payment.id,
     name: payment.name,
     amount: String(payment.amount || ''),
-    kind: payment.kind ?? 'payment',
+    kind,
+    addVariant,
     accountId: payment.accountId,
     accountLabel: payment.accountLabel,
     categoryId: payment.categoryId ?? null,
@@ -1100,6 +1142,7 @@ export function recurringPaymentToForm(payment: RecurringPayment): PaymentForm {
     logoUrl: payment.logoUrl ?? null,
     logoMode: inferLogoMode(payment),
     createdAt: payment.createdAt,
+    isNew: false,
   };
 }
 
@@ -1131,7 +1174,7 @@ export async function saveRecurringPaymentForm(form: PaymentForm, accounts: Acco
     kind: form.kind,
     accountId: account.id,
     accountLabel: account.label,
-    categoryId: form.categoryId,
+    categoryId: form.kind === 'income' ? null : form.categoryId,
     frequency: form.frequency,
     dueDay: null,
     nextDate: form.nextDate.trim(),
@@ -1283,57 +1326,76 @@ const styles = StyleSheet.create({
   },
   modalKeyboard: { flex: 1, justifyContent: 'flex-end' },
   sheet: {
-    marginTop: 88,
-    maxHeight: '92%',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
   },
-  sheetScroller: { maxHeight: '100%' },
+  sheetScroller: { flex: 1, minHeight: 0 },
   sheetContent: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingTop: FORM_SHEET_CONTENT_PADDING_TOP,
     gap: spacing.md,
   },
-  handle: {
-    alignSelf: 'center',
-    width: 44,
-    height: 4,
-    borderRadius: radius.pill,
-    marginTop: spacing.sm,
-    marginBottom: 4,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
+  sheetHeaderPad: {
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.sm,
   },
-  sheetTitle: {
+  inputShell: {
+    minHeight: 50,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  inputWithSuffix: {
     flex: 1,
-    ...jakartaExtraBoldText,
-    fontSize: typography.title,
-    letterSpacing: -0.4,
+    minWidth: 0,
+    paddingVertical: spacing.md,
+    fontSize: typography.body,
+    ...jakartaBoldText,
   },
-  sheetClose: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  amountWrap: {
-    alignItems: 'center',
-    paddingTop: 12,
-    paddingBottom: 2,
-  },
-  amountText: {
-    ...moneyAmountTypography({ tier: 'stat', letterSpacing: -2 }),
+  suffix: {
+    ...typographyKit.metaMedium,
   },
   section: { gap: spacing.sm },
+  identityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    minHeight: 48,
+  },
+  iconAffordance: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  iconSlot: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    backgroundColor: 'transparent',
+  },
+  iconGhostSlot: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.42,
+  },
+  nameInput: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: 0,
+    fontSize: typography.body,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    ...jakartaSemiboldText,
+  },
   input: {
     minHeight: 50,
     borderRadius: radius.lg,
@@ -1438,98 +1500,20 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     alignSelf: 'stretch',
   },
-  wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  chipShell: {
-    borderWidth: CHIP_BORDER_WIDTH,
-  },
-  chip: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 0,
-    minWidth: 96,
-    maxWidth: '100%',
-    borderRadius: radius.md,
-    paddingHorizontal: CHIP_PADDING_HORIZONTAL,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipText: {
-    maxWidth: '100%',
-    ...jakartaBoldText,
-    fontSize: typography.caption,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  categoryChip: {
-    maxWidth: '100%',
-    minHeight: 34,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  categoryChipIcon: {
-    marginRight: 5,
-  },
-  categoryChipText: {
-    ...jakartaBoldText,
-    fontSize: typography.meta,
-    lineHeight: 16,
-    flexShrink: 1,
-  },
-  categoryMoreChip: {
-    width: 44,
-    minHeight: 42,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-  },
-  categoryEmptyHint: {
-    ...jakartaMediumText,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  accountRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 7,
-  },
-  accountChip: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '31%',
-    minWidth: 94,
-    maxWidth: '100%',
-    minHeight: 66,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: spacing.sm,
-  },
-  accountChipOn: { backgroundColor: ghost.text },
-  accountText: {
-    width: '100%',
-    minWidth: 0,
-    textAlign: 'center',
-    ...jakartaBoldText,
-    fontSize: typography.micro,
-    lineHeight: 15,
-    flexShrink: 1,
-  },
   activeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.md,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.lg,
     paddingVertical: 10,
+  },
+  activeRowLabel: {
+    flex: 1,
+    minWidth: 0,
+    marginBottom: 0,
   },
 });
 

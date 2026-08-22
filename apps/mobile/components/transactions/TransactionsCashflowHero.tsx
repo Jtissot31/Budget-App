@@ -1,14 +1,15 @@
 /**
- * Transactions cashflow hero — Budget Proto (screenshot-faithful).
- * Grey dépenses segment left · green épargné segment right · carousel dots.
+ * Transactions cashflow hero — Budget Proto (minimal, flat).
+ * Slim header + flat amounts + short dual bars + quiet épargne footer.
+ * No glass card shell, no carousel chrome.
  */
 import { StyleSheet, Text, View } from 'react-native';
-import { AppIcon } from '@/components/icons/AppIcon';
-import { ProtoGlassCard } from '@/components/proto/ProtoGlassCard';
-import { RADIUS, SPACING } from '@/constants/design-tokens';
 import { moneyAmountTypography, typographyKit } from '@/constants/theme';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { useAppTheme } from '@/lib/themeContext';
+
+const BAR_CHART_H = 56;
+const BAR_MIN_H = 4;
 
 type Props = {
   monthLabel: string;
@@ -16,155 +17,140 @@ type Props = {
   totalSpend: number;
 };
 
+/** Honest height vs max(income, spend) — taller bar = larger amount. */
+function comparisonBarHeight(value: number, peer: number, chartH: number): number {
+  const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
+  const max = Math.max(safe, Number.isFinite(peer) ? Math.max(0, peer) : 0);
+  if (max <= 0 || safe <= 0) return 0;
+  const h = (safe / max) * chartH;
+  return Math.max(BAR_MIN_H, Math.min(chartH, h));
+}
+
 export function TransactionsCashflowHero({ monthLabel, totalIncome, totalSpend }: Props) {
   const { colors } = useAppTheme();
   const spend = Math.abs(totalSpend);
   const saved = totalIncome - spend;
   const savedPositive = saved >= 0;
 
-  let spendPct = 0;
-  let savePct = 0;
-  if (totalIncome > 0) {
-    spendPct = Math.min(100, Math.round((spend / totalIncome) * 100));
-    savePct = Math.max(0, 100 - spendPct);
-  } else if (spend > 0) {
-    spendPct = 100;
-    savePct = 0;
-  }
+  const incomeBarH = comparisonBarHeight(totalIncome, spend, BAR_CHART_H);
+  const spendBarH = comparisonBarHeight(spend, totalIncome, BAR_CHART_H);
+  const expenseBarColor = 'rgba(255,255,255,0.22)';
 
   return (
-    <View style={styles.wrap}>
-      <ProtoGlassCard padding={18}>
-        <Text style={[styles.eyebrow, { color: colors.textMuted }]}>
-          {`CASHFLOW · ${monthLabel.toUpperCase()}`}
-        </Text>
+    <View>
+      <Text style={[styles.eyebrow, { color: colors.textMuted }]}>
+        {`CASHFLOW · ${monthLabel.toUpperCase()}`}
+      </Text>
 
-        <View style={styles.cols}>
-          <View style={[styles.mini, { backgroundColor: colors.surfaceElevated }]}>
-            <View style={styles.miniLabel}>
-              <AppIcon family="ionicons" name="trending-up" size={13} color={colors.accentGreen} />
-              <Text style={[styles.miniTitle, { color: colors.textMuted }]}>Revenus</Text>
-            </View>
-            <Text
-              style={[
-                styles.miniAmount,
-                moneyAmountTypography({ tier: 'stat', fontSize: 18 }),
-                { color: colors.text, letterSpacing: -0.4 },
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.75}
-            >
-              +{formatDisplayMoneyAbsolute(totalIncome)}
-            </Text>
-          </View>
-          <View style={[styles.mini, { backgroundColor: colors.surfaceElevated }]}>
-            <View style={styles.miniLabel}>
-              <AppIcon family="ionicons" name="trending-down" size={13} color={colors.textMuted} />
-              <Text style={[styles.miniTitle, { color: colors.textMuted }]}>Dépenses</Text>
-            </View>
-            <Text
-              style={[
-                styles.miniAmount,
-                moneyAmountTypography({ tier: 'stat', fontSize: 18 }),
-                { color: colors.text, letterSpacing: -0.4 },
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.75}
-            >
-              −{formatDisplayMoneyAbsolute(spend)}
-            </Text>
-          </View>
-        </View>
-
-        <View style={[styles.track, { backgroundColor: colors.borderSubtle }]}>
-          {spendPct > 0 ? (
-            <View
-              style={[
-                styles.segment,
-                {
-                  flex: spendPct,
-                  backgroundColor: 'rgba(255,255,255,0.22)',
-                },
-              ]}
-            />
-          ) : null}
-          {savePct > 0 ? (
-            <View
-              style={[
-                styles.segment,
-                {
-                  flex: savePct,
-                  backgroundColor: colors.accentGreen,
-                },
-              ]}
-            />
-          ) : null}
-        </View>
-        <View style={styles.pctRow}>
-          <Text style={[styles.pctLabel, { color: colors.textMuted }]}>{`Dépenses ${spendPct}%`}</Text>
-          <Text style={[styles.pctLabel, { color: colors.accentGreen }]}>{`Épargné ${savePct}%`}</Text>
-        </View>
-
-        <View style={styles.footer}>
-          <Text style={[styles.footerLabel, { color: colors.textMuted }]}>Épargné ce mois</Text>
+      <View style={styles.cols}>
+        <View style={styles.col}>
+          <Text style={[styles.colLabel, { color: colors.textMuted }]}>Revenus</Text>
           <Text
             style={[
-              moneyAmountTypography({ tier: 'card' }),
-              { color: savedPositive ? colors.accentGreen : colors.danger },
+              moneyAmountTypography({ tier: 'stat', fontSize: 17 }),
+              { color: colors.accentGreen, letterSpacing: -0.35 },
             ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
           >
-            {savedPositive ? '+' : '−'}
-            {formatDisplayMoneyAbsolute(Math.abs(saved))}
+            +{formatDisplayMoneyAbsolute(totalIncome)}
           </Text>
+          <View
+            style={[styles.barSlot, { height: BAR_CHART_H, backgroundColor: colors.borderSubtle }]}
+            accessibilityRole="image"
+            accessibilityLabel={`Revenus ${formatDisplayMoneyAbsolute(totalIncome)}`}
+          >
+            {incomeBarH > 0 ? (
+              <View
+                style={[styles.bar, { height: incomeBarH, backgroundColor: colors.accentGreen }]}
+              />
+            ) : null}
+          </View>
         </View>
-      </ProtoGlassCard>
-      <View style={styles.dots}>
-        <View style={[styles.dot, { backgroundColor: colors.text }]} />
-        <View style={[styles.dot, { backgroundColor: colors.textMuted, opacity: 0.35 }]} />
+
+        <View style={styles.col}>
+          <Text style={[styles.colLabel, { color: colors.textMuted }]}>Dépenses</Text>
+          <Text
+            style={[
+              moneyAmountTypography({ tier: 'stat', fontSize: 17 }),
+              { color: colors.text, letterSpacing: -0.35 },
+            ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+          >
+            −{formatDisplayMoneyAbsolute(spend)}
+          </Text>
+          <View
+            style={[styles.barSlot, { height: BAR_CHART_H, backgroundColor: colors.borderSubtle }]}
+            accessibilityRole="image"
+            accessibilityLabel={`Dépenses ${formatDisplayMoneyAbsolute(spend)}`}
+          >
+            {spendBarH > 0 ? (
+              <View style={[styles.bar, { height: spendBarH, backgroundColor: expenseBarColor }]} />
+            ) : null}
+          </View>
+        </View>
+      </View>
+
+      <View style={[styles.footer, { borderTopColor: colors.borderSubtle }]}>
+        <Text style={[styles.footerLabel, { color: colors.textMuted }]}>Épargné ce mois</Text>
+        <Text
+          style={[
+            moneyAmountTypography({ tier: 'card', fontSize: 15 }),
+            { color: savedPositive ? colors.accentGreen : colors.danger },
+          ]}
+        >
+          {savedPositive ? '+' : '−'}
+          {formatDisplayMoneyAbsolute(Math.abs(saved))}
+        </Text>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: SPACING.sm },
   eyebrow: {
     ...typographyKit.eyebrow,
-    fontSize: 11,
-    letterSpacing: 0.8,
-    marginBottom: 14,
+    fontSize: 10,
+    letterSpacing: 0.9,
+    marginBottom: 12,
   },
-  cols: { flexDirection: 'row', gap: 10, marginBottom: 14 },
-  mini: {
+  cols: {
+    flexDirection: 'row',
+    gap: 20,
+    marginBottom: 12,
+  },
+  col: {
     flex: 1,
     minWidth: 0,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
     gap: 6,
   },
-  miniLabel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  miniTitle: { ...typographyKit.metaSemibold, fontSize: 11 },
-  miniAmount: { letterSpacing: -0.4 },
-  track: {
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginBottom: 8,
-    flexDirection: 'row',
+  colLabel: {
+    ...typographyKit.metaSemibold,
+    fontSize: 11,
+    letterSpacing: 0.15,
   },
-  segment: { height: '100%' },
-  pctRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4, gap: 8 },
-  pctLabel: { ...typographyKit.metaMedium, fontSize: 11, flexShrink: 1 },
+  barSlot: {
+    width: '100%',
+    maxWidth: 48,
+    marginTop: 4,
+    borderRadius: 6,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+  },
+  bar: {
+    width: '100%',
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
+  },
   footer: {
-    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  footerLabel: { ...typographyKit.metaMedium, fontSize: 13 },
-  dots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 4 },
-  dot: { width: 6, height: 6, borderRadius: RADIUS.pill },
+  footerLabel: { ...typographyKit.metaMedium, fontSize: 12 },
 });

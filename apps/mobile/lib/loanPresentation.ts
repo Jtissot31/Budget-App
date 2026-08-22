@@ -241,6 +241,34 @@ export function computeLoanRepaymentProgress(loan: {
   return { paidAmount, progressPct };
 }
 
+/** Wallet row copy — same template as OBJECTIFS D'ÉPARGNE (Fonds d’urgence). */
+export function formatWalletLoanGoalRow(
+  loan: Pick<Loan, 'principal' | 'balanceRemaining'>,
+  hideBalances = false,
+) {
+  const original = Math.max(loan.principal, 0);
+  const remaining = Math.max(loan.balanceRemaining, 0);
+  const { progressPct } = computeLoanRepaymentProgress(loan);
+  const pct = original > 0 ? Math.min(1, progressPct / 100) : 0;
+  const done = original > 0 && remaining <= 0.005;
+
+  if (hideBalances) {
+    return {
+      pct,
+      done,
+      currentOverTotal: '•••••• / ••••••',
+      remainingLabel: done ? 'Remboursé !' : '•••••• restant',
+    };
+  }
+
+  return {
+    pct,
+    done,
+    currentOverTotal: `${formatDisplayMoneyAbsolute(remaining)} / ${formatDisplayMoneyAbsolute(original)}`,
+    remainingLabel: done ? 'Remboursé !' : `${formatDisplayMoneyAbsolute(remaining)} restant`,
+  };
+}
+
 export function loanProgressLabel(type: LoanType) {
   return 'Remboursé';
 }

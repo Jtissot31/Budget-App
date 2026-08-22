@@ -6,6 +6,7 @@ import { PremiumSwitch } from '@/components/PremiumSwitch';
 import {
   jakartaMediumText,
   jakartaSemiboldText,
+  SETTINGS_LAYOUT,
   spacing,
   typography,
   typographyKit,
@@ -14,7 +15,10 @@ import { pressableRowMotionStyle } from '@/constants/motionKit';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 import { UNIFORM_ROW_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
-import { noMidWordClipTextProps, singleLineLabelStyle } from '@/lib/textLayout';
+import {
+  noMidWordClipTextProps,
+  singleLineLabelStyle,
+} from '@/lib/textLayout';
 
 type BaseProps = {
   label: string;
@@ -77,7 +81,7 @@ function RowShell({
         tapHaptic();
         onPress();
       }}
-      style={({ pressed }) => [pressableRowMotionStyle(pressed)]}
+      style={({ pressed }) => [pressableRowMotionStyle(pressed), styles.pressable]}
     >
       {content}
     </Pressable>
@@ -122,7 +126,11 @@ function RowCopy({
           {label}
         </Text>
         {hint ? (
-          <Text style={[styles.hint, { color: colors.textMuted }]} numberOfLines={2}>
+          <Text
+            style={[styles.hint, singleLineLabelStyle, { color: colors.textMuted }]}
+            numberOfLines={3}
+            ellipsizeMode="tail"
+          >
             {hint}
           </Text>
         ) : null}
@@ -154,12 +162,14 @@ export function SettingsNavigationRow({
         {value ? (
           <Text
             style={[styles.value, { color: colors.textMuted }]}
-            {...noMidWordClipTextProps()}
+            {...noMidWordClipTextProps({ minScale: 0.7, singleLine: true })}
           >
             {value}
           </Text>
         ) : null}
-        {accessory ?? (
+        {accessory ? (
+          <View style={styles.accessorySlot}>{accessory}</View>
+        ) : (
           <AppIcon family="ionicons" name="chevron-forward" size={18} color={colors.textMuted} />
         )}
       </View>
@@ -179,21 +189,23 @@ export function SettingsToggleRow({
   return (
     <RowShell isLast={isLast}>
       <RowCopy label={label} hint={hint} icon={icon} />
-      <PremiumSwitch
-        accessibilityLabel={accessibilityLabel ?? label}
-        value={value}
-        onValueChange={(enabled) => {
-          tapHaptic();
-          onValueChange(enabled);
-        }}
-      />
+      <View style={styles.toggleSlot}>
+        <PremiumSwitch
+          accessibilityLabel={accessibilityLabel ?? label}
+          value={value}
+          onValueChange={(enabled) => {
+            tapHaptic();
+            onValueChange(enabled);
+          }}
+        />
+      </View>
     </RowShell>
   );
 }
 
 export function SettingsCustomRow({ label, hint, icon, isLast, children }: CustomProps) {
   return (
-    <RowShell isLast={isLast}>
+    <RowShell isLast={isLast} alignItems="flex-start">
       <View style={styles.customBlock}>
         <RowCopy label={label} hint={hint} icon={icon} />
         <View style={styles.customAccessory}>{children}</View>
@@ -203,32 +215,44 @@ export function SettingsCustomRow({ label, hint, icon, isLast, children }: Custo
 }
 
 const styles = StyleSheet.create({
+  pressable: {
+    alignSelf: 'stretch',
+    width: '100%',
+    maxWidth: '100%',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.md,
+    gap: SETTINGS_LAYOUT.rowGap,
     minHeight: UNIFORM_ROW_MIN_HEIGHT,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingHorizontal: SETTINGS_LAYOUT.rowPaddingH,
+    paddingVertical: SETTINGS_LAYOUT.rowPaddingV,
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    alignSelf: 'stretch',
   },
   copy: {
     flex: 1,
     minWidth: 0,
+    flexShrink: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: SETTINGS_LAYOUT.rowGap,
   },
   iconWell: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: SETTINGS_LAYOUT.iconWellSize,
+    height: SETTINGS_LAYOUT.iconWellSize,
+    borderRadius: SETTINGS_LAYOUT.iconWellSize / 2,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   textBlock: {
     flex: 1,
     minWidth: 0,
+    flexShrink: 1,
     gap: 2,
   },
   label: {
@@ -243,9 +267,11 @@ const styles = StyleSheet.create({
   trailing: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: spacing.xs,
     flexShrink: 1,
     minWidth: 0,
+    maxWidth: SETTINGS_LAYOUT.trailingMaxWidth,
   },
   value: {
     ...typographyKit.metaMedium,
@@ -253,12 +279,23 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     lineHeight: typographyKit.metaMedium.fontSize + 4,
   },
+  accessorySlot: {
+    flexShrink: 0,
+  },
+  toggleSlot: {
+    flexShrink: 0,
+  },
   customBlock: {
     flex: 1,
     minWidth: 0,
-    gap: spacing.md,
+    width: '100%',
+    maxWidth: '100%',
+    gap: SETTINGS_LAYOUT.customControlGap,
   },
   customAccessory: {
     alignSelf: 'stretch',
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
   },
 });

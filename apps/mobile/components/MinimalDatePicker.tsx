@@ -3,7 +3,6 @@ import { AppIcon } from '@/components/icons/AppIcon';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { GhostTokens } from '@/constants/ghostUi';
 import {
-  containerSurfaceStyle,
   interNumericExtraBoldText,
   radius,
   spacing,
@@ -23,6 +22,8 @@ type DatePickerFieldProps = {
   allowClear?: boolean;
   variant?: 'compact' | 'sheet';
   labelStyle?: import('react-native').StyleProp<import('react-native').TextStyle>;
+  /** Optional input shell override (e.g. form controlStrong). */
+  surfaceStyle?: import('react-native').StyleProp<import('react-native').ViewStyle>;
 };
 
 const DAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
@@ -41,12 +42,22 @@ export function DatePickerField({
   allowClear = false,
   variant = 'compact',
   labelStyle,
+  surfaceStyle,
 }: DatePickerFieldProps) {
   const { colors, ghost, isLight } = useAppTheme();
-  const styles = useMemo(() => createStyles(colors, ghost), [colors, ghost]);
+  const styles = useMemo(() => createStyles(colors, ghost, isLight), [colors, ghost, isLight]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const displayValue = value ? formatFriendlyDateLabel(value) : '';
-  const sheetSurface = variant === 'sheet' ? containerSurfaceStyle(isLight) : null;
+  /** Inline shell — avoid `containerSurfaceStyle` import (Hermes style-key / HMR footgun on wallet). */
+  const sheetSurface =
+    surfaceStyle == null && variant === 'sheet'
+      ? {
+          backgroundColor: colors.containerBackground,
+          borderColor: colors.containerBorder,
+          borderWidth: 1 as const,
+        }
+      : null;
+  const inputSurface = surfaceStyle ?? sheetSurface;
 
   return (
     <View style={styles.field}>
@@ -61,7 +72,7 @@ export function DatePickerField({
         style={({ pressed }) => [
           styles.inputButton,
           variant === 'sheet' && styles.sheetInputButton,
-          sheetSurface,
+          inputSurface,
           pressed && styles.pressed,
         ]}
       >
@@ -100,8 +111,8 @@ type MinimalDatePickerProps = {
 };
 
 export function MinimalDatePicker({ visible, value, allowClear, onCancel, onConfirm }: MinimalDatePickerProps) {
-  const { colors, ghost } = useAppTheme();
-  const styles = useMemo(() => createStyles(colors, ghost), [colors, ghost]);
+  const { colors, ghost, isLight } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors, ghost, isLight), [colors, ghost, isLight]);
   const initialDate = useMemo(() => parseIsoDate(value) ?? startOfToday(), [value]);
   const [visibleMonth, setVisibleMonth] = useState(() => monthStart(initialDate));
   const [selectedDate, setSelectedDate] = useState(initialDate);
@@ -423,7 +434,9 @@ function getYearOptions() {
   return years;
 }
 
-function createStyles(colors: AppColors, ghost: GhostTokens) {
+function createStyles(colors: AppColors, ghost: GhostTokens, isLight: boolean) {
+  const controlFill = isLight ? colors.modalAction : 'rgba(255,255,255,0.06)';
+  const todayFill = isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)';
   return StyleSheet.create({
     field: { flex: 1, gap: spacing.sm },
     label: {
@@ -472,7 +485,7 @@ function createStyles(colors: AppColors, ghost: GhostTokens) {
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(0,0,0,0.64)',
+      backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0,0,0,0.72)',
       padding: spacing.lg,
     },
     pickerCard: {
@@ -480,8 +493,8 @@ function createStyles(colors: AppColors, ghost: GhostTokens) {
       maxWidth: 380,
       borderRadius: radius.xxl,
       borderWidth: StyleSheet.hairlineWidth,
-      borderColor: ghost.hairline,
-      backgroundColor: ghost.obsidian,
+      borderColor: colors.containerBorder,
+      backgroundColor: colors.modalSurface,
       padding: spacing.md,
       gap: spacing.md,
     },
@@ -497,7 +510,7 @@ function createStyles(colors: AppColors, ghost: GhostTokens) {
       borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(255,255,255,0.06)',
+      backgroundColor: controlFill,
     },
     monthButtonSpacer: {
       width: 44,
@@ -569,7 +582,7 @@ function createStyles(colors: AppColors, ghost: GhostTokens) {
     },
     todayCell: {
       borderColor: ghost.hairline,
-      backgroundColor: 'rgba(255,255,255,0.04)',
+      backgroundColor: todayFill,
     },
     selectedDayCell: {
       borderColor: ghost.text,
@@ -600,7 +613,7 @@ function createStyles(colors: AppColors, ghost: GhostTokens) {
       alignItems: 'center',
       justifyContent: 'center',
       paddingHorizontal: spacing.md,
-      backgroundColor: 'rgba(255,255,255,0.06)',
+      backgroundColor: controlFill,
     },
     ghostActionText: {
       color: ghost.mutedSoft,

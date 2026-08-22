@@ -1,58 +1,119 @@
+/**
+ * Reçus d'un marchand — transactions de ce marchand qui ont un reçu enregistré.
+ */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppIcon } from '@/components/icons/AppIcon';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  FlatList,
+  Platform,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GlassContainer } from '@/components/GlassContainer';
+import { AppIcon } from '@/components/icons/AppIcon';
+import { MonthRangePicker } from '@/components/MonthRangePicker';
+import { OnyxContainer } from '@/components/OnyxContainer';
 import { PageTransition } from '@/components/PageTransition';
+import {
+  ProtoActiveFilterChip,
+  ProtoSearchField,
+  ProtoToolbarIconButton,
+} from '@/components/proto/ProtoSearchToolbar';
+import { TransactionAvatar } from '@/components/TransactionAvatar';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
-import { radius, spacing, typography } from '@/constants/theme';
+import {
+  ONYX_CONTAINER,
+  onyxContainerPressedStyle,
+  onyxContainerRowLayoutStyle,
+} from '@/constants/planFinanceKit';
+import {
+  FLOATING_NAV_CONTENT_PADDING,
+  PAGE_TITLE_STYLE,
+  moneyAmountTypography,
+  screenHorizontalGutter,
+  spacing,
+  typographyKit,
+} from '@/constants/theme';
 import { getMerchantOverrides, getTransactions, sortTransactionsNewestFirst } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
-import { normalizeMerchantKey } from '@/lib/merchantLogo';
+import { isPreviewableDocumentUri, transactionHasRegisteredReceipt } from '@/lib/documentsLibrary';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { tapHaptic } from '@/lib/haptics';
+import { ensureDbReady } from '@/lib/init';
 import { normalizeArticleSearch, parseItemizedNote } from '@/lib/itemizedNote';
+import { normalizeMerchantKey } from '@/lib/merchantLogo';
+import {
+  dateWithinMonthRange,
+  formatMonthRangeLabel,
+  type MonthRangeFilter,
+} from '@/lib/monthRangeFilter';
+import { openTransactionDetail } from '@/lib/openTransactionDetail';
+import { rowTitleTextProps } from '@/lib/textLayout';
+import {
+  resolveUserPickedIconWellBackground,
+  userPickedIconCornerRadius,
+} from '@/lib/userPickedIcon';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
-import { rowTitleTextProps } from '@/lib/textLayout';
 import type { Transaction } from '@/types';
 
-type ReceiptEntry = {
+type ReceiptRow = {
   id: string;
-  transactionId: string;
-  articleName: string;
-  price: number;
-  date: string;
-  receiptUri?: string | null;
   transaction: Transaction;
+  articleNames: string[];
 };
 
+const THUMB_SIZE = 44;
+const EMPTY_ICON_WELL = 44;
+/** Sized against the 28px page title + subtitle block. */
+const HEADER_LOGO_SIZE = 40;
+
 function formatDate(isoDate: string) {
-  return new Date(isoDate).toLocaleDateString('fr-FR', {
+  const parsed = new Date(isoDate);
+  if (Number.isNaN(parsed.getTime())) return isoDate;
+  return parsed.toLocaleDateString('fr-CA', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
   });
 }
 
-function isPreviewableReceipt(uri?: string | null) {
-  return Boolean(uri && !uri.startsWith('scan://'));
+/** First article name plus a compact overflow count; receipt status when nothing is itemized. */
+function receiptArticleTitle(row: ReceiptRow): string {
+  const [firstName, ...rest] = row.articleNames;
+  if (firstName) {
+    if (rest.length === 0) return firstName;
+    return `${firstName} +${rest.length} article${rest.length > 1 ? 's' : ''}`;
+  }
+  return row.transaction.receiptStatus === 'scan_pending' ? 'Reçu en attente' : 'Reçu joint';
 }
 
 export default function MerchantReceiptsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ merchant?: string }>();
   const insets = useSafeAreaInsets();
-  const { colors } = useAppTheme();
-  const merchantKey = typeof params.merchant === 'string' ? params.merchant : '';
+  const { colors, isLight } = useAppTheme();
+  const contentGutter = Platform.OS === 'web' ? 0 : screenHorizontalGutter(insets);
+  const iconWellBg = resolveUserPickedIconWellBackground(isLight);
+
+  const merchantParam = typeof params.merchant === 'string' ? params.merchant : '';
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [overrides, setOverrides] = useState<Awaited<ReturnType<typeof getMerchantOverrides>>>([]);
   const [search, setSearch] = useState('');
+  const [monthFilter, setMonthFilter] = useState<MonthRangeFilter | null>(null);
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [nextTransactions, nextOverrides] = await Promise.all([getTransactions(), getMerchantOverrides()]);
+    await ensureDbReady();
+    const [nextTransactions, nextOverrides] = await Promise.all([
+      getTransactions(),
+      getMerchantOverrides(),
+    ]);
     setTransactions(nextTransactions);
     setOverrides(nextOverrides);
   }, []);
@@ -65,98 +126,214 @@ export default function MerchantReceiptsScreen() {
   useRefreshOnFocus(load);
 
   const override = useMemo(
-    () => overrides.find((item) => normalizeMerchantKey(item.originalName) === normalizeMerchantKey(merchantKey)),
-    [merchantKey, overrides],
+    () =>
+      overrides.find(
+        (item) => normalizeMerchantKey(item.originalName) === normalizeMerchantKey(merchantParam),
+      ),
+    [merchantParam, overrides],
   );
-  const merchantName = override?.displayName?.trim() || merchantKey || 'Marchand';
+  const merchantName = override?.displayName?.trim() || merchantParam || 'Marchand';
 
-  const receiptEntries = useMemo(() => {
-    if (!merchantKey || override?.hidden) return [];
-    const merchantNorm = normalizeMerchantKey(merchantKey);
+  const receiptRows = useMemo<ReceiptRow[]>(() => {
+    if (!merchantParam) return [];
+    const merchantNorm = normalizeMerchantKey(merchantParam);
     const merchantTransactions = sortTransactionsNewestFirst(
-      transactions.filter((tx) => normalizeMerchantKey(tx.label) === merchantNorm),
+      transactions.filter(
+        (tx) =>
+          normalizeMerchantKey(tx.label) === merchantNorm && transactionHasRegisteredReceipt(tx),
+      ),
     );
 
-    return merchantTransactions.flatMap((tx): ReceiptEntry[] => {
-      const articles = parseItemizedNote(tx.note);
-      if (articles.length === 0) {
-        if (!tx.receiptUri && !tx.receiptStatus) return [];
-        return [{
-          id: `${tx.id}-receipt`,
-          transactionId: tx.id,
-          articleName: tx.label,
-          price: tx.amount,
-          date: tx.date,
-          receiptUri: tx.receiptUri,
-          transaction: tx,
-        }];
-      }
+    return merchantTransactions.map((tx) => ({
+      id: tx.id,
+      transaction: tx,
+      articleNames: parseItemizedNote(tx.note).map((article) => article.name),
+    }));
+  }, [merchantParam, transactions]);
 
-      return articles.map((article, index) => ({
-        id: `${tx.id}-${index}-${article.name}`,
-        transactionId: tx.id,
-        articleName: article.name,
-        price: article.price,
-        date: tx.date,
-        receiptUri: tx.receiptUri,
-        transaction: tx,
-      }));
-    });
-  }, [merchantKey, override?.hidden, transactions]);
-
-  const filteredEntries = useMemo(() => {
+  const filteredRows = useMemo(() => {
+    const monthScoped = monthFilter
+      ? receiptRows.filter((row) => dateWithinMonthRange(row.transaction.date, monthFilter))
+      : receiptRows;
     const normalized = normalizeArticleSearch(search);
-    if (!normalized) return receiptEntries;
-    return receiptEntries.filter((entry) =>
-      normalizeArticleSearch(entry.articleName).includes(normalized),
+    if (!normalized) return monthScoped;
+    return monthScoped.filter((row) => {
+      if (row.articleNames.some((name) => normalizeArticleSearch(name).includes(normalized))) {
+        return true;
+      }
+      return normalizeArticleSearch(receiptArticleTitle(row)).includes(normalized);
+    });
+  }, [monthFilter, receiptRows, search]);
+
+  /** Newest transaction of this merchant — feeds the header logo, receipt or not. */
+  const headerTransaction = useMemo(() => {
+    if (receiptRows.length > 0) return receiptRows[0].transaction;
+    if (!merchantParam) return null;
+    const merchantNorm = normalizeMerchantKey(merchantParam);
+    return (
+      sortTransactionsNewestFirst(
+        transactions.filter((tx) => normalizeMerchantKey(tx.label) === merchantNorm),
+      )[0] ?? null
     );
-  }, [receiptEntries, search]);
+  }, [merchantParam, receiptRows, transactions]);
+
+  const countLabel = receiptRows.length === 1 ? '1 reçu' : `${receiptRows.length} reçus`;
+  const searching = search.trim().length > 0;
+  const hasActiveFilter = searching || monthFilter !== null;
+
+  const openMonthPicker = useCallback(() => {
+    tapHaptic();
+    setMonthPickerOpen(true);
+  }, []);
+
+  const clearMonthFilter = useCallback(() => {
+    tapHaptic();
+    setMonthFilter(null);
+  }, []);
+
+  const renderRow = useCallback(
+    ({ item }: { item: ReceiptRow }) => {
+      const title = receiptArticleTitle(item);
+      return (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Reçu ${title} — ${formatDate(item.transaction.date)}`}
+          onPress={() => {
+            tapHaptic();
+            openTransactionDetail(item.transaction.id);
+          }}
+          style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
+        >
+          <OnyxContainer style={onyxContainerRowLayoutStyle()}>
+            {isPreviewableDocumentUri(item.transaction.receiptUri) ? (
+              <View
+                style={[
+                  styles.thumb,
+                  {
+                    backgroundColor: iconWellBg,
+                    borderColor: colors.containerBorder,
+                    borderRadius: userPickedIconCornerRadius(THUMB_SIZE),
+                  },
+                ]}
+              >
+                <Image
+                  source={{ uri: item.transaction.receiptUri ?? '' }}
+                  style={styles.thumbImage}
+                  contentFit="cover"
+                />
+              </View>
+            ) : (
+              <TransactionAvatar transaction={item.transaction} size={THUMB_SIZE} />
+            )}
+            <View style={styles.rowCopy}>
+              <Text style={[styles.rowTitle, { color: colors.text }]} {...rowTitleTextProps}>
+                {title}
+              </Text>
+              <Text style={[styles.rowMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                {formatDate(item.transaction.date)}
+              </Text>
+            </View>
+            <Text
+              style={[
+                moneyAmountTypography({ tier: 'row' }),
+                styles.rowAmount,
+                { color: colors.text },
+              ]}
+            >
+              {formatDisplayMoneyAbsolute(item.transaction.amount)}
+            </Text>
+          </OnyxContainer>
+        </Pressable>
+      );
+    },
+    [colors.containerBorder, colors.text, colors.textMuted, iconWellBg],
+  );
+
+  const emptyHint = hasActiveFilter
+    ? searching && monthFilter
+      ? 'Aucun reçu ne correspond à tes filtres.'
+      : searching
+        ? 'Aucun article ne correspond à ta recherche.'
+        : 'Aucun reçu pour cette période.'
+    : `Aucune transaction chez ${merchantName} n’a de reçu enregistré pour l’instant.`;
 
   return (
     <PageTransition>
-      <View style={styles.screen}>
-        <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
+      <View style={[styles.screen, { backgroundColor: colors.background }]}>
+        <View
+          style={[
+            styles.header,
+            { paddingTop: insets.top + SCREEN_TOP_GUTTER, paddingHorizontal: contentGutter },
+          ]}
+        >
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Retour"
             hitSlop={12}
-            style={({ pressed }) => [
-              styles.backButton,
-              { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
-              pressed && styles.pressed,
-            ]}
-            onPress={() => router.back()}
+            onPress={() => {
+              tapHaptic();
+              router.back();
+            }}
+            style={({ pressed }) => [styles.backHit, pressed && styles.pressed]}
           >
-            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
+            <AppIcon family="ionicons" name="arrow-back" size={24} color={colors.text} />
           </Pressable>
-          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-            Bibliothèque de reçus
-          </Text>
-          <View style={styles.topBarSpacer} />
+          <View style={styles.headerIdentity}>
+            {headerTransaction ? (
+              <TransactionAvatar
+                transaction={headerTransaction}
+                size={HEADER_LOGO_SIZE}
+                style={styles.headerLogo}
+              />
+            ) : null}
+            <View style={styles.headerCopy}>
+              <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+                {merchantName}
+              </Text>
+              <Text style={[styles.subtitle, { color: colors.textMuted }]} numberOfLines={1}>
+                {countLabel}
+              </Text>
+            </View>
+          </View>
         </View>
 
-        <Text style={[styles.subtitle, { color: colors.textMuted }]} numberOfLines={1}>
-          {merchantName}
-        </Text>
-
-        <View style={[styles.searchRow, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder, borderWidth: 1 }]}>
-          <AppIcon family="ionicons" name="search-outline" size={18} color={colors.textMuted} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Rechercher un article"
-            placeholderTextColor={colors.textMuted}
-            value={search}
-            onChangeText={setSearch}
-          />
+        <View style={[styles.toolbar, { paddingHorizontal: contentGutter }]}>
+          <View style={styles.toolbarRow}>
+            <ProtoSearchField
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Rechercher un article"
+              accessibilityLabel="Rechercher un article"
+            />
+            <ProtoToolbarIconButton
+              icon={monthFilter ? 'calendar' : 'calendar-outline'}
+              active={monthFilter !== null}
+              onPress={openMonthPicker}
+              accessibilityLabel="Filtrer par mois"
+            />
+          </View>
+          {monthFilter ? (
+            <ProtoActiveFilterChip
+              icon="calendar"
+              label={formatMonthRangeLabel(monthFilter)}
+              onPress={openMonthPicker}
+              onClear={clearMonthFilter}
+              accessibilityLabel={`Mois filtré : ${formatMonthRangeLabel(monthFilter)}. Modifier`}
+              clearAccessibilityLabel="Effacer le filtre de mois"
+            />
+          ) : null}
         </View>
 
         <FlatList
-          style={styles.listFlex}
-          data={filteredEntries}
+          data={filteredRows}
           keyExtractor={(item) => item.id}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={[
-            styles.list,
-            { paddingBottom: Math.max(insets.bottom + spacing.lg, spacing.xl) },
+            styles.listContent,
+            {
+              paddingHorizontal: contentGutter,
+              paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING,
+            },
           ]}
           refreshControl={
             <RefreshControl
@@ -170,119 +347,155 @@ export default function MerchantReceiptsScreen() {
             />
           }
           ListEmptyComponent={
-            <Text style={[styles.empty, { color: colors.textMuted }]}>
-              {search.trim() ? 'Aucun article trouvé' : 'Aucun reçu ou article enregistré'}
-            </Text>
-          }
-          renderItem={({ item }) => (
-            <View>
-              <GlassContainer borderRadius={radius.lg} padding={spacing.md} innerStyle={styles.rowInner}>
-                {isPreviewableReceipt(item.receiptUri) ? (
-                  <Image source={{ uri: item.receiptUri ?? '' }} style={styles.thumbnail} contentFit="cover" />
-                ) : (
-                  <View style={[styles.thumbnailFallback, { backgroundColor: colors.surfaceElevated }]}>
-                    <AppIcon family="ionicons" name="receipt-outline" size={18} color={colors.textMuted} />
-                  </View>
-                )}
-                <View style={styles.rowBody}>
-                  <Text style={[styles.articleName, { color: colors.text }]} {...rowTitleTextProps}>
-                    {item.articleName}
-                  </Text>
-                  <Text style={[styles.rowMeta, { color: colors.textMuted }]}>
-                    {formatDate(item.date)}
-                  </Text>
+            <OnyxContainer style={styles.emptyCard}>
+              <View style={styles.emptyInner}>
+                <View
+                  style={[
+                    styles.emptyIcon,
+                    {
+                      backgroundColor: iconWellBg,
+                      borderRadius: userPickedIconCornerRadius(EMPTY_ICON_WELL),
+                    },
+                  ]}
+                >
+                  <AppIcon
+                    family="ionicons"
+                    name={hasActiveFilter ? 'search-outline' : 'receipt-outline'}
+                    size={20}
+                    color={colors.textMuted}
+                  />
                 </View>
-                <Text style={[styles.rowAmount, { color: colors.text }]}>
-                  {formatDisplayMoneyAbsolute(item.price)}
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                  {hasActiveFilter ? 'Aucun résultat' : 'Aucun reçu'}
                 </Text>
-              </GlassContainer>
-            </View>
-          )}
-          ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
+                <Text style={[styles.emptyHint, { color: colors.textMuted }]}>{emptyHint}</Text>
+              </View>
+            </OnyxContainer>
+          }
+          renderItem={renderRow}
         />
 
+        <MonthRangePicker
+          visible={monthPickerOpen}
+          value={monthFilter}
+          onCancel={() => setMonthPickerOpen(false)}
+          onConfirm={(value) => {
+            setMonthFilter(value);
+            setMonthPickerOpen(false);
+          }}
+        />
       </View>
     </PageTransition>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: 'transparent' },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  backButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: typography.screenTitle,
-    fontWeight: '700',
-    letterSpacing: -0.4,
-  },
-  topBarSpacer: { width: 38 },
-  subtitle: {
-    textAlign: 'center',
-    fontSize: typography.caption,
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    minHeight: 44,
-    borderRadius: radius.card,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: typography.body,
-  },
-  listFlex: { flex: 1 },
-  list: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xs,
-  },
-  rowInner: {
+  screen: { flex: 1 },
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+    marginBottom: spacing.md,
   },
-  thumbnail: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.md,
+  backHit: {
+    padding: spacing.xs,
+    flexShrink: 0,
   },
-  thumbnailFallback: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.md,
+  headerIdentity: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  headerLogo: {
+    flexShrink: 0,
+  },
+  headerCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  title: {
+    ...PAGE_TITLE_STYLE,
+    fontSize: 28,
+    lineHeight: 36,
+  },
+  subtitle: {
+    ...typographyKit.micro,
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  toolbar: {
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  toolbarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  listContent: {
+    gap: ONYX_CONTAINER.listGap,
+    flexGrow: 1,
+  },
+  thumb: {
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  thumbImage: {
+    width: '100%',
+    height: '100%',
+  },
+  rowCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  rowTitle: {
+    ...typographyKit.rowTitle,
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  rowMeta: {
+    ...typographyKit.micro,
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  rowAmount: {
+    flexShrink: 0,
+  },
+  emptyCard: {
+    marginTop: spacing.xxl,
+    padding: ONYX_CONTAINER.padding.card,
+  },
+  emptyInner: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+  },
+  emptyIcon: {
+    width: EMPTY_ICON_WELL,
+    height: EMPTY_ICON_WELL,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rowBody: { flex: 1, minWidth: 0 },
-  articleName: { fontSize: typography.body, fontWeight: '800' },
-  rowMeta: { fontSize: typography.meta, marginTop: 2 },
-  rowAmount: { fontSize: typography.body, fontWeight: '700' },
-  empty: {
+  emptyTitle: {
+    ...typographyKit.metaSemibold,
+    fontSize: 14,
     textAlign: 'center',
-    marginTop: 48,
-    fontSize: typography.caption,
-    paddingHorizontal: spacing.lg,
   },
-  pressed: { opacity: 0.78 },
+  emptyHint: {
+    ...typographyKit.metaMedium,
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  pressed: { opacity: 0.82 },
 });

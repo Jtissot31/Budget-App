@@ -13,6 +13,7 @@ import {
   planProgressionPositive,
   type Plan,
   type PlanCategory,
+  type PlanSubtype,
 } from './Plan';
 import { PLAN_SUBTYPE_DESCRIPTIONS } from './planCatalogData';
 import { formatPlanSuggestionReasonForCard } from './planSuggestionCopy';
@@ -207,6 +208,45 @@ export const PLAN_CATEGORY_ICONS = {
 
 export function getCategoryIcon(category: PlanCategory): keyof typeof MaterialCommunityIcons.glyphMap {
   return PLAN_CATEGORY_ICONS[category];
+}
+
+/** Icône par sous-type — bibliothèque de stratégies; repli catégorie si absent. */
+export const PLAN_SUBTYPE_ICONS = {
+  fonds_urgence: 'shield-check-outline',
+  mise_de_fonds: 'home-outline',
+  voyage: 'airplane',
+  achat_majeur: 'cart-outline',
+  coussin_saisonnier: 'calendar-month-outline',
+  evenement_vie: 'gift-outline',
+  dette_individuelle: 'credit-card-outline',
+  snowball: 'circle-multiple-outline',
+  avalanche: 'trending-down',
+  bombe_nucleaire: 'flash-outline',
+  consolidation: 'vector-combine',
+  marge_credit: 'credit-card-outline',
+  reer: 'piggy-bank-outline',
+  celi: 'bank-outline',
+  reee: 'school-outline',
+  celiapp: 'home-outline',
+  rattrapage_cotisation: 'history',
+  enveloppe: 'wallet-outline',
+  zero_based: 'calculator',
+  ratio_fixe_variable: 'chart-donut',
+  reserve_impots_autonome: 'percent',
+  acomptes_provisionnels: 'calendar-clock',
+  optimisation_reer_celi: 'tune',
+  fonds_assurance: 'shield-plus-outline',
+  revue_protection: 'shield-outline',
+  reduction_abonnements: 'tag-outline',
+  no_spend_challenge: 'hand-back-left-outline',
+  sortie_categorie_derapage: 'chart-line-variant',
+} as const satisfies Record<PlanSubtype, keyof typeof MaterialCommunityIcons.glyphMap>;
+
+export function getSubtypeIcon(
+  subtype: PlanSubtype,
+  category?: PlanCategory,
+): keyof typeof MaterialCommunityIcons.glyphMap {
+  return PLAN_SUBTYPE_ICONS[subtype] ?? (category ? getCategoryIcon(category) : 'target');
 }
 
 /** @deprecated Utiliser {@link getCategoryIcon} — conservé pour imports existants. */

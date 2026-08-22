@@ -68,6 +68,8 @@ type Props = {
   onAddWealthAsset: () => void;
   onOpenWealthAsset: (asset: WealthAsset) => void;
   onDragStateChange?: (dragging: boolean) => void;
+  /** Skip the extra top margin on the first section (e.g. under a summary card). */
+  flushTop?: boolean;
 };
 
 function PatrimoineSectionHeader({
@@ -385,6 +387,7 @@ export function PatrimoineHoldingsSections({
   onAddWealthAsset,
   onOpenWealthAsset,
   onDragStateChange,
+  flushTop = false,
 }: Props) {
   const router = useRouter();
   const { colors } = useAppTheme();
@@ -453,7 +456,7 @@ export function PatrimoineHoldingsSections({
         <PatrimoineSectionHeader
           label="Portefeuille d'actions"
           totalValue={portfolioTotal}
-          isFirst
+          isFirst={!flushTop}
           titleVariant="hero"
         />
 

@@ -8,10 +8,10 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import {
-  jakartaBoldText,
   jakartaExtraBoldText,
   liquidSegmentedSpring,
   radius,
+  spacing,
 } from '@/constants/theme';
 import {
   UNIFORM_CHIP_FONT_SIZE,
@@ -27,6 +27,7 @@ type Props<T extends string> = {
   tabs: Tab<T>[];
   active: T;
   onChange: (id: T) => void;
+  /** Bottom hairline under the control. Default false — forms / in-section toggles omit it. */
   showDivider?: boolean;
   /** 'sm' = compact; 'section' = in-section control; 'md' (default) = standard; 'lg' = hero scope */
   size?: 'sm' | 'section' | 'md' | 'lg';
@@ -38,8 +39,12 @@ type Props<T extends string> = {
   activeLabelColor?: string;
   /** Override inactive label color */
   inactiveLabelColor?: string;
-  /** 'primary' = hero glass track; 'section' = softer in-section track (same pill pattern) */
-  variant?: 'primary' | 'section';
+  /**
+   * 'primary' = hero glass track;
+   * 'section' = softer in-section track (same pill pattern);
+   * 'bare' = no track fill/outline — active pill only
+   */
+  variant?: 'primary' | 'section' | 'bare';
   /** Animate the sliding selection pill (liquid spring). Default true. */
   animated?: boolean;
 };
@@ -83,14 +88,14 @@ const SIZE_CONFIGS = {
   },
 } as const;
 
-const TRACK_GAP = 4;
+const TRACK_GAP = spacing.xs / 2;
 
 /** Matches Portefeuille Comptes / Patrimoine scope track styling. */
 export function SegmentedTabs<T extends string>({
   tabs,
   active,
   onChange,
-  showDivider = true,
+  showDivider = false,
   size = 'md',
   trackBgColor,
   activeBgColor,
@@ -100,21 +105,25 @@ export function SegmentedTabs<T extends string>({
   animated = true,
 }: Props<T>) {
   const { colors, isLight } = useAppTheme();
+  const isBare = variant === 'bare';
   const isSection = variant === 'section';
 
-  const trackBg =
-    trackBgColor ?? (isSection ? colors.scopeTrack : colors.segmentedTabTrack);
+  const trackBg = isBare
+    ? 'transparent'
+    : (trackBgColor ?? (isSection ? colors.scopeTrack : colors.segmentedTabTrack));
   const activeBg =
-    activeBgColor ?? (isSection ? colors.scopeActive : colors.segmentedTabActivePill);
+    activeBgColor ??
+    (isBare || !isSection ? colors.segmentedTabActivePill : colors.scopeActive);
   const activeColor =
-    activeLabelColor ?? (isSection ? colors.text : colors.segmentedTabActiveText);
+    activeLabelColor ??
+    (isBare || !isSection ? colors.segmentedTabActiveText : colors.text);
   const inactiveColor =
     inactiveLabelColor ??
-    (isSection
-      ? isLight
+    (isBare || !isSection
+      ? colors.segmentedTabInactiveText
+      : isLight
         ? colors.textSecondary
-        : colors.text
-      : colors.segmentedTabInactiveText);
+        : colors.text);
   const sc = SIZE_CONFIGS[size];
 
   const activeIndex = tabs.findIndex((tab) => tab.id === active);
@@ -206,8 +215,9 @@ export function SegmentedTabs<T extends string>({
             height: sc.trackMinHeight,
             minHeight: sc.trackMinHeight,
             padding: sc.trackPadding,
-            borderRadius: isSection ? radius.card : radius.xxl,
+            borderRadius: isSection || isBare ? radius.card : radius.xxl,
           },
+          isBare && styles.trackBare,
         ]}
       >
         {Platform.OS === 'android' ? null : (
@@ -255,13 +265,23 @@ export function SegmentedTabs<T extends string>({
             >
               <View style={styles.labelRow}>
                 {tab.icon ? (
-                  <AppIcon family="ionicons" name={tab.icon} size={sc.iconSize} color={selected ? activeColor : inactiveColor} />
+                  <View style={styles.iconSlot}>
+                    <AppIcon
+                      family="ionicons"
+                      name={tab.icon}
+                      size={sc.iconSize}
+                      color={selected ? activeColor : inactiveColor}
+                    />
+                  </View>
                 ) : null}
                 <Text
                   style={[
                     styles.label,
-                    singleLineLabelStyle,
-                    { color: selected ? activeColor : inactiveColor, fontSize: sc.fontSize, lineHeight: sc.fontSize + 4 },
+                    {
+                      color: selected ? activeColor : inactiveColor,
+                      fontSize: sc.fontSize,
+                      lineHeight: sc.fontSize + 4,
+                    },
                     selected && styles.labelActive,
                   ]}
                   {...chipLabelTextProps({ minScale: 0.72 })}
@@ -281,6 +301,8 @@ const styles = StyleSheet.create({
   wrap: {
     alignSelf: 'stretch',
     width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
   },
   track: {
     position: 'relative',
@@ -288,8 +310,15 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     alignSelf: 'stretch',
     width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
     gap: TRACK_GAP,
     overflow: 'hidden',
+  },
+  trackBare: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderColor: 'transparent',
   },
   pill: {
     position: 'absolute',
@@ -299,27 +328,33 @@ const styles = StyleSheet.create({
   tab: {
     flex: 1,
     minWidth: 0,
+    maxWidth: '100%',
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: TRACK_GAP,
+    overflow: 'hidden',
     zIndex: 1,
   },
   labelRow: {
+    flexGrow: 0,
+    flexShrink: 1,
     maxWidth: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
+    gap: spacing.xs / 2 + 1,
     minWidth: 0,
   },
+  iconSlot: {
+    flexShrink: 0,
+  },
   label: {
-    ...jakartaBoldText,
+    ...jakartaExtraBoldText,
+    ...singleLineLabelStyle,
     textAlign: 'center',
     lineHeight: UNIFORM_CHIP_FONT_SIZE + 4,
-    width: '100%',
-    minWidth: 0,
-    flexShrink: 1,
+    // No width:100% — would overflow when an icon sits beside the label.
   },
   labelActive: {
     ...jakartaExtraBoldText,

@@ -3,12 +3,23 @@ import { formatNumberDisplay } from '@/lib/formatNumber';
 /** Full fr-CA amounts below this use space thousands and comma decimals. */
 export const COMPACT_K_THRESHOLD = 100_000;
 
+/**
+ * Earlier K compact for signed deltas / badges (4+ integer digits).
+ * e.g. `−1 368,48$` → `−1,4K$`.
+ */
+export const COMPACT_DELTA_K_THRESHOLD = 1_000;
+
 /** Amounts at or above this use one-decimal `M` compact notation. */
 export const COMPACT_M_THRESHOLD = 1_000_000;
 
 export type FormatDisplayMoneyParts = {
   main: string;
   appendSeparatedDollar: boolean;
+};
+
+export type FormatDisplayMoneyOptions = {
+  /** Absolute amounts at or above this use K compact (default {@link COMPACT_K_THRESHOLD}). */
+  compactKThreshold?: number;
 };
 
 function roundToNearestTenth(n: number): number {
@@ -52,17 +63,22 @@ function formatCompactMAmount(abs: number): string {
 
 /**
  * Splits a dollar amount for UI that renders the numeric part and an optional separate `$` span.
- * Under {@link COMPACT_K_THRESHOLD}: full fr-CA (e.g. `1 500,40`, `15 500`).
- * From 100K to 999K: compact `K` (e.g. `100K`, `125,5K`).
+ * Under the K threshold (default {@link COMPACT_K_THRESHOLD}): full fr-CA (e.g. `1 500,40`, `15 500`).
+ * From K threshold to 999K: compact `K` (e.g. `100K`, `125,5K`).
  * From 1M: compact `M` (e.g. `5,7M`).
  */
-export function formatDisplayMoney(value: number): FormatDisplayMoneyParts {
+export function formatDisplayMoney(
+  value: number,
+  options?: FormatDisplayMoneyOptions,
+): FormatDisplayMoneyParts {
   const abs = Math.abs(value);
   if (!Number.isFinite(abs)) {
     return { main: formatFullFrCaAmount(0), appendSeparatedDollar: true };
   }
 
-  if (abs < COMPACT_K_THRESHOLD) {
+  const kThreshold = options?.compactKThreshold ?? COMPACT_K_THRESHOLD;
+
+  if (abs < kThreshold) {
     return { main: formatFullFrCaAmount(abs), appendSeparatedDollar: true };
   }
 
@@ -74,8 +90,11 @@ export function formatDisplayMoney(value: number): FormatDisplayMoneyParts {
 }
 
 /** Absolute magnitude with attached `$` suffix (e.g. `15 500$`, `125,5K$`, `5,7M$`). */
-export function formatDisplayMoneyAbsolute(absValue: number): string {
-  const { main, appendSeparatedDollar } = formatDisplayMoney(absValue);
+export function formatDisplayMoneyAbsolute(
+  absValue: number,
+  options?: FormatDisplayMoneyOptions,
+): string {
+  const { main, appendSeparatedDollar } = formatDisplayMoney(absValue, options);
   return appendSeparatedDollar ? `${main}$` : main;
 }
 
@@ -88,7 +107,7 @@ export function formatDisplayMoneyAbsoluteExact(absValue: number): string {
   return `${formatFullFrCaAmount(abs)}$`;
 }
 
-export type FormatSignedDisplayMoneyOptions = {
+export type FormatSignedDisplayMoneyOptions = FormatDisplayMoneyOptions & {
   /** When true, prefixes strictly positive amounts with '+'. */
   leadingPlusWhenPositive?: boolean;
 };
@@ -100,7 +119,9 @@ export function formatSignedDisplayMoney(
 ): string {
   const leadingPlus = options?.leadingPlusWhenPositive === true && value > 0;
   const sign = value < 0 ? '−' : leadingPlus ? '+' : '';
-  return `${sign}${formatDisplayMoneyAbsolute(Math.abs(value))}`;
+  return `${sign}${formatDisplayMoneyAbsolute(Math.abs(value), {
+    compactKThreshold: options?.compactKThreshold,
+  })}`;
 }
 
 /** Recurring payment amount without direction prefix (use {@link TransactionAmountLabel} for +/−). */

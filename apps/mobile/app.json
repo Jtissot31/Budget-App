@@ -7,7 +7,7 @@
       "android",
       "web"
     ],
-    "version": "1.0.1-BOOT",
+    "version": "1.0.2",
     "orientation": "portrait",
     "scheme": "budgettracker",
     "userInterfaceStyle": "dark",
@@ -30,9 +30,12 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "package": "com.budgettracker.app"
+      "package": "com.budgettracker.app",
+      "versionCode": 2,
+      "softwareKeyboardLayoutMode": "pan"
     },
     "plugins": [
+      "expo-dev-client",
       [
         "expo-location",
         {
@@ -59,11 +62,18 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Budget Tracker utilise ta galerie pour joindre un certificat d’authenticité ou une photo de bien."
+          "photosPermission": "Budget Tracker utilise ta galerie pour joindre un reçu, un certificat d’authenticité ou une photo de bien.",
+          "cameraPermission": "Budget Tracker utilise la caméra pour photographier tes reçus et les joindre à une transaction."
         }
       ],
       "expo-document-picker",
       "expo-secure-store",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Fyn utilise le micro pour te laisser dicter une transaction."
+        }
+      ],
       [
         "expo-splash-screen",
         {

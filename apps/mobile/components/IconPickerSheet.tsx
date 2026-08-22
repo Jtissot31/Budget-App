@@ -1,18 +1,18 @@
 import { useMemo, useState } from 'react';
 import {
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
+import {
+  DraggableSheetScrollView,
+  DraggableSheetSurface,
+} from '@/components/DraggableSheetSurface';
+import { FormSheetModalBody, formSheetScrollViewStyle, useFormSheetHeight } from '@/lib/sheet/formSheetScroll';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MdiIcon } from '@/components/MdiIcon';
 import { UserPickedIconBadge } from '@/components/UserPickedIconBadge';
@@ -22,7 +22,6 @@ import {
   isMdiIconName,
   resolveMdiOrLegacyIcon,
   searchMdiIcons,
-  WELL_GLYPH_WHITE,
   type MdiIconName,
 } from '@/lib/mdiIconCatalog';
 import { resolveUserPickedIconWellBackground } from '@/lib/userPickedIcon';
@@ -45,8 +44,7 @@ export function IconPickerSheet({
 }: Props) {
   const { colors, isLight } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
-  const sheetHeight = Math.round(windowHeight * 0.88);
+  const sheetHeight = useFormSheetHeight(0.88);
   const [query, setQuery] = useState('');
 
   const resolvedSelected = useMemo(
@@ -84,7 +82,7 @@ export function IconPickerSheet({
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={[styles.backdrop, { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} accessibilityLabel="Fermer" />
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboard}>
+          <FormSheetModalBody>
             <DraggableSheetSurface
               onClose={handleClose}
               sheetHeight={sheetHeight}
@@ -93,7 +91,6 @@ export function IconPickerSheet({
                 {
                   backgroundColor: colors.background,
                   borderColor: colors.containerBorder,
-                  paddingBottom: Math.max(insets.bottom, spacing.md),
                 },
               ]}
             >
@@ -138,10 +135,12 @@ export function IconPickerSheet({
               {options.length} icône{options.length > 1 ? 's' : ''}
             </Text>
 
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.grid}
+            <DraggableSheetScrollView
+              style={formSheetScrollViewStyle()}
+              contentContainerStyle={[
+                styles.grid,
+                { paddingBottom: Math.max(insets.bottom, spacing.md) + 48 },
+              ]}
             >
               {options.map((option) => {
                 const selected = resolvedSelected === option.name;
@@ -177,9 +176,9 @@ export function IconPickerSheet({
                   </Pressable>
                 );
               })}
-            </ScrollView>
+            </DraggableSheetScrollView>
             </DraggableSheetSurface>
-          </KeyboardAvoidingView>
+          </FormSheetModalBody>
         </View>
       </GestureHandlerRootView>
     </Modal>
@@ -190,7 +189,6 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: 'flex-end' },
   keyboard: { flex: 1, justifyContent: 'flex-end' },
   sheet: {
-    maxHeight: '88%',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderWidth: StyleSheet.hairlineWidth,

@@ -1,5 +1,5 @@
 import { Platform, StyleSheet, type TextStyle, type ViewStyle } from 'react-native';
-import { MONEY_AMOUNT_FONT, typographyKit } from './typographyKit';
+import { MONEY_AMOUNT_FONT, TRANSACTION_ROW_AMOUNT_FONT, typographyKit } from './typographyKit';
 import {
   fontFamilies,
   jakartaBoldText,
@@ -44,7 +44,8 @@ export const CANVAS_CHARCOAL = DARK_CANVAS;
 
 /**
  * Standard container fill — Figma glass card (`DARK.CARD`).
- * Icon wells only: use `iconBox` / `surfaceElevated`.
+ * Line-icon wells (Accueil shortcuts / alert glyphs): use `colors.iconWell`.
+ * Logo marks stay on the parent surface — do not plate them.
  */
 export const CONTAINER_SURFACE = 'rgba(255, 255, 255, 0.055)';
 
@@ -81,7 +82,7 @@ export const liquidSegmentedSettleSpring = {
  * multi-option toggle in a shared track: scope tabs, history filters, settings rows, chart periods.
  *
  * - Animation is on by default (`animated` prop); do not disable except for tests.
- * - Variants: `primary` (hero scope tabs) · `section` (in-card / settings rows).
+ * - Variants: `primary` (hero scope tabs) · `section` (in-card / settings rows) · `bare` (active pill only, no track).
  * - Sizes: `sm` · `section` · `md` (default) · `lg`.
  * - Colors: `segmentedTabBarDark` / `segmentedTabBarLight`, or `colors.segmentedTab*` / `scopeTrack`.
  *
@@ -128,6 +129,10 @@ export const darkColors = {
   screenCanvas: dashboardPalette.bg,
   surface: dashboardPalette.card,
   surfaceSolid: dashboardPalette.card,
+  /** Opaque dialog/modal card — confirm sheets must not use glass. */
+  modalSurface: '#111111',
+  /** Opaque secondary control on modalSurface (dark). */
+  modalAction: '#1C1C20',
   /** Standard card/container fill — low-fund alert shell */
   containerBackground: dashboardPalette.card,
   /** Standard card/container outline — low-fund alert shell */
@@ -135,6 +140,8 @@ export const darkColors = {
   cardBackground: dashboardPalette.card,
   glassSolid: dashboardPalette.card,
   surfaceElevated: 'rgba(255, 255, 255, 0.08)',
+  /** Line-icon well — always filled; same pale glass as `surfaceElevated`. */
+  iconWell: 'rgba(255, 255, 255, 0.08)',
   input: 'rgba(255, 255, 255, 0.06)',
   accentGreen: '#22C55E',
   /** Premium boolean toggle — off track */
@@ -162,6 +169,8 @@ export const darkColors = {
   dangerMuted: 'rgba(248, 113, 113, 0.13)',
   warning: dashboardPalette.warning,
   warningMuted: 'rgba(251, 191, 36, 0.14)',
+  /** Alert title stress words + matching warning glyph — truer orange than amber `warning`. */
+  alertStress: '#F97316',
   purple: '#C084FC',
   purpleMuted: 'rgba(192, 132, 252, 0.13)',
   /** Neutral chip/well tint — elevated glass */
@@ -191,6 +200,10 @@ export const lightColors = {
   screenCanvas: 'transparent',
   surface: 'rgba(255, 255, 255, 0.82)',
   surfaceSolid: 'rgba(255, 255, 255, 0.95)',
+  /** Opaque dialog/modal card — confirm sheets must not use glass. */
+  modalSurface: '#FFFFFF',
+  /** Opaque secondary control on {@link lightColors.modalSurface}. */
+  modalAction: '#F0F0F4',
   /** Standard card/container fill — Budget Proto LIGHT.CARD */
   containerBackground: 'rgba(255, 255, 255, 0.82)',
   /** Standard card/container outline — Budget Proto LIGHT.BORDER */
@@ -198,6 +211,8 @@ export const lightColors = {
   cardBackground: 'rgba(255, 255, 255, 0.82)',
   glassSolid: 'rgba(255, 255, 255, 0.95)',
   surfaceElevated: 'rgba(255, 255, 255, 0.95)',
+  /** Line-icon well — always filled; kit pale gray (`USER_PICKED_ICON_WELL_BG_LIGHT`). */
+  iconWell: '#F2F3F4',
   input: 'rgba(255, 255, 255, 0.95)',
   accentGreen: '#22C55E',
   toggleTrackOff: '#D4D4DC',
@@ -221,6 +236,8 @@ export const lightColors = {
   dangerMuted: 'rgba(248, 113, 113, 0.12)',
   warning: '#FBBF24',
   warningMuted: 'rgba(251, 191, 36, 0.12)',
+  /** Alert title stress words + matching warning glyph — truer orange than amber `warning`. */
+  alertStress: '#F97316',
   purple: '#C084FC',
   purpleMuted: 'rgba(192, 132, 252, 0.12)',
   cyanMuted: 'rgba(246, 248, 250, 1)',
@@ -516,9 +533,9 @@ export function goalProgressTrackColor(isLight: boolean): string {
 /**
  * **Theme kit — money amounts (canonical)**
  *
- * ALL monetary / tabular dollar amounts MUST use {@link moneyAmountTypography} or
- * {@link transactionRowAmountTypography} — both render {@link MONEY_AMOUNT_FONT}
- * (Inter 800 ExtraBold), matching `TransactionAmountLabel` (−105,68$).
+ * ALL monetary / tabular dollar amounts MUST use {@link moneyAmountTypography}
+ * ({@link MONEY_AMOUNT_FONT} / Inter 800 ExtraBold) or {@link transactionRowAmountTypography}
+ * ({@link TRANSACTION_ROW_AMOUNT_FONT} / Inter 600 SemiBold on history list rows).
  *
  * Tiers: `row` (14px list) · `card` (16px metrics) · `stat` (24px) · `hero` (28px)
  * · `detailHero` (36px transaction detail) · `netWorth` (42px portfolio headline).
@@ -578,13 +595,16 @@ export function moneyAmountTypography(options?: {
   };
 }
 
-/** Transaction list row amounts — alias of {@link moneyAmountTypography} tier `row`. */
+/** Transaction list row amounts — Inter 600 SemiBold (lighter than ExtraBold). */
 export function transactionRowAmountTypography(options?: {
   fontSize?: number;
   lineHeight?: number;
   letterSpacing?: number;
 }): TextStyle {
-  return moneyAmountTypography({ tier: 'row', ...options });
+  return {
+    ...moneyAmountTypography({ tier: 'row', ...options }),
+    fontFamily: TRANSACTION_ROW_AMOUNT_FONT,
+  };
 }
 
 /** Transaction detail hero amount — tier `detailHero` (36px centered −105,68$). */
@@ -762,6 +782,27 @@ export const FLOATING_NAV_CONTENT_PADDING =
   (Platform.OS === 'android' ? FLOATING_TABBAR_ANDROID_BOTTOM_EXTRA : 0);
 
 export const PAGE_TITLE_CONTENT_GAP = spacing.xl;
+
+/**
+ * Réglages — layout tokens for section cards and rows.
+ * Keep row paddings / icon wells shared so narrow & wide screens stay consistent.
+ */
+export const SETTINGS_LAYOUT = {
+  /** Gap between section eyebrow and card */
+  sectionLabelGap: spacing.sm,
+  /** Horizontal padding inside a settings row */
+  rowPaddingH: spacing.lg,
+  /** Vertical padding inside a settings row */
+  rowPaddingV: spacing.md,
+  /** Gap between icon well, copy, trailing */
+  rowGap: spacing.md,
+  /** Gap between label block and custom control (segmented, input) */
+  customControlGap: spacing.md,
+  /** Circular icon well diameter */
+  iconWellSize: 34,
+  /** Max share of the row for trailing value + accessory */
+  trailingMaxWidth: '46%' as const,
+} as const;
 
 /** Chart accent colors aligned with design system */
 export const chartTokens = {

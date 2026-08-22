@@ -2,8 +2,10 @@
  * Bank / institution logo bank — parallel to merchant recognition in `merchantLogo.ts`.
  *
  * Resolution order for an account name / institution field:
- * 1. Bundled local asset (`localAsset`) when wired
- * 2. Google s2 favicon → DuckDuckGo icon for `domain`
+ * 1. Bundled local asset (`localAsset`) via {@link getBankInstitutionLogoAsset}
+ *    — pass the module id to `expo-image` (`source={asset}`). Never rely on
+ *    `Asset.fromModule().uri` in release APKs (Metro/`file` URIs break or mis-scale).
+ * 2. Remote favicon chain for `domain` (gstatic → Google s2 → DuckDuckGo)
  * 3. null (caller falls back to initials / stored logoUrl)
  *
  * Match rules (same quality as merchants):
@@ -18,8 +20,6 @@
  * 3. Optional: drop `assets/banks/<id>.png` and `require('@/assets/banks/<id>.png')` as `localAsset`
  * 4. Optional: add brand color in `institutionBrandColor.ts` keyed by the same `id`
  */
-
-import { Asset } from 'expo-asset';
 
 /**
  * Local PNGs live in `assets/banks/` (create the file, then require it here).
@@ -383,34 +383,36 @@ export function matchBankInstitution(name: string): BankInstitution | null {
   return matchAliasIndex(key, CARD_ALIAS_INDEX);
 }
 
-function faviconUrlsForDomain(domain: string): string[] {
+/** Public favicon CDN chain — identical in Expo Go and release APKs. */
+export function faviconUrlsForDomain(domain: string): string[] {
   const enc = encodeURIComponent(domain);
+  // gstatic faviconV2 is the redirect target of Google s2 — call it first so Android
+  // release image loaders do not depend on following a 301 from www.google.com.
   return [
+    `https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://${domain}&size=128`,
     `https://www.google.com/s2/favicons?domain=${enc}&sz=128`,
     `https://icons.duckduckgo.com/ip3/${domain}.ico`,
   ];
 }
 
-function resolveBundledAssetUri(asset: number): string {
-  return Asset.fromModule(asset).uri;
-}
-
-/** URI for a bundled institution logo, or null when only remote favicons apply. */
-export function getLocalBankInstitutionLogoUri(name: string): string | null {
+/** Bundled `require()` module for an institution mark, when wired on the catalog entry. */
+export function getBankInstitutionLogoAsset(name: string): number | null {
   const match = matchBankInstitution(name);
-  if (!match?.localAsset) return null;
-  // Card-network local assets only when no bank was preferred (matchBankInstitution already orders).
-  return resolveBundledAssetUri(match.localAsset);
+  return match?.localAsset ?? null;
 }
 
-/** Favicon / local URL candidates in display order (first success wins in UI). */
+/**
+ * @deprecated Prefer {@link getBankInstitutionLogoAsset} + `expo-image` `source={asset}`.
+ * Asset URIs differ between Expo Go (Metro) and release APKs and often mis-fit placeholders.
+ */
+export function getLocalBankInstitutionLogoUri(_name: string): string | null {
+  return null;
+}
+
+/** Remote favicon URL candidates in display order (first success wins in UI). */
 export function getBankInstitutionLogoUrls(name: string): string[] {
   const match = matchBankInstitution(name);
   if (!match) return [];
-
-  if (match.localAsset) {
-    return [resolveBundledAssetUri(match.localAsset)];
-  }
   return faviconUrlsForDomain(match.domain);
 }
 

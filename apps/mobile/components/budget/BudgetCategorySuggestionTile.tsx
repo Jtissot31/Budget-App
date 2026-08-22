@@ -23,8 +23,7 @@ const ICON_GLYPH = 16;
 
 /** Empty-state suggestion tile — same chrome as BudgetCategoryRow, no amounts. */
 export function BudgetCategorySuggestionTile({ suggestion, onPress }: Props) {
-  const { colors, isLight } = useAppTheme();
-  const iconWellBg = isLight ? colors.surfaceElevated : colors.input;
+  const { colors } = useAppTheme();
 
   return (
     <Pressable
@@ -44,7 +43,7 @@ export function BudgetCategorySuggestionTile({ suggestion, onPress }: Props) {
       ]}
     >
       <View style={styles.header}>
-        <View style={[styles.iconWell, { backgroundColor: iconWellBg }]}>
+        <View style={styles.iconWell}>
           <BudgetCategoryIcon
             icon={suggestion.icon}
             name={suggestion.name}
@@ -90,6 +89,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
     overflow: 'hidden',
+    backgroundColor: 'transparent',
   },
   name: {
     flex: 1,

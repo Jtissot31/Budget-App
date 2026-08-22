@@ -11,7 +11,12 @@ import { hydrateUserApiKeys } from './ai/userApiKeys';
 import { isDemoSeedEnabled } from './demoSeedGate';
 import { resetFinancialPlansHubIfNeeded } from './resetFinancialPlansHub';
 import { resetSavingsGoalsForHubDemoIfNeeded } from './resetSavingsGoalsHubDemo';
-import { ensureAverageUserBudgetBaseline, ensureDemoAccounts, seedDemoTransactionsIfMissing } from './seed';
+import {
+  ensureAverageUserBudgetBaseline,
+  ensureDemoAccounts,
+  ensureDemoReceiptArticles,
+  seedDemoTransactionsIfMissing,
+} from './seed';
 import { seedLoansIfMissing } from './seedLoans';
 import { seedRecurringPaymentsIfMissing } from './seedRecurringPayments';
 import { ensureMerchantLogoMemory } from './merchantLogoMemory';
@@ -149,6 +154,8 @@ async function runHeavySeedWork(): Promise<void> {
     await withTimeout(ensureDemoAccounts(), 'Demo accounts seeding', DB_INIT_TIMEOUT_MS);
     await yieldToEventLoop();
     await withTimeout(seedDemoTransactionsIfMissing(), 'Demo data seeding', DB_INIT_TIMEOUT_MS);
+    await yieldToEventLoop();
+    await withTimeout(ensureDemoReceiptArticles(), 'Demo receipt articles', DB_INIT_TIMEOUT_MS);
     await yieldToEventLoop();
     await withTimeout(seedRecurringPaymentsIfMissing(), 'Recurring payments seeding', DB_INIT_TIMEOUT_MS);
     await yieldToEventLoop();

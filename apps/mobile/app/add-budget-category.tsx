@@ -5,9 +5,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 import {
+  Dimensions,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -20,7 +19,6 @@ import Animated from 'react-native-reanimated';
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BudgetCashflowImpactCard } from '@/components/budget/BudgetCashflowImpactCard';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
@@ -36,7 +34,6 @@ import { assignCategoryColor } from '@/constants/budgetCategoryColors';
 import {
   FORM_SECTION_LABEL_STYLE,
   jakartaBoldText,
-  jakartaExtraBoldText,
   jakartaMediumText,
   jakartaSemiboldText,
   radius,
@@ -45,7 +42,23 @@ import {
   typographyKit,
 } from '@/constants/theme';
 import { MAX_BUDGET_CATEGORIES } from '@/lib/budgetCategoryModel';
-import { addCategory, getCategories, type BudgetCategory } from '@/lib/budgetCategories';
+import {
+  addCategory,
+  getCategories,
+  updateCategoryLimit,
+  type BudgetCategory,
+} from '@/lib/budgetCategories';
+import {
+  computeBudgetAllocationHeadroom,
+  describeCategoryCapacityBlocker,
+  describeDuplicateCategory,
+  describeDuplicateResolution,
+  findConflictingCategory,
+  parseBudgetLimitInput,
+  validateBudgetCategoryDraft,
+  BUDGET_PERIOD_EXCEEDS_MONTHLY_MESSAGE,
+  type BudgetCategoryFieldKey,
+} from '@/lib/budgetCategoryValidation';
 import { upsertCategory, upsertCategoryBudget } from '@/lib/db';
 import { formValidationError, type FormFeedback } from '@/lib/formFeedback';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
@@ -58,14 +71,27 @@ import {
   toWeeklyContributionAmount,
   type SavingsGoalContributionFrequency,
 } from '@/lib/savingsGoalContribution';
+import {
+  FORM_SHEET_CONTENT_PADDING_TOP,
+  FormSheetChromeHeader,
+  FormSheetModalBody,
+  formSheetDragHeight,
+  formSheetPanelStyle,
+  formSheetScrollContentStyle,
+  formSheetScrollPaddingBottom,
+  formSheetScrollViewStyle,
+  scrollFormSheetToTop,
+  useFormSheetKeyboardInset,
+  useFormSheetScrollToTop,
+} from '@/lib/sheet/formSheetScroll';
 import { useDraggableSheetGesture } from '@/lib/sheet/useDraggableSheetGesture';
 import { useAppTheme } from '@/lib/themeContext';
 
 type PeriodFrequency = Extract<SavingsGoalContributionFrequency, 'weekly' | 'biweekly'>;
 type LimitSource = 'manual' | 'auto';
-type FieldKey = 'name' | 'limit' | 'period';
+type FieldKey = BudgetCategoryFieldKey;
 
-const PERIOD_EXCEED_MONTHLY_MESSAGE = 'Le montant ne peut pas dépasser la limite mensuelle.';
+const PERIOD_EXCEED_MONTHLY_MESSAGE = BUDGET_PERIOD_EXCEEDS_MONTHLY_MESSAGE;
 
 const PERIOD_FREQUENCY_TABS: Array<{ id: PeriodFrequency; label: string }> = [
   { id: 'weekly', label: 'Semaine' },
@@ -90,24 +116,16 @@ function createEntityId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 }
 
-function normalizeLabel(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .trim()
-    .toLowerCase();
-}
-
 /** First character majuscule; rest of casing unchanged. Empty stays empty. */
 function capitalizeCategoryName(value: string): string {
   if (!value) return value;
   return value.charAt(0).toLocaleUpperCase('fr-CA') + value.slice(1);
 }
 
+/** Live-preview parse for derived fields; submit uses `validateBudgetCategoryDraft`. */
 function parseLimitInput(value: string): number | null {
-  const parsed = Number.parseFloat(value.replace(',', '.'));
-  if (!Number.isFinite(parsed) || parsed <= 0) return null;
-  return parsed;
+  const parsed = parseBudgetLimitInput(value);
+  return parsed.ok ? parsed.value : null;
 }
 
 function firstParam(value: string | string[] | undefined): string | undefined {
@@ -141,11 +159,31 @@ export default function AddBudgetCategoryScreen() {
     name?: string;
     icon?: string;
     limit?: string;
+    /** `YYYY-MM` of the Budget screen month — scopes duplicate copy. */
+    month?: string | string[];
   }>();
   const prefill = useMemo(() => parsePrefillFromParams(params), [params]);
+  const formMonthDate = useMemo(() => {
+    const raw = firstParam(params.month)?.trim();
+    if (raw && /^\d{4}-\d{2}$/.test(raw)) {
+      const [year, month] = raw.split('-').map(Number);
+      if (year && month >= 1 && month <= 12) {
+        return new Date(year, month - 1, 1);
+      }
+    }
+    return new Date();
+  }, [params.month]);
 
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
+  const keyboardInset = useFormSheetKeyboardInset();
+  const [hostHeight, setHostHeight] = useState(windowHeight);
+  const onHostMetrics = useCallback(
+    (metrics: { hostHeight: number; keyboardInset: number }) => {
+      setHostHeight((prev) => (prev === metrics.hostHeight ? prev : metrics.hostHeight));
+    },
+    [],
+  );
   const { colors, isLight } = useAppTheme();
   const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.text }];
 
@@ -231,11 +269,29 @@ export default function AddBudgetCategoryScreen() {
   }, [manualIcon, trimmedName]);
   const atCapacity = existing.length >= MAX_BUDGET_CATEGORIES;
 
-  const duplicateName = useMemo(() => {
-    if (!trimmedName) return false;
-    const key = normalizeLabel(trimmedName);
-    return existing.some((category) => normalizeLabel(category.name) === key);
-  }, [existing, trimmedName]);
+  /** Catégorie existante portant le même nom (casse / accents / espaces ignorés). */
+  const duplicateCategory = useMemo(
+    () =>
+      findConflictingCategory(trimmedName, existing, {
+        monthDate: formMonthDate,
+      }),
+    [existing, formMonthDate, trimmedName],
+  );
+
+  /**
+   * Soft envelope check — never blocks save. Prefer the live headroom helper so the
+   * warning updates as the user types, matching `validateBudgetCategoryDraft` notices.
+   */
+  const allocationHeadroom = useMemo(
+    () =>
+      computeBudgetAllocationHeadroom({
+        otherCategoriesAllocatedTotal: allocatedTotal,
+        categoryLimit: parsedLimit,
+        monthlyIncome: monthlySalary,
+        monthDate: formMonthDate,
+      }),
+    [allocatedTotal, formMonthDate, monthlySalary, parsedLimit],
+  );
 
   const clearFieldError = useCallback((field: FieldKey) => {
     setFieldErrors((current) => {
@@ -354,10 +410,12 @@ export default function AddBudgetCategoryScreen() {
     router.back();
   }, [router]);
 
-  const SHEET_TOP_MARGIN = 88;
-  const sheetDragHeight = Math.min(
-    windowHeight * 0.92,
-    Math.max(windowHeight - SHEET_TOP_MARGIN, 1),
+  // Keyboard-aware: FormSheetModalBody measures the host; clamp without Android KAV.
+  const sheetDragHeight = formSheetDragHeight(
+    windowHeight,
+    keyboardInset,
+    hostHeight,
+    Dimensions.get('screen').height,
   );
 
   const {
@@ -371,6 +429,7 @@ export default function AddBudgetCategoryScreen() {
   } = useDraggableSheetGesture({
     onClose: closeSheet,
     sheetHeight: sheetDragHeight,
+    handleOnly: true,
     scrollable: true,
   });
 
@@ -378,75 +437,90 @@ export default function AddBudgetCategoryScreen() {
     resetSheetPosition('expanded');
   }, [resetSheetPosition]);
 
+  // Always land on the first field, never mid-form (retries cover late layout).
+  useFormSheetScrollToTop(sheetScrollRef, true);
+
+  /**
+   * Do NOT auto-focus the name field on Android. Focusing on mount opens the
+   * keyboard while the transparentModal root is still settling / resizing, which
+   * used to push the flex-end sheet above the viewport. User taps when ready.
+   */
+  useEffect(() => {
+    scrollFormSheetToTop(sheetScrollRef);
+  }, []);
+
   const handleSave = useCallback(async () => {
-    if (atCapacity) {
+    const validation = validateBudgetCategoryDraft({
+      name,
+      limitInput: limit,
+      periodInput: periodLimit,
+      existing,
+      maxCategories: MAX_BUDGET_CATEGORIES,
+      monthDate: formMonthDate,
+      monthlyIncome: monthlySalary,
+      otherCategoriesAllocatedTotal: allocatedTotal,
+    });
+
+    if (validation.firstInvalidField != null) {
+      setFieldErrors(validation.fieldErrors);
+      setFeedback(null);
+      scrollToField(validation.firstInvalidField);
+      return;
+    }
+
+    if (validation.blocked != null) {
+      setFieldErrors({});
       setFeedback(
-        formValidationError('Limite atteinte', `Maximum ${MAX_BUDGET_CATEGORIES} catégories budget.`),
+        formValidationError('Trop de catégories', validation.blocked.message),
       );
       return;
     }
 
-    const nextErrors: Partial<Record<FieldKey, string>> = {};
-    let firstInvalid: FieldKey | null = null;
-
-    const markInvalid = (field: FieldKey, message: string) => {
-      nextErrors[field] = message;
-      if (firstInvalid == null) firstInvalid = field;
-    };
-
-    if (!trimmedName) {
-      markInvalid('name', 'Indique un nom pour cette catégorie.');
-    } else if (duplicateName) {
-      markInvalid('name', 'Une catégorie porte déjà ce nom.');
-    }
-
-    if (parsedLimit == null) {
-      markInvalid('limit', 'Indique une limite mensuelle supérieure à 0.');
-    }
-
-    if (periodLimit.trim() && parsedPeriodLimit == null) {
-      markInvalid('period', 'Laisse vide ou indique un montant supérieur à 0.');
-    } else if (periodExceedsMonthly) {
-      markInvalid('period', PERIOD_EXCEED_MONTHLY_MESSAGE);
-    }
-
-    if (firstInvalid != null) {
-      setFieldErrors(nextErrors);
-      setFeedback(null);
-      scrollToField(firstInvalid);
-      return;
-    }
-
+    const savedName = validation.normalizedName;
     setSaving(true);
     setFeedback(null);
     setFieldErrors({});
     try {
       const latest = await getCategories();
+      const lateDuplicate = findConflictingCategory(savedName, latest, {
+        monthDate: formMonthDate,
+      });
+      if (lateDuplicate) {
+        setFieldErrors({
+          name: describeDuplicateCategory(lateDuplicate, formMonthDate),
+        });
+        scrollToField('name');
+        return;
+      }
       if (latest.length >= MAX_BUDGET_CATEGORIES) {
         setFeedback(
-          formValidationError('Limite atteinte', `Maximum ${MAX_BUDGET_CATEGORIES} catégories budget.`),
+          formValidationError(
+            'Trop de catégories',
+            describeCategoryCapacityBlocker(MAX_BUDGET_CATEGORIES),
+          ),
         );
         return;
       }
 
       const id = createEntityId('cat');
       const color = assignCategoryColor(latest.map((category) => category.color));
-      const icon = manualIcon ?? getCategoryIconName({ name: trimmedName });
+      const icon = manualIcon ?? getCategoryIconName({ name: savedName });
+      const savedLimit = validation.limit!;
 
       await upsertCategory({
         id,
-        name: trimmedName,
+        name: savedName,
         icon,
         color,
       });
       await Promise.all([
-        upsertCategoryBudget(id, parsedLimit!, weeklyLimitToStore),
+        upsertCategoryBudget(id, savedLimit, weeklyLimitToStore),
         addCategory({
           id,
-          name: trimmedName,
+          name: savedName,
           icon,
           color,
-          limit: parsedLimit!,
+          limit: savedLimit,
           spent: 0,
           period: 'monthly',
           created_by: 'user',
@@ -462,21 +536,53 @@ export default function AddBudgetCategoryScreen() {
       setSaving(false);
     }
   }, [
-    atCapacity,
+    allocatedTotal,
     closeSheet,
-    duplicateName,
+    existing,
+    formMonthDate,
+    limit,
     manualIcon,
-    parsedLimit,
-    parsedPeriodLimit,
-    periodExceedsMonthly,
+    monthlySalary,
+    name,
     periodLimit,
     scrollToField,
-    trimmedName,
     weeklyLimitToStore,
   ]);
 
-  const canSubmit = !saving && !atCapacity;
-  const sheetContentPaddingBottom = Math.max(insets.bottom, 20);
+  /**
+   * Sortie du conflit de noms : reprendre l'enveloppe existante au lieu d'en créer
+   * une deuxième portant le même nom.
+   */
+  const handleAdjustDuplicate = useCallback(async () => {
+    if (!duplicateCategory || parsedLimit == null || saving) return;
+
+    tapHaptic();
+    setSaving(true);
+    setFeedback(null);
+    try {
+      await Promise.all([
+        upsertCategoryBudget(duplicateCategory.id, parsedLimit, weeklyLimitToStore),
+        updateCategoryLimit(duplicateCategory.id, parsedLimit),
+      ]);
+      successHaptic();
+      closeSheet();
+    } catch {
+      setFeedback(
+        formValidationError('Erreur', 'Impossible de modifier cette catégorie. Réessaie dans un instant.'),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [closeSheet, duplicateCategory, parsedLimit, saving, weeklyLimitToStore]);
+
+  // Never disabled for a reason the screen does not spell out — the capacity notice
+  // below stays visible instead.
+  const canSubmit = !saving;
+  const sheetContentPaddingBottom = formSheetScrollPaddingBottom(
+    insets.bottom,
+    keyboardInset,
+    windowHeight,
+  );
 
   const themed = useMemo(
     () => ({
@@ -512,54 +618,52 @@ export default function AddBudgetCategoryScreen() {
           accessibilityLabel="Fermer"
         />
       </Animated.View>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.modalKeyboard}
-      >
+      <FormSheetModalBody style={styles.modalKeyboard} onHostMetrics={onHostMetrics}>
         <GestureDetector gesture={panGesture}>
-          <Animated.View style={[styles.sheet, themed.sheet, sheetAnimatedStyle]}>
+          <Animated.View
+            style={[
+              styles.sheet,
+              themed.sheet,
+              formSheetPanelStyle(sheetDragHeight),
+              sheetAnimatedStyle,
+            ]}
+          >
+            <View style={styles.sheetChrome}>
+              <FormSheetChromeHeader
+                title="Nouvelle catégorie"
+                onClose={requestClose}
+                titleColor={colors.text}
+                closeIconColor={colors.textMuted}
+                handleColor={colors.borderStrong}
+                closeButtonStyle={themed.closeButton}
+                headerStyle={styles.sheetHeaderPad}
+              />
+            </View>
             <GestureDetector gesture={scrollNativeGesture}>
               <Animated.ScrollView
                 ref={sheetScrollRef}
-                style={styles.sheetScroll}
+                style={formSheetScrollViewStyle()}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
                 onScrollBeginDrag={() => Keyboard.dismiss()}
                 onScroll={scrollHandler}
                 scrollEventThrottle={16}
                 showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
                 contentContainerStyle={[
                   styles.sheetContent,
+                  formSheetScrollContentStyle,
                   { paddingBottom: sheetContentPaddingBottom },
                 ]}
               >
                 <View ref={scrollContentRef} collapsable={false}>
-                <View style={styles.handleHitArea}>
-                  <View style={[styles.handle, themed.handle]} />
-                </View>
-
-                <View style={styles.sheetHeader}>
-                  <Text style={[styles.sheetTitle, { color: colors.text }]} numberOfLines={1}>
-                    Nouvelle catégorie
-                  </Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Fermer"
-                    hitSlop={12}
-                    onPress={requestClose}
-                    style={[styles.sheetClose, themed.closeButton]}
-                  >
-                    <AppIcon family="ionicons" name="close" size={19} color={colors.textMuted} />
-                  </Pressable>
-                </View>
-
                 <View style={styles.formBody}>
                   <View ref={nameSectionRef} collapsable={false} style={styles.section}>
                     <DashboardSectionLabel style={sectionLabelStyle}>
                       Nom de catégorie
                     </DashboardSectionLabel>
                     {fieldErrors.name ? (
-                      <Text style={[styles.fieldError, { color: colors.warning }]}>
+                      <Text style={[styles.fieldError, { color: colors.danger }]}>
                         {fieldErrors.name}
                       </Text>
                     ) : null}
@@ -604,7 +708,6 @@ export default function AddBudgetCategoryScreen() {
                         }}
                         placeholder="Ex. Épicerie"
                         placeholderTextColor={colors.textMuted}
-                        autoFocus={!prefill?.name}
                         style={[
                           styles.nameInput,
                           {
@@ -619,6 +722,35 @@ export default function AddBudgetCategoryScreen() {
                     <Text style={[styles.fieldHint, { color: colors.textMuted }]}>
                       {manualIcon ? 'Icône manuelle · toucher pour changer' : 'Icône auto · toucher pour choisir'}
                     </Text>
+                    {fieldErrors.name && duplicateCategory && parsedLimit != null ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={describeDuplicateResolution(
+                          duplicateCategory,
+                          parsedLimit,
+                        )}
+                        disabled={saving}
+                        onPress={() => void handleAdjustDuplicate()}
+                        style={({ pressed }) => [
+                          styles.resolutionButton,
+                          {
+                            backgroundColor: colors.surfaceElevated,
+                            borderColor: colors.border,
+                          },
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <AppIcon
+                          family="ionicons"
+                          name="create-outline"
+                          size={15}
+                          color={colors.primary}
+                        />
+                        <Text style={[styles.resolutionLabel, { color: colors.primary }]}>
+                          {describeDuplicateResolution(duplicateCategory, parsedLimit)}
+                        </Text>
+                      </Pressable>
+                    ) : null}
                   </View>
 
                   {showIconPicker ? (
@@ -691,7 +823,7 @@ export default function AddBudgetCategoryScreen() {
                       Limite mensuelle
                     </DashboardSectionLabel>
                     {fieldErrors.limit ? (
-                      <Text style={[styles.fieldError, { color: colors.warning }]}>
+                      <Text style={[styles.fieldError, { color: colors.danger }]}>
                         {fieldErrors.limit}
                       </Text>
                     ) : null}
@@ -726,7 +858,7 @@ export default function AddBudgetCategoryScreen() {
                       Limite périodique
                     </DashboardSectionLabel>
                     {fieldErrors.period ? (
-                      <Text style={[styles.fieldError, { color: colors.warning }]}>
+                      <Text style={[styles.fieldError, { color: colors.danger }]}>
                         {fieldErrors.period}
                       </Text>
                     ) : null}
@@ -769,23 +901,26 @@ export default function AddBudgetCategoryScreen() {
                     ) : null}
                   </View>
 
-                  <BudgetCashflowImpactCard
-                    mode="add"
-                    categoryLimit={parsedLimit}
-                    otherCategoriesAllocatedTotal={allocatedTotal}
-                    monthlyIncome={monthlySalary}
-                  />
+                  {atCapacity ? (
+                    <ThemedFormMessage
+                      variant="error"
+                      title="Trop de catégories"
+                      message={describeCategoryCapacityBlocker(MAX_BUDGET_CATEGORIES)}
+                    />
+                  ) : null}
+
+                  {allocationHeadroom.warning ? (
+                    <ThemedFormMessage
+                      variant="warning"
+                      title="Au-delà de ton revenu"
+                      message={allocationHeadroom.warning}
+                    />
+                  ) : null}
 
                   {feedback ? <ThemedFormMessage {...feedback} /> : null}
 
                   <PrimarySaveButton
-                    label={
-                      saving
-                        ? 'Création...'
-                        : atCapacity
-                          ? 'Limite de catégories atteinte'
-                          : 'Créer la catégorie'
-                    }
+                    label={saving ? 'Création...' : 'Créer la catégorie'}
                     onPress={() => void handleSave()}
                     loading={saving}
                     disabled={!canSubmit}
@@ -796,7 +931,7 @@ export default function AddBudgetCategoryScreen() {
             </GestureDetector>
           </Animated.View>
         </GestureDetector>
-      </KeyboardAvoidingView>
+      </FormSheetModalBody>
     </GestureHandlerRootView>
   );
 }
@@ -817,56 +952,26 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    marginTop: 88,
-    maxHeight: '92%',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
-  sheetScroll: {
-    flexGrow: 0,
+  sheetChrome: {
+    flexShrink: 0,
+    paddingTop: FORM_SHEET_CONTENT_PADDING_TOP,
+  },
+  sheetHeaderPad: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
   },
   sheetContent: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-  },
-  handleHitArea: {
-    alignSelf: 'stretch',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 4,
-    paddingBottom: 8,
-    minHeight: 28,
-  },
-  handle: {
-    alignSelf: 'center',
-    width: 44,
-    height: 4,
-    borderRadius: radius.pill,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  sheetTitle: {
-    flex: 1,
-    ...jakartaExtraBoldText,
-    fontSize: typography.title,
-    letterSpacing: -0.4,
-  },
-  sheetClose: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingTop: spacing.sm,
   },
   formBody: {
     gap: spacing.lg,
-    paddingTop: spacing.xl,
+    paddingTop: spacing.md,
   },
   section: {
     gap: spacing.sm,
@@ -909,6 +1014,20 @@ const styles = StyleSheet.create({
     ...jakartaMediumText,
     fontSize: typography.meta,
     lineHeight: 18,
+  },
+  /** Way out of a duplicate name: reuse the existing envelope instead. */
+  resolutionButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  resolutionLabel: {
+    ...typographyKit.metaSemibold,
   },
   iconOptionRow: {
     gap: spacing.sm,

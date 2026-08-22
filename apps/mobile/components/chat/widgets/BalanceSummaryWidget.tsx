@@ -3,10 +3,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LogoIconFrame } from '@/components/IconFrame';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { cashBanknotesLogoUri } from '@/components/icons/CashBanknotesOutlineIcon';
+import { CASH_BANKNOTES_ICON } from '@/components/icons/CashBanknotesOutlineIcon';
 import { spacing } from '@/constants/theme';
 import { getSimulatedAccounts } from '@/lib/db';
-import { getAccountLogoUrl } from '@/lib/merchantLogo';
+import { getAccountLogoAsset, getAccountLogoUrl } from '@/lib/merchantLogo';
 import type { BalanceSummaryCardData } from '@/types/aiWidgets';
 import {
   AI_WIDGET_RADIUS,
@@ -85,24 +85,30 @@ function resolveEyebrow(data: BalanceSummaryCardData, accountMode: boolean): str
 }
 
 /** Explicit URL, then institution name, then account name — never a broken image. */
-function resolveAccountLogoUrl(data: BalanceSummaryCardData): string | null {
+function resolveAccountLogoSources(data: BalanceSummaryCardData): {
+  asset: number | null;
+  url: string | null;
+} {
   const explicit = data.account_logo_url?.trim();
-  if (explicit) return explicit;
+  if (explicit) return { asset: null, url: explicit };
 
   const kind = data.account_kind?.trim().toLowerCase();
   if (kind === 'cash') {
-    return cashBanknotesLogoUri() || null;
+    return { asset: CASH_BANKNOTES_ICON, url: null };
   }
 
   const institution = data.account_institution?.trim();
   if (institution) {
+    const asset = getAccountLogoAsset(institution);
     const fromInstitution = getAccountLogoUrl(institution);
-    if (fromInstitution) return fromInstitution;
+    if (asset || fromInstitution) return { asset, url: fromInstitution };
   }
 
   const name = data.account_name?.trim();
-  if (name) return getAccountLogoUrl(name);
-  return null;
+  if (name) {
+    return { asset: getAccountLogoAsset(name), url: getAccountLogoUrl(name) };
+  }
+  return { asset: null, url: null };
 }
 
 async function resolveAccountId(data: BalanceSummaryCardData): Promise<string | null> {
@@ -134,8 +140,8 @@ export function BalanceSummaryWidget({ data }: Props) {
   const accountName = data.account_name?.trim() || null;
   const accountMeta = accountMode ? buildAccountMeta(data) : null;
   const eyebrow = resolveEyebrow(data, accountMode);
-  const logoUrl = accountMode ? resolveAccountLogoUrl(data) : null;
-  const showLogo = Boolean(logoUrl) && !logoFailed;
+  const logoSources = accountMode ? resolveAccountLogoSources(data) : { asset: null, url: null };
+  const showLogo = Boolean(logoSources.asset || logoSources.url) && !logoFailed;
   const trendPositive = resolveTrendPositive(data);
   const trendColor = trendPositive ? palette.green : palette.red;
   const trendWellBg = trendPositive ? palette.successMuted : palette.dangerMuted;
@@ -143,7 +149,7 @@ export function BalanceSummaryWidget({ data }: Props) {
 
   useEffect(() => {
     setLogoFailed(false);
-  }, [logoUrl]);
+  }, [logoSources.asset, logoSources.url]);
 
   const handlePress = useCallback(async () => {
     if (navigating || !canNavigate) return;
@@ -178,14 +184,15 @@ export function BalanceSummaryWidget({ data }: Props) {
       {accountMode && accountName ? (
         <View style={styles.identityBlock}>
           <View style={styles.titleRow}>
-            {showLogo && logoUrl ? (
+            {showLogo && (logoSources.asset || logoSources.url) ? (
               <View
                 style={styles.logoSlot}
                 accessibilityElementsHidden
                 importantForAccessibility="no-hide-descendants"
               >
                 <LogoIconFrame
-                  uri={logoUrl}
+                  asset={logoSources.asset}
+                  uri={logoSources.url}
                   size={TITLE_LOGO_SIZE}
                   onError={() => setLogoFailed(true)}
                 />

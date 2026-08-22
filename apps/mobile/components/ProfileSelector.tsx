@@ -1,4 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SwipeBackExclusion } from '@/components/gestures/SwipeBackExclusion';
 import { jakartaBoldText, jakartaExtraBoldText, radius, spacing, typography } from '@/constants/theme';
 import type { ProfileType } from '@/lib/profile';
 import { useAppTheme } from '@/lib/themeContext';
@@ -20,26 +21,28 @@ export function ProfileSelector({ selected, onChange }: Props) {
   return (
     <View style={styles.wrap}>
       <Text style={[styles.heading, { color: colors.textMuted }]}>Profil</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-        {profiles.map((p) => {
-          const active = selected === p.id;
-          return (
-            <Pressable
-              key={p.id}
-              onPress={() => onChange(p.id)}
-              style={[
-                styles.chip,
-                { borderColor: active ? colors.primary : colors.border },
-                active && { backgroundColor: colors.scopeActive },
-              ]}
-            >
-              <Text style={[styles.chipText, { color: active ? colors.primary : colors.textMuted }, active && styles.chipTextActive]}>
-                {p.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      <SwipeBackExclusion>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+          {profiles.map((p) => {
+            const active = selected === p.id;
+            return (
+              <Pressable
+                key={p.id}
+                onPress={() => onChange(p.id)}
+                style={[
+                  styles.chip,
+                  { borderColor: active ? colors.primary : colors.border },
+                  active && { backgroundColor: colors.scopeActive },
+                ]}
+              >
+                <Text style={[styles.chipText, { color: active ? colors.primary : colors.textMuted }, active && styles.chipTextActive]}>
+                  {p.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </SwipeBackExclusion>
     </View>
   );
 }

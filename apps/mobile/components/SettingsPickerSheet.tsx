@@ -1,19 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 import {
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
-import { DraggableSheetSurface } from '@/components/DraggableSheetSurface';
+import {
+  DraggableSheetScrollView,
+  DraggableSheetSurface,
+} from '@/components/DraggableSheetSurface';
+import { FormSheetModalBody, formSheetScrollViewStyle, useFormSheetHeight } from '@/lib/sheet/formSheetScroll';
 import { RemoteLogoImage } from '@/components/IconFrame';
 import { OnyxContainer } from '@/components/OnyxContainer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -67,6 +67,8 @@ export type SettingsPickerOption<T extends string> = {
   icon?: string | null;
   /** Institution / merchant logo URI — preferred over `icon` when available. */
   logoUrl?: string | null;
+  /** Bundled require() module — preferred over logoUrl in release APKs. */
+  logoAsset?: number | null;
   /** Renders a budget category glyph matching `BudgetCategoryRow`. */
   budgetCategoryIcon?: {
     icon?: string | null;
@@ -86,6 +88,7 @@ type Props<T extends string> = {
 export function PickerLeadingTile({
   icon,
   logoUrl,
+  logoAsset,
   label,
   iconColor,
   wellBackground,
@@ -94,6 +97,8 @@ export function PickerLeadingTile({
 }: {
   icon?: string | null;
   logoUrl?: string | null;
+  /** Bundled require() module — preferred in release APKs over logoUrl Asset URIs. */
+  logoAsset?: number | null;
   label?: string | null;
   iconColor: string;
   wellBackground: string;
@@ -103,19 +108,22 @@ export function PickerLeadingTile({
 }) {
   const uri = logoUrl?.trim() || null;
   const [logoFailed, setLogoFailed] = useState(false);
+  const [assetFailed, setAssetFailed] = useState(false);
   const glyphSize = size <= FIELD_LEADING_TILE_SIZE ? 16 : 18;
   const wellRadius = size <= FIELD_LEADING_TILE_SIZE ? 8 : 10;
 
   useEffect(() => {
     setLogoFailed(false);
-  }, [uri]);
+    setAssetFailed(false);
+  }, [uri, logoAsset]);
 
-  const showLogo = Boolean(uri) && !logoFailed;
+  const preferAsset = logoAsset != null && !assetFailed;
+  const showLogo = preferAsset || (Boolean(uri) && !logoFailed);
 
   if (!showLogo && !icon) return null;
 
-  // Tile shell always matches other institution wells — selected white outline
-  // stays on the Onyx row only, never on the logo tile.
+  // Remote logos: transparent tile (no plate). Glyph-only wells keep the fill.
+  // Selected white outline stays on the Onyx row only, never on the logo tile.
   return (
     <View
       style={[
@@ -124,12 +132,19 @@ export function PickerLeadingTile({
           width: size,
           height: size,
           borderRadius: wellRadius,
-          backgroundColor: wellBackground,
-          borderColor: defaultBorder,
+          backgroundColor: showLogo ? 'transparent' : wellBackground,
+          borderColor: showLogo ? 'transparent' : defaultBorder,
         },
       ]}
     >
-      {showLogo && uri ? (
+      {preferAsset && logoAsset != null ? (
+        <RemoteLogoImage
+          asset={logoAsset}
+          size={size}
+          insetRatio={PICKER_CARD_NETWORK_LOGO_INSET_RATIO}
+          onError={() => setAssetFailed(true)}
+        />
+      ) : showLogo && uri ? (
         <RemoteLogoImage
           uri={uri}
           size={size}
@@ -153,8 +168,7 @@ export function SettingsPickerSheet<T extends string>({
 }: Props<T>) {
   const { colors, isLight } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
-  const sheetHeight = Math.round(windowHeight * 0.78);
+  const sheetHeight = useFormSheetHeight(0.78);
 
   const backdropColor = useMemo(
     () => (isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)'),
@@ -172,7 +186,7 @@ export function SettingsPickerSheet<T extends string>({
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={[styles.backdrop, { backgroundColor: backdropColor }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Fermer" />
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboard}>
+          <FormSheetModalBody>
             <DraggableSheetSurface
               onClose={onClose}
               sheetHeight={sheetHeight}
@@ -181,7 +195,6 @@ export function SettingsPickerSheet<T extends string>({
                 {
                   backgroundColor: colors.background,
                   borderColor: colors.containerBorder,
-                  paddingBottom: Math.max(insets.bottom, spacing.md),
                 },
               ]}
             >
@@ -203,11 +216,12 @@ export function SettingsPickerSheet<T extends string>({
                 </Pressable>
               </View>
 
-              <ScrollView
-                style={styles.list}
-                contentContainerStyle={styles.listContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
+              <DraggableSheetScrollView
+                style={[styles.list, formSheetScrollViewStyle()]}
+                contentContainerStyle={[
+                  styles.listContent,
+                  { paddingBottom: Math.max(insets.bottom, spacing.md) + 48 },
+                ]}
               >
                 {options.map((option) => {
                   const selected = option.id === selectedId;
@@ -240,6 +254,7 @@ export function SettingsPickerSheet<T extends string>({
                           <PickerLeadingTile
                             icon={option.icon}
                             logoUrl={option.logoUrl}
+                            logoAsset={option.logoAsset}
                             label={option.label}
                             iconColor={iconColor}
                             wellBackground={colors.input}
@@ -273,9 +288,9 @@ export function SettingsPickerSheet<T extends string>({
                     </Pressable>
                   );
                 })}
-              </ScrollView>
+              </DraggableSheetScrollView>
             </DraggableSheetSurface>
-          </KeyboardAvoidingView>
+          </FormSheetModalBody>
         </View>
       </GestureHandlerRootView>
     </Modal>
@@ -294,7 +309,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.card + 4,
     borderTopRightRadius: radius.card + 4,
     borderWidth: 1,
-    maxHeight: '78%',
   },
   handle: {
     alignSelf: 'center',
@@ -326,7 +340,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   list: {
-    flexGrow: 0,
+    flex: 1,
+    minHeight: 0,
   },
   listContent: {
     paddingHorizontal: spacing.lg,

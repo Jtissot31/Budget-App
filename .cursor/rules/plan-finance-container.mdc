@@ -16,7 +16,7 @@ Reference implementations: `StockHoldingTile`, `WealthHoldingTile` in `Patrimoin
 
 - **Component**: `<PlanFinanceContainer halo? style={…}>…</PlanFinanceContainer>`
 - **Fill / outline**: `useAppTheme().colors.containerBackground` + `containerBorder`
-- **Radius**: 13px (`PLAN_FINANCE_CONTAINER.borderRadius` / `planFinanceKit.radius.card`)
+- **Radius**: 18px (`PLAN_FINANCE_CONTAINER.borderRadius` / `planFinanceKit.radius.card`)
 - **Border**: `StyleSheet.hairlineWidth`
 - **Halo**: on by default — `planFinanceCardHalo` from `constants/planFinanceKit.ts`
 - **Style-only** (no halo): `planFinanceContainerShellStyle(colors)` from `planFinanceKit`
@@ -45,10 +45,10 @@ Do not put opacity on the container itself.
 ```tsx
 // ❌ BAD — reimplements PlanFinanceContainer
 <View style={{
-  backgroundColor: '#111111',
-  borderRadius: 13,
+  backgroundColor: 'rgba(255,255,255,0.055)',
+  borderRadius: 18,
   borderWidth: StyleSheet.hairlineWidth,
-  borderColor: 'rgba(255,255,255,0.12)',
+  borderColor: 'rgba(255,255,255,0.1)',
 }}>
 ```
 

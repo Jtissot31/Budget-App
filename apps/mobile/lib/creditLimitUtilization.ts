@@ -26,38 +26,46 @@ export function formatCreditUtilTimelineLabel(utilizationPercent: number): strin
 /** Seuil warning partagé : ≥50 % utilisé (aligné sur {@link utilizationPercentColor}). */
 export const CREDIT_LIMIT_UTILIZATION_WARNING_PCT = 50;
 
-/** Couleur texte « % utilisé » : <50% vert ; 50–79% orange ; ≥80% rouge. */
+/** Couleur texte « % Utilisé » : <50% vert ; 50–79% orange ; ≥80% rouge. */
 export function utilizationPercentColor(
   percent: number,
-  colors: Pick<AppColors, 'success' | 'warning' | 'danger'>,
+  colors: Pick<AppColors, 'success' | 'warning' | 'danger' | 'alertStress'>,
 ): string {
   if (percent >= 80) return colors.danger;
-  if (percent >= CREDIT_LIMIT_UTILIZATION_WARNING_PCT) return colors.warning;
+  if (percent >= CREDIT_LIMIT_UTILIZATION_WARNING_PCT) {
+    return colors.alertStress ?? colors.warning;
+  }
   return colors.success;
 }
 
 /**
  * Couleur « Marge disponible » sur la ligne de temps alerte limite :
- * dépassement → rouge ; ≥50 % utilisé → orange ; sinon vert.
+ * dépassement → rouge ; ≥50 % utilisé → orange stress ; sinon vert.
  * Le rouge est réservé au dépassement (marge négative), pas à la haute utilisation.
+ * Stress uses `alertStress` (#F97316), not amber `warning` (#FBBF24).
  */
 export function creditLimitMarginHintColor(
   utilizationPercent: number,
   isOverLimit: boolean,
-  colors: Pick<AppColors, 'success' | 'warning' | 'danger'>,
+  colors: Pick<AppColors, 'success' | 'warning' | 'danger' | 'alertStress'>,
 ): string {
   if (isOverLimit) return colors.danger;
-  if (utilizationPercent >= CREDIT_LIMIT_UTILIZATION_WARNING_PCT) return colors.warning;
+  if (utilizationPercent >= CREDIT_LIMIT_UTILIZATION_WARNING_PCT) {
+    return colors.alertStress ?? colors.warning;
+  }
   return colors.success;
 }
 
-/** Remplissage barre utilisation carte : <65% primary ; ≥65% orange vif ; ≥85% rouge vif. */
+/**
+ * Remplissage barre utilisation carte (alert detail) :
+ * <65% primary ; ≥65% orange stress ; ≥85% rouge.
+ */
 export function creditLimitUtilizationBarColor(
   utilizationPercent: number,
   theme: AppColors,
-  isLight: boolean,
+  _isLight: boolean,
 ): string {
   if (utilizationPercent >= 85) return theme.danger;
-  if (utilizationPercent >= 65) return theme.warning;
+  if (utilizationPercent >= 65) return theme.alertStress ?? theme.warning;
   return theme.primary;
 }

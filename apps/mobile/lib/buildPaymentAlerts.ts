@@ -9,7 +9,13 @@ import {
 import { creditUsedFromBalance } from '@/lib/creditLimitUtilization';
 import { formatPersonDirectedPaymentLabel } from '@/lib/loanPresentation';
 import type { PaymentAlertSource } from '@/lib/alerts';
-import { buildCreditLimitAlertTitle, buildLowFundsAlertTitle } from '@/lib/alertPresentation';
+import {
+  buildCreditLimitAlertTitle,
+  buildCreditLimitHeroProblemBody,
+  buildLowFundsAlertTitle,
+  formatAlertAccountIdentity,
+} from '@/lib/alertPresentation';
+import { CREDIT_LIMIT_MOCK_ALERT_NUMBERS } from '@/lib/resolveCreditLimitTimeline';
 import type { RecurringPayment, RecurringPaymentKind, SimulatedAccount, Transaction } from '@/types';
 
 type UpcomingPayment = {
@@ -31,49 +37,18 @@ type PaymentResolutionAccount = {
   creditLimit?: number;
 };
 
-const UPCOMING_PAYMENTS: UpcomingPayment[] = [
-  {
-    name: 'Netflix',
-    amount: 15.99,
-    account: 'Visa · 9104',
-    date: '2026-05-20',
-    recurring: true,
-    kind: 'payment',
-    accountId: '3',
-  },
-  {
-    name: 'Gym',
-    amount: 49.99,
-    account: 'Desjardins · 4521',
-    date: '2026-05-25',
-    recurring: true,
-    kind: 'payment',
-    accountId: '1',
-  },
-  {
-    name: 'Assurance auto',
-    amount: 180,
-    account: 'Desjardins · 4521',
-    date: '2026-05-28',
-    recurring: true,
-    kind: 'payment',
-    accountId: '1',
-  },
-  {
-    name: 'Loyer',
-    amount: 1200,
-    account: 'Desjardins · 4521',
-    date: '2026-06-01',
-    recurring: true,
-    kind: 'payment',
-    accountId: '1',
-  },
-];
-
-const MOCK_CREDIT_CARD_NAME = 'Visa · 4782';
-const MOCK_CREDIT_BALANCE_BEFORE = -4350;
-const MOCK_CREDIT_PAYMENT_AMOUNT = 450;
 const MOCK_CREDIT_PAYMENT_NAME = 'Abonnement cloud';
+
+function mockCreditCardDisplayName(): string {
+  const dashboardCredit = DASHBOARD_ACCOUNTS.find((account) => account.kind === 'credit');
+  if (!dashboardCredit) return 'Visa · 9104';
+  return formatAlertAccountIdentity({
+    name: dashboardCredit.name,
+    kind: dashboardCredit.kind,
+    last4: dashboardCredit.number,
+    institution: dashboardCredit.domain,
+  });
+}
 
 type CreditPaymentRisk =
   | { shouldWarn: false }
@@ -275,7 +250,8 @@ function getUpcomingPayments(
     })
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  return persisted.length ? persisted : isDemoSeedEnabled() ? UPCOMING_PAYMENTS : [];
+  // Never fall back to hardcoded mocks — an empty list after delete must stay empty.
+  return persisted;
 }
 
 export type BuildPaymentAlertsInput = {
@@ -308,6 +284,7 @@ export function buildPaymentAlertSources({
   let nextPaymentShortfall = 0;
   let showInsufficientFundsWarning = false;
   let creditRiskActive: Extract<CreditPaymentRisk, { shouldWarn: true }> | null = null;
+  let creditRiskCardName = '';
   let checkingFundsAlert: InsufficientFundsCheckingAlert | null = null;
 
   if (nextPayment) {
@@ -331,6 +308,7 @@ export function buildPaymentAlertSources({
         nextPayment = candidate;
         showInsufficientFundsWarning = true;
         creditRiskActive = risk;
+        creditRiskCardName = candidateAccount.name.trim() || candidate.account;
         checkingFundsAlert = null;
         break;
       }
@@ -368,9 +346,16 @@ export function buildPaymentAlertSources({
   const forecastShortfallMessage = (() => {
     if (!nextPayment) return '';
     if (creditRiskActive) {
-      return creditRiskActive.reason === 'over_limit'
-        ? `Le paiement de ${nextPaymentDisplayName} pourrait dépasser ta marge disponible. On peut l’ajuster avant l’échéance.`
-        : `Après ${nextPaymentDisplayName}, il resterait peu de marge sur ta carte. Garder un coussin te laisse plus de flexibilité.`;
+      const utilizationAfterPct = Math.min(
+        (creditRiskActive.usedAfter / creditRiskActive.creditLimit) * 100,
+        100,
+      );
+      return buildCreditLimitHeroProblemBody({
+        paymentAmount: nextPayment.amount,
+        utilizationAfterPct,
+        cardName: creditRiskCardName || nextPayment.account,
+        isOverLimit: creditRiskActive.reason === 'over_limit',
+      });
     }
     if (checkingFundsAlert || (!creditRiskActive && showInsufficientFundsWarning)) {
       const shortfall = checkingFundsAlert?.currentShortfall ?? nextPaymentShortfall;
@@ -387,11 +372,22 @@ export function buildPaymentAlertSources({
 
   if (nextPayment && showInsufficientFundsWarning && forecastShortfallMessage) {
     const kind = creditRiskActive ? ('credit_limit' as const) : ('low_funds' as const);
+    // over_limit → danger (rouge / déjà critique) ; sinon warning (jaune / à venir)
+    const severity =
+      creditRiskActive?.reason === 'over_limit' ? ('danger' as const) : ('warning' as const);
+    const creditUtilizationAfterPct = creditRiskActive
+      ? Math.min((creditRiskActive.usedAfter / creditRiskActive.creditLimit) * 100, 100)
+      : null;
     sources.push({
       id: 'live',
       kind,
+      severity,
       title: creditRiskActive
-        ? buildCreditLimitAlertTitle(nextPayment.name)
+        ? buildCreditLimitAlertTitle(
+            nextPayment.name,
+            creditUtilizationAfterPct,
+            creditRiskActive.reason === 'over_limit',
+          )
         : buildLowFundsAlertTitle(nextPayment.name),
       body: forecastShortfallMessage,
       dateLabel: formatShortDate(nextPaymentDate),
@@ -403,11 +399,20 @@ export function buildPaymentAlertSources({
   }
 
   if (includeMockCredit) {
+    const { creditLimit, balanceUsedBefore, paymentAmount } = CREDIT_LIMIT_MOCK_ALERT_NUMBERS;
+    const utilizationAfterPct = Math.min(
+      ((balanceUsedBefore + paymentAmount) / creditLimit) * 100,
+      100,
+    );
     sources.push({
       id: 'mock-credit',
       kind: 'credit_limit',
-      title: buildCreditLimitAlertTitle(MOCK_CREDIT_PAYMENT_NAME),
-      body: 'Après ce paiement, environ 96 % de ta limite serait utilisée. Tu as plusieurs façons de garder de la marge.',
+      title: buildCreditLimitAlertTitle(MOCK_CREDIT_PAYMENT_NAME, utilizationAfterPct),
+      body: buildCreditLimitHeroProblemBody({
+        paymentAmount,
+        utilizationAfterPct,
+        cardName: mockCreditCardDisplayName(),
+      }),
       dateLabel: formatShortDate(today),
       paymentDateRaw: today,
       accountId: undefined,
