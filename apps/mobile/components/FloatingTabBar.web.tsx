@@ -40,11 +40,12 @@ import {
   ROUTE_ICONS,
   ROUTE_LABELS,
   TabButton,
+  getFloatingTabBarIconColors,
   type HistoryAddTransactionType,
 } from '@/components/tabbar/floatingTabBarShared';
 import {
   SHOW_TRANSACTIONS_TAB_FABS,
-  TRANSACTIONS_FAB_ICON_COLOR_BLUR,
+  transactionsFabGlyphColor,
 } from '@/constants/fabStyles';
 import {
   FLOATING_FAB_SIZE,
@@ -109,10 +110,10 @@ function ensureWebTabBarCss() {
   document.head.appendChild(el);
 }
 
-export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
+export function FloatingTabBar({ state, navigation, insets: navInsets }: BottomTabBarProps) {
   const [isHistoryFabExpanded, setIsHistoryFabExpanded] = useState(false);
   const [isAgendaFabExpanded, setIsAgendaFabExpanded] = useState(false);
-  const insets = useSafeAreaInsets();
+  const safeInsets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
   const { colors, isLight } = useAppTheme();
@@ -130,7 +131,9 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     [isLight],
   );
 
-  const bottom = getFloatingTabBarBottomInset(insets.bottom);
+  const bottom = getFloatingTabBarBottomInset(
+    Math.max(navInsets?.bottom ?? 0, safeInsets.bottom),
+  );
   const activeRouteName = state.routes[state.index]?.name;
   const isAgendaTab = activeRouteName === 'goals';
   const isTransactionsTab = activeRouteName === 'transactions';
@@ -206,8 +209,8 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     router.push('/add-transaction');
   };
 
-  const navActiveColor = colors.text;
-  const navInactiveColor = colors.textMuted;
+  const { active: navActiveColor, inactive: navInactiveColor, activeWell: navActiveWell, activeIndicator: navActiveIndicator } =
+    getFloatingTabBarIconColors(colors, isLight);
 
   if (typeof document === 'undefined') {
     return null;
@@ -431,7 +434,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
               transition={{ type: 'timing', duration: 180 }}
               style={styles.addIconWrap}
             >
-              <PlusFabIcon size={24} color={TRANSACTIONS_FAB_ICON_COLOR_BLUR} />
+              <PlusFabIcon size={24} color={transactionsFabGlyphColor(colors)} />
             </MotiView>
           </GlassFab>
         ) : null}
@@ -476,6 +479,8 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
                   focused={focused}
                   iconName={iconName}
                   iconColor={iconColor}
+                  activeWellColor={navActiveWell}
+                  activeIndicatorColor={navActiveIndicator}
                   onPress={onPress}
                 />
               );

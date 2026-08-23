@@ -1,6 +1,8 @@
 /**
- * Shared floating action button — same dynamic blur material as the tab pill
- * (`TabBarDynamicBlur`: SemBlur / expo-blur / Expo Go tint), green-tinted glass.
+ * Shared floating action button — same live dynamic blur as the tab pill
+ * (`TabBarDynamicBlur`: SemBlur / expo-blur / Expo Go tint). No solid green plate —
+ * glass/blur shows through the circular disc; glyph uses theme text color.
+ * Subtle theme-aware hairline outline for edge readability over blur.
  * Android: elevation 0 so SemBlur can sample content behind the disc.
  */
 import type { ReactNode } from 'react';
@@ -29,7 +31,10 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   /** Disc diameter — defaults to Historique / Agenda primary FAB (54). */
   size?: number;
-  /** Green accent glass (default) or neutral liquid glass. */
+  /**
+   * Visual tone for rim/wash. Prefer `neutral` so blur shows through without a
+   * green fill disk; glyph color comes from children.
+   */
   tone?: 'accentGreen' | 'neutral';
 };
 
@@ -40,11 +45,14 @@ export function GlassFab({
   accessibilityState,
   style,
   size = TRANSACTIONS_FAB_SIZE,
-  tone = 'accentGreen',
+  tone = 'neutral',
 }: Props) {
-  const { isLight } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
   const cornerRadius = size / 2;
-  const blurTone = tone === 'accentGreen' ? 'accentGreen' : 'neutral';
+  // Theme border + soft light/dark rim so the circle stays readable over live blur.
+  const outlineColor = isLight
+    ? 'rgba(0, 0, 0, 0.14)'
+    : colors.containerBorder || 'rgba(255, 255, 255, 0.22)';
 
   return (
     <Pressable
@@ -61,10 +69,11 @@ export function GlassFab({
           borderRadius: cornerRadius,
           // SemBlur samples empty pixels if the disc is elevated offscreen.
           elevation: Platform.OS === 'android' ? 0 : TRANSACTIONS_FAB_GLOW_BLUR.elevation,
-          overflow: Platform.OS === 'android' ? 'visible' : 'hidden',
+          // Clip blur/tint to the circular disc — no square plate around the FAB.
+          overflow: 'hidden',
           ...(Platform.OS === 'ios'
             ? {
-                shadowColor: tone === 'accentGreen' ? '#22C55E' : '#000',
+                shadowColor: '#000',
                 shadowOffset: TRANSACTIONS_FAB_GLOW_BLUR.shadowOffset,
                 shadowOpacity: TRANSACTIONS_FAB_GLOW_BLUR.shadowOpacity,
                 shadowRadius: TRANSACTIONS_FAB_GLOW_BLUR.shadowRadius,
@@ -83,12 +92,30 @@ export function GlassFab({
           StyleSheet.absoluteFillObject,
           {
             borderRadius: cornerRadius,
-            overflow: Platform.OS === 'android' ? 'visible' : 'hidden',
+            overflow: 'hidden',
           },
         ]}
       >
-        <TabBarDynamicBlur isLight={isLight} cornerRadius={cornerRadius} tone={blurTone} />
+        <TabBarDynamicBlur
+          isLight={isLight}
+          cornerRadius={cornerRadius}
+          tone={tone}
+          // Same live SemBlur pipeline as the tab bar (coordinator batches waves).
+          live
+        />
       </View>
+      {/* Dedicated outline ring above blur — hairline stays crisp on Android. */}
+      <View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFillObject,
+          {
+            borderRadius: cornerRadius,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: outlineColor,
+          },
+        ]}
+      />
       <View pointerEvents="none" style={styles.content}>
         {children}
       </View>

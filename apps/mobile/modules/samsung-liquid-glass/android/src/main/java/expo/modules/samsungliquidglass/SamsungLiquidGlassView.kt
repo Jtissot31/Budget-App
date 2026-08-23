@@ -6,6 +6,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Outline
+import android.os.SystemClock
+import android.view.Choreographer
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver
@@ -13,20 +15,30 @@ import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 
 @SuppressLint("ViewConstructor")
-class SamsungLiquidGlassView(context: Context, appContext: AppContext) : ExpoView(context, appContext),
-  ViewTreeObserver.OnPreDrawListener {
+class SamsungLiquidGlassView(context: Context, appContext: AppContext) :
+  ExpoView(context, appContext), ViewTreeObserver.OnPreDrawListener {
   private var blurRadius: Int = 80
   private var overlayColor: Int = Color.argb(90, 12, 12, 14)
   private var cornerRadiusPx: Float = 999f
   internal var blurEnabled: Boolean = true
     private set
 
-  /** Live nav (~180ms via coordinator). FABs use a slower cadence to cut thrash. */
-  private var minRefreshMs: Long = 180L
+  /** Min gap between live samples (nav/FAB ~48ms). Coordinator floors waves separately. */
+  private var minRefreshMs: Long = 48L
+
+  /**
+   * When false, capture once (attach/layout) then keep that SemBlur frame.
+   * When true, a continuous Choreographer loop samples even when this view is not
+   * invalidated (scroll/Moti of content behind a fixed overlay).
+   */
+  private var liveCapture: Boolean = true
 
   private var lastBitmap: Bitmap? = null
   private var lastAppliedAt: Long = 0L
   private var captureRequested: Boolean = false
+  private var contentDirty: Boolean = true
+  private var consecutiveFailures: Int = 0
+  private var liveLoopPosted: Boolean = false
 
   /** Skip redundant OnViewDidUpdateProps → capture storms from RN re-renders. */
   private var lastAppliedRadius: Int = -1
@@ -34,7 +46,38 @@ class SamsungLiquidGlassView(context: Context, appContext: AppContext) : ExpoVie
   private var lastAppliedCorner: Float = -1f
   private var lastAppliedEnabled: Boolean? = null
   private var lastAppliedRefreshMs: Long = -1L
+  private var lastAppliedLive: Boolean? = null
   private var propsDirty: Boolean = true
+
+  private val choreographer = Choreographer.getInstance()
+
+  /**
+   * Continuous live sampler. PreDraw alone is insufficient: scrolling content behind
+   * a fixed glass overlay does not invalidate this view, so PreDraw never fires and
+   * a slow heartbeat felt like ~0.5s lag. This loop keeps sampling at [minRefreshMs].
+   */
+  private val liveLoop =
+    object : Choreographer.FrameCallback {
+      override fun doFrame(frameTimeNanos: Long) {
+        liveLoopPosted = false
+        if (!isAttachedToWindow || !blurEnabled || !liveCapture) return
+
+        if (!BlurCaptureCoordinator.isPaused()) {
+          val now = SystemClock.uptimeMillis()
+          val due =
+            lastBitmap == null ||
+              consecutiveFailures > 0 ||
+              now - lastAppliedAt >= minRefreshMs
+          if (due) {
+            // Content behind may have moved without dirtying this view.
+            contentDirty = true
+            BlurCaptureCoordinator.requestCapture(this@SamsungLiquidGlassView, force = false)
+          }
+        }
+
+        scheduleLiveLoop()
+      }
+    }
 
   init {
     setWillNotDraw(false)
@@ -88,10 +131,22 @@ class SamsungLiquidGlassView(context: Context, appContext: AppContext) : ExpoVie
   }
 
   fun setMinRefreshMs(ms: Int) {
-    val next = ms.toLong().coerceIn(80L, 5_000L)
+    val next = ms.toLong().coerceIn(32L, 5_000L)
     if (next != minRefreshMs) {
       minRefreshMs = next
       propsDirty = true
+    }
+  }
+
+  fun setLiveCapture(live: Boolean) {
+    if (live != liveCapture) {
+      liveCapture = live
+      propsDirty = true
+      if (live && isAttachedToWindow) {
+        scheduleLiveLoop()
+      } else if (!live) {
+        cancelLiveLoop()
+      }
     }
   }
 
@@ -112,12 +167,13 @@ class SamsungLiquidGlassView(context: Context, appContext: AppContext) : ExpoVie
     if (!ok) {
       setBackgroundColor(overlayColor)
     }
-    lastAppliedAt = System.currentTimeMillis()
+    lastAppliedAt = SystemClock.uptimeMillis()
     lastAppliedRadius = blurRadius
     lastAppliedOverlay = overlayColor
     lastAppliedCorner = cornerRadiusPx
     lastAppliedEnabled = blurEnabled
     lastAppliedRefreshMs = minRefreshMs
+    lastAppliedLive = liveCapture
     propsDirty = false
   }
 
@@ -128,17 +184,24 @@ class SamsungLiquidGlassView(context: Context, appContext: AppContext) : ExpoVie
       overlayColor == lastAppliedOverlay &&
       cornerRadiusPx == lastAppliedCorner &&
       blurEnabled == lastAppliedEnabled &&
-      minRefreshMs == lastAppliedRefreshMs
+      minRefreshMs == lastAppliedRefreshMs &&
+      liveCapture == lastAppliedLive
     ) {
       return
     }
     propsDirty = false
+    if (!liveCapture && lastBitmap != null) {
+      applyBlur(lastBitmap)
+      return
+    }
+    contentDirty = true
     scheduleApplyBlur(force = true)
   }
 
   fun scheduleApplyBlur(force: Boolean = false) {
     post {
       if (isAttachedToWindow) {
+        contentDirty = true
         BlurCaptureCoordinator.requestCapture(this, force = force)
       }
     }
@@ -150,6 +213,8 @@ class SamsungLiquidGlassView(context: Context, appContext: AppContext) : ExpoVie
 
   internal fun lastBitmapOrNull(): Bitmap? = lastBitmap
 
+  internal fun allowsLiveCapture(): Boolean = liveCapture
+
   internal fun markCaptureRequested() {
     captureRequested = true
   }
@@ -160,24 +225,44 @@ class SamsungLiquidGlassView(context: Context, appContext: AppContext) : ExpoVie
 
   internal fun hasCaptureRequest(): Boolean = captureRequested
 
-  internal fun shouldRefresh(now: Long): Boolean {
-    if (!blurEnabled) return false
-    if (lastBitmap == null) return true
-    return now - lastAppliedAt >= minRefreshMs
-  }
-
   internal fun consumeCapturedBitmap(bitmap: Bitmap) {
     lastBitmap?.recycle()
     lastBitmap = bitmap
+    contentDirty = false
     applyBlur(bitmap)
   }
 
+  internal fun noteCaptureAttempt(success: Boolean) {
+    if (success) {
+      consecutiveFailures = 0
+    } else {
+      consecutiveFailures = (consecutiveFailures + 1).coerceAtMost(8)
+      contentDirty = true
+    }
+  }
+
+  /**
+   * Marks content dirty when this view itself redraws. Primary live path is [liveLoop]
+   * (scroll behind fixed chrome does not trigger PreDraw here).
+   */
   override fun onPreDraw(): Boolean {
-    if (!isAttachedToWindow || !blurEnabled) return true
-    val now = System.currentTimeMillis()
-    if (now - lastAppliedAt < minRefreshMs) return true
-    BlurCaptureCoordinator.requestCapture(this, force = false)
+    if (!isAttachedToWindow || !blurEnabled || !liveCapture) return true
+    contentDirty = true
     return true
+  }
+
+  private fun scheduleLiveLoop() {
+    if (!liveCapture || !isAttachedToWindow || !blurEnabled) return
+    if (liveLoopPosted) return
+    liveLoopPosted = true
+    // Delay by refresh window so we do not request every vsync (~16ms) and thrash.
+    choreographer.postFrameCallbackDelayed(liveLoop, minRefreshMs)
+  }
+
+  private fun cancelLiveLoop() {
+    if (!liveLoopPosted) return
+    choreographer.removeFrameCallback(liveLoop)
+    liveLoopPosted = false
   }
 
   override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
@@ -200,10 +285,13 @@ class SamsungLiquidGlassView(context: Context, appContext: AppContext) : ExpoVie
     super.onAttachedToWindow()
     BlurCaptureCoordinator.register(this)
     viewTreeObserver.addOnPreDrawListener(this)
+    contentDirty = true
     scheduleApplyBlur(force = true)
+    scheduleLiveLoop()
   }
 
   override fun onDetachedFromWindow() {
+    cancelLiveLoop()
     try {
       viewTreeObserver.removeOnPreDrawListener(this)
     } catch (_: Throwable) {

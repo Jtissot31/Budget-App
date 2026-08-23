@@ -69,7 +69,7 @@ import {
 } from '@/lib/getAutomaticGoalIcon';
 import {
   computeGoalCashflowProjection,
-  formatGoalDuration,
+  formatGoalDurationAtPace,
   type GoalProjection,
 } from '@/lib/goalProjection';
 import { formatDisplayMoneyAbsolute, formatSignedDisplayMoney } from '@/lib/formatDisplayMoney';
@@ -607,7 +607,10 @@ function GoalProjectionCard({ projection }: { projection: GoalProjection }) {
         monetary
       />
       {projection.weeksToGoal != null ? (
-        <ProjectionRow label="Durée au rythme choisi" value={formatGoalDuration(projection.weeksToGoal)} />
+        <ProjectionRow
+          label="Durée à ce rythme"
+          value={formatGoalDurationAtPace(projection.weeksToGoal * 7)}
+        />
       ) : null}
       {projection.requiredWeekly != null ? (
         <ProjectionRow

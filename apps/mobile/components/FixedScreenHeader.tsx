@@ -3,14 +3,34 @@
  *
  * Layout rule: render OUTSIDE ScrollView / FlatList. Only body content scrolls.
  * Do not place this inside scroll content or use stickyHeaderIndices.
+ *
+ * ```tsx
+ * <View style={fixedHeaderScreenStyle}>
+ *   <FixedScreenHeader ... />
+ *   <ScrollView style={fixedHeaderScrollStyle}>…</ScrollView>
+ * </View>
+ * ```
  */
 import { type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { jakartaExtraBoldText, spacing, typography } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
+
+/** Outer column shell — pair with `fixedHeaderScrollStyle` on the scroller. */
+export const fixedHeaderScreenStyle: ViewStyle = { flex: 1 };
+
+/** ScrollView / FlatList body — constrains scroll to space below the header. */
+export const fixedHeaderScrollStyle: ViewStyle = { flex: 1 };
 
 type Props = {
   title: string;
@@ -38,7 +58,10 @@ export function FixedScreenHeader({
     <View
       style={[
         styles.topBar,
-        { paddingTop: insets.top + SCREEN_TOP_GUTTER + extraTopPadding },
+        {
+          paddingTop: insets.top + SCREEN_TOP_GUTTER + extraTopPadding,
+          backgroundColor: colors.background,
+        },
         style,
       ]}
     >
@@ -66,6 +89,7 @@ export function FixedScreenHeader({
 const styles = StyleSheet.create({
   topBar: {
     flexShrink: 0,
+    zIndex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

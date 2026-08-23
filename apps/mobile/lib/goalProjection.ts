@@ -150,22 +150,21 @@ export function getGoalProjection(
   };
 }
 
-export function formatGoalDuration(weeks: number) {
-  if (weeks < 4) return `${weeks} sem.`;
+/** Single-unit French duration at the chosen savings pace (days input). */
+export function formatGoalDurationAtPace(days: number): string {
+  const totalDays = Math.max(0, Math.ceil(days));
 
-  const totalDays = weeks * 7;
-  const months = Math.floor(totalDays / 30);
-  const days = totalDays % 30;
-  const parts: string[] = [];
-
-  if (months > 0) {
-    parts.push(`${months} mois`);
-  }
-  if (days > 0) {
-    parts.push(`${days} jour${days > 1 ? 's' : ''}`);
+  if (totalDays < 7) {
+    return `${totalDays} ${totalDays <= 1 ? 'jour' : 'jours'}`;
   }
 
-  return parts.length > 0 ? parts.join(' ') : `${weeks} sem.`;
+  if (totalDays < 28) {
+    const weeks = Math.round(totalDays / 7);
+    return `${weeks} ${weeks <= 1 ? 'semaine' : 'semaines'}`;
+  }
+
+  const months = Math.max(1, Math.round(totalDays / 30));
+  return `${months} mois`;
 }
 
 export function formatGoalProjectionPercent(value: number) {

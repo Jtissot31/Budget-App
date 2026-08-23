@@ -1,4 +1,5 @@
 import type { ViewStyle } from 'react-native';
+import type { AppColors } from '@/constants/theme';
 
 /** Green + button and speed-dial menus on Transactions (Historique / Agenda). */
 export const SHOW_TRANSACTIONS_TAB_FABS = true;
@@ -67,7 +68,6 @@ export function transactionsSolidFabHaloStyle(fillColor: string): ViewStyle {
 
 /**
  * Glass FAB chrome — blur via `TabBarDynamicBlur` / `GlassFab`.
- * Keep + glyph dark so it stays readable on green-tinted glass.
  */
 export const TRANSACTIONS_FAB_BLUR_BORDER = 'rgba(255, 255, 255, 0.28)';
 
@@ -91,5 +91,13 @@ export const TRANSACTIONS_FAB_STYLE_BLUR: ViewStyle = {
   ...TRANSACTIONS_FAB_GLOW_BLUR,
 };
 
-/** Dark + on green glass (same as solid-era glyph — not white). */
+/**
+ * + / cross glyph on glass FABs — theme text (dark → white, light → black).
+ * Prefer this over the legacy constant.
+ */
+export function transactionsFabGlyphColor(colors: AppColors): string {
+  return colors.text;
+}
+
+/** @deprecated Use {@link transactionsFabGlyphColor} with `useAppTheme().colors`. */
 export const TRANSACTIONS_FAB_ICON_COLOR_BLUR = '#000000';

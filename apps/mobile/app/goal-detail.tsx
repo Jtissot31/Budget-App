@@ -22,11 +22,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 
-import { DetailSingleLineRow, type DetailSection } from '@/components/DetailSectionRows';
+import { DetailSectionsList, type DetailSection } from '@/components/DetailSectionRows';
 
-import { FixedScreenHeader } from '@/components/FixedScreenHeader';
+import {
+  FixedScreenHeader,
+  fixedHeaderScrollStyle,
+  fixedHeaderScreenStyle,
+} from '@/components/FixedScreenHeader';
 
-import { SurfaceCard } from '@/components/SurfaceCard';
+import { OnyxContainer } from '@/components/OnyxContainer';
 
 import { GoalProgressChart } from '@/components/GoalProgressChart';
 import { SavingsGoalDetailGamification } from '@/components/goals/SavingsGoalDetailGamification';
@@ -38,15 +42,11 @@ import { PageTransition } from '@/components/PageTransition';
 
 
 
+import { ONYX_CONTAINER } from '@/constants/planFinanceKit';
+
 import {
 
   accountDetailSectionDividerStyle,
-
-  detailSectionFootnoteStyle,
-
-  detailSectionLabelStyle,
-
-  detailSectionsCardStyle,
 
   spacing,
 
@@ -78,10 +78,7 @@ import {
 
 import { dataEvents } from '@/lib/events';
 
-import {
-  EMPTY_DETAIL_VALUE,
-  formatDetailWeeklyAmount,
-} from '@/lib/detailDisplay';
+import { EMPTY_DETAIL_VALUE } from '@/lib/detailDisplay';
 import {
   fromWeeklyContributionAmount,
   savingsGoalContributionFrequencyLabel,
@@ -94,7 +91,7 @@ import type { FormFeedback } from '@/lib/formFeedback';
 
 import {
 
-  formatGoalDuration,
+  formatGoalDurationAtPace,
 
   formatGoalProjectionPercent,
 
@@ -188,6 +185,28 @@ function buildGoalDetailSections(
 
     },
 
+  ];
+
+
+
+  if (projection) {
+
+    objectifRows.push({
+
+      label: 'Progression',
+
+      value: formatGoalProjectionPercent(projection.progress),
+
+      icon: 'pie-chart-outline',
+
+    });
+
+  }
+
+
+
+  objectifRows.push(
+
     {
 
       label: 'Montant restant',
@@ -212,6 +231,44 @@ function buildGoalDetailSections(
 
     },
 
+  );
+
+
+
+  if (projection?.weeksToGoal != null) {
+
+    objectifRows.push({
+
+      label: 'Durée à ce rythme',
+
+      value: formatGoalDurationAtPace(projection.weeksToGoal * 7),
+
+      icon: 'time-outline',
+
+    });
+
+  }
+
+
+
+  if (projection?.budgetUseRatio != null && projection.monthlyContribution > 0) {
+
+    objectifRows.push({
+
+      label: 'Part du budget',
+
+      value: formatGoalProjectionPercent(projection.budgetUseRatio),
+
+      icon: 'stats-chart-outline',
+
+    });
+
+  }
+
+
+
+  objectifRows.push(
+
     {
 
       label: 'Date cible',
@@ -232,149 +289,11 @@ function buildGoalDetailSections(
 
     },
 
-  ];
+  );
 
 
 
-  const sections: DetailSection[] = [{ title: 'Objectif', rows: objectifRows }];
-
-
-
-  if (projection) {
-
-    const projectionRows: DetailSection['rows'] = [
-
-      {
-
-        label: 'Progression',
-
-        value: formatGoalProjectionPercent(projection.progress),
-
-        icon: 'pie-chart-outline',
-
-      },
-
-      {
-
-        label: 'Reste à épargner',
-
-        value: formatMoney(projection.remaining),
-
-        icon: 'wallet-outline',
-
-      },
-
-    ];
-
-
-
-    if (projection.weeksToGoal != null) {
-
-      projectionRows.push({
-
-        label: 'Durée au rythme choisi',
-
-        value: formatGoalDuration(projection.weeksToGoal),
-
-        icon: 'time-outline',
-
-      });
-
-    }
-
-    if (projection.requiredWeekly != null) {
-
-      projectionRows.push({
-
-        label: 'Requis par semaine',
-
-        value: formatDetailWeeklyAmount(projection.requiredWeekly),
-
-        icon: 'cash-outline',
-
-      });
-
-    }
-
-    if (projection.targetDate != null) {
-
-      projectionRows.push({
-
-        label: "Date estimée d'atteinte",
-
-        value: projection.targetDate,
-
-        icon: 'calendar-outline',
-
-      });
-
-    }
-
-    if (projection.monthlyContribution > 0) {
-
-      projectionRows.push({
-
-        label: 'Montant par mois',
-
-        value: formatMoney(projection.monthlyContribution),
-
-        icon: 'calendar-outline',
-
-      });
-
-    }
-
-    if (projection.budgetUseRatio != null && projection.monthlyContribution > 0) {
-
-      projectionRows.push({
-
-        label: 'Part du budget',
-
-        value: formatGoalProjectionPercent(projection.budgetUseRatio),
-
-        icon: 'stats-chart-outline',
-
-      });
-
-    }
-
-    if (projection.weeklyObligationsTotal > 0) {
-
-      projectionRows.push({
-
-        label: 'Obligations + objectif / semaine',
-
-        value: formatDetailWeeklyAmount(projection.weeklyObligationsTotal),
-
-        icon: 'list-outline',
-
-      });
-
-    }
-
-    if (projection.cashflowImpactWeekly != null) {
-
-      projectionRows.push({
-
-        label: 'Impact sur le cashflow',
-
-        value: `${formatSignedDisplayMoney(projection.cashflowImpactWeekly)} / sem`,
-
-        icon: 'water-outline',
-
-      });
-
-    }
-
-
-
-    sections.push({ title: 'Projection', rows: projectionRows });
-
-  }
-
-
-
-  return sections;
+  return [{ title: 'Objectif', rows: objectifRows }];
 
 }
 
@@ -608,34 +527,6 @@ export default function GoalDetailScreen() {
 
 
 
-  const detailFootnote = useMemo(() => {
-
-    if (projection?.hint) return projection.hint;
-
-    if (plannedDates) {
-
-      return `Fin estimée · ${plannedDates}`;
-
-    }
-
-    if (!goal?.weeklyContribution) {
-
-      return 'Projection disponible lorsque le rythme hebdomadaire est renseigné.';
-
-    }
-
-    return null;
-
-  }, [goal?.weeklyContribution, plannedDates, projection?.hint]);
-
-
-
-
-
-
-
-
-
   const openEditForm = useCallback(() => {
 
     if (!goal) return;
@@ -720,35 +611,13 @@ export default function GoalDetailScreen() {
 
 
 
-  const collapseSearch = useCallback(() => {
-
-    setSearch('');
-
-    setSearchExpanded(false);
-
-    searchInputRef.current?.blur();
-
-  }, []);
-
-
-
-  const expandSearch = useCallback(() => {
-
-    tapHaptic();
-
-    setSearchExpanded(true);
-
-  }, []);
-
-
-
   const displayTitle = goal?.name ?? 'Objectif';
 
   return (
 
     <PageTransition>
 
-      <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <View style={[fixedHeaderScreenStyle, styles.screen, { backgroundColor: colors.background }]}>
 
         <FixedScreenHeader
           title={displayTitle}
@@ -778,6 +647,7 @@ export default function GoalDetailScreen() {
 
         <ScrollView
           ref={scrollRef}
+          style={fixedHeaderScrollStyle}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom + spacing.xl, 56) }]}
           refreshControl={
@@ -834,59 +704,15 @@ export default function GoalDetailScreen() {
 
               <View style={styles.detailsSectionsStack}>
 
-                {detailSections.map((section, sectionIndex) => (
-
-                  <SurfaceCard
-
-                    key={section.title}
-
-                    style={detailSectionsCardStyle()}
-
-                    padding={spacing.xl}
-
-                  >
-
-                    <Text style={[detailSectionLabelStyle(), { color: colors.text }]}>
-
-                      {section.title}
-
-                    </Text>
-
-                    <View style={[styles.detailSectionRows, { borderTopColor: colors.border }]}>
-
-                      {section.rows.map((row, rowIndex) => (
-
-                        <DetailSingleLineRow
-
-                          key={row.label}
-
-                          row={row}
-
-                          colors={colors}
-
-                          isLast={rowIndex === section.rows.length - 1}
-
-                          rowPaddingVertical={spacing.md}
-
-                        />
-
-                      ))}
-
-                    </View>
-
-                    {sectionIndex === detailSections.length - 1 && detailFootnote ? (
-
-                      <Text style={[detailSectionFootnoteStyle(), { color: colors.textMuted }]}>
-
-                        {detailFootnote}
-
-                      </Text>
-
-                    ) : null}
-
-                  </SurfaceCard>
-
-                ))}
+                {detailSections.length > 0 ? (
+                  <OnyxContainer style={[styles.detailsCard, { padding: ONYX_CONTAINER.padding.card }]}>
+                    <DetailSectionsList
+                      sections={detailSections}
+                      colors={colors}
+                      rowPaddingVertical={spacing.md}
+                    />
+                  </OnyxContainer>
+                ) : null}
 
               </View>
 
@@ -994,9 +820,9 @@ const styles = StyleSheet.create({
 
   },
 
-  detailSectionRows: {
+  detailsCard: {
 
-    borderTopWidth: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
 
   },
 

@@ -17,7 +17,6 @@ import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg'
 import { COLORS } from '@/constants/design-tokens';
 import {
   moneyAmountTypography,
-  PAGE_PADDING_HORIZONTAL,
   spacing,
   typographyKit,
 } from '@/constants/theme';
@@ -452,7 +451,6 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     gap: 4,
   },
   primaryAmount: {

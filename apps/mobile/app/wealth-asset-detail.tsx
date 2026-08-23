@@ -12,7 +12,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { DetailSectionsCard } from '@/components/DetailSectionRows';
-import { FixedScreenHeader } from '@/components/FixedScreenHeader';
+import {
+  FixedScreenHeader,
+  fixedHeaderScrollStyle,
+  fixedHeaderScreenStyle,
+} from '@/components/FixedScreenHeader';
 import { GlassContainer } from '@/components/GlassContainer';
 import { OverflowMenuButton } from '@/components/OverflowMenuButton';
 import { PageTransition } from '@/components/PageTransition';
@@ -410,7 +414,7 @@ export default function WealthAssetDetailScreen() {
 
   return (
     <PageTransition>
-      <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <View style={[fixedHeaderScreenStyle, styles.screen, { backgroundColor: colors.background }]}>
         <FixedScreenHeader
           title={displayTitle}
           onBack={() => router.back()}
@@ -439,6 +443,7 @@ export default function WealthAssetDetailScreen() {
 
         <ScrollView
           ref={scrollRef}
+          style={fixedHeaderScrollStyle}
           showsVerticalScrollIndicator={false}
           onScrollBeginDrag={dismissChartCursor}
           contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom + spacing.xl, 56) }]}

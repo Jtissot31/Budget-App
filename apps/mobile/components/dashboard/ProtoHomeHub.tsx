@@ -33,6 +33,7 @@ import {
   FLOATING_NAV_CONTENT_PADDING,
   moneyAmountTypography,
   PAGE_PADDING_HORIZONTAL,
+  spacing,
   typographyKit,
 } from '@/constants/theme';
 import { useAlertCenter } from '@/hooks/useAlertCenter';
@@ -286,22 +287,24 @@ export function ProtoHomeHub() {
                 value={isLight}
                 onValueChange={onThemeSwitch}
                 trackOnColor={
-                  isLight ? 'rgba(0, 0, 0, 0.18)' : 'rgba(255, 255, 255, 0.28)'
+                  isLight ? 'rgba(0, 0, 0, 0.32)' : 'rgba(255, 255, 255, 0.28)'
                 }
                 leftIcon={
                   <AppIcon
                     family="ionicons"
                     name="sunny-outline"
-                    size={12}
-                    color={isLight ? '#FBBF24' : colors.textMuted}
+                    size={16}
+                    strokeWidth={3}
+                    color={isLight ? '#C2410C' : colors.warning}
                   />
                 }
                 rightIcon={
                   <AppIcon
                     family="ionicons"
                     name="moon-outline"
-                    size={12}
-                    color={isLight ? colors.textMuted : colors.textSecondary}
+                    size={16}
+                    strokeWidth={3}
+                    color={isLight ? colors.textMuted : colors.purple}
                   />
                 }
                 accessibilityLabel={
@@ -588,6 +591,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     width: '100%',
+    marginTop: spacing.sm,
   },
   heroEyebrow: {
     ...typographyKit.metaMedium,

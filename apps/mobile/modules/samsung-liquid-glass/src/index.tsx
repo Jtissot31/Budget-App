@@ -10,15 +10,21 @@ type SamsungLiquidGlassProps = {
   cornerRadius?: number;
   enabled?: boolean;
   /**
-   * Min ms between live PixelCopy refreshes for this view.
-   * Nav pill ~140; FABs ~450 (shared coordinator wave is still ≥140ms).
+   * Min ms between live samples for this view (nav/FAB ~48).
+   * Ignored when `live={false}` after the first successful sample.
    */
   minRefreshMs?: number;
+  /**
+   * `true` (default): continuous Choreographer sampler (scroll-synced glass).
+   * `false`: capture once (attach/layout) then freeze.
+   */
+  live?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
 type SamsungLiquidGlassModule = {
   isSupported?: () => boolean;
+  setCapturesPaused?: (paused: boolean) => void;
 };
 
 let NativeView: React.ComponentType<SamsungLiquidGlassProps> | null = null;
@@ -67,6 +73,16 @@ export function isSamsungLiquidGlassSupported(): boolean {
     // Native probe failed — still mount the view; apply() is a no-op off Samsung.
   }
   return true;
+}
+
+/** Pause/resume all SemBlur samples (call around scroll gestures if needed). */
+export function setSamsungLiquidGlassCapturesPaused(paused: boolean): void {
+  if (!isSamsungLiquidGlassAvailable()) return;
+  try {
+    NativeModule?.setCapturesPaused?.(paused);
+  } catch {
+    // ignore
+  }
 }
 
 export function SamsungLiquidGlassView(props: SamsungLiquidGlassProps) {

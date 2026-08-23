@@ -34,7 +34,11 @@ import { AccountDetailHeroCard } from '@/components/wallet/AccountCardPrototypes
 import { IconPickerSheet } from '@/components/IconPickerSheet';
 import { MdiIcon } from '@/components/MdiIcon';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
-import { FixedScreenHeader } from '@/components/FixedScreenHeader';
+import {
+  FixedScreenHeader,
+  fixedHeaderScrollStyle,
+  fixedHeaderScreenStyle,
+} from '@/components/FixedScreenHeader';
 import { OverflowMenuButton } from '@/components/OverflowMenuButton';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
@@ -609,7 +613,7 @@ export default function AccountDetailScreen() {
 
   return (
     <PageTransition animate={false}>
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+    <View style={[fixedHeaderScreenStyle, styles.screen, { backgroundColor: colors.background }]}>
       <FixedScreenHeader
         title={account?.name ?? 'Compte'}
         onBack={() => router.back()}
@@ -646,6 +650,7 @@ export default function AccountDetailScreen() {
 
       <ScrollView
         ref={scrollRef}
+        style={fixedHeaderScrollStyle}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.content,

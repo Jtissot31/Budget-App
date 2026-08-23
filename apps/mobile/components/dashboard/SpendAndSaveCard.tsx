@@ -1,5 +1,5 @@
 /**
- * Dépenses et épargne — month-to-date spend + dual-tone sparkline + budget remainder.
+ * Dépenses et épargne — month-to-date spend + dual-tone sparkline + vs prior month.
  * Shown prominently on the Transactions tab (moved from Accueil).
  */
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
@@ -12,16 +12,30 @@ import { moneyAmountTypography, typographyKit } from '@/constants/theme';
 import { startOfMonth } from '@/lib/budgetMonth';
 import {
   buildMonthSpendSummary,
+  buildPriorMonthSpendSeriesAligned,
   monthSpendActiveIndex,
   monthSpendQueryLowerBound,
+  previousCalendarMonth,
 } from '@/lib/buildMonthSpendSeries';
 import { ensureDbReady } from '@/lib/init';
-import { getDashboard, getTransactionsSince } from '@/lib/db';
+import { getTransactionsSince } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
+
+/** French footer: MTD spend vs same day-of-month in the previous calendar month. */
+export function spendVsPreviousMonthFooter(currentTotal: number, priorAlignedTotal: number): string {
+  const delta = currentTotal - priorAlignedTotal;
+  if (Math.abs(delta) < 0.005) {
+    return 'autant dépensé que le mois précédent';
+  }
+  const amount = formatDisplayMoneyAbsolute(Math.abs(delta));
+  return delta > 0
+    ? `${amount} dépensé de plus que le mois précédent`
+    : `${amount} dépensé de moins que le mois précédent`;
+}
 
 const SPARK_H = 36;
 const ENDPOINT_R = 2.5;
@@ -115,22 +129,24 @@ export function SpendAndSaveCard() {
   const router = useRouter();
   const { colors } = useAppTheme();
   const [spentMonth, setSpentMonth] = useState(0);
-  const [budgetLimit, setBudgetLimit] = useState(0);
+  const [spendVsPriorFooter, setSpendVsPriorFooter] = useState(
+    'autant dépensé que le mois précédent',
+  );
   const [spendSeries, setSpendSeries] = useState<number[]>([]);
   const [cardWidth, setCardWidth] = useState(0);
 
   const load = useCallback(async () => {
     await ensureDbReady();
     const month = startOfMonth(new Date());
-    const [dashboard, monthTx] = await Promise.all([
-      getDashboard(),
-      getTransactionsSince(monthSpendQueryLowerBound(month)),
-    ]);
+    const priorMonth = previousCalendarMonth(month);
+    const monthTx = await getTransactionsSince(monthSpendQueryLowerBound(priorMonth));
 
-    const { series, total } = buildMonthSpendSummary(monthTx, month);
+    const { series, total, activeIndex } = buildMonthSpendSummary(monthTx, month);
+    const priorAligned = buildPriorMonthSpendSeriesAligned(monthTx, month, series.length);
+    const priorAtSameDay = priorAligned[activeIndex] ?? 0;
 
     setSpentMonth(total);
-    setBudgetLimit(dashboard.monthlyBudgetLimit ?? 0);
+    setSpendVsPriorFooter(spendVsPreviousMonthFooter(total, priorAtSameDay));
     setSpendSeries(series);
   }, []);
 
@@ -143,18 +159,9 @@ export function SpendAndSaveCard() {
 
   useRefreshOnFocus(load, { minIntervalMs: 5_000 });
 
-  const remaining = budgetLimit - spentMonth;
   const todayIdx = useMemo(() => monthSpendActiveIndex(startOfMonth(new Date())), []);
   const monthLabel = useMemo(() => monthLabelFr(), []);
   const spentLabel = formatDisplayMoneyAbsolute(spentMonth);
-  // Headline is the month-to-date spend (same figure as Analyse dépenses); the budget
-  // remainder lives in the footer so the two lines can never read as the same metric.
-  const spendFooter =
-    budgetLimit <= 0
-      ? `dépensé en ${monthLabel}`
-      : remaining >= 0
-        ? `${formatDisplayMoneyAbsolute(remaining)} restants en ${monthLabel}`
-        : `${formatDisplayMoneyAbsolute(Math.abs(remaining))} au-dessus du budget`;
 
   const sparkBlue = COLORS.dark.blue;
   const sparkMuted = colors.borderStrong;
@@ -169,7 +176,7 @@ export function SpendAndSaveCard() {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Dépenses et épargne, ${spentLabel} dépensé en ${monthLabel}, ouvrir les analyses`}
+      accessibilityLabel={`Dépenses et épargne, ${spentLabel} dépensé en ${monthLabel}, ${spendVsPriorFooter}, ouvrir les analyses`}
       onPress={() => {
         tapHaptic();
         router.push('/transactions-insights');
@@ -206,8 +213,8 @@ export function SpendAndSaveCard() {
             <View style={{ height: SPARK_H }} />
           )}
         </View>
-        <Text style={[styles.footer, { color: colors.textMuted }]} numberOfLines={1}>
-          {spendFooter}
+        <Text style={[styles.footer, { color: colors.textMuted }]} numberOfLines={2}>
+          {spendVsPriorFooter}
         </Text>
       </ProtoGlassCard>
     </Pressable>

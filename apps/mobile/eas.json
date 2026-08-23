@@ -9,7 +9,7 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk",
-        "gradleCommand": ":app:assembleDebug"
+        "gradleCommand": ":app:assembleDebug --no-configure-on-demand"
       },
       "env": {
         "EXPO_PUBLIC_SEED_DEMO": "0",
@@ -19,7 +19,8 @@
     "preview": {
       "distribution": "internal",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease --no-configure-on-demand"
       },
       "env": {
         "EXPO_PUBLIC_SEED_DEMO": "0",
@@ -28,7 +29,8 @@
     },
     "production": {
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "app-bundle",
+        "gradleCommand": ":app:bundleRelease --no-configure-on-demand"
       },
       "env": {
         "EXPO_PUBLIC_SEED_DEMO": "0",

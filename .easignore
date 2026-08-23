@@ -20,6 +20,13 @@ apps/mobile/dist/
 apps/mobile/dist/**
 *.apk
 
+# Native Gradle caches (Windows paths break EAS Linux → "No variants exist")
+apps/mobile/android/.gradle/
+apps/mobile/android/build/
+apps/mobile/android/app/build/
+apps/mobile/modules/**/android/build/
+apps/mobile/modules/**/android/.gradle/
+
 # Agent / scratch
 apps/mobile/.agent-tmp/
 apps/mobile/.agent-tmp-export/

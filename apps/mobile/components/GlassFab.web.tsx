@@ -1,5 +1,6 @@
 /**
  * Web GlassFab — CSS backdrop-filter (same language as FloatingTabBar.web pill).
+ * Default neutral glass — no solid green fill disk.
  */
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
@@ -15,7 +16,7 @@ import { TRANSACTIONS_FAB_SIZE } from '@/constants/fabStyles';
 import { floatingGlassButtonPressed } from '@/constants/floatingGlassButton';
 import { useAppTheme } from '@/lib/themeContext';
 
-const STYLE_ID = 'fyn-glass-fab-web-v1';
+const STYLE_ID = 'fyn-glass-fab-web-v2';
 
 function ensureGlassFabCss() {
   if (typeof document === 'undefined') return;
@@ -30,32 +31,34 @@ function ensureGlassFabCss() {
       border-width: 1px;
       backdrop-filter: blur(56px) saturate(1.7);
       -webkit-backdrop-filter: blur(56px) saturate(1.7);
-      box-shadow:
-        0 8px 24px rgba(0, 0, 0, 0.35),
-        0 0 20px rgba(34, 197, 94, 0.28),
-        inset 0 0.5px 0 rgba(255, 255, 255, 0.22);
       display: flex;
       align-items: center;
       justify-content: center;
     }
     .fyn-glass-fab--green-dark {
-      background: rgba(34, 197, 94, 0.38);
+      background: rgba(34, 197, 94, 0.08);
       border-color: rgba(255, 255, 255, 0.28);
+      box-shadow:
+        0 8px 24px rgba(0, 0, 0, 0.35),
+        inset 0 0.5px 0 rgba(255, 255, 255, 0.22);
     }
     .fyn-glass-fab--green-light {
-      background: rgba(34, 197, 94, 0.42);
+      background: rgba(34, 197, 94, 0.1);
       border-color: rgba(255, 255, 255, 0.5);
+      box-shadow:
+        0 8px 24px rgba(0, 0, 0, 0.18),
+        inset 0 0.5px 0 rgba(255, 255, 255, 0.35);
     }
     .fyn-glass-fab--neutral-dark {
       background: rgba(12, 12, 14, 0.18);
-      border-color: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.22);
       box-shadow:
         0 8px 24px rgba(0, 0, 0, 0.35),
         inset 0 0.5px 0 rgba(255, 255, 255, 0.18);
     }
     .fyn-glass-fab--neutral-light {
       background: rgba(255, 255, 255, 0.22);
-      border-color: rgba(255, 255, 255, 0.4);
+      border-color: rgba(0, 0, 0, 0.14);
       box-shadow:
         0 8px 24px rgba(0, 0, 0, 0.18),
         inset 0 0.5px 0 rgba(255, 255, 255, 0.35);
@@ -81,7 +84,7 @@ export function GlassFab({
   accessibilityState,
   style,
   size = TRANSACTIONS_FAB_SIZE,
-  tone = 'accentGreen',
+  tone = 'neutral',
 }: Props) {
   const { isLight } = useAppTheme();
   const cornerRadius = size / 2;

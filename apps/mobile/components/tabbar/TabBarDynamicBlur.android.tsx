@@ -13,20 +13,21 @@ type Props = {
   isLight: boolean;
   cornerRadius: number;
   style?: StyleProp<ViewStyle>;
-  /** Default `neutral` (nav pill). `accentGreen` = translucent green glass FABs. */
+  /** Default `neutral` (nav + FABs). `accentGreen` kept for rare tinted glass. */
   tone?: DynamicBlurTone;
   /**
-   * SemBlur PixelCopy cadence. Nav stays live; FABs use a slower refresh so
-   * multiple glass surfaces do not fight for hide→PixelCopy→show waves.
+   * Live SemBlur sample cadence. Default ~48ms (coordinator floors waves ~32ms).
    */
   minRefreshMs?: number;
+  /**
+   * Live updating blur (nav + FABs). Coordinator batches all live views in one wave.
+   */
+  live?: boolean;
 };
 
 const SAMSUNG_RADIUS = 90;
-/** Live scroll-following blur for the floating tab pill. */
-const NAV_REFRESH_MS = 180;
-/** Slower FAB refresh — cuts flicker when stacked with the nav SemBlur. */
-const FAB_REFRESH_MS = 500;
+/** Live sample cadence — continuous native loop + region capture. */
+const LIVE_REFRESH_MS = 48;
 
 function rgbaToHexOverlay(r: number, g: number, b: number, a: number): string {
   const toHex = (n: number) => Math.round(n).toString(16).padStart(2, '0');
@@ -58,6 +59,7 @@ function TabBarDynamicBlurImpl({
   style,
   tone = 'neutral',
   minRefreshMs,
+  live = true,
 }: Props) {
   const [useSamsung, setUseSamsung] = useState(shouldUseSamsungBlur);
   useEffect(() => {
@@ -65,9 +67,11 @@ function TabBarDynamicBlurImpl({
   }, []);
 
   const accent = tone === 'accentGreen';
-  const refreshMs = minRefreshMs ?? (accent ? FAB_REFRESH_MS : NAV_REFRESH_MS);
+  const liveCapture = live;
+  const refreshMs = minRefreshMs ?? LIVE_REFRESH_MS;
 
   // Dense tint in Expo Go — no blur sampling; must stay opaque enough to read icons.
+  // FABs use neutral by default (no green fill plate).
   const wash = accent
     ? isLight
       ? 'rgba(34, 197, 94, 0.82)'
@@ -80,20 +84,24 @@ function TabBarDynamicBlurImpl({
       ? 'rgba(255, 255, 255, 0.55)'
       : 'rgba(255, 255, 255, 0.28)'
     : isLight
-      ? 'rgba(255, 255, 255, 0.4)'
-      : 'rgba(255, 255, 255, 0.12)';
+      ? 'rgba(0, 0, 0, 0.12)'
+      : 'rgba(255, 255, 255, 0.2)';
+  // SemBlur overlay — keep green extremely light if accent is requested; FABs use neutral.
   const samsungOverlay = accent
-    ? rgbaToHexOverlay(34, 197, 94, isLight ? 0.22 : 0.28)
+    ? rgbaToHexOverlay(34, 197, 94, isLight ? 0.06 : 0.08)
     : isLight
       ? rgbaToHexOverlay(255, 255, 255, 0.16)
       : rgbaToHexOverlay(12, 12, 14, 0.14);
+  // Extra wash on top of SemBlur — transparent for neutral so glass shows through.
+  // Accent keeps a faint tint only (not a solid green disk).
   const samsungWash = accent
     ? isLight
-      ? 'rgba(34, 197, 94, 0.18)'
-      : 'rgba(34, 197, 94, 0.22)'
-    : isLight
-      ? 'rgba(255, 255, 255, 0.12)'
-      : 'rgba(12, 12, 14, 0.14)';
+      ? 'rgba(34, 197, 94, 0.06)'
+      : 'rgba(34, 197, 94, 0.08)'
+    : 'transparent';
+
+  // Always clip to cornerRadius (pill / circle) so FABs never show a square plate.
+  const clipBlur = true;
 
   return (
     <View
@@ -101,7 +109,7 @@ function TabBarDynamicBlurImpl({
       collapsable={false}
       style={[
         StyleSheet.absoluteFillObject,
-        { borderRadius: cornerRadius, overflow: useSamsung ? 'visible' : 'hidden' },
+        { borderRadius: cornerRadius, overflow: clipBlur ? 'hidden' : 'visible' },
         style,
       ]}
     >
@@ -111,8 +119,9 @@ function TabBarDynamicBlurImpl({
           overlayColor={samsungOverlay}
           cornerRadius={cornerRadius}
           minRefreshMs={refreshMs}
+          live={liveCapture}
           enabled
-          style={StyleSheet.absoluteFillObject}
+          style={[StyleSheet.absoluteFillObject, { borderRadius: cornerRadius }]}
         />
       ) : (
         <View

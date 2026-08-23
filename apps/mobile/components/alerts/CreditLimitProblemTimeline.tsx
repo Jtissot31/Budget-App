@@ -28,19 +28,21 @@ function formatDebtAmount(absValue: number): string {
 
 type Props = {
   data: CreditLimitTimelineData;
+  /** Supporting warning under the utilization hero (not a competing headline). */
+  warning?: string | null;
   /** Premium account line (e.g. « Visa ···· 9104 ») — shown in the identity row. */
   accountLabel?: string | null;
   /** Credit account for Visa/Mastercard mark — same as account-detail hero. */
   account?: SimulatedAccount | null;
 };
 
-const BAR_HEIGHT = spacing.sm;
+const BAR_HEIGHT = 10;
 
 /**
- * Credit-limit alert visual — account identity, linear utilization bar, limite / marge,
- * then the triggering payment. Same rhythm as the budget-over diagnostic.
+ * Credit-limit alert visual — utilization hero, bar, key numbers, then quieter
+ * account identity and triggering payment.
  */
-export function CreditLimitProblemTimeline({ data, accountLabel, account }: Props) {
+export function CreditLimitProblemTimeline({ data, warning, accountLabel, account }: Props) {
   const { colors, isLight } = useAppTheme();
 
   const over = data.isOverLimit && data.creditLimit > 0 && data.balanceUsedAfter > data.creditLimit;
@@ -69,35 +71,25 @@ export function CreditLimitProblemTimeline({ data, accountLabel, account }: Prop
 
   return (
     <View style={styles.root}>
-      <View style={styles.accountRow}>
-        <View style={styles.logoSlot}>
-          {account ? (
-            <InstitutionMark account={account} size={ICON_WELL_SIZE} transparentWell />
-          ) : (
-            <AppIcon family="ionicons" name="card-outline" size={22} color={statusColor} />
-          )}
-        </View>
-        <View style={styles.accountCopy}>
-          <Text style={[styles.accountEyebrow, { color: colors.textMuted }]}>Compte</Text>
-          <Text style={[styles.accountName, { color: colors.text }]} numberOfLines={1}>
-            {accountName}
+      <View style={styles.hero}>
+        <Text
+          style={[
+            moneyAmountTypography({ tier: 'stat' }),
+            styles.percent,
+            { color: statusColor },
+          ]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+        >
+          {displayPct} %
+        </Text>
+        <Text style={[styles.percentCaption, { color: colors.textMuted }]}>après paiement</Text>
+        {warning ? (
+          <Text style={[styles.warning, { color: colors.textSecondary }]} numberOfLines={3}>
+            {warning}
           </Text>
-        </View>
-        <View style={styles.percentCol}>
-          <Text
-            style={[
-              moneyAmountTypography({ tier: 'row', fontSize: 22, lineHeight: 26 }),
-              styles.percent,
-              { color: statusColor },
-            ]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.7}
-          >
-            {displayPct} %
-          </Text>
-          <Text style={[styles.percentCaption, { color: colors.textMuted }]}>après paiement</Text>
-        </View>
+        ) : null}
       </View>
 
       <View
@@ -132,22 +124,33 @@ export function CreditLimitProblemTimeline({ data, accountLabel, account }: Prop
         )}
       </View>
 
-      <Text style={[styles.usedCaption, { color: colors.textMuted }]}>
-        {formatDisplayMoneyAbsolute(data.balanceUsedAfter)} utilisé
-      </Text>
-
-      <View style={[styles.metrics, { borderTopColor: colors.borderSubtle }]}>
+      <View style={styles.metrics}>
         <View style={styles.metric}>
-          <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Limite</Text>
+          <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Utilisé</Text>
           <Text
             style={[
-              moneyAmountTypography({ tier: 'row' }),
+              moneyAmountTypography({ tier: 'card' }),
               styles.metricValue,
               { color: colors.text },
             ]}
             numberOfLines={1}
             adjustsFontSizeToFit
-            minimumFontScale={0.75}
+            minimumFontScale={0.7}
+          >
+            {formatDisplayMoneyAbsolute(data.balanceUsedAfter)}
+          </Text>
+        </View>
+        <View style={[styles.metric, styles.metricCenter]}>
+          <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Limite</Text>
+          <Text
+            style={[
+              moneyAmountTypography({ tier: 'row' }),
+              styles.metricValue,
+              { color: colors.textSecondary },
+            ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
           >
             {formatDisplayMoneyAbsolute(data.creditLimit)}
           </Text>
@@ -156,15 +159,31 @@ export function CreditLimitProblemTimeline({ data, accountLabel, account }: Prop
           <Text style={[styles.metricLabel, { color: colors.textMuted }]}>{remainingLabel}</Text>
           <Text
             style={[
-              moneyAmountTypography({ tier: 'row' }),
+              moneyAmountTypography({ tier: 'card' }),
               styles.metricValue,
               { color: statusColor },
             ]}
             numberOfLines={1}
             adjustsFontSizeToFit
-            minimumFontScale={0.75}
+            minimumFontScale={0.7}
           >
             {remainingValue}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.accountRow}>
+        <View style={styles.logoSlot}>
+          {account ? (
+            <InstitutionMark account={account} size={ICON_WELL_SIZE} transparentWell />
+          ) : (
+            <AppIcon family="ionicons" name="card-outline" size={20} color={colors.textMuted} />
+          )}
+        </View>
+        <View style={styles.accountCopy}>
+          <Text style={[styles.accountEyebrow, { color: colors.textMuted }]}>Compte</Text>
+          <Text style={[styles.accountName, { color: colors.textSecondary }]} numberOfLines={1}>
+            {accountName}
           </Text>
         </View>
       </View>
@@ -172,7 +191,7 @@ export function CreditLimitProblemTimeline({ data, accountLabel, account }: Prop
       <View style={[styles.triggerRow, { borderTopColor: colors.borderSubtle }]}>
         <View style={styles.triggerCopy}>
           <Text style={[styles.triggerLabel, { color: colors.textMuted }]}>Paiement</Text>
-          <Text style={[styles.triggerName, { color: colors.text }]} numberOfLines={1}>
+          <Text style={[styles.triggerName, { color: colors.textMuted }]} numberOfLines={1}>
             {data.paymentLabel}
           </Text>
         </View>
@@ -180,7 +199,7 @@ export function CreditLimitProblemTimeline({ data, accountLabel, account }: Prop
           style={[
             moneyAmountTypography({ tier: 'row' }),
             styles.triggerAmount,
-            { color: colors.text },
+            { color: colors.textMuted },
           ]}
         >
           {formatDebtAmount(data.paymentAmount)}
@@ -193,13 +212,66 @@ export function CreditLimitProblemTimeline({ data, accountLabel, account }: Prop
 const styles = StyleSheet.create({
   root: {
     gap: spacing.md,
-    marginTop: spacing.sm,
     alignItems: 'stretch',
+  },
+  hero: {
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+  },
+  percent: {
+    letterSpacing: -1,
+  },
+  percentCaption: {
+    ...typographyKit.microMedium,
+  },
+  warning: {
+    ...typographyKit.bodyMedium,
+    fontSize: typographyKit.caption.fontSize,
+    lineHeight: typographyKit.caption.lineHeight,
+    marginTop: 2,
+  },
+  track: {
+    alignSelf: 'stretch',
+    borderRadius: BAR_HEIGHT / 2,
+    overflow: 'hidden',
+    flexDirection: 'row',
+  },
+  fill: {
+    height: '100%',
+    borderRadius: BAR_HEIGHT / 2,
+  },
+  overflowFill: {
+    flex: 1,
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
+  },
+  metrics: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  metric: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.xs / 2,
+  },
+  metricCenter: {
+    alignItems: 'center',
+  },
+  metricEnd: {
+    alignItems: 'flex-end',
+  },
+  metricLabel: {
+    ...typographyKit.microUpper,
+    letterSpacing: 0.4,
+  },
+  metricValue: {
+    letterSpacing: -0.4,
   },
   accountRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   logoSlot: {
     width: ICON_WELL_SIZE,
@@ -218,60 +290,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   accountName: {
-    ...typographyKit.rowTitle,
-  },
-  percentCol: {
-    alignItems: 'flex-end',
-    flexShrink: 0,
-    gap: 1,
-  },
-  percent: {
-    letterSpacing: -0.8,
-    textAlign: 'right',
-  },
-  percentCaption: {
-    ...typographyKit.microMedium,
-  },
-  track: {
-    alignSelf: 'stretch',
-    borderRadius: BAR_HEIGHT / 2,
-    overflow: 'hidden',
-    flexDirection: 'row',
-  },
-  fill: {
-    height: '100%',
-    borderRadius: BAR_HEIGHT / 2,
-  },
-  overflowFill: {
-    flex: 1,
-    borderTopLeftRadius: 0,
-    borderBottomLeftRadius: 0,
-  },
-  usedCaption: {
-    ...typographyKit.microMedium,
-    marginTop: -spacing.xs,
-  },
-  metrics: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-    paddingTop: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  metric: {
-    flex: 1,
-    minWidth: 0,
-    gap: spacing.xs / 2,
-  },
-  metricEnd: {
-    alignItems: 'flex-end',
-  },
-  metricLabel: {
-    ...typographyKit.microUpper,
-    letterSpacing: 0.4,
-  },
-  metricValue: {
-    letterSpacing: -0.4,
+    ...typographyKit.metaSemibold,
   },
   triggerRow: {
     flexDirection: 'row',
@@ -291,7 +310,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   triggerName: {
-    ...typographyKit.captionSemibold,
+    ...typographyKit.caption,
   },
   triggerAmount: {
     flexShrink: 0,

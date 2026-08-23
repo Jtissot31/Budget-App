@@ -19,6 +19,7 @@ import { BudgetCategoriesHeaderActions } from '@/components/budget/BudgetCategor
 import { BudgetCategoryDetailSheet } from '@/components/budget/BudgetCategoryDetailSheet';
 import { BudgetCategoryRow } from '@/components/budget/BudgetCategoryRow';
 import { BudgetCategorySuggestionTile } from '@/components/budget/BudgetCategorySuggestionTile';
+import { BudgetSpendingDonutCard } from '@/components/budget/BudgetSpendingDonutCard';
 import { ProtoBudgetSummaryCard } from '@/components/budget/ProtoBudgetSummaryCard';
 import { ProtoGlassCard } from '@/components/proto/ProtoGlassCard';
 import { ProtoSectionHeader } from '@/components/proto/ProtoSectionHeader';
@@ -203,17 +204,15 @@ export default function BudgetScreen() {
     () => sortBudgetCategoriesByPriority(categories),
     [categories],
   );
-  const heroCategories = useMemo(
+  const spendingCategories = useMemo(
     () =>
-      categories
-        .filter((category) => category.limit > 0)
-        .map((category) => ({
-          id: category.id,
-          name: category.name,
-          spent: category.spent,
-          limit: category.limit,
-          color: category.color,
-        })),
+      categories.map((category) => ({
+        id: category.id,
+        name: category.name,
+        spent: category.spent,
+        limit: category.limit,
+        color: category.color,
+      })),
     [categories],
   );
 
@@ -358,6 +357,11 @@ export default function BudgetScreen() {
             totalAllocated={totals.totalAllocated}
             totalSpent={totals.totalSpent}
           />
+          <BudgetSpendingDonutCard
+            categories={spendingCategories}
+            totalSpent={totals.totalSpent}
+            hubEyebrow={hubEyebrow}
+          />
         </View>
 
         {listCategories.length > 0 ? (
@@ -474,7 +478,9 @@ export default function BudgetScreen() {
       displayMonth,
       goBudgetNext,
       goBudgetPrevious,
+      hubEyebrow,
       insets.top,
+      spendingCategories,
       isLight,
       managingCategories,
       onCategoriesGridLayout,

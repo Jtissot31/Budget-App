@@ -47,11 +47,11 @@ import type { PlanGoal } from '@/lib/plans/planGoalClarification';
 import { uiEvents } from '@/lib/events';
 import { captureReceiptPhoto, pickReceiptFromGallery } from '@/lib/receiptCapture';
 import { AIChatActivityIndicator } from './AIChatActivityIndicator';
+import { AIChatEmptyState } from './AIChatEmptyState';
 import { AIChatHeader } from './AIChatHeader';
 import { AIChatMessage } from './AIChatMessage';
 import { AIChatSettingsSheet } from './AIChatSettingsSheet';
 import { AIChatMultimodalInput } from './AIChatMultimodalInput';
-import { AIChatQuickChips } from './AIChatQuickChips';
 import { AIChatProjectionWidget } from './AIChatProjectionWidget';
 import {
   aiMessageToUiMessage,
@@ -79,7 +79,6 @@ const INITIAL_ACTIVITY_STATE: ActivityState = {
 
 /** Conservative heights until `onLayout` measures the floating input overlay. */
 const CHAT_INPUT_ROW_ESTIMATED_HEIGHT = 112;
-const CHAT_QUICK_CHIPS_ESTIMATED_HEIGHT = 64;
 const CHAT_ACTIVITY_INDICATOR_ESTIMATED_HEIGHT = 96;
 /** Extra air above the floating composer so tall confirmation cards clear it. */
 const LIST_BOTTOM_CLEARANCE_GAP = spacing.xxl;
@@ -800,11 +799,10 @@ export function AIChatAdvisorScreen({
   const showInlineComposer = !tabBarVisible;
   const showActivity = isResponding && !isStreaming && Boolean(activityState?.currentPhase);
   const estimatedInputOverlayHeight =
-    (showQuickChips ? CHAT_QUICK_CHIPS_ESTIMATED_HEIGHT : 0) +
     (showInlineComposer ? CHAT_INPUT_ROW_ESTIMATED_HEIGHT : 0) +
     (showActivity ? CHAT_ACTIVITY_INDICATOR_ESTIMATED_HEIGHT : 0) +
     chatInputBottomInset;
-  const showBottomOverlay = showInlineComposer || showActivity || (showQuickChips && tabBarVisible);
+  const showBottomOverlay = showInlineComposer || showActivity;
   // Overlay onLayout already includes safe-area padding inside the composer — do not
   // add insets.bottom again. Floor + clearance keep tall confirmation widgets readable.
   const composerReserveHeight = showBottomOverlay
@@ -891,6 +889,18 @@ export function AIChatAdvisorScreen({
     runScrollToEndAfterLayout,
   ]);
 
+  const listEmptyComponent = useMemo(
+    () =>
+      showQuickChips ? (
+        <AIChatEmptyState
+          chips={AI_QUICK_CHIPS}
+          onChipPress={handleChipPress}
+          disabled={chatBusy || !historyLoaded}
+        />
+      ) : null,
+    [showQuickChips, handleChipPress, chatBusy, historyLoaded],
+  );
+
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: palette.background }]} edges={['left', 'right']}>
       <AIChatHeader
@@ -926,8 +936,9 @@ export function AIChatAdvisorScreen({
             style={styles.list}
             contentContainerStyle={[
               styles.listContent,
-              listData.length > 0 && styles.listContentGrow,
+              (listData.length > 0 || showQuickChips) && styles.listContentGrow,
             ]}
+            ListEmptyComponent={listEmptyComponent}
             // Footer spacer (not paddingBottom): FlatList scrollToEnd often ignores
             // contentContainerStyle padding, leaving the last message under the composer.
             ListFooterComponent={listFooterSpacer}
@@ -960,16 +971,6 @@ export function AIChatAdvisorScreen({
                 </View>
               ) : null}
 
-              {showQuickChips && tabBarVisible ? (
-                <View style={{ paddingBottom: chatInputBottomInset }}>
-                  <AIChatQuickChips
-                    chips={AI_QUICK_CHIPS}
-                    onChipPress={handleChipPress}
-                    disabled={chatBusy || !historyLoaded}
-                  />
-                </View>
-              ) : null}
-
               {showInlineComposer ? (
                 <AIChatMultimodalInput
                   value={input}
@@ -979,7 +980,7 @@ export function AIChatAdvisorScreen({
                   onCamera={() => void handlePickImage('camera')}
                   onChipPress={handleChipPress}
                   onInputBlur={handleKeyboardDismiss}
-                  chips={showQuickChips ? AI_QUICK_CHIPS : []}
+                  chips={[]}
                   disabled={!historyLoaded}
                   isBusy={chatBusy}
                   onStop={handleStopGeneration}

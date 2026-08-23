@@ -35,6 +35,7 @@ import {
   detailSubSectionHeaderStyle,
   FLOATING_NAV_CONTENT_PADDING,
   jakartaExtraBoldText,
+  moneyAmountTypography,
   radius,
   spacing,
   typography,
@@ -683,7 +684,10 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
     tapHaptic();
     if (agendaIncomeTxId) {
       onClose();
-      router.push({ pathname: '/add-transaction', params: { editId: agendaIncomeTxId } });
+      router.push({
+        pathname: '/add-transaction',
+        params: { editId: agendaIncomeTxId, mode: 'edit', type: 'income' },
+      });
       return;
     }
     if (isEstimatedPayRow) {
@@ -1085,15 +1089,12 @@ function createStyles(colors: AppColors) {
     },
     impactValue: {
       color: colors.text,
-      fontSize: 24,
-      fontWeight: '800',
-      letterSpacing: -0.5,
-      fontVariant: ['tabular-nums'],
+      ...moneyAmountTypography({ tier: 'stat', letterSpacing: -0.5 }),
       marginTop: spacing.xs,
     },
     impactHint: {
+      ...typographyKit.metaMedium,
       color: colors.textMuted,
-      fontSize: typography.meta,
       lineHeight: 17,
       marginTop: spacing.xs,
     },

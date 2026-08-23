@@ -154,6 +154,8 @@ object SamsungSemBlur {
         captured,
       )
     }
+    // CAPTURED (mode 1) rejects backgroundCornerRadius / clip on Builder.build().
+    // Rounding comes from the view's clipToOutline instead.
     if (mode != 1) {
       invokeBuilder(
         builder,

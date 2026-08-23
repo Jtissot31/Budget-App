@@ -15,6 +15,11 @@ class SamsungLiquidGlassModule : Module() {
       SamsungSemBlur.isSupported()
     }
 
+    // Freeze all glass samples while scrolling / heavy UI motion (optional JS hook).
+    Function("setCapturesPaused") { paused: Boolean ->
+      BlurCaptureCoordinator.setPaused(paused)
+    }
+
     View(SamsungLiquidGlassView::class) {
       Prop("radius") { view: SamsungLiquidGlassView, radius: Int ->
         view.setBlurRadius(radius)
@@ -32,9 +37,14 @@ class SamsungLiquidGlassModule : Module() {
         view.setBlurEnabled(enabled)
       }
 
-      // ms between live PixelCopy refreshes (nav ~140, FAB ~450). Shared wave ≥140ms.
+      // Min gap between live samples (nav + FABs ~48). Coordinator floors waves ~32ms.
       Prop("minRefreshMs") { view: SamsungLiquidGlassView, ms: Int ->
         view.setMinRefreshMs(ms)
+      }
+
+      // false = capture once then freeze. true = continuous Choreographer sampler (nav + FABs).
+      Prop("live") { view: SamsungLiquidGlassView, live: Boolean ->
+        view.setLiveCapture(live)
       }
 
       OnViewDidUpdateProps { view: SamsungLiquidGlassView ->

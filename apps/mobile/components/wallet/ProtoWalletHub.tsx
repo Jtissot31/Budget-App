@@ -531,6 +531,7 @@ export function ProtoWalletHub() {
           renderItem={renderAccountItem}
           rowGap={accountTileGap}
           columnGap={accountTileGap}
+          itemEntering={null}
           sortEnabled={canReorderAccounts}
           dragActivationDelay={ACCOUNT_DRAG_ACTIVATION_MS}
           activeItemScale={1.02}
@@ -727,7 +728,7 @@ export function ProtoWalletHub() {
           }
           showsVerticalScrollIndicator={false}
         >
-          <View>
+          <View style={styles.soldeBlock}>
             <Text style={[styles.soldeLabel, { color: colors.textMuted }]}>Solde total</Text>
           <View style={styles.soldeRow}>
             <Text
@@ -839,6 +840,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     paddingBottom: spacing.lg,
   },
+  soldeBlock: { marginTop: spacing.sm },
   soldeLabel: { ...typographyKit.metaMedium, fontSize: 13, marginBottom: 6 },
   soldeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   sectionsMeasure: { alignSelf: 'stretch', width: '100%', gap: spacing.xl },

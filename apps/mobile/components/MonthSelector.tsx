@@ -25,8 +25,9 @@ type Props = {
    * `default` — full-bleed bare chevrons (Budget tab).
    * `calendar` — Agenda-style title case month + muted year.
    * `chip` — centered pill + circular nav (use under a circular back button).
+   * `compact` — tight cluster: chevron + label + chevron (Analyse dépenses).
    */
-  appearance?: 'default' | 'calendar' | 'chip';
+  appearance?: 'default' | 'calendar' | 'chip' | 'compact';
   /** Override primary label (e.g. week range / year). Falls back to month name. */
   primaryLabel?: string;
   /** Override secondary label (e.g. year). Empty string hides it. */
@@ -39,6 +40,7 @@ type Props = {
 
 const NAV_SIZE = 44;
 const CALENDAR_NAV_SIZE = 40;
+const COMPACT_NAV_SIZE = 32;
 const CHIP_NAV_SIZE = 30;
 const NAV_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
 const CHEVRON_SIZE = 18;
@@ -69,7 +71,14 @@ export function MonthSelector({
   const { colors } = useAppTheme();
   const isCalendar = appearance === 'calendar';
   const isChip = appearance === 'chip';
-  const navSize = isChip ? CHIP_NAV_SIZE : isCalendar ? CALENDAR_NAV_SIZE : NAV_SIZE;
+  const isCompact = appearance === 'compact';
+  const navSize = isChip
+    ? CHIP_NAV_SIZE
+    : isCompact
+      ? COMPACT_NAV_SIZE
+      : isCalendar
+        ? CALENDAR_NAV_SIZE
+        : NAV_SIZE;
   const chevronSize = isChip ? CHIP_CHEVRON_SIZE : isCalendar ? CALENDAR_CHEVRON_SIZE : CHEVRON_SIZE;
   const chevronStroke = isChip
     ? CHIP_CHEVRON_STROKE
@@ -104,6 +113,7 @@ export function MonthSelector({
       style={[
         styles.row,
         isCalendar && styles.rowCalendar,
+        isCompact && styles.rowCompact,
         isChip && styles.rowChip,
       ]}
     >
@@ -141,6 +151,7 @@ export function MonthSelector({
         style={[
           styles.labelRow,
           isCalendar && styles.labelRowCalendar,
+          isCompact && styles.labelRowCompact,
           isChip && [
             styles.labelRowChip,
             {
@@ -260,6 +271,17 @@ const styles = StyleSheet.create({
   },
   rowCalendar: {
     minHeight: CALENDAR_NAV_SIZE,
+  },
+  /** Tight cluster — chevrons hugging the period label (Analyse dépenses). */
+  rowCompact: {
+    alignSelf: 'flex-start',
+    minHeight: COMPACT_NAV_SIZE,
+    gap: spacing.sm,
+  },
+  labelRowCompact: {
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
   },
   labelRowCalendar: {
     gap: 0,

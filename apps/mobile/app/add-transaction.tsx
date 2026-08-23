@@ -280,28 +280,37 @@ async function applyLinkedSavingsGoalDeltas(
   }
 }
 
+function firstRouteParam(value: string | string[] | undefined): string {
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value)) return (value[0] ?? '').trim();
+  return '';
+}
+
 export default function AddTransactionScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
-    editId?: string;
-    type?: string;
-    label?: string;
-    accountId?: string;
-    categoryId?: string;
-    scanItems?: string;
-    merchant?: string;
-    amount?: string;
+    editId?: string | string[];
+    mode?: string | string[];
+    type?: string | string[];
+    label?: string | string[];
+    accountId?: string | string[];
+    categoryId?: string | string[];
+    scanItems?: string | string[];
+    merchant?: string | string[];
+    amount?: string | string[];
   }>();
   const insets = useSafeAreaInsets();
   const { colors, isLight } = useAppTheme();
   const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.text }];
-  const editId = typeof params.editId === 'string' ? params.editId : '';
-  const routeType = typeof params.type === 'string' ? params.type : '';
-  const routeLabel = typeof params.label === 'string' ? params.label : '';
-  const routeAccountId = typeof params.accountId === 'string' ? params.accountId : '';
-  const routeCategoryId = typeof params.categoryId === 'string' ? params.categoryId : '';
-  const routeScanItems = typeof params.scanItems === 'string' ? params.scanItems : '';
-  const routeScanAmount = typeof params.amount === 'string' ? params.amount : '';
+  const editId = firstRouteParam(params.editId);
+  const routeMode = firstRouteParam(params.mode);
+  const isEditMode = Boolean(editId) || routeMode === 'edit';
+  const routeType = firstRouteParam(params.type);
+  const routeLabel = firstRouteParam(params.label);
+  const routeAccountId = firstRouteParam(params.accountId);
+  const routeCategoryId = firstRouteParam(params.categoryId);
+  const routeScanItems = firstRouteParam(params.scanItems);
+  const routeScanAmount = firstRouteParam(params.amount);
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgetCategoryIds, setBudgetCategoryIds] = useState<Set<string>>(new Set());
   const [savedContacts, setSavedContacts] = useState<Contact[]>([]);
@@ -436,8 +445,6 @@ export default function AddTransactionScreen() {
   }, [contactDirectoryRows, label, savedContacts, type]);
 
   useEffect(() => {
-    if (editId && prefilledEditId !== editId) return;
-
     let cancelled = false;
 
     const loadPickerCategories = async () => {
@@ -463,6 +470,10 @@ export default function AddTransactionScreen() {
       }
       const cats = [...byId.values()];
       setCategories(cats);
+
+      // Edit prefill depends on categories loading first — never block that load.
+      // Until prefill finishes, skip default category resets so we don't wipe the edit.
+      if (editId && prefilledEditId !== editId) return;
 
       if (editId && editingTransaction) {
         const isPersonTransferEdit =
@@ -505,7 +516,13 @@ export default function AddTransactionScreen() {
   }, [editId, editingTransaction, prefilledEditId, routeCategoryId, transferMode, type]);
 
   useEffect(() => {
-    if (editId) return;
+    if (editId) {
+      // Type hint from detail → edit so the sheet title/chips are correct before prefill.
+      if (routeType === 'income' || routeType === 'expense' || routeType === 'transfer') {
+        setType(routeType);
+      }
+      return;
+    }
     if (routeType === 'income' || routeType === 'expense' || routeType === 'transfer') {
       setType(routeType);
     }
@@ -995,9 +1012,14 @@ export default function AddTransactionScreen() {
   const incomeContactSelected = type === 'income' && incomeContactPickStatus !== 'none';
   const hasNameSuggestions =
     (hasMerchantSuggestions || hasContactSuggestions) && !incomeContactSelected;
-  const isEditing = Boolean(editingTransaction);
-  const sheetTitle = isEditing
-    ? 'Modifier la transaction'
+  const isEditing = isEditMode && Boolean(editingTransaction);
+  const sheetTitleType = editingTransaction?.type ?? type;
+  const sheetTitle = isEditMode
+    ? sheetTitleType === 'income'
+      ? 'Modifier le revenu'
+      : sheetTitleType === 'transfer'
+        ? 'Modifier le virement'
+        : 'Modifier la dépense'
     : type === 'income'
       ? 'Nouveau revenu'
       : isTransfer

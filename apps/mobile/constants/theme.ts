@@ -732,11 +732,15 @@ export const manropeExtraBoldText = jakartaExtraBoldText;
 
 export const FLOATING_TABBAR_ANDROID_BOTTOM_EXTRA = spacing.sm;
 
-/** Bottom inset for tab icons — clears Android system nav without stacking extra offset. */
+/**
+ * Bottom offset for the floating tab pill (and FABs keyed off it).
+ * Android: `useSafeAreaInsets().bottom` (system nav / gesture bar) plus a small
+ * visual gap so the glass pill sits clearly above the system bar — not flush to it.
+ */
 export function getFloatingTabBarBottomInset(safeBottom: number): number {
   if (Platform.OS === 'android') {
-    if (safeBottom > 0) return safeBottom;
-    return spacing.lg;
+    const systemNav = safeBottom > 0 ? safeBottom : spacing.lg;
+    return systemNav + FLOATING_TABBAR_ANDROID_BOTTOM_EXTRA;
   }
   return Math.max(safeBottom, spacing.sm);
 }

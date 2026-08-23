@@ -25,8 +25,7 @@ import type { SimulatedAccount, Transaction } from '@/types';
 const ICON_WELL = 40;
 /**
  * Glyph size inside the pale well.
- * Income PNG has transparent padding (~65% ink), so use a larger box than
- * Ionicons fallbacks so the wallet artwork reads closer to ~24–28px ink.
+ * Income `$` uses a larger box than expense fallbacks so it reads clearly in the 40px well.
  */
 const ICON_GLYPH_FALLBACK = 24;
 const ICON_GLYPH_INCOME = 30;

@@ -5,7 +5,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DashboardCard } from '@/components/DashboardCard';
-import { FixedScreenHeader } from '@/components/FixedScreenHeader';
+import {
+  FixedScreenHeader,
+  fixedHeaderScrollStyle,
+  fixedHeaderScreenStyle,
+} from '@/components/FixedScreenHeader';
 import { MonthSelector } from '@/components/MonthSelector';
 import { PageTransition } from '@/components/PageTransition';
 import {
@@ -14,8 +18,10 @@ import {
 } from '@/components/proto/ProtoShortcutRow';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionRow } from '@/components/TransactionRow';
+import { OnyxContainer } from '@/components/OnyxContainer';
 import { CumulativeSpendStepChart } from '@/components/transactions/CumulativeSpendStepChart';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
+import { ONYX_CONTAINER } from '@/constants/planFinanceKit';
 import {
   FLOATING_NAV_CONTENT_PADDING,
   PAGE_PADDING_HORIZONTAL,
@@ -23,7 +29,6 @@ import {
   PORTFOLIO_SECTION_GAP,
   radius,
   spacing,
-  typography,
   typographyKit,
 } from '@/constants/theme';
 import { useContactPhotoMap } from '@/hooks/useContactPhotoMap';
@@ -333,6 +338,7 @@ export default function TransactionsInsightsScreen() {
     <View>
       <View style={styles.monthSection}>
         <MonthSelector
+          appearance="compact"
           month={budgetAnchor}
           onPrevious={goPrevious}
           onNext={goNext}
@@ -345,31 +351,31 @@ export default function TransactionsInsightsScreen() {
           nextAccessibilityLabel={periodNavA11y(granularity, 'next')}
         />
       </View>
-      <View style={styles.chartSection}>
-        <CumulativeSpendStepChart
-          series={spendSeries}
-          comparisonSeries={priorSpendSeries}
-          periodTotal={spendPeriodTotal}
-          activeIndex={spendActiveIndex}
-          budgetLimit={
-            granularity === 'month' && monthlyBudgetLimit > 0
-              ? monthlyBudgetLimit
-              : undefined
-          }
-          granularity={granularity}
-          getScrubLabel={getScrubLabel}
-          priorPeriodPhrase={spendTrendPriorPeriodLabel(granularity)}
-        />
-      </View>
-      <View style={styles.periodTabsSection}>
-        <SegmentedTabs
-          tabs={SPEND_TREND_TABS}
-          active={granularity}
-          onChange={handleGranularityChange}
-          size="section"
-          variant="bare"
-          showDivider={false}
-        />
+      <View style={styles.chartCardSection}>
+        <OnyxContainer style={styles.chartCard}>
+          <CumulativeSpendStepChart
+            series={spendSeries}
+            comparisonSeries={priorSpendSeries}
+            periodTotal={spendPeriodTotal}
+            activeIndex={spendActiveIndex}
+            budgetLimit={
+              granularity === 'month' && monthlyBudgetLimit > 0
+                ? monthlyBudgetLimit
+                : undefined
+            }
+            granularity={granularity}
+            getScrubLabel={getScrubLabel}
+            priorPeriodPhrase={spendTrendPriorPeriodLabel(granularity)}
+          />
+          <SegmentedTabs
+            tabs={SPEND_TREND_TABS}
+            active={granularity}
+            onChange={handleGranularityChange}
+            size="section"
+            variant="bare"
+            showDivider={false}
+          />
+        </OnyxContainer>
       </View>
       <View style={styles.actionSection}>
         <ProtoShortcutGrid items={actionTiles} />
@@ -400,7 +406,7 @@ export default function TransactionsInsightsScreen() {
 
   return (
     <PageTransition>
-      <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <View style={[fixedHeaderScreenStyle, styles.screen, { backgroundColor: colors.background }]}>
         {!isReviewMode ? (
           <LinearGradient
             colors={
@@ -418,6 +424,7 @@ export default function TransactionsInsightsScreen() {
         {fixedPageHeader}
 
         <FlatList
+          style={fixedHeaderScrollStyle}
           data={showValidationList ? pendingValidation : []}
           keyExtractor={(item) => item.id}
           ListHeaderComponent={listHeader}
@@ -535,12 +542,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     zIndex: 1,
   },
-  chartSection: {
-    marginTop: spacing.md,
-  },
-  periodTabsSection: {
+  chartCardSection: {
     marginTop: spacing.md,
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+  },
+  chartCard: {
+    padding: ONYX_CONTAINER.padding.card,
+    gap: spacing.md,
   },
   actionSection: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,

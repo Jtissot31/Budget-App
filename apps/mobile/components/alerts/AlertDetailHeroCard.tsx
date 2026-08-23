@@ -6,8 +6,8 @@ import { spacing, typographyKit } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
-  /** Condition title — reason-first, scannable. */
-  title: string;
+  /** Condition title — reason-first, scannable. Omit when the graphic owns the hero. */
+  title?: string | null;
   /** Optional account / category meta under the title. */
   meta?: string | null;
   /** Short “why” line — keep to 1–2 sentences. Omit when the graphic tells it. */
@@ -21,12 +21,15 @@ type Props = {
  */
 export function AlertDetailHeroCard({ title, meta, body, children }: Props) {
   const { colors } = useAppTheme();
+  const titleText = title?.trim() ?? '';
 
   return (
     <OnyxContainer style={[styles.card, { padding: ONYX_CONTAINER.padding.card }]}>
-      <Text style={[styles.title, { color: colors.text }]} numberOfLines={3}>
-        {title}
-      </Text>
+      {titleText ? (
+        <Text style={[styles.title, { color: colors.text }]} numberOfLines={3}>
+          {titleText}
+        </Text>
+      ) : null}
       {meta ? (
         <Text style={[styles.meta, { color: colors.textSecondary }]} numberOfLines={1}>
           {meta}
@@ -58,6 +61,6 @@ const styles = StyleSheet.create({
     lineHeight: typographyKit.caption.lineHeight,
   },
   graphic: {
-    marginTop: spacing.xs,
+    alignSelf: 'stretch',
   },
 });

@@ -93,7 +93,10 @@ export default function TabLayout() {
       >
         <Tabs.Screen name="index" />
         <Tabs.Screen name="transactions" />
-        <Tabs.Screen name="accounts" options={{ title: 'Comptes' }} />
+        <Tabs.Screen
+          name="accounts"
+          options={{ title: 'Comptes', animation: 'none' }}
+        />
         <Tabs.Screen name="budgets" />
         <Tabs.Screen name="goals" options={{ title: 'Agenda' }} />
         <Tabs.Screen name="widgets" options={{ title: 'Galerie widgets', href: null }} />

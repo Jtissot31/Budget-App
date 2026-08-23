@@ -11,7 +11,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChildSupportBreakdownChart } from '@/components/ChildSupportBreakdownChart';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { DetailSectionsList } from '@/components/DetailSectionRows';
-import { FixedScreenHeader } from '@/components/FixedScreenHeader';
+import {
+  FixedScreenHeader,
+  fixedHeaderScrollStyle,
+  fixedHeaderScreenStyle,
+} from '@/components/FixedScreenHeader';
 import { LineOfCreditCharts } from '@/components/LineOfCreditCharts';
 import { LineOfCreditUtilizationChart } from '@/components/LineOfCreditUtilizationChart';
 import { LoanPaymentDonutChart, MortgageDetailCharts } from '@/components/MortgageCharts';
@@ -171,14 +175,24 @@ export default function LoanDetailScreen() {
     setConfirmDeleteVisible(true);
   };
 
-  const showProgressCard = loan != null && loan.principal > 0 && !isChildSupport;
-  const showRepaymentChart = showProgressCard && !isLineOfCredit;
-  const progressPct = isLineOfCredit ? utilizationProgress.utilPct : repaymentProgress.progressPct;
-  const progressHeader = isLineOfCredit ? 'Utilisation' : loanProgressHeaderLabel(false);
-  const progressFillColor = isLineOfCredit && progressPct > 80 ? colors.danger : colors.primary;
+  const showLocUtilizationChart =
+    loan != null && loan.principal > 0 && isLineOfCredit && !isChildSupport;
+  const showRepaymentProgressCard =
+    loan != null && loan.principal > 0 && !isChildSupport && !isLineOfCredit;
+  const progressPct = repaymentProgress.progressPct;
+  const progressFillColor = colors.primary;
   const progressBar = detailProgressBarStyle();
 
-  const progressCard = showProgressCard ? (
+  const locUtilizationChartBlock = showLocUtilizationChart ? (
+    <View style={styles.utilizationChartSection}>
+      <LineOfCreditUtilizationChart
+        currentUsed={utilizationProgress.usedAmount}
+        balanceHistory={lineOfCreditBalanceHistory}
+      />
+    </View>
+  ) : null;
+
+  const progressCard = showRepaymentProgressCard ? (
     <GlassContainer
       style={styles.progressCardShell}
       innerStyle={styles.progressCardInner}
@@ -191,7 +205,7 @@ export default function LoanDetailScreen() {
           numberOfLines={1}
           ellipsizeMode="tail"
         >
-          {progressHeader}
+          {loanProgressHeaderLabel(false)}
         </Text>
         <Text
           style={[styles.progressPct, { color: progressFillColor }]}
@@ -200,37 +214,26 @@ export default function LoanDetailScreen() {
           {progressPct.toFixed(0)} %
         </Text>
       </View>
-      {isLineOfCredit ? (
-        <View style={styles.progressChartSection}>
-          <LineOfCreditUtilizationChart
-            currentUsed={utilizationProgress.usedAmount}
-            balanceHistory={lineOfCreditBalanceHistory}
-          />
-        </View>
-      ) : (
-        <View style={[progressBar.track, { backgroundColor: trackColor }]}>
-          <View
-            style={[
-              progressBar.fill,
-              {
-                width: `${Math.max(progressPct, 3)}%`,
-                backgroundColor: progressFillColor,
-              },
-            ]}
-          />
-        </View>
-      )}
+      <View style={[progressBar.track, { backgroundColor: trackColor }]}>
+        <View
+          style={[
+            progressBar.fill,
+            {
+              width: `${Math.max(progressPct, 3)}%`,
+              backgroundColor: progressFillColor,
+            },
+          ]}
+        />
+      </View>
       <View style={styles.progressFooter}>
         <Text style={[styles.progressFootnote, { color: colors.textMuted }]}>
-          {isLineOfCredit
-            ? `Utilisé · ${formatDisplayMoneyAbsolute(utilizationProgress.usedAmount)}`
-            : `${isMortgage || isPersonalLoan || isChildSupport ? 'Remboursé' : 'Payé'} · ${formatDisplayMoneyAbsolute(repaymentProgress.paidAmount)}`}
+          {`${isMortgage || isPersonalLoan || isChildSupport ? 'Remboursé' : 'Payé'} · ${formatDisplayMoneyAbsolute(repaymentProgress.paidAmount)}`}
         </Text>
         <Text style={[styles.progressFootnote, { color: colors.textMuted }]}>
-          {isLineOfCredit ? 'Limite' : 'Total'} · {formatDisplayMoneyAbsolute(loan!.principal)}
+          Total · {formatDisplayMoneyAbsolute(loan!.principal)}
         </Text>
       </View>
-      {showRepaymentChart && loan ? (
+      {loan ? (
         <View style={styles.progressChartSection}>
           <LoanProgressChart
             loan={loan}
@@ -260,7 +263,7 @@ export default function LoanDetailScreen() {
 
   return (
     <PageTransition>
-      <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <View style={[fixedHeaderScreenStyle, styles.screen, { backgroundColor: colors.background }]}>
         <FixedScreenHeader
           title={displayTitle || 'Dette'}
           onBack={() => router.back()}
@@ -289,6 +292,7 @@ export default function LoanDetailScreen() {
 
         <ScrollView
           ref={scrollRef}
+          style={fixedHeaderScrollStyle}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.content,
@@ -319,6 +323,7 @@ export default function LoanDetailScreen() {
               ) : null}
               {isChildSupport ? <ChildSupportBreakdownChart loan={loan} /> : null}
 
+              {locUtilizationChartBlock}
               {progressCard}
 
               {visibleDetailSections.length > 0 || detailFootnote ? (
@@ -387,6 +392,9 @@ const styles = StyleSheet.create({
   },
   progressCardInner: {
     gap: spacing.sm,
+  },
+  utilizationChartSection: {
+    width: '100%',
   },
   progressChartSection: {
     marginTop: spacing.sm,

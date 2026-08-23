@@ -9,6 +9,9 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   /** Default `neutral` (nav pill). `accentGreen` = translucent green glass FABs. */
   tone?: DynamicBlurTone;
+  /** Android SemBlur only — ignored on iOS. */
+  minRefreshMs?: number;
+  live?: boolean;
 };
 
 const BLUR_INTENSITY = 52;
@@ -25,8 +28,8 @@ export function TabBarDynamicBlur({
   const accent = tone === 'accentGreen';
   const wash = accent
     ? isLight
-      ? 'rgba(34, 197, 94, 0.28)'
-      : 'rgba(34, 197, 94, 0.36)'
+      ? 'rgba(34, 197, 94, 0.08)'
+      : 'rgba(34, 197, 94, 0.1)'
     : isLight
       ? 'rgba(255, 255, 255, 0.14)'
       : 'rgba(12, 12, 14, 0.16)';

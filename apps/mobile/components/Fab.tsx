@@ -6,11 +6,13 @@ import {
   FLOATING_FAB_SIZE,
   FLOATING_SCROLL_SIZE,
 } from '@/constants/floatingGlassButton';
-import { TRANSACTIONS_FAB_ICON_COLOR_BLUR } from '@/constants/fabStyles';
+import { transactionsFabGlyphColor } from '@/constants/fabStyles';
+import { useAppTheme } from '@/lib/themeContext';
 import { StyleSheet } from 'react-native';
 
 export function Fab() {
   const router = useRouter();
+  const { colors } = useAppTheme();
 
   return (
     <GlassFab
@@ -19,7 +21,7 @@ export function Fab() {
       onPress={() => router.push('/add-transaction')}
       accessibilityLabel="Nouvelle transaction"
     >
-      <PlusFabIcon size={FLOATING_FAB_ICON_SIZE} color={TRANSACTIONS_FAB_ICON_COLOR_BLUR} />
+      <PlusFabIcon size={FLOATING_FAB_ICON_SIZE} color={transactionsFabGlyphColor(colors)} />
     </GlassFab>
   );
 }

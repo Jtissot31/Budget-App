@@ -10,7 +10,11 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { FixedScreenHeader } from '@/components/FixedScreenHeader';
+import {
+  FixedScreenHeader,
+  fixedHeaderScrollStyle,
+  fixedHeaderScreenStyle,
+} from '@/components/FixedScreenHeader';
 import { OnyxContainer } from '@/components/OnyxContainer';
 import { PageTransition } from '@/components/PageTransition';
 import {
@@ -131,10 +135,10 @@ export default function SubscriptionsInsightsScreen() {
 
   return (
     <PageTransition>
-      <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <View style={[fixedHeaderScreenStyle, styles.screen, { backgroundColor: colors.background }]}>
         <FixedScreenHeader title="Analyse abonnements" onBack={() => router.back()} />
         <ScrollView
-          style={styles.scroll}
+          style={fixedHeaderScrollStyle}
           contentContainerStyle={{
             paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING + spacing.xl,
             paddingHorizontal: PAGE_PADDING_HORIZONTAL,
@@ -304,7 +308,6 @@ export default function SubscriptionsInsightsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  scroll: { flex: 1 },
   pressed: { opacity: 0.82 },
   summaryCard: {
     padding: ONYX_CONTAINER.padding.card,

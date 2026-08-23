@@ -64,7 +64,7 @@ import {
   FLOATING_FAB_ICON_SIZE,
   FLOATING_FAB_SIZE,
 } from '@/constants/floatingGlassButton';
-import { TRANSACTIONS_FAB_ICON_COLOR_BLUR } from '@/constants/fabStyles';
+import { transactionsFabGlyphColor } from '@/constants/fabStyles';
 import { GlassFab } from '@/components/GlassFab';
 import {
   findInsufficientFundsViolation,
@@ -802,13 +802,13 @@ function ReceiptPreviewModal({
             style={(downloading || sharing) ? { opacity: 0.55 } : undefined}
           >
             {downloading ? (
-              <ActivityIndicator color={TRANSACTIONS_FAB_ICON_COLOR_BLUR} size="small" />
+              <ActivityIndicator color={transactionsFabGlyphColor(colors)} size="small" />
             ) : (
               <AppIcon
                 family="ionicons"
                 name="download-outline"
                 size={FLOATING_FAB_ICON_SIZE}
-                color={TRANSACTIONS_FAB_ICON_COLOR_BLUR}
+                color={transactionsFabGlyphColor(colors)}
               />
             )}
           </GlassFab>
@@ -1916,7 +1916,14 @@ export default function TransactionDetailScreen() {
   const navigateToEdit = () => {
     if (!transaction) return;
     tapHaptic();
-    router.push({ pathname: '/add-transaction', params: { editId: transaction.id } });
+    router.push({
+      pathname: '/add-transaction',
+      params: {
+        editId: transaction.id,
+        mode: 'edit',
+        type: transaction.type,
+      },
+    });
   };
 
   const handleScanReceipt = useCallback(

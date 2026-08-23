@@ -16,9 +16,9 @@ export type AIChatColors = {
   sendMuted: string;
 };
 
-/** Claude.ai-style Fyn chat palette (dark surface + green user bubbles). */
+/** Claude.ai-style Fyn chat palette (dark canvas + green user bubbles). */
 const FYN_CHAT_DARK = {
-  background: '#0E0E10',
+  background: '#070709',
   surface: '#1F1F23',
   primary: '#22C55E',
   text: '#FFFFFF',

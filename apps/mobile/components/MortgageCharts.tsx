@@ -221,10 +221,7 @@ function PaymentSplitDonutCard({
         : 'Estimation sans taux';
 
   return (
-    <SurfaceCard
-      style={[styles.sectionCard, carousel && styles.mortgageCarouselCard]}
-      innerStyle={styles.sectionInner}
-    >
+    <View style={[styles.sectionInner, carousel && styles.mortgageCarouselCard]}>
       <ChartEyebrow label="Répartition du paiement" />
       <Text style={[styles.sectionTitle, { color: colors.text }]}>
         Capital vs intérêts
@@ -256,7 +253,7 @@ function PaymentSplitDonutCard({
           ) : null}
         </View>
       </View>
-    </SurfaceCard>
+    </View>
   );
 }
 

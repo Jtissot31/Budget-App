@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import {
   computeGoalCashflowProjection,
+  formatGoalDurationAtPace,
   resolveMonthlyIncome,
   sumMonthlyRecurringExpensesOutsideBudget,
 } from './goalProjection';
@@ -89,4 +90,11 @@ const withoutIncome = computeGoalCashflowProjection({
 });
 assert.equal(withoutIncome.cashflowImpactWeekly, null);
 
-console.log('goalProjection cashflow tests passed');
+assert.equal(formatGoalDurationAtPace(5), '5 jours');
+assert.equal(formatGoalDurationAtPace(1), '1 jour');
+assert.equal(formatGoalDurationAtPace(14), '2 semaines');
+assert.equal(formatGoalDurationAtPace(21), '3 semaines');
+assert.equal(formatGoalDurationAtPace(182), '6 mois');
+assert.equal(formatGoalDurationAtPace(28), '1 mois');
+
+console.log('goalProjection tests passed');

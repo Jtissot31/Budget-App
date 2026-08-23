@@ -1,24 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppIcon } from '@/components/icons/AppIcon';
 import { AlertDetailActionsList } from '@/components/alerts/AlertDetailActionsList';
 import { AlertDetailHeroCard } from '@/components/alerts/AlertDetailHeroCard';
 import { AlertSolutionDetailSheet } from '@/components/alerts/AlertSolutionDetailSheet';
 import { BudgetOverrunDiagnostic } from '@/components/alerts/BudgetOverrunDiagnostic';
 import { BudgetOverrunTransactions } from '@/components/alerts/BudgetOverrunTransactions';
 import { CreditLimitProblemTimeline } from '@/components/alerts/CreditLimitProblemTimeline';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  FixedScreenHeader,
+  fixedHeaderScrollStyle,
+  fixedHeaderScreenStyle,
+} from '@/components/FixedScreenHeader';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PageTransition } from '@/components/PageTransition';
 import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
-import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
-import { ONYX_CONTAINER } from '@/constants/planFinanceKit';
-import {
-  jakartaExtraBoldText,
-  screenHorizontalGutter,
-  spacing,
-  typography,
-} from '@/constants/theme';
+import { screenHorizontalGutter, spacing } from '@/constants/theme';
 import { useAlertCenter, useAlertCenterSources } from '@/hooks/useAlertCenter';
 import { tapHaptic } from '@/lib/haptics';
 import type { AlertCenterItem, AlertCenterKind } from '@/lib/alerts';
@@ -330,36 +327,16 @@ export default function AlertDetailScreen() {
 
   return (
     <PageTransition>
-      <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <View
-          style={[
-            styles.header,
-            {
-              paddingTop: insets.top + SCREEN_TOP_GUTTER,
-              paddingHorizontal: contentGutter,
-            },
-          ]}
-        >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retour"
-            hitSlop={12}
-            onPress={handleBack}
-            style={({ pressed }) => [
-              styles.backHit,
-              { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
-              pressed && styles.pressed,
-            ]}
-          >
-            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
-          </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
-            {alertTypeHeaderTitle(item?.kind ?? 'fyn')}
-          </Text>
-          <View style={styles.headerSpacer} />
-        </View>
+      <View style={[fixedHeaderScreenStyle, styles.screen, { backgroundColor: colors.background }]}>
+        <FixedScreenHeader
+          title={alertTypeHeaderTitle(item?.kind ?? 'fyn')}
+          onBack={handleBack}
+          extraTopPadding={0}
+          style={{ paddingHorizontal: contentGutter }}
+        />
 
         <ScrollView
+          style={fixedHeaderScrollStyle}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.content,
@@ -371,13 +348,14 @@ export default function AlertDetailScreen() {
         >
           <View style={styles.section}>
             <AlertDetailHeroCard
-              title={conditionTitle}
+              title={creditLimitTimeline ? null : conditionTitle}
               meta={heroMeta}
               body={budgetOverrun || creditLimitTimeline ? null : detail.problemBody}
             >
               {creditLimitTimeline ? (
                 <CreditLimitProblemTimeline
                   data={creditLimitTimeline}
+                  warning={conditionTitle}
                   accountLabel={alertAccountLine ?? creditLimitTimeline.accountLabel}
                   account={creditAccount}
                 />
@@ -440,36 +418,10 @@ export default function AlertDetailScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  backHit: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    marginHorizontal: spacing.sm,
-    ...jakartaExtraBoldText,
-    fontSize: typography.body,
-    letterSpacing: -0.2,
-    minWidth: 0,
-  },
-  headerSpacer: { width: 38 },
   content: {
     gap: spacing.xl,
   },
   section: {
     alignSelf: 'stretch',
   },
-  pressed: { opacity: ONYX_CONTAINER.pressedOpacity },
 });

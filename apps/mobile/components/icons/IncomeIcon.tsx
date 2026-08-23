@@ -1,26 +1,16 @@
-import { Image } from 'react-native';
-
-/** Monochrome income glyph — black outline on transparent; tint via `tintColor`. */
-export const INCOME_ICON = require('@/assets/icons/income.png');
+import { AppIcon } from '@/components/icons/AppIcon';
 
 type Props = {
   size: number;
   color: string;
-  /** Kept for API compat; PNG stroke is baked into the asset. */
+  /** Kept for API compat with former PNG stroke prop. */
   strokeWidth?: number;
 };
 
 /**
- * Income outline for Historique list rows (`ProtoTransactionRow` / `TransactionAvatar`).
- * PNG template so callers can tint success green (or well-glyph white).
+ * Income / Salaire glyph for Historique list rows (`ProtoTransactionRow` / `UserPickedIconWell`).
+ * Ionicons `$` (`logo-usd`) — tinted via `color` (typically accent green).
  */
 export function IncomeIcon({ size, color }: Props) {
-  return (
-    <Image
-      source={INCOME_ICON}
-      style={{ width: size, height: size, tintColor: color }}
-      resizeMode="contain"
-      accessibilityIgnoresInvertColors
-    />
-  );
+  return <AppIcon family="ionicons" name="logo-usd" size={size} color={color} />;
 }

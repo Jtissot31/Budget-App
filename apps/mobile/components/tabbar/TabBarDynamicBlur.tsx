@@ -14,8 +14,11 @@ type Props = {
   isLight: boolean;
   cornerRadius: number;
   style?: StyleProp<ViewStyle>;
-  /** Default `neutral` (nav pill). `accentGreen` = translucent green glass FABs. */
+  /** Default `neutral` (nav + FABs). `accentGreen` = faint tint only. */
   tone?: DynamicBlurTone;
+  /** Android SemBlur only — ignored here. */
+  minRefreshMs?: number;
+  live?: boolean;
 };
 
 export function TabBarDynamicBlur({
@@ -27,8 +30,8 @@ export function TabBarDynamicBlur({
   const accent = tone === 'accentGreen';
   const wash = accent
     ? isLight
-      ? 'rgba(34, 197, 94, 0.82)'
-      : 'rgba(34, 197, 94, 0.72)'
+      ? 'rgba(34, 197, 94, 0.1)'
+      : 'rgba(34, 197, 94, 0.12)'
     : isLight
       ? 'rgba(255, 255, 255, 0.82)'
       : 'rgba(12, 12, 14, 0.78)';

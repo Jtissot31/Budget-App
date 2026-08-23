@@ -9,8 +9,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { jakartaRegularText, PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
+import { containerSurfaceStyle, jakartaRegularText, PAGE_PADDING_HORIZONTAL, spacing } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
+import { useAppTheme } from '@/lib/themeContext';
 import { AIChatQuickChips } from './AIChatQuickChips';
 import { useAIChatColors } from './theme';
 import { AI_QUICK_CHIPS, type AIQuickChip } from './types';
@@ -55,6 +56,8 @@ export function AIChatMultimodalInput({
   wrapInKeyboardAvoidingView = false,
 }: AIChatMultimodalInputProps) {
   const palette = useAIChatColors();
+  const { isLight } = useAppTheme();
+  const inputSurface = containerSurfaceStyle(isLight);
   const canSend = value.trim().length > 0 && !disabled && !isBusy;
   const inputDisabled = disabled || isBusy;
 
@@ -116,7 +119,8 @@ export function AIChatMultimodalInput({
         <View
           style={[
             styles.inputContainer,
-            { backgroundColor: palette.surface, borderColor: palette.border },
+            inputSurface,
+            { borderColor: palette.border },
           ]}
         >
           <Pressable
@@ -131,7 +135,7 @@ export function AIChatMultimodalInput({
 
           <TextInput
             style={[styles.textInput, { color: palette.text }, jakartaRegularText]}
-            placeholder="Posez une question..."
+            placeholder="Posez une question à Fyn…"
             placeholderTextColor={palette.textMuted}
             value={value}
             onChangeText={onChangeText}
@@ -233,10 +237,9 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 24,
+    borderRadius: 22,
     paddingHorizontal: spacing.sm,
     paddingVertical: 6,
-    borderWidth: 1,
   },
   textInput: {
     flex: 1,

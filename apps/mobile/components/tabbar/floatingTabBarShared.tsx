@@ -3,17 +3,46 @@
  */
 import { useEffect, useState } from 'react';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { AppIcon } from '@/components/icons/AppIcon';
 import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsForm';
 import { pressableCompactMotionStyle } from '@/constants/motionKit';
-import { radius, spacing } from '@/constants/theme';
+import type { AppColors } from '@/constants/theme';
+import { spacing } from '@/constants/theme';
 import { uiEvents } from '@/lib/events';
+import {
+  FLOATING_TAB_ACTIVE_WELL_SHELL,
+  TAB_ACTIVE_WELL_BORDER_RADIUS,
+  TAB_ACTIVE_WELL_SIZE,
+} from '@/components/tabbar/floatingTabBarTokens';
+
+export {
+  TAB_ACTIVE_WELL_BORDER_RADIUS,
+  TAB_ACTIVE_WELL_SIZE,
+} from '@/components/tabbar/floatingTabBarTokens';
 
 export const PILL_BORDER_RADIUS = 999;
 export const TAB_ICON_SIZE = 21;
 export const TAB_ICON_SIZE_ACTIVE = 24;
+
+/** Rounded-square shell for the focused-tab highlight (light + dark via `activeWell` color token). */
+export function floatingTabBarActiveWellShellStyle(): ViewStyle {
+  return {
+    ...FLOATING_TAB_ACTIVE_WELL_SHELL,
+    borderRadius: TAB_ACTIVE_WELL_BORDER_RADIUS,
+  };
+}
+
+/** Tab bar icon colors — stronger than segmented inactive tokens on glass blur. */
+export function getFloatingTabBarIconColors(colors: AppColors, isLight: boolean) {
+  return {
+    active: colors.text,
+    inactive: isLight ? colors.textSecondary : colors.textMuted,
+    activeWell: colors.iconWell,
+    activeIndicator: colors.accentGreen,
+  };
+}
 
 export const ROUTE_ICONS: Record<
   string,
@@ -212,10 +241,22 @@ type TabButtonProps = {
   focused: boolean;
   iconName: keyof typeof MaterialCommunityIcons.glyphMap;
   iconColor: string;
+  /** Soft well behind the active icon (segmented-tab activePill). */
+  activeWellColor?: string;
+  /** Small accent mark under the active icon (e.g. accentGreen). */
+  activeIndicatorColor?: string;
   onPress: () => void;
 };
 
-export function TabButton({ tabLabel, focused, iconName, iconColor, onPress }: TabButtonProps) {
+export function TabButton({
+  tabLabel,
+  focused,
+  iconName,
+  iconColor,
+  activeWellColor,
+  activeIndicatorColor,
+  onPress,
+}: TabButtonProps) {
   return (
     <Pressable
       onPress={onPress}
@@ -224,7 +265,13 @@ export function TabButton({ tabLabel, focused, iconName, iconColor, onPress }: T
       accessibilityLabel={tabLabel}
       accessibilityState={{ selected: focused }}
     >
-      <View style={tabStyles.tabInner}>
+      <View
+        style={[
+          tabStyles.tabInner,
+          floatingTabBarActiveWellShellStyle(),
+          focused && activeWellColor ? { backgroundColor: activeWellColor } : null,
+        ]}
+      >
         <AppIcon
           family="material-community"
           name={iconName}
@@ -232,6 +279,12 @@ export function TabButton({ tabLabel, focused, iconName, iconColor, onPress }: T
           color={iconColor}
           focused={focused}
         />
+        {focused && activeIndicatorColor ? (
+          <View
+            pointerEvents="none"
+            style={[tabStyles.activeIndicator, { backgroundColor: activeIndicatorColor }]}
+          />
+        ) : null}
       </View>
     </Pressable>
   );
@@ -249,8 +302,15 @@ const tabStyles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    minWidth: 44,
-    minHeight: 44,
-    borderRadius: radius.lg,
+    position: 'relative',
+  },
+  activeIndicator: {
+    position: 'absolute',
+    bottom: 5,
+    left: '50%',
+    width: 16,
+    height: 3.5,
+    marginLeft: -8,
+    borderRadius: 2,
   },
 });

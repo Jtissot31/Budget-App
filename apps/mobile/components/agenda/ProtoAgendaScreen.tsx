@@ -16,7 +16,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { MonthSelector } from '@/components/MonthSelector';
-import { OnyxContainer } from '@/components/OnyxContainer';
 import { PageTransition } from '@/components/PageTransition';
 import { ProtoGlassCard } from '@/components/proto/ProtoGlassCard';
 import { ProtoHeaderIconActions } from '@/components/proto/ProtoHeaderIconActions';
@@ -25,10 +24,6 @@ import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsF
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { getCategoryIconName } from '@/constants/categoryOptions';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
-import {
-  onyxContainerPressedStyle,
-  onyxContainerRowLayoutStyle,
-} from '@/constants/planFinanceKit';
 import {
   CHIP_BORDER_WIDTH,
   FLOATING_NAV_CONTENT_PADDING,
@@ -106,13 +101,6 @@ function dayUnitFr(n: number) {
 
 function weekUnitFr(n: number) {
   return n === 1 ? '1 semaine' : `${n} semaines`;
-}
-
-/** Compact Accueil-style disclosure for paid date groups above the GPS cursor. */
-function pastPaymentsDisclosureLabel(count: number, expanded: boolean) {
-  if (expanded) return 'Réduire';
-  if (count === 1) return 'Voir le paiement déjà passé';
-  return `Voir les ${count} paiements déjà passés`;
 }
 
 /** Relative urgency copy — week-aware after 7 days, non-anxiogène phrasing. */
@@ -236,8 +224,6 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
   const [deletingSelected, setDeletingSelected] = useState(false);
   const [addTypeChooserVisible, setAddTypeChooserVisible] = useState(false);
-  /** Paid groups above the GPS cursor start collapsed (full-month list only). */
-  const [pastPaymentsExpanded, setPastPaymentsExpanded] = useState(false);
 
   const openAddFormForVariant = useCallback(
     (variant: RecurringPaymentAddVariant) => {
@@ -367,23 +353,6 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
     return { index: firstUnpaid - 1, placement: 'after' as const };
   }, [dayFilterActive, listTimeline]);
 
-  /** Prefix of fully-paid groups above the GPS cursor (not future paid-after-unpaid). */
-  const firstUnpaidIndex = useMemo(() => {
-    const i = listTimeline.findIndex((entry) => !entry.paid);
-    return i < 0 ? listTimeline.length : i;
-  }, [listTimeline]);
-
-  const pastPaymentCount = useMemo(() => {
-    if (dayFilterActive) return 0;
-    return listTimeline
-      .slice(0, firstUnpaidIndex)
-      .reduce((sum, entry) => sum + entry.billsPaid.length, 0);
-  }, [dayFilterActive, firstUnpaidIndex, listTimeline]);
-
-  const collapsePast = pastPaymentCount > 0 && !pastPaymentsExpanded;
-  const firstVisibleIndex = collapsePast ? firstUnpaidIndex : 0;
-  const upcomingExists = firstUnpaidIndex < listTimeline.length;
-
   /** Monday-first grid (L=0 … D=6). JS getDay: Sun=0 → map to 6. */
   const firstWeekday = (() => {
     const js = new Date(year, month0, 1).getDay();
@@ -410,12 +379,10 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
   const goPrevMonth = useCallback(() => {
     setCursor(new Date(year, month0 - 1, 1));
     setSelectedDay(null);
-    setPastPaymentsExpanded(false);
   }, [month0, year]);
   const goNextMonth = useCallback(() => {
     setCursor(new Date(year, month0 + 1, 1));
     setSelectedDay(null);
-    setPastPaymentsExpanded(false);
   }, [month0, year]);
 
   const openBill = (bill: AgendaBill, dateKey: string) => {
@@ -652,89 +619,14 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
             </ProtoGlassCard>
           ) : (
             <View style={styles.timeline}>
-              {pastPaymentCount > 0 ? (
-                <View style={styles.timelineRow}>
-                  <View style={styles.rail}>
-                    {collapsePast && upcomingExists ? (
-                      <GpsRailCursor
-                        color={isLight ? colors.text : colors.accentGreen}
-                        placement="after"
-                      />
-                    ) : null}
-                    {collapsePast && upcomingExists ? (
-                      <SegmentedRailLine
-                        color={isLight ? colors.text : RAIL_COLOR_DARK}
-                        flushTop
-                      />
-                    ) : !collapsePast && listTimeline.length > 0 ? (
-                      <View
-                        style={[
-                          styles.railSolid,
-                          styles.disclosureRailFlush,
-                          {
-                            backgroundColor: isLight ? colors.text : RAIL_COLOR_DARK,
-                          },
-                        ]}
-                      />
-                    ) : null}
-                  </View>
-                  <View
-                    style={[
-                      styles.cardsCol,
-                      (collapsePast ? upcomingExists : listTimeline.length > 0) && {
-                        paddingBottom: TIMELINE_BLOCK_GAP,
-                      },
-                    ]}
-                  >
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        pastPaymentsExpanded
-                          ? 'Réduire les paiements déjà passés'
-                          : pastPaymentsDisclosureLabel(pastPaymentCount, false)
-                      }
-                      accessibilityState={{ expanded: pastPaymentsExpanded }}
-                      onPress={() => {
-                        tapHaptic();
-                        setPastPaymentsExpanded((open) => !open);
-                      }}
-                      style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
-                    >
-                      <OnyxContainer
-                        style={[onyxContainerRowLayoutStyle(), styles.pastToggleInner]}
-                      >
-                        <AppIcon
-                          family="ionicons"
-                          name="checkmark-outline"
-                          size={16}
-                          color={colors.accentGreen}
-                        />
-                        <Text style={[styles.pastToggleLabel, { color: colors.textMuted }]}>
-                          {pastPaymentsDisclosureLabel(
-                            pastPaymentCount,
-                            pastPaymentsExpanded,
-                          )}
-                        </Text>
-                        <AppIcon
-                          family="ionicons"
-                          name={pastPaymentsExpanded ? 'chevron-up' : 'chevron-down'}
-                          size={14}
-                          color={colors.textMuted}
-                        />
-                      </OnyxContainer>
-                    </Pressable>
-                  </View>
-                </View>
-              ) : null}
               {listTimeline.map((entry, index) => {
-                if (collapsePast && index < firstUnpaidIndex) return null;
                 const nextEntry =
                   index < listTimeline.length - 1 ? listTimeline[index + 1]! : null;
                 return (
                 <TimelineBlock
                   key={entry.dateKey}
                   entry={entry}
-                    isFirst={index === firstVisibleIndex}
+                    isFirst={index === 0}
                     isLast={nextEntry == null}
                     nextIsFuture={nextEntry != null ? nextEntry.dateKey > todayKey : false}
                     nextHasUrgency={
@@ -743,11 +635,7 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                         : false
                   }
                   gpsCursor={
-                    collapsePast
-                      ? null
-                      : gpsCursorAt?.index === index
-                        ? gpsCursorAt.placement
-                        : null
+                    gpsCursorAt?.index === index ? gpsCursorAt.placement : null
                   }
                   railColor={isLight ? colors.text : RAIL_COLOR_DARK}
                   isLight={isLight}
@@ -936,18 +824,15 @@ function GpsRailCursor({
 /** Future / transition rail: repeating dashes at fixed period (not flex-spaced). */
 function SegmentedRailLine({
   color,
-  flushTop = false,
 }: {
   color: string;
-  /** No gap under a date chip — used on the past-payments disclosure row. */
-  flushTop?: boolean;
 }) {
   const [height, setHeight] = useState(0);
   const count = height > 0 ? Math.ceil(height / RAIL_DASH_PITCH) : 0;
 
   return (
     <View
-      style={[styles.railDashed, flushTop && styles.disclosureRailFlush]}
+      style={styles.railDashed}
       onLayout={(e) => {
         const h = Math.round(e.nativeEvent.layout.height);
         setHeight((prev) => (prev === h ? prev : h));
@@ -1157,9 +1042,9 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   fixedTitle: {
     flexShrink: 0,
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.lg,
   },
-  /** Title → month nav → calendar card → payments. Title→month also uses calHeader.marginTop. */
+  /** Title → month nav → calendar card → payments. */
   scrollBody: { gap: spacing.lg },
   selectCheck: {
     width: 22,
@@ -1170,9 +1055,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  /** Flat on `colors.background` — no card chrome. Extra top margin beyond scrollBody gap. */
+  /** Flat on `colors.background` — no card chrome. Same title→content gap as Portefeuille soldeBlock. */
   calHeader: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   dowRow: { flexDirection: 'row', marginBottom: spacing.sm },
   dow: {
@@ -1209,14 +1094,6 @@ const styles = StyleSheet.create({
   timeline: { gap: 0 },
   timelineBlock: { gap: 0 },
   timelineRow: { flexDirection: 'row', gap: 10, alignItems: 'stretch' },
-  pastToggleInner: {
-    justifyContent: 'center',
-    gap: 6,
-  },
-  pastToggleLabel: {
-    ...typographyKit.metaSemibold,
-    fontSize: 13,
-  },
   rail: {
     width: 50,
     alignItems: 'center',
@@ -1277,10 +1154,6 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
     zIndex: 2,
-  },
-  /** Disclosure row has no date chip — rail fills the full column height. */
-  disclosureRailFlush: {
-    marginTop: 0,
   },
   railDash: {
     position: 'absolute',
