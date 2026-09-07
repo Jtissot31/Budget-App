@@ -23,6 +23,7 @@ import {
   AGENDA_FAB_ADD_ACTIONS,
   AGENDA_FAB_OPTION_PILL_WIDTH,
   FAB_STACK_OFFSET_ADD,
+  FAB_STACK_OFFSET_VOICE,
   getAgendaFabArcOffsets,
   getHistoryFabArcOffsets,
   HIDDEN_ROUTES,
@@ -43,6 +44,7 @@ import {
   getFloatingTabBarIconColors,
   type HistoryAddTransactionType,
 } from '@/components/tabbar/floatingTabBarShared';
+import { VoiceCommandIcon } from '@/components/icons/VoiceCommandIcon';
 import {
   SHOW_TRANSACTIONS_TAB_FABS,
   transactionsFabGlyphColor,
@@ -142,6 +144,9 @@ export function FloatingTabBar({ state, navigation, insets: navInsets }: BottomT
     SHOW_TRANSACTIONS_TAB_FABS &&
     (isTransactionsTab || isAgendaTab) &&
     !hideTabFabs;
+  /** Mic / waveform FAB — Transactions only, stacked above the + GlassFab. */
+  const showVoiceButton =
+    SHOW_TRANSACTIONS_TAB_FABS && isTransactionsTab && !hideTabFabs;
   const showHistoryFabOptions =
     isTransactionsTab && isHistoryFabExpanded && !hideTabFabs;
   const showAgendaFabOptions = isAgendaTab && isAgendaFabExpanded && !hideTabFabs;
@@ -208,6 +213,12 @@ export function FloatingTabBar({ state, navigation, insets: navInsets }: BottomT
     tapHaptic();
     router.push('/add-transaction');
   };
+
+  const handleVoicePress = useCallback(() => {
+    tapHaptic();
+    collapseSpeedDials();
+    uiEvents.requestVoiceTransaction();
+  }, [collapseSpeedDials]);
 
   const { active: navActiveColor, inactive: navInactiveColor, activeWell: navActiveWell, activeIndicator: navActiveIndicator } =
     getFloatingTabBarIconColors(colors, isLight);
@@ -398,6 +409,19 @@ export function FloatingTabBar({ state, navigation, insets: navInsets }: BottomT
               );
             })}
           </View>
+        ) : null}
+
+        {showVoiceButton ? (
+          <GlassFab
+            style={[
+              styles.fabPosition,
+              { bottom: rightThumbFabBottom + FAB_STACK_OFFSET_VOICE - bottom },
+            ]}
+            onPress={handleVoicePress}
+            accessibilityLabel="Commande vocale"
+          >
+            <VoiceCommandIcon size={24} color={transactionsFabGlyphColor(colors)} />
+          </GlassFab>
         ) : null}
 
         {showAddButton ? (

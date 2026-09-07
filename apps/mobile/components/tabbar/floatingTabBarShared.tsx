@@ -7,6 +7,7 @@ import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { AppIcon } from '@/components/icons/AppIcon';
 import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsForm';
+import { TRANSACTIONS_FAB_STACK_HEIGHT } from '@/constants/fabStyles';
 import { pressableCompactMotionStyle } from '@/constants/motionKit';
 import type { AppColors } from '@/constants/theme';
 import { spacing } from '@/constants/theme';
@@ -175,6 +176,8 @@ export const HISTORY_FAB_ADD_ACTIONS: {
 ];
 
 export const FAB_STACK_OFFSET_ADD = 104;
+/** Voice command FAB stacked above the + on Transactions. */
+export const FAB_STACK_OFFSET_VOICE = FAB_STACK_OFFSET_ADD + TRANSACTIONS_FAB_STACK_HEIGHT;
 export const HISTORY_FAB_MAIN_SIZE = 54;
 export const HISTORY_FAB_OPTION_ROW_HEIGHT = 44;
 export const HISTORY_FAB_ARC_RADIUS = 125;
