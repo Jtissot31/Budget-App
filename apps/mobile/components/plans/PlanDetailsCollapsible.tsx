@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { spacing } from '@/constants/theme';
 import type { PlanFinancier } from '@/lib/dashboardPlansMock';
 import { tapHaptic } from '@/lib/haptics';
+import { nativeTextColumnFlex } from '@/lib/textLayout';
 import {
   planDetailCardStyleFromTheme,
   planDetailFonts,
@@ -42,15 +43,25 @@ export function PlanDetailsCollapsible({ plan }: Props) {
           tapHaptic();
           setExpanded((prev) => !prev);
         }}
-        style={styles.headerRow}
+        style={styles.headerHit}
       >
-        <Text style={[planDetailFonts.sectionCaps, { color: theme.textMuted }]}>DÉTAILS DU PLAN</Text>
-        <AppIcon
-          family="material"
-          name={expanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
-          size={22}
-          color={theme.textMuted}
-        />
+        <View style={styles.headerRow}>
+          <Text
+            style={[
+              planDetailFonts.sectionCaps,
+              Platform.OS === 'web' ? null : styles.headerLabel,
+              { color: theme.textMuted },
+            ]}
+          >
+            DÉTAILS DU PLAN
+          </Text>
+          <AppIcon
+            family="material"
+            name={expanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+            size={22}
+            color={theme.textMuted}
+          />
+        </View>
       </Pressable>
 
       {expanded ? (
@@ -59,7 +70,11 @@ export function PlanDetailsCollapsible({ plan }: Props) {
             <View key={row.label} style={styles.row}>
               <Text style={[planDetailFonts.detailLabel, { color: theme.textMuted }]}>{row.label}</Text>
               <Text
-                style={[planDetailFonts.detailValue, { color: theme.text, flex: 1, textAlign: 'right' }]}
+                style={[
+                  planDetailFonts.detailValue,
+                  Platform.OS === 'web' ? { flex: 1 } : nativeTextColumnFlex,
+                  { color: theme.text, textAlign: 'right' },
+                ]}
               >
                 {row.value}
               </Text>
@@ -72,12 +87,19 @@ export function PlanDetailsCollapsible({ plan }: Props) {
 }
 
 const styles = StyleSheet.create({
+  headerHit: {
+    alignSelf: 'stretch',
+    width: '100%',
+  },
   headerRow: {
     flexDirection: 'row',
+    flexWrap: 'nowrap',
     alignItems: 'center',
     justifyContent: 'space-between',
+    width: '100%',
     gap: spacing.sm,
   },
+  headerLabel: nativeTextColumnFlex,
   rows: {
     marginTop: spacing.md,
     gap: spacing.sm,

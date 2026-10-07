@@ -1,6 +1,6 @@
 /**
- * Budget Proto Agenda — Figma exact layout (not legacy AgendaView).
- * Month calendar · dots · PAIEMENTS DU MOIS (full month) / DU JOUR (day filter).
+ * Budget Proto Agenda — month calendar or échéancier list.
+ * Cash-flow summary, then calendar card (Échéancier / Calendrier + month row).
  * No day selected by default; tap empty areas to clear day selection.
  */
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
@@ -15,8 +15,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
-import { MonthSelector } from '@/components/MonthSelector';
 import { PageTransition } from '@/components/PageTransition';
+import { AgendaBillRowCard, AGENDA_BILL_ROW_GAP } from '@/components/agenda/AgendaBillRowCard';
+import { AgendaMonthlyCashFlowCard } from '@/components/agenda/AgendaMonthlyCashFlowCard';
 import { ProtoGlassCard } from '@/components/proto/ProtoGlassCard';
 import { ProtoHeaderIconActions } from '@/components/proto/ProtoHeaderIconActions';
 import { ProtoSectionHeader } from '@/components/proto/ProtoSectionHeader';
@@ -49,8 +50,10 @@ import {
   dateKeyFromDate,
   dateKeyFromParts,
   markersForDay,
+  sumMonthCashflow,
   type ProtoTimelineEntry,
 } from '@/lib/protoAgendaBills';
+import { formatBudgetMonthLabel } from '@/lib/budgetMonth';
 import { getMerchantLogoUrls } from '@/lib/merchantLogo';
 import { hasMatchingRecurringPaymentTransaction } from '@/lib/recurringPaymentMatch';
 import { GENERIC_RECURRING_ICON } from '@/lib/recurringPaymentPresentation';
@@ -62,6 +65,17 @@ import type { AgendaBill, RecurringPayment, Transaction } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 
 const PAY_ICON_SIZE = 32;
+
+type AgendaBodyMode = 'timeline' | 'calendar';
+
+const AGENDA_BODY_TABS: {
+  id: AgendaBodyMode;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  { id: 'timeline', label: 'Échéancier', icon: 'list-outline' },
+  { id: 'calendar', label: 'Calendrier', icon: 'calendar-outline' },
+];
 
 /** Extra bottom inset so green agenda FAB (+ stack) clears last payment rows. */
 const AGENDA_FAB_SCROLL_CLEARANCE = 64;
@@ -94,6 +108,8 @@ const AGENDA_ADD_TYPE_OPTIONS: {
 ];
 
 const DOW = ['L', 'M', 'M', 'J', 'V', 'S', 'D'] as const;
+/** Rolling 7-day strip — JS getDay order (Sun=0). */
+const WEEKDAY_SHORT = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'] as const;
 
 function dayUnitFr(n: number) {
   return n === 1 ? '1 jour' : `${n} jours`;
@@ -216,6 +232,8 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
   const [cursor, setCursor] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
   /** null = full month list; set = filter to that calendar day. Never defaults to today. */
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  /** Calendar grid vs the existing recurring-payment list. */
+  const [bodyMode, setBodyMode] = useState<AgendaBodyMode>('calendar');
   const [payments, setPayments] = useState<RecurringPayment[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -288,6 +306,22 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
     [payments, rangeStart, rangeEnd],
   );
 
+  /**
+   * Visible month only. Inflows = scheduled income, committed = scheduled bills,
+   * net = inflows − committed, events = occurrence count.
+   */
+  const monthCash = useMemo(() => {
+    const { income, expenses } = sumMonthCashflow(billsByDate);
+    let events = 0;
+    for (const bills of Object.values(billsByDate)) events += bills.length;
+    return {
+      inflows: income,
+      committed: expenses,
+      net: income - expenses,
+      events,
+    };
+  }, [billsByDate]);
+
   const paymentsById = useMemo(() => {
     const map = new Map<string, RecurringPayment>();
     for (const p of payments) map.set(p.id, p);
@@ -305,6 +339,32 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
   const selectedDateKey =
     safeSelectedDay == null ? null : dateKeyFromParts(year, month0, safeSelectedDay);
   const dayFilterActive = selectedDateKey != null;
+
+  /**
+   * Seven days centered on the selected day, or on today when it falls in the
+   * visible month, otherwise on the 1st. Three days before, the anchor, three after.
+   */
+  const weekStrip = useMemo(() => {
+    const anchorDay =
+      safeSelectedDay ??
+      (now.getFullYear() === year && now.getMonth() === month0 ? now.getDate() : 1);
+    const anchor = new Date(year, month0, anchorDay);
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(anchor);
+      date.setDate(anchor.getDate() + index - 3);
+      return date;
+    });
+  }, [month0, now, safeSelectedDay, year]);
+
+  const stripBillsByDate = useMemo(() => {
+    const start = weekStrip[0];
+    const end = weekStrip[6];
+    if (!start || !end) return billsByDate;
+    const insideMonth = (date: Date) =>
+      date.getFullYear() === year && date.getMonth() === month0;
+    if (insideMonth(start) && insideMonth(end)) return billsByDate;
+    return buildRecurringBillsByDate(payments, start, end);
+  }, [billsByDate, month0, payments, weekStrip, year]);
 
   const timeline = useMemo(() => {
     const entries = buildMonthTimeline(billsByDate, todayKey, year, month0);
@@ -376,6 +436,21 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
     setSelectedDay((prev) => (prev === day ? null : day));
   }, []);
 
+  const selectStripDay = useCallback(
+    (date: Date) => {
+      tapHaptic();
+      const day = date.getDate();
+      const sameMonth = date.getFullYear() === year && date.getMonth() === month0;
+      if (!sameMonth) {
+        setCursor(new Date(date.getFullYear(), date.getMonth(), 1));
+        setSelectedDay(day);
+        return;
+      }
+      setSelectedDay((prev) => (prev === day ? null : day));
+    },
+    [month0, year],
+  );
+
   const goPrevMonth = useCallback(() => {
     setCursor(new Date(year, month0 - 1, 1));
     setSelectedDay(null);
@@ -384,6 +459,14 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
     setCursor(new Date(year, month0 + 1, 1));
     setSelectedDay(null);
   }, [month0, year]);
+
+  const selectBodyMode = useCallback((mode: AgendaBodyMode) => {
+    setBodyMode((prev) => {
+      if (prev === mode) return prev;
+      tapHaptic();
+      return mode;
+    });
+  }, []);
 
   const openBill = (bill: AgendaBill, dateKey: string) => {
     if (managingPayments) {
@@ -498,24 +581,162 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
         {/* Tap empty areas (not day cells / payment rows / edit-add) → clear day filter */}
         <Pressable onPress={clearDaySelection} style={styles.scrollBody}>
 
-        {/* Same MonthSelector as Budget (above budget widget) — outside calendar shell */}
-            <View style={styles.calHeader}>
-              <MonthSelector
-                month={cursor}
-                onPrevious={goPrevMonth}
-                onNext={goNextMonth}
-                canGoPrevious
-                canGoNext
-              />
-            </View>
+        <AgendaMonthlyCashFlowCard
+          net={monthCash.net}
+          inflows={monthCash.inflows}
+          committed={monthCash.committed}
+          events={monthCash.events}
+        />
 
         <ProtoGlassCard
           style={{
             paddingHorizontal: spacing.lg,
             paddingTop: spacing.md,
-            paddingBottom: spacing.sm,
+            paddingBottom: bodyMode === 'calendar' ? spacing.sm : spacing.md,
           }}
         >
+            <View style={styles.cardHead}>
+            <View
+              accessibilityRole="tablist"
+              style={[styles.modeTrack, { backgroundColor: colors.surfaceElevated }]}
+            >
+              {AGENDA_BODY_TABS.map((tab) => {
+                const selected = bodyMode === tab.id;
+                return (
+                  <Pressable
+                    key={tab.id}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={tab.label}
+                    onPress={() => selectBodyMode(tab.id)}
+                    style={[
+                      styles.modeSegment,
+                      selected && { backgroundColor: colors.text },
+                    ]}
+                  >
+                    <Ionicons
+                      name={tab.icon}
+                      size={15}
+                      color={selected ? colors.background : colors.textMuted}
+                    />
+                    <Text
+                      style={[
+                        styles.modeLabel,
+                        { color: selected ? colors.background : colors.textMuted },
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.75}
+                    >
+                      {tab.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.monthHead}>
+              <Text
+                accessibilityRole="header"
+                accessibilityLabel={formatBudgetMonthLabel(cursor)}
+                style={[styles.monthTitle, { color: colors.text }]}
+                numberOfLines={1}
+              >
+                {formatBudgetMonthLabel(cursor)}
+              </Text>
+              <View style={styles.monthChevrons}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Mois précédent"
+                  hitSlop={8}
+                  onPress={() => {
+                    tapHaptic();
+                    goPrevMonth();
+                  }}
+                  style={({ pressed }) => [styles.monthChevron, pressed && styles.monthChevronPressed]}
+                >
+                  <Ionicons name="chevron-back" size={18} color={colors.text} />
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Mois suivant"
+                  hitSlop={8}
+                  onPress={() => {
+                    tapHaptic();
+                    goNextMonth();
+                  }}
+                  style={({ pressed }) => [styles.monthChevron, pressed && styles.monthChevronPressed]}
+                >
+                  <Ionicons name="chevron-forward" size={18} color={colors.text} />
+                </Pressable>
+              </View>
+            </View>
+            </View>
+
+            <View style={styles.weekStrip}>
+              {weekStrip.map((date) => {
+                const key = dateKeyFromParts(date.getFullYear(), date.getMonth(), date.getDate());
+                const selected =
+                  safeSelectedDay != null &&
+                  date.getFullYear() === year &&
+                  date.getMonth() === month0 &&
+                  date.getDate() === safeSelectedDay;
+                const isToday = key === todayKey;
+                const markers = markersForDay(key, stripBillsByDate);
+                const weekday = WEEKDAY_SHORT[date.getDay()] ?? '';
+                const labelColor = selected ? colors.background : colors.textMuted;
+                const numberColor = selected ? colors.background : colors.textSecondary;
+                return (
+                  <Pressable
+                    key={key}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={
+                      isToday ? `${weekday} ${date.getDate()}, aujourd’hui` : `${weekday} ${date.getDate()}`
+                    }
+                    onPress={() => selectStripDay(date)}
+                    style={[
+                      styles.weekCell,
+                      selected && !isToday && { backgroundColor: colors.text },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        isToday && styles.weekTodayOutline,
+                        isToday && { borderColor: colors.text },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.weekTodayInner,
+                          selected && isToday && { backgroundColor: colors.text },
+                        ]}
+                      >
+                        <Text style={[styles.weekDay, { color: labelColor }]} numberOfLines={1}>
+                          {weekday}
+                        </Text>
+                        <View style={styles.weekNumWell}>
+                          <Text style={[styles.weekNum, { color: numberColor }]} numberOfLines={1}>
+                            {date.getDate()}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    <View style={styles.weekDotSlot}>
+                      {markers.hasExpense ? (
+                        <View style={[styles.weekDot, { backgroundColor: colors.danger }]} />
+                      ) : null}
+                      {markers.hasIncome ? (
+                        <View style={[styles.weekDot, { backgroundColor: colors.success }]} />
+                      ) : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {bodyMode === 'calendar' ? (
+            <>
             <View style={styles.dowRow}>
               {DOW.map((d, i) => (
                 <Text key={`${d}-${i}`} style={[styles.dow, { color: colors.textMuted }]}>
@@ -589,6 +810,8 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                 );
               })}
             </View>
+            </>
+            ) : null}
           </ProtoGlassCard>
 
         <View>
@@ -965,7 +1188,7 @@ const TimelineBlock = memo(function TimelineBlock({
                 pressed && { opacity: dimPastPaid ? 0.45 : 0.85 },
               ]}
             >
-              <ProtoGlassCard style={styles.payCard} padding={10}>
+              <AgendaBillRowCard>
                 <View style={styles.payInner}>
                     {selecting ? (
                   <View
@@ -1027,7 +1250,7 @@ const TimelineBlock = memo(function TimelineBlock({
                     ) : null}
                   </View>
                 </View>
-              </ProtoGlassCard>
+              </AgendaBillRowCard>
             </Pressable>
           );
         })}
@@ -1044,8 +1267,122 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     paddingBottom: spacing.lg,
   },
-  /** Title → month nav → calendar card → payments. */
+  /** Cash flow → calendar card → échéancier list. */
   scrollBody: { gap: spacing.lg },
+  cardHead: {
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  modeTrack: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderRadius: radius.pill,
+    padding: 4,
+    gap: 4,
+  },
+  modeSegment: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 36,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  modeLabel: {
+    ...typographyKit.metaSemibold,
+    fontSize: 13,
+    lineHeight: 16,
+    flexShrink: 1,
+  },
+  monthHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: 36,
+  },
+  monthTitle: {
+    ...typographyKit.bodyBold,
+    flex: 1,
+    minWidth: 0,
+    fontSize: 18,
+    lineHeight: 22,
+    letterSpacing: -0.3,
+    flexShrink: 1,
+  },
+  monthChevrons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  monthChevron: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthChevronPressed: {
+    opacity: 0.7,
+  },
+  weekStrip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm,
+  },
+  weekCell: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    paddingVertical: 4,
+    gap: 2,
+    borderRadius: radius.sm,
+  },
+  /** Today only — rounded rect around weekday + number, not a circle. */
+  weekTodayOutline: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignItems: 'center',
+  },
+  weekTodayInner: {
+    alignItems: 'center',
+    gap: 2,
+    borderRadius: 8,
+  },
+  weekDay: {
+    ...typographyKit.microMedium,
+    fontSize: 10,
+    lineHeight: 12,
+    textAlign: 'center',
+  },
+  weekNumWell: {
+    minWidth: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekNum: {
+    ...typographyKit.metaSemibold,
+    fontSize: 13,
+    lineHeight: 16,
+    textAlign: 'center',
+  },
+  weekDotSlot: {
+    height: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  weekDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
   selectCheck: {
     width: 22,
     height: 22,
@@ -1054,10 +1391,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-  },
-  /** Flat on `colors.background` — no card chrome. Same title→content gap as Portefeuille soldeBlock. */
-  calHeader: {
-    marginTop: spacing.sm,
   },
   dowRow: { flexDirection: 'row', marginBottom: spacing.sm },
   dow: {
@@ -1182,7 +1515,7 @@ const styles = StyleSheet.create({
   gpsCursorLead: {
     top: DATE_MARKER_SIZE + RAIL_GAP_FROM_MARKER,
   },
-  cardsCol: { flex: 1, minWidth: 0, gap: 8, paddingBottom: 0 },
+  cardsCol: { flex: 1, minWidth: 0, gap: AGENDA_BILL_ROW_GAP, paddingBottom: 0 },
   /** Offset past the date rail; modest bottom gap so tag → own cards stays tight. */
   groupUrgencyRow: {
     marginLeft: 60,
@@ -1202,7 +1535,6 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     letterSpacing: -0.1,
   },
-  payCard: { borderRadius: 16 },
   payInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   payIcon: {
     width: PAY_ICON_SIZE,

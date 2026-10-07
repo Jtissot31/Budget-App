@@ -30,7 +30,7 @@ app-open2.png
 .agent-tmp-*/
 _figma-import/
 
-# Built APKs / web export (must exclude — replaces .gitignore when present)
+# Built APKs / web export (must exclude ï¿½ replaces .gitignore when present)
 dist/
 dist/**
 *.apk

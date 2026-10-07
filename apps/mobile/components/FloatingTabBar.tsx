@@ -16,10 +16,10 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from "expo-router/react-navigation";
 import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import type { BottomTabBarProps } from "expo-router/js-tabs";
 import { GlassFab } from '@/components/GlassFab';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { TabBarDynamicBlur } from '@/components/tabbar/TabBarDynamicBlur';

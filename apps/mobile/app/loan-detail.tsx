@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -35,6 +36,7 @@ import {
   spacing,
   typography,
 } from '@/constants/theme';
+import { nativeTextColumnFlex } from '@/lib/textLayout';
 import {
   deleteLoan,
   getLoanById,
@@ -408,9 +410,9 @@ const styles = StyleSheet.create({
   },
   progressLabel: {
     ...jakartaBoldText,
-    flex: 1,
-    flexShrink: 1,
-    minWidth: 0,
+    ...(Platform.OS === 'web'
+      ? { flex: 1, flexShrink: 1, minWidth: 0 }
+      : nativeTextColumnFlex),
     fontSize: typography.micro,
     letterSpacing: 0.6,
     textTransform: 'uppercase',

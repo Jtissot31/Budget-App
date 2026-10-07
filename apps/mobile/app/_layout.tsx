@@ -1,6 +1,7 @@
 import 'react-native-gesture-handler';
 /** Install web SQLite error guards before boot UI / LogBox mounts. */
 import '@/lib/db';
+import '../global.css';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -8,6 +9,7 @@ import { loadAsync as loadFontAsync } from 'expo-font';
 import { useEffect, useState } from 'react';
 import { InteractionManager, Platform, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { PortalHost } from '@rn-primitives/portal';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DMMono_400Regular, DMMono_500Medium } from '@expo-google-fonts/dm-mono';
 import { Inter_600SemiBold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
@@ -27,6 +29,11 @@ import { useAppFonts } from '@/lib/useAppFonts';
 import { ThemeProvider, useAppTheme } from '@/lib/themeContext';
 import { configureSystemTypographyDefaults, configureTypographyDefaults } from '@/lib/typographyDefaults';
 import { fontFamilies } from '@/constants/theme';
+import { cn } from '@/lib/utils';
+
+export const unstable_settings = {
+  initialRouteName: '(tabs)',
+};
 
 /** Safety cap only — Stack renders immediately; fonts/DB run in the background. */
 const BOOTSTRAP_MAX_MS = 0;
@@ -47,11 +54,14 @@ export default function RootLayout() {
 }
 
 function ThemedRootShell() {
-  const { colors } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
 
   return (
     <SafeAreaProvider style={{ flex: 1, backgroundColor: colors.background }}>
-      <RootLayoutContent />
+      <View className={cn('flex-1', !isLight && 'dark')} style={{ flex: 1, backgroundColor: colors.background }}>
+        <RootLayoutContent />
+        <PortalHost />
+      </View>
     </SafeAreaProvider>
   );
 }
@@ -114,14 +124,14 @@ function RootLayoutContent() {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <AppBackgroundGradient />
-        <StatusBar style={statusBarStyle} backgroundColor={colors.background} />
+        <StatusBar style={statusBarStyle} />
       </View>
     );
   }
 
   return (
     <>
-      <StatusBar style={statusBarStyle} backgroundColor={colors.background} />
+      <StatusBar style={statusBarStyle} />
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <AppBackgroundGradient />
         <View style={{ flex: 1, zIndex: 1 }}>
@@ -197,9 +207,6 @@ function RootLayoutContent() {
             <Stack.Screen name="patrimoine" options={{ headerShown: false }} />
             <Stack.Screen name="plans" options={{ headerShown: false }} />
             <Stack.Screen name="scan" options={{ headerShown: false, presentation: 'modal' }} />
-            <Stack.Screen name="ai-chat" options={{ headerShown: false }} />
-            <Stack.Screen name="ai-advisor" options={{ headerShown: false }} />
-            <Stack.Screen name="fyn-chat" options={{ headerShown: false }} />
             <Stack.Screen name="alert-center" options={{ headerShown: false }} />
             <Stack.Screen name="alert-detail" options={{ headerShown: false }} />
             <Stack.Screen name="alert-types" options={{ headerShown: false }} />

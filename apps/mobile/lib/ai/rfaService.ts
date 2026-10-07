@@ -7,7 +7,6 @@ import {
   sanitizeForAI,
 } from './sanitizeForAI';
 import { loadEncryptedJson, removeEncryptedItem, saveEncryptedJson } from './encryptedStorage';
-import { invalidateChatSessionCache } from './chatSession';
 import type { FinancialSummaryAnonymous, RfaRegenerationTrigger } from './types';
 
 const RFA_STORAGE_KEY = 'bt_ai_rfa_v1';
@@ -18,10 +17,9 @@ const BALANCE_DELTA_THRESHOLD = 500;
 
 let cachedRfa: FinancialSummaryAnonymous | null = null;
 
-/** Drop in-memory RFA + chat session when loans/accounts/budgets change. */
+/** Drop in-memory RFA when loans/accounts/budgets change. */
 dataEvents.subscribe(() => {
   cachedRfa = null;
-  invalidateChatSessionCache();
 });
 
 async function getLastGeneratedAt(): Promise<number | null> {
@@ -41,12 +39,10 @@ export async function saveRFA(rfa: FinancialSummaryAnonymous): Promise<void> {
   cachedRfa = rfa;
   await saveEncryptedJson(RFA_STORAGE_KEY, rfa);
   await saveEncryptedJson(RFA_LAST_GENERATED_KEY, { generatedAt: rfa.generatedAt });
-  invalidateChatSessionCache();
 }
 
 export async function clearRFA(): Promise<void> {
   cachedRfa = null;
-  invalidateChatSessionCache();
   await removeEncryptedItem(RFA_STORAGE_KEY);
   await removeEncryptedItem(RFA_LAST_GENERATED_KEY);
 }

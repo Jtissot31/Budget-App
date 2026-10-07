@@ -16,6 +16,7 @@ import {
   typography,
   typographyKit,
 } from '@/constants/theme';
+import { nativeTextColumnFlex } from '@/lib/textLayout';
 import { useAppTheme } from '@/lib/themeContext';
 import type { TransactionInsight } from '@/lib/transactionInsight';
 
@@ -84,18 +85,21 @@ export function TransactionInsightCard({ insight }: Props) {
       <SurfaceCard style={detailSectionsCardStyle()}>
         <Pressable
           onPress={toggle}
-          style={({ pressed }) => [styles.expandedHeaderRow, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.rowHit, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Conseil IA"
           accessibilityState={{ expanded: true }}
         >
-          <View style={[styles.iconWell, { backgroundColor: colors.successMuted, borderColor: `${accentColor}33` }]}>
-            <AppIcon family="ionicons" name="sparkles-outline" size={14} color={accentColor} />
+          {/* Row layout stays on a View. Pressable drops flexDirection on Android. */}
+          <View style={styles.expandedHeaderRow}>
+            <View style={[styles.iconWell, { backgroundColor: colors.successMuted, borderColor: `${accentColor}33` }]}>
+              <AppIcon family="ionicons" name="sparkles-outline" size={14} color={accentColor} />
+            </View>
+            <Text style={[detailSectionLabelStyle(), styles.expandedEyebrow, { color: colors.textMuted }]}>
+              {insight.title}
+            </Text>
+            <AppIcon family="ionicons" name="chevron-up" size={14} color={colors.textMuted} style={styles.chevronMuted} />
           </View>
-          <Text style={[detailSectionLabelStyle(), styles.expandedEyebrow, { color: colors.textMuted }]}>
-            {insight.title}
-          </Text>
-          <AppIcon family="ionicons" name="chevron-up" size={14} color={colors.textMuted} style={styles.chevronMuted} />
         </Pressable>
         <InsightTipText text={insight.tip} color={colors.text} />
       </SurfaceCard>
@@ -111,18 +115,21 @@ export function TransactionInsightCard({ insight }: Props) {
     >
       <Pressable
         onPress={toggle}
-        style={({ pressed }) => [styles.collapsedRow, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.rowHit, pressed && styles.pressed]}
         accessibilityRole="button"
         accessibilityLabel="Conseil IA"
         accessibilityHint={teaser}
         accessibilityState={{ expanded: false }}
       >
-        <AppIcon family="ionicons" name="sparkles-outline" size={11} color={accentColor} style={styles.collapsedSparkle} />
-        <Text style={[styles.collapsedLabel, { color: colors.textMuted }]}>Conseil</Text>
-        <Text style={[styles.collapsedTeaser, { color: colors.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">
-          {teaser}
-        </Text>
-        <AppIcon family="ionicons" name="chevron-down" size={12} color={colors.textMuted} style={styles.chevronMuted} />
+        {/* Row layout stays on a View. Pressable drops flexDirection on Android. */}
+        <View style={styles.collapsedRow}>
+          <AppIcon family="ionicons" name="sparkles-outline" size={11} color={accentColor} style={styles.collapsedSparkle} />
+          <Text style={[styles.collapsedLabel, { color: colors.textMuted }]}>Conseil</Text>
+          <Text style={[styles.collapsedTeaser, { color: colors.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">
+            {teaser}
+          </Text>
+          <AppIcon family="ionicons" name="chevron-down" size={12} color={colors.textMuted} style={styles.chevronMuted} />
+        </View>
       </Pressable>
     </GlassContainer>
   );
@@ -134,37 +141,47 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
+  rowHit: {
+    alignSelf: 'stretch',
+    width: '100%',
+  },
   collapsedRow: {
     flexDirection: 'row',
+    flexWrap: 'nowrap',
     alignItems: 'center',
+    width: '100%',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
     minHeight: 34,
   },
   collapsedSparkle: {
+    flexGrow: 0,
     flexShrink: 0,
   },
   collapsedLabel: {
     ...jakartaExtraBoldText,
     ...typographyKit.microMedium,
+    flexGrow: 0,
     flexShrink: 0,
     letterSpacing: 0.2,
   },
   collapsedTeaser: {
     ...typographyKit.metaMedium,
-    flex: 1,
-    minWidth: 0,
+    ...(Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex),
     fontSize: typography.meta - 1,
     lineHeight: typography.meta + 3,
   },
   chevronMuted: {
     opacity: 0.45,
+    flexGrow: 0,
     flexShrink: 0,
   },
   expandedHeaderRow: {
     flexDirection: 'row',
+    flexWrap: 'nowrap',
     alignItems: 'center',
+    width: '100%',
     gap: spacing.sm,
     minHeight: 36,
   },
@@ -175,11 +192,10 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
+    flexGrow: 0,
+    flexShrink: 0,
   },
-  expandedEyebrow: {
-    flex: 1,
-    minWidth: 0,
-  },
+  expandedEyebrow: Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex,
   tipText: {
     ...jakartaMediumText,
     ...typographyKit.metaMedium,

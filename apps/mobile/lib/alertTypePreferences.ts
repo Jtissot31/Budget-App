@@ -29,7 +29,7 @@ export const ALERT_TYPE_PREFERENCE_LABELS: Record<AlertTypePreferenceId, string>
   balance_low: 'Alerte solde bas',
   budget_over: 'Alerte budget dépassé',
   plan_adaptation: 'Alerte adaptation de plan',
-  fyn: 'Autres alertes Fyn',
+  fyn: 'Autres conseils',
 };
 
 /**
@@ -46,8 +46,8 @@ const ALERT_TYPE_PREFERENCE_TRIGGERS: Record<AlertTypePreferenceId, string> = {
   budget_over:
     'Quand les dépenses d’une enveloppe dépassent son plafond pour le mois en cours.',
   plan_adaptation:
-    'Quand Fyn repère un ajustement utile sur un plan actif (cadence, objectif, extra, plafond) — rien n’est appliqué avant ta confirmation.',
-  fyn: 'Les autres messages de Fyn : conseils et suivis qui n’entrent dans aucune catégorie ci-dessus.',
+    'Quand un ajustement est proposé sur un plan actif (cadence, objectif, extra, plafond) — rien n’est appliqué avant ta confirmation.',
+  fyn: 'Conseils et suivis qui n’entrent dans aucune catégorie ci-dessus.',
 };
 
 /** Messages/Accueil item kind each type produces — used for icon, accent and section. */

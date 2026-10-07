@@ -76,21 +76,13 @@ import {
   type PayEstimationFrequency,
 } from '@/lib/payEstimationSettings';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
-import { clearChatHistory, getChatQuotaState, getDataModeLabel } from '@/lib/ai/chatService';
+import { getGeminiApiKeySource, isGeminiApiKeyConfigured } from '@/lib/ai/env';
 import {
-  getAnthropicApiKeySource,
-  getGeminiApiKeySource,
-  isAnthropicApiKeyConfigured,
-  isGeminiApiKeyConfigured,
-} from '@/lib/ai/env';
-import {
-  clearUserAnthropicApiKey,
   clearUserGeminiApiKey,
   hydrateUserApiKeys,
-  setUserAnthropicApiKey,
   setUserGeminiApiKey,
 } from '@/lib/ai/userApiKeys';
-import { FynApiKeySheet, type FynApiKeyProvider } from '@/components/ai-chat/FynApiKeySheet';
+import { GeminiApiKeySheet } from '@/components/GeminiApiKeySheet';
 import { useAppTheme } from '@/lib/themeContext';
 
 type PickerKind = 'currency' | 'language' | 'region' | 'pay_frequency' | null;
@@ -110,14 +102,9 @@ export default function SettingsScreen() {
   const [hapticEnabled, setHapticEnabled] = useState(true);
   const [autocompleteEnabled, setAutocompleteEnabledState] = useState(true);
   const [cloudConnected, setCloudConnected] = useState(false);
-  const [aiDataModeLabel, setAiDataModeLabel] = useState('Saisie manuelle');
-  const [aiQuotaLabel, setAiQuotaLabel] = useState<string | undefined>(undefined);
   const [geminiApiKeyConfigured, setGeminiApiKeyConfigured] = useState(false);
-  const [anthropicApiKeyConfigured, setAnthropicApiKeyConfigured] = useState(false);
   const [geminiApiKeySource, setGeminiApiKeySource] = useState<'user' | 'env' | null>(null);
-  const [anthropicApiKeySource, setAnthropicApiKeySource] = useState<'user' | 'env' | null>(null);
-  const [apiKeySheetProvider, setApiKeySheetProvider] = useState<FynApiKeyProvider | null>(null);
-  const [clearingChatHistory, setClearingChatHistory] = useState(false);
+  const [geminiKeySheetOpen, setGeminiKeySheetOpen] = useState(false);
 
   const [payFrequency, setPayFrequency] = useState<PayEstimationFrequency | null>(null);
   const [paySecondLastDate, setPaySecondLastDate] = useState('');
@@ -155,8 +142,6 @@ export default function SettingsScreen() {
       storedHaptic,
       storedAutocomplete,
       storedCloud,
-      dataModeLabel,
-      quota,
       paySettings,
     ] = await Promise.all([
       getDisplayCurrency(),
@@ -167,8 +152,6 @@ export default function SettingsScreen() {
       getHapticFeedbackEnabled(),
       getAutocompleteEnabled(),
       getCloudAccountConnected(),
-      getDataModeLabel(),
-      getChatQuotaState(),
       getPayEstimationSettings(),
     ]);
 
@@ -180,17 +163,9 @@ export default function SettingsScreen() {
     setHapticEnabled(storedHaptic);
     setAutocompleteEnabledState(storedAutocomplete);
     setCloudConnected(storedCloud);
-    setAiDataModeLabel(dataModeLabel);
-    setAiQuotaLabel(
-      quota.monthlyLimit > 0
-        ? `${quota.messagesThisMonth}/${quota.monthlyLimit} messages ce mois`
-        : `${quota.messagesThisMonth} message${quota.messagesThisMonth > 1 ? 's' : ''} ce mois`,
-    );
     await hydrateUserApiKeys();
     setGeminiApiKeyConfigured(isGeminiApiKeyConfigured());
-    setAnthropicApiKeyConfigured(isAnthropicApiKeyConfigured());
     setGeminiApiKeySource(getGeminiApiKeySource());
-    setAnthropicApiKeySource(getAnthropicApiKeySource());
     setPayFrequency(paySettings.frequency);
     setPaySecondLastDate(paySettings.secondLastDate ?? '');
     setPayLastDate(paySettings.lastDate ?? '');
@@ -241,14 +216,6 @@ export default function SettingsScreen() {
     setConfirmDeleteVisible(false);
     setCloudConnected(false);
     showFeedback(result.ok ? 'Données cloud' : 'Impossible', result.message, result.ok ? 'warning' : 'error');
-  };
-
-  const handleClearChatHistory = async () => {
-    setClearingChatHistory(true);
-    await clearChatHistory();
-    setClearingChatHistory(false);
-    successHaptic();
-    showFeedback('Historique effacé', 'Les conversations avec Fyn ont été supprimées de cet appareil.', 'success');
   };
 
   const themeTabs = useMemo(
@@ -492,10 +459,10 @@ export default function SettingsScreen() {
             </SettingsCustomRow>
           </SettingsSection>
 
-          <SettingsSection title="Fyn">
+          <SettingsSection title="Dictée vocale">
             <SettingsNavigationRow
               label="Clé Gemini"
-              hint="Gemini Flash — moteur principal de Fyn (chat, insights, plans). Sans serveur."
+              hint="Transcrit la dictée de transactions sur cet appareil. Sans serveur."
               icon="key-outline"
               value={
                 geminiApiKeyConfigured
@@ -506,8 +473,9 @@ export default function SettingsScreen() {
               }
               onPress={() => {
                 tapHaptic();
-                setApiKeySheetProvider('gemini');
+                setGeminiKeySheetOpen(true);
               }}
+              isLast
               accessory={
                 <View
                   style={[
@@ -529,77 +497,6 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
               }
-            />
-            <SettingsNavigationRow
-              label="Clé Claude"
-              hint="Anthropic (Claude) — repli si Gemini est absente. Chat direct depuis l’appareil."
-              icon="key-outline"
-              value={
-                anthropicApiKeyConfigured
-                  ? anthropicApiKeySource === 'user'
-                    ? 'Personnelle'
-                    : 'Env'
-                  : 'Absente'
-              }
-              onPress={() => {
-                tapHaptic();
-                setApiKeySheetProvider('anthropic');
-              }}
-              accessory={
-                <View
-                  style={[
-                    styles.statusBadge,
-                    {
-                      backgroundColor: anthropicApiKeyConfigured
-                        ? colors.successMuted
-                        : colors.surfaceElevated,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.statusBadgeText,
-                      { color: anthropicApiKeyConfigured ? colors.primary : colors.textMuted },
-                    ]}
-                  >
-                    {anthropicApiKeyConfigured ? 'OK' : '—'}
-                  </Text>
-                </View>
-              }
-            />
-            <SettingsNavigationRow
-              label="Mode de données"
-              hint="Plaid (sync bancaire) ou saisie manuelle — influence les conseils de l'IA."
-              icon="analytics-outline"
-              value={aiDataModeLabel}
-              onPress={() => {
-                tapHaptic();
-                showFeedback(
-                  'Mode de données',
-                  aiDataModeLabel,
-                  'info',
-                );
-              }}
-            />
-            <SettingsNavigationRow
-              label="Messages ce mois"
-              hint="Suivi local des messages envoyés à Fyn."
-              icon="chatbubble-ellipses-outline"
-              value={aiQuotaLabel}
-              onPress={() => {
-                tapHaptic();
-                if (aiQuotaLabel) {
-                  showFeedback('Messages ce mois', aiQuotaLabel, 'info');
-                }
-              }}
-            />
-            <SettingsNavigationRow
-              label="Effacer l'historique"
-              hint="Supprime les conversations IA stockées sur cet appareil."
-              icon="trash-outline"
-              value={clearingChatHistory ? 'Effacement…' : undefined}
-              onPress={() => void handleClearChatHistory()}
-              isLast
             />
           </SettingsSection>
 
@@ -643,7 +540,7 @@ export default function SettingsScreen() {
             />
           </SettingsSection>
 
-          <Text style={[styles.footer, { color: colors.textMuted }]}>Budget Tracker · v1.0</Text>
+          <Text style={[styles.footer, { color: colors.textMuted }]}>Budget-OX · v1.0</Text>
         </ScrollView>
 
         <SettingsPickerSheet
@@ -697,42 +594,25 @@ export default function SettingsScreen() {
           }}
         />
 
-        <FynApiKeySheet
-          visible={apiKeySheetProvider != null}
-          provider={apiKeySheetProvider ?? 'gemini'}
-          hasKey={
-            apiKeySheetProvider === 'anthropic' ? anthropicApiKeyConfigured : geminiApiKeyConfigured
-          }
-          keySource={
-            apiKeySheetProvider === 'anthropic' ? anthropicApiKeySource : geminiApiKeySource
-          }
-          onClose={() => setApiKeySheetProvider(null)}
+        <GeminiApiKeySheet
+          visible={geminiKeySheetOpen}
+          hasKey={geminiApiKeyConfigured}
+          keySource={geminiApiKeySource}
+          onClose={() => setGeminiKeySheetOpen(false)}
           onSave={async (key) => {
-            if (apiKeySheetProvider === 'anthropic') {
-              await setUserAnthropicApiKey(key);
-            } else {
-              await setUserGeminiApiKey(key);
-            }
+            await setUserGeminiApiKey(key);
             setGeminiApiKeyConfigured(isGeminiApiKeyConfigured());
-            setAnthropicApiKeyConfigured(isAnthropicApiKeyConfigured());
             setGeminiApiKeySource(getGeminiApiKeySource());
-            setAnthropicApiKeySource(getAnthropicApiKeySource());
             showFeedback(
               'Clé enregistrée',
-              'Fyn utilisera cette clé directement depuis l’appareil (sans serveur).',
+              'La dictée vocale utilisera cette clé directement depuis l’appareil.',
               'success',
             );
           }}
           onClear={async () => {
-            if (apiKeySheetProvider === 'anthropic') {
-              await clearUserAnthropicApiKey();
-            } else {
-              await clearUserGeminiApiKey();
-            }
+            await clearUserGeminiApiKey();
             setGeminiApiKeyConfigured(isGeminiApiKeyConfigured());
-            setAnthropicApiKeyConfigured(isAnthropicApiKeyConfigured());
             setGeminiApiKeySource(getGeminiApiKeySource());
-            setAnthropicApiKeySource(getAnthropicApiKeySource());
             showFeedback('Clé supprimée', 'La clé personnelle a été retirée de cet appareil.', 'info');
           }}
         />

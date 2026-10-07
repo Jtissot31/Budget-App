@@ -95,8 +95,7 @@ export function AlertCenterContent({ items, onOpenAlert }: Props) {
           />
           <Text style={[styles.emptyTitle, { color: colors.text }]}>Aucun message</Text>
           <Text style={[styles.emptyMessage, { color: colors.textMuted }]}>
-            Les rappels utiles et les opportunités Fyn apparaîtront ici — toujours avec des pistes
-            concrètes.
+            Les rappels utiles apparaîtront ici — toujours avec des pistes concrètes.
           </Text>
         </View>
       </ProtoGlassCard>

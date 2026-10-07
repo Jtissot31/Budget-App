@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode, type RefObject } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import {
   AddArticleSheet,
@@ -15,6 +15,7 @@ import {
   typographyKit,
 } from '@/constants/theme';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { nativeTextColumnFlex } from '@/lib/textLayout';
 import type { ItemizedNote } from '@/lib/itemizedNote';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -286,10 +287,12 @@ export function TransactionArticlesReceiptCard({
               pressed && styles.pressed,
             ]}
           >
-            <AppIcon family="ionicons" name="add" size={14} color={addCtaForeground} />
-            <Text style={[styles.joinButtonText, typographyKit.bodyBold, { color: addCtaForeground }]}>
-              Ajouter
-            </Text>
+            <View style={styles.joinButtonRow}>
+              <AppIcon family="ionicons" name="add" size={14} color={addCtaForeground} />
+              <Text style={[styles.joinButtonText, typographyKit.bodyBold, { color: addCtaForeground }]}>
+                Ajouter
+              </Text>
+            </View>
           </Pressable>
         ) : null}
 
@@ -341,16 +344,21 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   joinButton: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
     alignSelf: 'stretch',
     minHeight: 36,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  joinButtonRow: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
   },
   joinButtonText: {
     letterSpacing: 0.2,
@@ -364,8 +372,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   tableHeadLabel: {
-    flex: 1,
-    minWidth: 0,
+    ...(Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex),
     marginBottom: 0,
   },
   tableHeadAmount: {
@@ -384,8 +391,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   articleCopy: {
-    flex: 1,
-    minWidth: 0,
+    ...(Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex),
     gap: 2,
   },
   articleName: {

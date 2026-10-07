@@ -1,6 +1,14 @@
 /**
- * Start Expo/Metro without launching an external browser (Edge, Chrome, etc.).
- * Strips --web/-w so `expo start --web` cannot auto-open the system browser.
+ * Start Expo/Metro targeting **Expo Go** by default (day-to-day).
+ *
+ * Why: `expo-dev-client` is installed for EAS / `expo run:*` prebuilds. Without
+ * `--go`, `expo start` prefers the development-build deep link
+ * (`exp+budget-tracker://` / `budgettracker://`) — which opens a deleted or
+ * stale native client instead of Expo Go + the current JS bundle.
+ *
+ * - `npm start` → Expo Go (`--go`)
+ * - `npm run start:dev-client` → custom client (`--dev-client`)
+ * Strips `--web` / `-w` so the system browser does not auto-open.
  *
  * Usage: node scripts/expo-start.mjs [--clear] [--port 8081] ...
  */
@@ -19,6 +27,18 @@ for (const arg of process.argv.slice(2)) {
     continue;
   }
   forwardedArgs.push(arg);
+}
+
+const hasGo = forwardedArgs.includes('--go') || forwardedArgs.includes('-g');
+const hasDevClient =
+  forwardedArgs.includes('--dev-client') || forwardedArgs.includes('-d');
+
+// Default to Expo Go unless an explicit development-build flag is present.
+if (!hasGo && !hasDevClient) {
+  forwardedArgs.unshift('--go');
+  console.log(
+    '[expo-start] Cible Expo Go (--go). Pour un prebuild / dev client : npm run start:dev-client'
+  );
 }
 
 const env = {

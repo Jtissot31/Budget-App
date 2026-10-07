@@ -1,0 +1,83 @@
+/**
+ * Theme tokens for react-native-reusables / NativeWind (shadcn-RN).
+ * Keep in sync with `global.css`. App chrome still uses `constants/theme` + ThemeProvider.
+ */
+export const THEME = {
+  light: {
+    background: 'hsl(0 0% 100%)',
+    foreground: 'hsl(240 10% 4%)',
+    card: 'hsl(0 0% 100%)',
+    cardForeground: 'hsl(240 10% 4%)',
+    popover: 'hsl(0 0% 100%)',
+    popoverForeground: 'hsl(240 10% 4%)',
+    primary: 'hsl(142 71% 45%)',
+    primaryForeground: 'hsl(240 10% 4%)',
+    secondary: 'hsl(240 5% 96%)',
+    secondaryForeground: 'hsl(240 10% 4%)',
+    muted: 'hsl(240 5% 96%)',
+    mutedForeground: 'hsl(240 4% 46%)',
+    accent: 'hsl(240 5% 96%)',
+    accentForeground: 'hsl(240 10% 4%)',
+    destructive: 'hsl(0 84% 60%)',
+    border: 'hsl(240 6% 90%)',
+    input: 'hsl(240 6% 90%)',
+    ring: 'hsl(142 71% 45%)',
+    radius: '0.75rem',
+    chart1: 'hsl(12 76% 61%)',
+    chart2: 'hsl(173 58% 39%)',
+    chart3: 'hsl(197 37% 24%)',
+    chart4: 'hsl(43 74% 66%)',
+    chart5: 'hsl(27 87% 67%)',
+  },
+  dark: {
+    background: 'hsl(240 9% 3%)',
+    foreground: 'hsl(0 0% 98%)',
+    card: 'hsl(240 6% 7%)',
+    cardForeground: 'hsl(0 0% 98%)',
+    popover: 'hsl(240 6% 7%)',
+    popoverForeground: 'hsl(0 0% 98%)',
+    primary: 'hsl(142 71% 45%)',
+    primaryForeground: 'hsl(240 9% 3%)',
+    secondary: 'hsl(240 4% 12%)',
+    secondaryForeground: 'hsl(0 0% 98%)',
+    muted: 'hsl(240 4% 12%)',
+    mutedForeground: 'hsl(240 5% 64%)',
+    accent: 'hsl(240 4% 14%)',
+    accentForeground: 'hsl(0 0% 98%)',
+    destructive: 'hsl(0 71% 59%)',
+    border: 'hsla(0, 0%, 100%, 0.1)',
+    input: 'hsla(0, 0%, 100%, 0.12)',
+    ring: 'hsl(142 71% 45%)',
+    radius: '0.75rem',
+    chart1: 'hsl(220 70% 50%)',
+    chart2: 'hsl(160 60% 45%)',
+    chart3: 'hsl(30 80% 55%)',
+    chart4: 'hsl(280 65% 60%)',
+    chart5: 'hsl(340 75% 55%)',
+  },
+} as const;
+
+export const NAV_THEME = {
+  light: {
+    dark: false as const,
+    colors: {
+      primary: THEME.light.primary,
+      background: THEME.light.background,
+      card: THEME.light.card,
+      text: THEME.light.foreground,
+      border: THEME.light.border,
+      notification: THEME.light.destructive,
+    },
+  },
+  dark: {
+    dark: true as const,
+    colors: {
+      primary: THEME.dark.primary,
+      background: THEME.dark.background,
+      card: THEME.dark.card,
+      text: THEME.dark.foreground,
+      border: THEME.dark.border,
+      notification: THEME.dark.destructive,
+    },
+  },
+};

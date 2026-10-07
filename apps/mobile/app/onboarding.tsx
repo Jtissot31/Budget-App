@@ -14,16 +14,10 @@ import { MotiView } from 'moti';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { FynAvatar } from '@/components/ai-chat/FynAvatar';
-import { FynApiKeySheet } from '@/components/ai-chat/FynApiKeySheet';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { OnyxContainer } from '@/components/OnyxContainer';
-import {
-  ONYX_CONTAINER,
-  onyxContainerPressedStyle,
-  onyxContainerRowLayoutStyle,
-} from '@/constants/planFinanceKit';
+import { ONYX_CONTAINER, onyxContainerRowLayoutStyle } from '@/constants/planFinanceKit';
 import {
   jakartaBoldText,
   jakartaExtraBoldText,
@@ -32,11 +26,6 @@ import {
   PAGE_PADDING_HORIZONTAL,
   spacing,
 } from '@/constants/theme';
-import {
-  getGeminiApiKeySource,
-  isGeminiApiKeyConfigured,
-} from '@/lib/ai/env';
-import { clearUserGeminiApiKey, setUserGeminiApiKey } from '@/lib/ai/userApiKeys';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { setOnboardingCompleted } from '@/lib/onboarding';
 import { applyOnboardingMoneyAnswers } from '@/lib/onboardingMoney';
@@ -47,10 +36,10 @@ import {
 import { useAppTheme } from '@/lib/themeContext';
 import { getUserDisplayName, setUserDisplayName } from '@/lib/userDisplay';
 
-type StepId = 'welcome' | 'features' | 'name' | 'pay' | 'housing' | 'fyn';
+type StepId = 'welcome' | 'features' | 'name' | 'pay' | 'housing';
 
 /** Intro wizard — optional via settings; not forced on launch. */
-const STEPS: StepId[] = ['welcome', 'features', 'name', 'pay', 'housing', 'fyn'];
+const STEPS: StepId[] = ['welcome', 'features', 'name', 'pay', 'housing'];
 
 /** Fully pitch-black onboarding canvas — ambient green via soft edge washes only. */
 const ONBOARDING_PITCH = '#000000';
@@ -65,7 +54,7 @@ const WELCOME_TOP_SPACER =
   88 + spacing.sm + 20 + spacing.md;
 
 const FEATURES: {
-  icon: 'wallet-outline' | 'pie-chart-outline' | 'map-outline' | 'sparkles-outline';
+  icon: 'wallet-outline' | 'pie-chart-outline';
   title: string;
   body: string;
 }[] = [
@@ -78,16 +67,6 @@ const FEATURES: {
     icon: 'pie-chart-outline',
     title: 'Budgets clairs',
     body: 'Catégories, plafonds et progression mois après mois.',
-  },
-  {
-    icon: 'map-outline',
-    title: 'Plans financiers',
-    body: 'Objectifs d’épargne, dettes et stratégies pas à pas.',
-  },
-  {
-    icon: 'sparkles-outline',
-    title: 'Fyn, ton conseiller',
-    body: 'Un assistant IA pour comprendre et ajuster ton budget.',
   },
 ];
 
@@ -102,9 +81,6 @@ export default function OnboardingScreen() {
   const [lastPayday, setLastPayday] = useState('');
   const [monthlyRent, setMonthlyRent] = useState('');
   const [finishing, setFinishing] = useState(false);
-  const [apiKeySheetOpen, setApiKeySheetOpen] = useState(false);
-  const [geminiConfigured, setGeminiConfigured] = useState(isGeminiApiKeyConfigured());
-  const [geminiSource, setGeminiSource] = useState(getGeminiApiKeySource());
 
   const step = STEPS[stepIndex] ?? 'welcome';
   const isLast = stepIndex >= STEPS.length - 1;
@@ -160,11 +136,9 @@ export default function OnboardingScreen() {
 
   const primaryLabel = useMemo(() => {
     if (step === 'welcome') return 'Commencer';
-    if (step === 'features' || step === 'name' || step === 'pay' || step === 'housing') {
-      return 'Continuer';
-    }
-    return geminiConfigured ? 'Entrer dans l’app' : 'Passer et entrer';
-  }, [geminiConfigured, step]);
+    if (isLast) return 'Entrer dans l’app';
+    return 'Continuer';
+  }, [isLast, step]);
 
   const onPrimary = useCallback(() => {
     if (step === 'name') {
@@ -317,18 +291,6 @@ export default function OnboardingScreen() {
                   border={colors.containerBorder}
                 />
               ) : null}
-              {step === 'fyn' ? (
-                <FynStep
-                  configured={geminiConfigured}
-                  text={colors.text}
-                  muted={colors.textMuted}
-                  accent={colors.accentGreen}
-                  onOpenKeySheet={() => {
-                    tapHaptic();
-                    setApiKeySheetOpen(true);
-                  }}
-                />
-              ) : null}
 
               {/* CTA scrolls with content — not a sticky overlay footer */}
               <View style={styles.ctaBlock}>
@@ -352,23 +314,6 @@ export default function OnboardingScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      <FynApiKeySheet
-        visible={apiKeySheetOpen}
-        provider="gemini"
-        hasKey={geminiConfigured}
-        keySource={geminiSource}
-        onClose={() => setApiKeySheetOpen(false)}
-        onSave={async (key) => {
-          await setUserGeminiApiKey(key);
-          setGeminiConfigured(isGeminiApiKeyConfigured());
-          setGeminiSource(getGeminiApiKeySource());
-        }}
-        onClear={async () => {
-          await clearUserGeminiApiKey();
-          setGeminiConfigured(isGeminiApiKeyConfigured());
-          setGeminiSource(getGeminiApiKeySource());
-        }}
-      />
     </View>
   );
 }
@@ -416,7 +361,7 @@ function WelcomeStep({
         <Text style={{ color: accent }}>enfin lisible.</Text>
       </Text>
       <Text style={[styles.subhead, { color: muted }]}>
-        Budgets, comptes, plans et Fyn — un espace premium pour voir clairement où tu en es.
+        Budgets, comptes et objectifs — un espace premium pour voir clairement où tu en es.
       </Text>
     </View>
   );
@@ -654,65 +599,6 @@ function HousingStep({
   );
 }
 
-function FynStep({
-  configured,
-  text,
-  muted,
-  accent,
-  onOpenKeySheet,
-}: {
-  configured: boolean;
-  text: string;
-  muted: string;
-  accent: string;
-  onOpenKeySheet: () => void;
-}) {
-  return (
-    <View style={styles.fynStep}>
-      <Text style={[styles.stepEyebrow, { color: accent }]}>Optionnel</Text>
-      <Text style={[styles.stepTitle, { color: text }]}>Activer Fyn</Text>
-      <Text style={[styles.subhead, { color: muted, marginTop: spacing.sm }]}>
-        Fyn utilise ta propre clé Gemini (BYOK). Tu peux aussi le faire plus tard dans Réglages.
-      </Text>
-
-      <OnyxContainer style={styles.fynHero}>
-        <FynAvatar size={56} showStatus statusBorderColor="#111111" />
-        <View style={styles.fynCopy}>
-          <Text style={[styles.featureTitle, { color: text }]}>Conseiller IA</Text>
-          <Text style={[styles.featureBody, { color: muted }]}>
-            Plans, cashflow et idées — sans forcer de clé maintenant.
-          </Text>
-        </View>
-      </OnyxContainer>
-
-      <Pressable
-        accessibilityRole="button"
-        onPress={onOpenKeySheet}
-        style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
-      >
-        <OnyxContainer style={styles.fynAction}>
-          <View style={styles.fynActionCopy}>
-            <Text style={[styles.featureTitle, { color: text }]}>
-              {configured ? 'Clé Gemini enregistrée' : 'Ajouter une clé Gemini'}
-            </Text>
-            <Text style={[styles.featureBody, { color: muted }]}>
-              {configured
-                ? 'Tu peux la modifier ou la retirer.'
-                : 'Stockée sur cet appareil. Pas obligatoire.'}
-            </Text>
-          </View>
-          <AppIcon
-            family="ionicons"
-            name={configured ? 'checkmark-circle' : 'key-outline'}
-            size={22}
-            color={configured ? accent : text}
-          />
-        </OnyxContainer>
-      </Pressable>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -724,7 +610,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   atmosphere: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 0,
     backgroundColor: ONBOARDING_PITCH,
   },

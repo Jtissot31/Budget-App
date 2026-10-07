@@ -45,7 +45,7 @@ export function TabBarDynamicBlur({
     <View
       pointerEvents="none"
       style={[
-        StyleSheet.absoluteFillObject,
+        StyleSheet.absoluteFill,
         { borderRadius: cornerRadius, overflow: 'hidden' },
         style,
       ]}
@@ -53,17 +53,17 @@ export function TabBarDynamicBlur({
       <BlurView
         intensity={BLUR_INTENSITY}
         tint={isLight ? 'systemUltraThinMaterialLight' : 'systemUltraThinMaterialDark'}
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       />
       <View
         style={[
-          StyleSheet.absoluteFillObject,
+          StyleSheet.absoluteFill,
           { borderRadius: cornerRadius, backgroundColor: wash },
         ]}
       />
       <View
         style={[
-          StyleSheet.absoluteFillObject,
+          StyleSheet.absoluteFill,
           {
             borderRadius: cornerRadius,
             borderWidth: StyleSheet.hairlineWidth,

@@ -7,6 +7,7 @@ import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Dimensions,
   Keyboard,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +15,7 @@ import {
   TextInput,
   useWindowDimensions,
   View,
+  type LayoutChangeEvent,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -72,6 +74,7 @@ import {
   type SavingsGoalContributionFrequency,
 } from '@/lib/savingsGoalContribution';
 import {
+  FORM_SHEET_CHROME_HEIGHT,
   FORM_SHEET_CONTENT_PADDING_TOP,
   FormSheetChromeHeader,
   FormSheetModalBody,
@@ -204,6 +207,8 @@ export default function AddBudgetCategoryScreen() {
   const [saving, setSaving] = useState(false);
   const [existing, setExisting] = useState<BudgetCategory[]>([]);
   const [monthlySalary, setMonthlySalary] = useState<number | null>(null);
+  const [footerHeight, setFooterHeight] = useState(0);
+  const [chromeHeight, setChromeHeight] = useState(FORM_SHEET_CHROME_HEIGHT + spacing.lg);
 
   const sheetScrollRef = useRef<Animated.ScrollView>(null);
   const scrollContentRef = useRef<View>(null);
@@ -578,10 +583,41 @@ export default function AddBudgetCategoryScreen() {
   // Never disabled for a reason the screen does not spell out — the capacity notice
   // below stays visible instead.
   const canSubmit = !saving;
-  const sheetContentPaddingBottom = formSheetScrollPaddingBottom(
-    insets.bottom,
-    keyboardInset,
-    windowHeight,
+  /**
+   * Web keeps the submit control in the form. Native draws it as a sibling after
+   * the ScrollView, anchored to the sheet bottom. An in-flow footer is clipped:
+   * the panel has a fixed height and overflow:hidden, and the native ScrollView
+   * sizes to its content, so the button is laid out below that box.
+   */
+  const pinSubmitButton = Platform.OS !== 'web';
+  const safeBottom =
+    Platform.OS === 'android' ? Math.max(insets.bottom, spacing.lg) : Math.max(insets.bottom, 0);
+  const footerSafePadding = safeBottom + spacing.md;
+  const reservedFooter =
+    footerHeight > 0 ? footerHeight : spacing.md + 48 + footerSafePadding;
+  const sheetContentPaddingBottom = pinSubmitButton
+    ? spacing.lg + Math.max(0, keyboardInset)
+    : formSheetScrollPaddingBottom(insets.bottom, keyboardInset, windowHeight);
+  const onFooterLayout = useCallback((event: LayoutChangeEvent) => {
+    const next = Math.round(event.nativeEvent.layout.height);
+    if (next > 0) setFooterHeight((current) => (current === next ? current : next));
+  }, []);
+  const onChromeLayout = useCallback((event: LayoutChangeEvent) => {
+    const next = Math.round(event.nativeEvent.layout.height);
+    if (next > 0) setChromeHeight((current) => (current === next ? current : next));
+  }, []);
+  const pinnedScrollHeight = Math.max(
+    160,
+    sheetDragHeight - chromeHeight - reservedFooter,
+  );
+  const submitButton = (
+    <PrimarySaveButton
+      label={saving ? 'Création...' : 'Créer la catégorie'}
+      onPress={() => void handleSave()}
+      loading={saving}
+      disabled={!canSubmit}
+      style={styles.submitButton}
+    />
   );
 
   const themed = useMemo(
@@ -625,10 +661,11 @@ export default function AddBudgetCategoryScreen() {
               styles.sheet,
               themed.sheet,
               formSheetPanelStyle(sheetDragHeight),
+              pinSubmitButton ? styles.sheetPinsFooter : null,
               sheetAnimatedStyle,
             ]}
           >
-            <View style={styles.sheetChrome}>
+            <View style={styles.sheetChrome} onLayout={onChromeLayout}>
               <FormSheetChromeHeader
                 title="Nouvelle catégorie"
                 onClose={requestClose}
@@ -639,10 +676,28 @@ export default function AddBudgetCategoryScreen() {
                 headerStyle={styles.sheetHeaderPad}
               />
             </View>
+            <View
+              style={[
+                styles.sheetScroll,
+                pinSubmitButton
+                  ? {
+                      flexGrow: 0,
+                      flexShrink: 0,
+                      flexBasis: pinnedScrollHeight,
+                      height: pinnedScrollHeight,
+                    }
+                  : null,
+              ]}
+            >
             <GestureDetector gesture={scrollNativeGesture}>
               <Animated.ScrollView
                 ref={sheetScrollRef}
-                style={formSheetScrollViewStyle()}
+                style={[
+                  formSheetScrollViewStyle(),
+                  pinSubmitButton
+                    ? { height: pinnedScrollHeight, flexGrow: 0, flexBasis: pinnedScrollHeight }
+                    : null,
+                ]}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
                 onScrollBeginDrag={() => Keyboard.dismiss()}
@@ -919,16 +974,27 @@ export default function AddBudgetCategoryScreen() {
 
                   {feedback ? <ThemedFormMessage {...feedback} /> : null}
 
-                  <PrimarySaveButton
-                    label={saving ? 'Création...' : 'Créer la catégorie'}
-                    onPress={() => void handleSave()}
-                    loading={saving}
-                    disabled={!canSubmit}
-                  />
+                  {pinSubmitButton ? null : submitButton}
                 </View>
                 </View>
               </Animated.ScrollView>
             </GestureDetector>
+            </View>
+            {pinSubmitButton ? (
+              <View
+                collapsable={false}
+                onLayout={onFooterLayout}
+                style={[
+                  styles.sheetFooter,
+                  {
+                    backgroundColor: colors.background,
+                    paddingBottom: footerSafePadding,
+                  },
+                ]}
+              >
+                {submitButton}
+              </View>
+            ) : null}
           </Animated.View>
         </GestureDetector>
       </FormSheetModalBody>
@@ -945,7 +1011,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   dragBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   modalKeyboard: {
     flex: 1,
@@ -957,6 +1023,10 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
+  /** Footer is pinned to this view; hidden overflow would mask it once the scroller overflows. */
+  sheetPinsFooter: {
+    overflow: 'visible',
+  },
   sheetChrome: {
     flexShrink: 0,
     paddingTop: FORM_SHEET_CONTENT_PADDING_TOP,
@@ -964,6 +1034,31 @@ const styles = StyleSheet.create({
   sheetHeaderPad: {
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.sm,
+  },
+  sheetScroll: {
+    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minHeight: 0,
+    overflow: 'hidden',
+  },
+  sheetFooter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 4,
+    elevation: 8,
+    width: '100%',
+    flexShrink: 0,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  submitButton: {
+    minHeight: 48,
+    justifyContent: 'center',
+    overflow: 'visible',
   },
   sheetContent: {
     paddingHorizontal: spacing.lg,

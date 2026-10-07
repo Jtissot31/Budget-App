@@ -3,18 +3,18 @@ import { useCallback, useMemo } from 'react';
 import { Platform, View, StyleSheet } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
-import { FloatingTabBar } from '@/components/FloatingTabBar';
+import { AppBottomTabBar } from '@/components/BottomNavBar';
 import { useAppTheme } from '@/lib/themeContext';
 
 /**
- * Main floating-tab routes only. Settings / widgets stay in the Tabs navigator
- * for deep links but are excluded from swipe — matching FloatingTabBar.
+ * Main bottom-nav routes only, in bar order: Home, Activity, Budget, Agenda, Balance.
+ * Settings stays in the Tabs navigator for deep links but is excluded from swipe.
  *
  * Root-tab swipe moves between these paths (or no-ops at the ends). Detail /
  * sheet swipe-back is owned elsewhere and deliberately blocked on these paths
  * via `isSwipeBackBlockedPath`.
  */
-const MAIN_TAB_PATHS = ['/', '/transactions', '/accounts', '/budgets', '/goals'] as const;
+const MAIN_TAB_PATHS = ['/', '/transactions', '/budgets', '/goals', '/accounts'] as const;
 
 const SWIPE_MIN_DISTANCE = 56;
 const SWIPE_MIN_VELOCITY = 520;
@@ -55,7 +55,7 @@ export default function TabLayout() {
 
           const direction: 1 | -1 = translationX < 0 ? 1 : -1;
           const nextIndex = activeTabIndex + direction;
-          // Accueil right-swipe and Agenda left-swipe: nothing (never pop / exit).
+          // Home right-swipe and Balance left-swipe: nothing (never pop / exit).
           if (nextIndex < 0 || nextIndex >= MAIN_TAB_PATHS.length) return;
 
           runOnJS(navigateBySwipe)(direction);
@@ -66,7 +66,7 @@ export default function TabLayout() {
   const tabs = (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Tabs
-        tabBar={(props) => <FloatingTabBar {...props} />}
+        tabBar={(props) => <AppBottomTabBar {...props} />}
         screenOptions={{
           headerShown: false,
           // Default is already lazy; keep explicit so adjacent heavy hubs
@@ -79,7 +79,8 @@ export default function TabLayout() {
           },
           sceneStyle: { backgroundColor: colors.background },
           tabBarShowLabel: false,
-          // Overlay scenes so scrolling content sits under the pill → real backdrop blur.
+          // Dock overlays the scene. The slot is only as tall as the tab row
+          // (no default fill, no FAB spacer). zIndex keeps it above the scene on web.
           tabBarStyle: {
             position: 'absolute',
             left: 0,
@@ -88,18 +89,20 @@ export default function TabLayout() {
             backgroundColor: 'transparent',
             borderTopWidth: 0,
             elevation: 0,
+            shadowOpacity: 0,
+            overflow: 'visible',
+            zIndex: 50,
           },
         }}
       >
-        <Tabs.Screen name="index" />
-        <Tabs.Screen name="transactions" />
+        <Tabs.Screen name="index" options={{ title: 'Home' }} />
+        <Tabs.Screen name="transactions" options={{ title: 'Activity' }} />
+        <Tabs.Screen name="budgets" options={{ title: 'Budget' }} />
+        <Tabs.Screen name="goals" options={{ title: 'Agenda' }} />
         <Tabs.Screen
           name="accounts"
-          options={{ title: 'Comptes', animation: 'none' }}
+          options={{ title: 'Balance', animation: 'none' }}
         />
-        <Tabs.Screen name="budgets" />
-        <Tabs.Screen name="goals" options={{ title: 'Agenda' }} />
-        <Tabs.Screen name="widgets" options={{ title: 'Galerie widgets', href: null }} />
         <Tabs.Screen name="settings" />
       </Tabs>
     </View>

@@ -1,11 +1,11 @@
 /**
  * Agenda tab — Budget Proto Figma UI only (not PlanFinancierHub / not AgendaView shell).
  * List-row tap → PaymentDetailSheet (opaque detail).
- * FAB → RecurringPaymentFormModal via uiEvents.
+ * Header add → RecurringPaymentFormModal.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused } from "expo-router/react-navigation";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProtoAgendaScreen } from '@/components/agenda/ProtoAgendaScreen';
 import {

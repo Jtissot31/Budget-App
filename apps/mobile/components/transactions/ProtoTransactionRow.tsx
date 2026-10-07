@@ -3,7 +3,7 @@
  * Merchant logos replace the income glyph / expense arrow when a logo is available.
  */
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { IncomeIcon } from '@/components/icons/IncomeIcon';
 import { RemoteLogoImage } from '@/components/IconFrame';
@@ -19,10 +19,14 @@ import {
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { tapHaptic } from '@/lib/haptics';
 import { getLocalMerchantLogoAsset, getMerchantLogoUrls } from '@/lib/merchantLogo';
+import { userPickedIconLogoInset, userPickedIconLogoSize } from '@/lib/userPickedIcon';
 import { useAppTheme } from '@/lib/themeContext';
 import type { SimulatedAccount, Transaction } from '@/types';
 
 const ICON_WELL = 40;
+/** Same inset as `remoteLogoImageStyle`, laid out in flow so native matches web. */
+const LOGO_SIDE = userPickedIconLogoSize(ICON_WELL);
+const LOGO_INSET = userPickedIconLogoInset(ICON_WELL);
 /**
  * Glyph size inside the pale well.
  * Income `$` uses a larger box than expense fallbacks so it reads clearly in the 40px well.
@@ -113,7 +117,7 @@ export const ProtoTransactionRow = memo(function ProtoTransactionRow({
       accessibilityLabel={`${title}, ${signed}`}
       onPress={handlePress}
       style={({ pressed }) => [
-        styles.row,
+        styles.hit,
         !isLast && {
           borderBottomWidth: StyleSheet.hairlineWidth,
           borderBottomColor: colors.containerBorder,
@@ -121,7 +125,11 @@ export const ProtoTransactionRow = memo(function ProtoTransactionRow({
         pressed && styles.pressed,
       ]}
     >
+      {/* Layout lives on a plain View. Pressable on Android does not reliably
+          apply flexDirection, which stacked the logo above the amount. */}
+      <View style={styles.row}>
       <View
+        collapsable={false}
         style={[
           styles.iconWell,
           !showMerchantLogo && { backgroundColor: colors.surfaceElevated },
@@ -129,38 +137,54 @@ export const ProtoTransactionRow = memo(function ProtoTransactionRow({
         ]}
       >
         {showLocalLogo && localLogoAsset != null ? (
-          <RemoteLogoImage
-            asset={localLogoAsset}
-            size={ICON_WELL}
-            recyclingKey={`merchant-local-${transaction.label}`}
-            onError={() => setLocalFailed(true)}
-          />
+          <View style={styles.logoFrame} collapsable={false}>
+            <RemoteLogoImage
+              asset={localLogoAsset}
+              size={LOGO_SIDE}
+              fullSize
+              recyclingKey={`merchant-local-${transaction.label}`}
+              onError={() => setLocalFailed(true)}
+            />
+          </View>
         ) : showRemoteLogo && logoUri ? (
-          <RemoteLogoImage
-            uri={logoUri}
-            size={ICON_WELL}
-            recyclingKey={logoUri}
-            onError={() => {
-              if (logoSourceIndex < merchantLogoUrls.length - 1) {
-                setLogoSourceIndex((i) => i + 1);
-              } else {
-                setRemoteGiveUp(true);
-              }
-            }}
-          />
+          <View style={styles.logoFrame} collapsable={false}>
+            <RemoteLogoImage
+              uri={logoUri}
+              size={LOGO_SIDE}
+              fullSize
+              recyclingKey={logoUri}
+              onError={() => {
+                if (logoSourceIndex < merchantLogoUrls.length - 1) {
+                  setLogoSourceIndex((i) => i + 1);
+                } else {
+                  setRemoteGiveUp(true);
+                }
+              }}
+            />
+          </View>
         ) : isIncome ? (
           <IncomeIcon size={ICON_GLYPH_INCOME} color={iconColor} />
         ) : (
           <AppIcon family="ionicons" name="trending-down" size={ICON_GLYPH_FALLBACK} color={iconColor} />
         )}
       </View>
-      <View style={styles.copy}>
-        <Text style={[styles.title, jakartaSemiboldText, { color: colors.text }]} numberOfLines={2}>
+      <View style={styles.copy} collapsable={false}>
+        <Text
+          style={[styles.title, jakartaSemiboldText, { color: colors.text }]}
+          numberOfLines={2}
+          ellipsizeMode="tail"
+        >
           {title}
         </Text>
-        <Text style={[styles.subtitle, jakartaMediumText, { color: colors.textMuted }]} numberOfLines={1}>
-          {subtitle}
-        </Text>
+        {subtitle ? (
+          <Text
+            style={[styles.subtitle, jakartaMediumText, { color: colors.textMuted }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
       <Text
         style={[
@@ -172,18 +196,28 @@ export const ProtoTransactionRow = memo(function ProtoTransactionRow({
       >
         {signed}
       </Text>
+      </View>
     </Pressable>
   );
 });
 
 const styles = StyleSheet.create({
+  hit: {
+    alignSelf: 'stretch',
+    width: '100%',
+  },
+  // Web: CSS flex + gap. Native Yoga 3: `flex: 1` is basis 0, and `minWidth: 0`
+  // collapses this column to nothing so only the logo and amount remain.
   row: {
     flexDirection: 'row',
+    flexWrap: 'nowrap',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'flex-start',
+    width: '100%',
     paddingHorizontal: 14,
     paddingVertical: 12,
     minHeight: 64,
+    ...(Platform.OS === 'web' ? { gap: 12 } : null),
   },
   iconWell: {
     width: ICON_WELL,
@@ -191,28 +225,52 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    flexGrow: 0,
     flexShrink: 0,
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? null : { marginRight: 12 }),
   },
   iconWellLogo: {
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    paddingTop: LOGO_INSET,
+    paddingLeft: LOGO_INSET,
+  },
+  logoFrame: {
+    width: LOGO_SIDE,
+    height: LOGO_SIDE,
     overflow: 'hidden',
-    position: 'relative',
   },
-  copy: {
-    flex: 1,
-    flexShrink: 1,
-    minWidth: 0,
-    gap: 2,
-  },
+  copy: Platform.OS === 'web'
+    ? {
+        flex: 1,
+        flexShrink: 1,
+        flexDirection: 'column',
+        minWidth: 0,
+        gap: 2,
+      }
+    : {
+        flexGrow: 1,
+        flexShrink: 1,
+        flexBasis: 'auto',
+        flexDirection: 'column',
+        minWidth: 72,
+        marginRight: 12,
+        justifyContent: 'center',
+      },
   title: {
     fontSize: 15,
     lineHeight: 20,
     letterSpacing: -0.2,
+    ...(Platform.OS === 'web' ? null : { flexShrink: 1 }),
   },
   subtitle: {
     fontSize: 12.5,
     lineHeight: 16,
+    ...(Platform.OS === 'web' ? null : { flexShrink: 1, marginTop: 2 }),
   },
   amount: {
+    flexGrow: 0,
     flexShrink: 0,
   },
   pressed: { opacity: 0.78 },

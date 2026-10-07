@@ -103,7 +103,7 @@ import {
   loadBudgetCategoriesForPicker,
 } from '@/lib/budgetCategories';
 import { INCOME_CATEGORY, TRANSFER_CATEGORY } from '@/constants/categoryOptions';
-import { detailRowEditableContainer, detailRowValueMoney, detailRowSelectValueText } from '@/lib/textLayout';
+import { detailRowEditableContainer, detailRowValueMoney, detailRowSelectValueText, nativeTextColumnFlex } from '@/lib/textLayout';
 import { receiptDownloadErrorMessage, saveReceiptToPhotos, shareReceiptImage } from '@/lib/receiptDownload';
 import { EMPTY_DETAIL_VALUE } from '@/lib/detailDisplay';
 import { HandledSaveError } from '@/lib/editableSaveError';
@@ -1141,32 +1141,39 @@ function TransactionReceiptCard({
             disabled={!canPreviewReceipt}
             onPress={onViewReceipt}
             style={({ pressed }) => [
-              styles.receiptAttachmentRow,
+              styles.rowHit,
               canPreviewReceipt && pressed && styles.pressed,
             ]}
           >
-            {canPreviewReceipt ? (
-              <Image
-                source={{ uri: transaction.receiptUri ?? '', cacheKey: `${transaction.receiptUri}#thumb` }}
-                style={styles.receiptThumbnail}
-                contentFit="cover"
-                recyclingKey={`${transaction.receiptUri}#thumb`}
-                accessibilityLabel="Aperçu du reçu"
-              />
-            ) : (
-              <View style={[styles.receiptThumbnailFallback, { backgroundColor: receiptWell }]}>
-                <AppIcon family="ionicons" name="receipt-outline" size={16} color={colors.textMuted} />
+            <View style={styles.receiptAttachmentRow}>
+              {canPreviewReceipt ? (
+                <Image
+                  source={{ uri: transaction.receiptUri ?? '', cacheKey: `${transaction.receiptUri}#thumb` }}
+                  style={styles.receiptThumbnail}
+                  contentFit="cover"
+                  recyclingKey={`${transaction.receiptUri}#thumb`}
+                  accessibilityLabel="Aperçu du reçu"
+                />
+              ) : (
+                <View style={[styles.receiptThumbnailFallback, { backgroundColor: receiptWell }]}>
+                  <AppIcon family="ionicons" name="receipt-outline" size={16} color={colors.textMuted} />
+                </View>
+              )}
+              <View style={styles.receiptStatusCopy}>
+                <Text style={[styles.receiptStatusLabel, typographyKit.caption, { color: colors.text }]} numberOfLines={1}>
+                  {receiptLabel}
+                </Text>
+                <Text
+                  style={[styles.receiptStatusHint, typographyKit.metaMedium, { color: colors.textMuted }]}
+                  numberOfLines={1}
+                >
+                  {canPreviewReceipt ? 'Appuyer pour voir' : 'Remplacer via Ajouter'}
+                </Text>
               </View>
-            )}
-            <View style={styles.receiptStatusCopy}>
-              <Text style={[styles.receiptStatusLabel, typographyKit.caption, { color: colors.text }]}>{receiptLabel}</Text>
-              <Text style={[styles.receiptStatusHint, typographyKit.metaMedium, { color: colors.textMuted }]}>
-                {canPreviewReceipt ? 'Appuyer pour voir' : 'Remplacer via Ajouter'}
-              </Text>
+              {canPreviewReceipt ? (
+                <AppIcon family="ionicons" name="chevron-forward" size={15} color={colors.textMuted} />
+              ) : null}
             </View>
-            {canPreviewReceipt ? (
-              <AppIcon family="ionicons" name="chevron-forward" size={15} color={colors.textMuted} />
-            ) : null}
           </Pressable>
         </>
       ) : !inlineArticleExpanded ? (
@@ -1180,24 +1187,26 @@ function TransactionReceiptCard({
               setScanSourcePickerOpen((open) => !open);
             }}
             style={({ pressed }) => [
-              styles.receiptScanButton,
+              styles.rowHit,
               pressed && styles.pressed,
             ]}
           >
-            <AppIcon family="ionicons" name="scan-outline" size={16} color={colors.textMuted} />
-            <View style={styles.receiptScanCopy}>
-              <Text style={[styles.receiptScanLabel, typographyKit.bodyMedium, { color: colors.text }]}>
-                Scan automatique des articles
-              </Text>
-              <Text style={[styles.receiptScanHint, typographyKit.microMedium, { color: colors.textMuted }]}>
-                Galerie ou caméra
-              </Text>
+            <View style={styles.receiptScanButton}>
+              <AppIcon family="ionicons" name="scan-outline" size={16} color={colors.textMuted} />
+              <View style={styles.receiptScanCopy}>
+                <Text style={[styles.receiptScanLabel, typographyKit.bodyMedium, { color: colors.text }]} numberOfLines={1}>
+                  Scan automatique des articles
+                </Text>
+                <Text style={[styles.receiptScanHint, typographyKit.microMedium, { color: colors.textMuted }]} numberOfLines={1}>
+                  Galerie ou caméra
+                </Text>
+              </View>
+              <AppIcon family="ionicons"
+                name={scanSourcePickerOpen ? 'chevron-up' : 'chevron-down'}
+                size={15}
+                color={colors.textMuted}
+              />
             </View>
-            <AppIcon family="ionicons"
-              name={scanSourcePickerOpen ? 'chevron-up' : 'chevron-down'}
-              size={15}
-              color={colors.textMuted}
-            />
           </Pressable>
           {scanSourcePickerOpen ? (
             <View style={styles.receiptScanSourceRow}>
@@ -1215,10 +1224,12 @@ function TransactionReceiptCard({
                   pressed && styles.pressed,
                 ]}
               >
-                <AppIcon family="ionicons" name="images-outline" size={16} color={colors.text} />
-                <Text style={[styles.receiptScanSourceLabel, typographyKit.metaMedium, { color: colors.text }]}>
-                  Galerie
-                </Text>
+                <View style={styles.receiptScanSourceInner}>
+                  <AppIcon family="ionicons" name="images-outline" size={16} color={colors.text} />
+                  <Text style={[styles.receiptScanSourceLabel, typographyKit.metaMedium, { color: colors.text }]} numberOfLines={1}>
+                    Galerie
+                  </Text>
+                </View>
               </Pressable>
               <Pressable
                 accessibilityRole="button"
@@ -1234,10 +1245,12 @@ function TransactionReceiptCard({
                   pressed && styles.pressed,
                 ]}
               >
-                <AppIcon family="ionicons" name="camera-outline" size={16} color={colors.text} />
-                <Text style={[styles.receiptScanSourceLabel, typographyKit.metaMedium, { color: colors.text }]}>
-                  Caméra
-                </Text>
+                <View style={styles.receiptScanSourceInner}>
+                  <AppIcon family="ionicons" name="camera-outline" size={16} color={colors.text} />
+                  <Text style={[styles.receiptScanSourceLabel, typographyKit.metaMedium, { color: colors.text }]} numberOfLines={1}>
+                    Caméra
+                  </Text>
+                </View>
               </Pressable>
             </View>
           ) : null}
@@ -2302,8 +2315,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   heroIdentityCopy: {
-    flex: 1,
-    minWidth: 0,
+    ...(Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex),
     gap: 4,
   },
   heroLabel: {
@@ -2311,10 +2323,7 @@ const styles = StyleSheet.create({
     fontSize: typography.dashboardGreeting,
     letterSpacing: -0.4,
   },
-  heroLabelField: {
-    flex: 1,
-    minWidth: 0,
-  },
+  heroLabelField: Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex,
   topBarSpacer: { width: 38 },
   content: {
     paddingHorizontal: spacing.lg,
@@ -2356,9 +2365,15 @@ const styles = StyleSheet.create({
   noteBody: {
     ...typographyKit.body,
   },
+  rowHit: {
+    alignSelf: 'stretch' as const,
+    width: '100%',
+  },
   receiptAttachmentRow: {
     flexDirection: 'row' as const,
+    flexWrap: 'nowrap' as const,
     alignItems: 'center' as const,
+    width: '100%',
     gap: spacing.md,
   },
   receiptThumbnail: {
@@ -2374,8 +2389,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center' as const,
   },
   receiptStatusCopy: {
-    flex: 1,
-    minWidth: 0,
+    ...(Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex),
     gap: 2,
   },
   receiptScanBlock: {
@@ -2383,13 +2397,14 @@ const styles = StyleSheet.create({
   },
   receiptScanButton: {
     flexDirection: 'row' as const,
+    flexWrap: 'nowrap' as const,
     alignItems: 'center' as const,
+    width: '100%',
     gap: spacing.sm,
     paddingVertical: spacing.xs,
   },
   receiptScanCopy: {
-    flex: 1,
-    minWidth: 0,
+    ...(Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex),
     gap: 1,
   },
   receiptScanLabel: {
@@ -2403,16 +2418,21 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   receiptScanSourceOption: {
-    flex: 1,
-    flexDirection: 'row' as const,
+    ...(Platform.OS === 'web' ? { flex: 1 } : nativeTextColumnFlex),
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    gap: spacing.xs,
     minHeight: 42,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
+  },
+  receiptScanSourceInner: {
+    flexDirection: 'row' as const,
+    flexWrap: 'nowrap' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: spacing.xs,
   },
   receiptScanSourceLabel: {
     letterSpacing: 0.15,
@@ -2456,9 +2476,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end' as const,
     gap: 6,
   },
-  categoryChipsWrapMulti: {
-    flex: 1,
-  },
+  categoryChipsWrapMulti: Platform.OS === 'web' ? { flex: 1 } : nativeTextColumnFlex,
   categoryChipsWrapSingle: {
     flexWrap: 'nowrap' as const,
     alignSelf: 'flex-end' as const,
@@ -2475,8 +2493,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
   categoryRowValueWrap: {
-    flex: 1,
-    minWidth: 0,
+    ...(Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex),
     alignSelf: 'stretch' as const,
   },
   categoryChipsPressable: {
@@ -2650,8 +2667,7 @@ const shareCardStyles = StyleSheet.create({
   },
   heroLabel: {
     ...jakartaExtraBoldText,
-    flex: 1,
-    minWidth: 0,
+    ...(Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex),
     fontSize: typography.dashboardGreeting,
     letterSpacing: -0.4,
     lineHeight: 28,
@@ -2681,10 +2697,7 @@ const shareCardStyles = StyleSheet.create({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
-  insightEyebrow: {
-    flex: 1,
-    minWidth: 0,
-  },
+  insightEyebrow: Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex,
   insightText: {
     ...jakartaMediumText,
     ...typographyKit.metaMedium,
@@ -2717,8 +2730,7 @@ const shareCardStyles = StyleSheet.create({
     gap: spacing.sm,
   },
   shareArticleCopy: {
-    flex: 1,
-    minWidth: 0,
+    ...(Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex),
     gap: 2,
   },
   shareArticleName: {
@@ -2776,10 +2788,7 @@ const shareCardStyles = StyleSheet.create({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
-  shareReceiptCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
+  shareReceiptCopy: Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex,
   shareReceiptLabel: {
     fontSize: 13,
     letterSpacing: 0.3,

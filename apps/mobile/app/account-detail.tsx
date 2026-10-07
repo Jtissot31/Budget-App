@@ -3,6 +3,7 @@ import { AppIcon } from '@/components/icons/AppIcon';
 import { CASH_BANKNOTES_ICON } from '@/components/icons/CashBanknotesOutlineIcon';
 import {
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -82,6 +83,7 @@ import {
   typography,
   typographyKit,
 } from '@/constants/theme';
+import { nativeTextColumnFlex } from '@/lib/textLayout';
 import {
   deleteSimulatedAccount,
   getCategoryBudgets,
@@ -1440,7 +1442,7 @@ const styles = StyleSheet.create({
   },
   detailValue: {
     ...moneyAmountTypography({ tier: 'row', fontSize: typography.meta }),
-    flex: 1,
+    ...(Platform.OS === 'web' ? { flex: 1 } : nativeTextColumnFlex),
     textAlign: 'right',
   },
   savingsProgressBlock: {
@@ -1463,8 +1465,7 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
   },
   recurringTriggerCopy: {
-    flex: 1,
-    minWidth: 0,
+    ...(Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex),
     gap: 2,
   },
   recurringTriggerTitleRow: {
@@ -1494,8 +1495,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   recurringPaymentCopy: {
-    flex: 1,
-    minWidth: 0,
+    ...(Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex),
     gap: 2,
   },
   recurringPaymentAmount: {

@@ -11,9 +11,6 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PageTransition } from '@/components/PageTransition';
 import { ComponentLibraryShortcutRow } from '@/components/plans/ComponentLibraryShortcutRow';
-import { ExploreMorePlansRow } from '@/components/plans/ExploreMorePlansRow';
-import { FynChatEntryCard } from '@/components/plans/FynChatEntryCard';
-import { WidgetGalleryShortcutRow } from '@/components/plans/WidgetGalleryShortcutRow';
 import { HubLoansSection } from '@/components/plans/HubLoansSection';
 import { HubSavingsGoalsSection } from '@/components/plans/HubSavingsGoalsSection';
 import { HubSectionHeader, HUB_SECTION_INNER_GAP } from '@/components/plans/HubSectionHeader';
@@ -30,7 +27,7 @@ import {
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { dataEvents } from '@/lib/events';
 import type { Plan, PlanActifOuTermine, PlanSuggere } from '@/lib/plans/Plan';
-import { buildTemplateDetailParams } from '@/lib/plans/planCreateNavigation';
+import { buildPrefilledSubtypeEntryParams } from '@/lib/plans/planCreateNavigation';
 import {
   enrichPlanHubSuggestions,
   loadPlanHubStoredPlans,
@@ -156,11 +153,8 @@ export function PlanFinancierHub() {
       const suggested = suggestedPlans.find((plan) => plan.id === planId);
       if (suggested) {
         router.push({
-          pathname: '/plans/template/[subtype]',
-          params: buildTemplateDetailParams(suggested.subtype, {
-            raison: suggested.raison_recommandation,
-            suggestedId: suggested.id,
-          }),
+          pathname: '/plans/create',
+          params: buildPrefilledSubtypeEntryParams(suggested.subtype, suggested.category),
         });
         return;
       }
@@ -168,14 +162,6 @@ export function PlanFinancierHub() {
     },
     [router, suggestedPlans],
   );
-
-  const handleOpenExplorer = useCallback(() => {
-    router.push('/plans/explore');
-  }, [router]);
-
-  const handleOpenWidgetGallery = useCallback(() => {
-    router.push('/widgets');
-  }, [router]);
 
   const handleOpenComponentLibrary = useCallback(() => {
     router.push('/fyn-ui-lab');
@@ -209,21 +195,16 @@ export function PlanFinancierHub() {
           }
         >
           <View style={styles.plansSection}>
-            <HubSectionHeader eyebrow="Stratégie" title="Tes plans" accentEyebrow />
+            <HubSectionHeader eyebrow="Plans" title="Tes plans" />
 
             {showCarouselSpinner ? (
               <View style={styles.carouselLoadingWrap}>
                 <ActivityIndicator color={pf.accent} />
               </View>
             ) : isEmpty ? (
-              <View style={styles.emptyState}>
-                <ExploreMorePlansRow onPress={handleOpenExplorer} prominent />
-              </View>
+              <Text style={{ color: pf.textMuted }}>Aucun plan pour l’instant</Text>
             ) : (
-              <>
-                <PlanHubCardCarousel plans={carouselPlans} onOpenPlan={handleOpenPlan} />
-                <ExploreMorePlansRow onPress={handleOpenExplorer} />
-              </>
+              <PlanHubCardCarousel plans={carouselPlans} onOpenPlan={handleOpenPlan} />
             )}
           </View>
 
@@ -232,8 +213,6 @@ export function PlanFinancierHub() {
           <HubLoansSection />
 
           <View style={styles.footerBlock}>
-            <FynChatEntryCard />
-            <WidgetGalleryShortcutRow onPress={handleOpenWidgetGallery} />
             <ComponentLibraryShortcutRow onPress={handleOpenComponentLibrary} />
           </View>
         </ScrollView>

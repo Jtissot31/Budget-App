@@ -27,7 +27,8 @@ type Props = {
    */
   canAdd?: boolean;
   onEdit: () => void;
-  onAdd: () => void;
+  /** Omit to hide the add button (e.g. a section with no create destination). */
+  onAdd?: () => void;
   editAccessibilityLabel?: string;
   editDoneAccessibilityLabel?: string;
   addAccessibilityLabel?: string;
@@ -91,25 +92,27 @@ export function ProtoHeaderIconActions({
         />
       </Pressable>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={addAccessibilityLabel}
-        hitSlop={12}
-        onPress={onAdd}
-        style={({ pressed }) => [
-          styles.btn,
-          btnStyle,
-          {
-            backgroundColor: addBg,
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: addBorder,
-          },
-          Platform.OS === 'android' && styles.androidLift,
-          pressed && styles.pressed,
-        ]}
-      >
-        <PlusFabIcon size={iconSize + 2} color={addIcon} />
-      </Pressable>
+      {onAdd ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={addAccessibilityLabel}
+          hitSlop={12}
+          onPress={onAdd}
+          style={({ pressed }) => [
+            styles.btn,
+            btnStyle,
+            {
+              backgroundColor: addBg,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: addBorder,
+            },
+            Platform.OS === 'android' && styles.androidLift,
+            pressed && styles.pressed,
+          ]}
+        >
+          <PlusFabIcon size={iconSize + 2} color={addIcon} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }

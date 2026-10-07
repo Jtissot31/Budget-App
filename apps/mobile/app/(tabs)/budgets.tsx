@@ -1,8 +1,10 @@
-// Budget categories: mockup layout (compact hero ring + 2-col cards).
+// Budget tab — side hero (ring + remaining) and one Onyx card per category.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { PlusFabIcon } from '@/components/icons/PlusFabIcon';
 import {
   FlatList,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -11,19 +13,14 @@ import {
   type LayoutChangeEvent,
   type ListRenderItem,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
-import { BudgetCategoriesHeaderActions } from '@/components/budget/BudgetCategoriesHeaderActions';
 import { BudgetCategoryDetailSheet } from '@/components/budget/BudgetCategoryDetailSheet';
 import { BudgetCategoryRow } from '@/components/budget/BudgetCategoryRow';
 import { BudgetCategorySuggestionTile } from '@/components/budget/BudgetCategorySuggestionTile';
-import { BudgetSpendingDonutCard } from '@/components/budget/BudgetSpendingDonutCard';
-import { ProtoBudgetSummaryCard } from '@/components/budget/ProtoBudgetSummaryCard';
-import { ProtoGlassCard } from '@/components/proto/ProtoGlassCard';
+import { BudgetSideHeroCard } from '@/components/budget/BudgetSideHeroCard';
 import { ProtoSectionHeader } from '@/components/proto/ProtoSectionHeader';
-import { MonthSelector } from '@/components/MonthSelector';
 import { PageTransition } from '@/components/PageTransition';
 import {
   BUDGET_CATEGORY_SUGGESTIONS,
@@ -32,15 +29,20 @@ import {
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { SPACING } from '@/constants/design-tokens';
 import {
+  BUDGET_CATEGORY_TILE,
+  PLAN_FINANCE_CONTAINER,
+  budgetCategoryGridColumnStyle,
+} from '@/constants/planFinanceKit';
+import {
   FLOATING_NAV_CONTENT_PADDING,
   PAGE_PADDING_HORIZONTAL,
   PAGE_TITLE_CONTENT_GAP,
   PAGE_TITLE_STYLE,
-  PORTFOLIO_SECTION_GAP,
   destructiveIconColor,
   destructiveTextActionStyle,
   spacing,
   subtleDeleteButtonStyle,
+  typographyKit,
 } from '@/constants/theme';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import {
@@ -56,7 +58,6 @@ import {
   type BudgetCategoryUiModel,
 } from '@/lib/budgetCategoryModel';
 import {
-  formatBudgetMonthEyebrow,
   isCurrentMonth,
   isMonthAfter,
   isMonthBefore,
@@ -69,26 +70,55 @@ import { dataEvents } from '@/lib/events';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
-const SECTION_BREAK = SPACING.xl;
+const SECTION_BREAK = spacing.md;
 const GRID_GAP = SPACING.onyxListGap;
 
 function currentMonthStart(): Date {
   return startOfMonth(new Date());
 }
 
-function BudgetPageHeader({ monthLabel }: { monthLabel: string }) {
+type CategoryLayout = 'list' | 'grid';
+
+function CategoryLayoutToggle({
+  value,
+  onChange,
+}: {
+  value: CategoryLayout;
+  onChange: (next: CategoryLayout) => void;
+}) {
+  const { colors } = useAppTheme();
+  const next = value === 'list' ? 'grid' : 'list';
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={value === 'list' ? 'Passer en grille' : 'Passer en liste'}
+      accessibilityState={{ selected: value === 'grid' }}
+      hitSlop={8}
+      onPress={() => onChange(next)}
+      style={({ pressed }) => [pressed && pageStyles.pressed]}
+    >
+      <AppIcon
+        family="ionicons"
+        name={value === 'list' ? 'list-outline' : 'grid-outline'}
+        size={16}
+        color={colors.textMuted}
+      />
+    </Pressable>
+  );
+}
+
+function BudgetPageHeader() {
   const { colors } = useAppTheme();
 
   return (
     <View style={pageStyles.heroBlock}>
-      <View style={pageStyles.headerRow}>
-        <Text style={[pageStyles.pageTitle, { color: colors.text }]} numberOfLines={1}>
-          Budget
-        </Text>
-        <Text style={[pageStyles.monthLabel, { color: colors.textMuted }]} numberOfLines={1}>
-          {monthLabel}
-        </Text>
-      </View>
+      <Text
+        style={[pageStyles.pageTitle, { color: colors.text }]}
+        numberOfLines={1}
+      >
+        Budget du mois
+      </Text>
     </View>
   );
 }
@@ -104,8 +134,12 @@ export default function BudgetScreen() {
 
   const onCategoriesGridLayout = useCallback((event: LayoutChangeEvent) => {
     const next = Math.floor(event.nativeEvent.layout.width);
+    const expected = Math.max(0, windowWidth - PAGE_PADDING_HORIZONTAL * 2);
+    // A collapsed grid (one-character columns) reports a sliver. Ignore it
+    // so the half-width fallback from the window stays in place.
+    if (next <= 0 || (expected > 0 && next < expected * 0.5)) return;
     setGridContentWidth((prev) => (prev === next ? prev : next));
-  }, []);
+  }, [windowWidth]);
 
   /** Half-column from real grid width; single tile uses full width. */
   const categoryCellWidthFor = useCallback(
@@ -120,9 +154,16 @@ export default function BudgetScreen() {
     [gridContentWidth, windowWidth],
   );
 
+  const budgetGridColumnStyle = budgetCategoryGridColumnStyle(
+    gridContentWidth > 0
+      ? gridContentWidth
+      : Math.max(0, windowWidth - PAGE_PADDING_HORIZONTAL * 2),
+  );
+
   const [categories, setCategories] = useState<BudgetCategoryUiModel[]>([]);
   const [detailCategoryId, setDetailCategoryId] = useState<string | null>(null);
   const [managingCategories, setManagingCategories] = useState(false);
+  const [categoryLayout, setCategoryLayout] = useState<CategoryLayout>('list');
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [confirmDeleteSelectedVisible, setConfirmDeleteSelectedVisible] = useState(false);
   const [deletingSelected, setDeletingSelected] = useState(false);
@@ -204,26 +245,6 @@ export default function BudgetScreen() {
     () => sortBudgetCategoriesByPriority(categories),
     [categories],
   );
-  const spendingCategories = useMemo(
-    () =>
-      categories.map((category) => ({
-        id: category.id,
-        name: category.name,
-        spent: category.spent,
-        limit: category.limit,
-        color: category.color,
-      })),
-    [categories],
-  );
-
-  const hubEyebrow = useMemo(
-    () =>
-      isCurrentMonth(displayMonth)
-        ? 'CE MOIS-CI'
-        : formatBudgetMonthEyebrow(displayMonth),
-    [displayMonth],
-  );
-
   const showAddButton = canAddBudgetCategory(categories.length);
 
   const openCategoryDetail = useCallback((id: string) => {
@@ -235,6 +256,14 @@ export default function BudgetScreen() {
     setManagingCategories((prev) => {
       if (prev) setSelectedCategoryIds([]);
       return !prev;
+    });
+  }, []);
+
+  const selectCategoryLayout = useCallback((next: CategoryLayout) => {
+    setCategoryLayout((prev) => {
+      if (prev === next) return prev;
+      tapHaptic();
+      return next;
     });
   }, []);
 
@@ -334,16 +363,13 @@ export default function BudgetScreen() {
             { paddingTop: insets.top + SCREEN_TOP_GUTTER },
           ]}
         >
-          <BudgetPageHeader
-            monthLabel={displayMonth.toLocaleDateString('fr-CA', {
-              month: 'long',
-              year: 'numeric',
-            })}
-          />
+          <BudgetPageHeader />
         </View>
 
-        <View style={pageStyles.monthSection}>
-          <MonthSelector
+        <View style={pageStyles.heroSection}>
+          <BudgetSideHeroCard
+            totalAllocated={totals.totalAllocated}
+            totalSpent={totals.totalSpent}
             month={budgetMonth}
             onPrevious={goBudgetPrevious}
             onNext={goBudgetNext}
@@ -352,50 +378,128 @@ export default function BudgetScreen() {
           />
         </View>
 
-        <View style={pageStyles.heroSection}>
-          <ProtoBudgetSummaryCard
-            totalAllocated={totals.totalAllocated}
-            totalSpent={totals.totalSpent}
-          />
-          <BudgetSpendingDonutCard
-            categories={spendingCategories}
-            totalSpent={totals.totalSpent}
-            hubEyebrow={hubEyebrow}
-          />
-        </View>
-
         {listCategories.length > 0 ? (
           <>
             <View style={pageStyles.listHeader}>
               <ProtoSectionHeader
-                title="CATÉGORIES"
+                title="Budgets par catégorie"
                 trailing={
-                  <BudgetCategoriesHeaderActions
-                    managing={managingCategories}
-                    canAdd={showAddButton}
-                    onEdit={toggleManagingCategories}
-                    onAdd={openBlankCreate}
-                    editAccessibilityLabel="Sélectionner des catégories"
-                    editDoneAccessibilityLabel="Terminer la sélection"
-                    addAccessibilityLabel="Ajouter une catégorie"
-                  />
+                  <View style={pageStyles.sectionActions}>
+                    <CategoryLayoutToggle
+                      value={categoryLayout}
+                      onChange={selectCategoryLayout}
+                    />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Ajouter une catégorie"
+                      hitSlop={8}
+                      onPress={openBlankCreate}
+                      style={({ pressed }) => [pressed && pageStyles.pressed]}
+                    >
+                      <PlusFabIcon
+                        size={16}
+                        color={showAddButton ? colors.text : colors.textDisabled}
+                      />
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        managingCategories
+                          ? 'Terminer la sélection'
+                          : 'Modifier les catégories'
+                      }
+                      accessibilityState={{ selected: managingCategories }}
+                      hitSlop={8}
+                      onPress={toggleManagingCategories}
+                      style={({ pressed }) => [pressed && pageStyles.pressed]}
+                    >
+                      <AppIcon
+                        family="ionicons"
+                        name={managingCategories ? 'checkmark' : 'create-outline'}
+                        size={16}
+                        color={colors.textMuted}
+                      />
+                    </Pressable>
+                  </View>
                 }
               />
             </View>
 
             <View style={pageStyles.categoriesSectionShell}>
-              <ProtoGlassCard>
-                {listCategories.map((item, index) => (
-                  <BudgetCategoryRow
-                    key={item.id}
-                    category={item}
-                    selecting={managingCategories}
-                    selected={selectedCategoryIds.includes(item.id)}
-                    onPress={onCategoryRowPress}
-                    isLast={index === listCategories.length - 1}
-                  />
-                ))}
-              </ProtoGlassCard>
+              <View
+                style={
+                  categoryLayout === 'grid'
+                    ? pageStyles.categoryGrid
+                    : pageStyles.categoryList
+                }
+                onLayout={
+                  categoryLayout === 'grid' ? onCategoriesGridLayout : undefined
+                }
+              >
+                {listCategories.map((item) => {
+                  const row = (
+                    <BudgetCategoryRow
+                      category={item}
+                      selecting={managingCategories}
+                      selected={selectedCategoryIds.includes(item.id)}
+                      onPress={onCategoryRowPress}
+                      layout={categoryLayout}
+                    />
+                  );
+                  if (categoryLayout !== 'grid') {
+                    return <View key={item.id}>{row}</View>;
+                  }
+                  return (
+                    <View key={item.id} style={budgetGridColumnStyle}>
+                      {row}
+                    </View>
+                  );
+                })}
+                {categoryLayout === 'grid' ? (
+                  <View
+                    style={[
+                      budgetGridColumnStyle,
+                      Platform.OS === 'web' ? null : pageStyles.addTileNativeFrame,
+                    ]}
+                  >
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Nouvelle catégorie"
+                      onPress={openBlankCreate}
+                      style={({ pressed }) => [
+                        pageStyles.addTile,
+                        Platform.OS === 'web' ? null : pageStyles.addTileNative,
+                        {
+                          borderColor:
+                            Platform.OS === 'web' ? colors.border : colors.textMuted,
+                        },
+                        pressed && pageStyles.pressed,
+                      ]}
+                    >
+                      {Platform.OS === 'web' ? (
+                        <PlusFabIcon size={14} color={colors.textMuted} />
+                      ) : (
+                        <AppIcon
+                          family="ionicons"
+                          name="add"
+                          size={22}
+                          color={colors.textMuted}
+                        />
+                      )}
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          typographyKit.microMedium,
+                          pageStyles.addTileLabel,
+                          { color: colors.textMuted },
+                        ]}
+                      >
+                        Nouvelle catégorie
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
             </View>
 
             {managingCategories ? (
@@ -436,7 +540,23 @@ export default function BudgetScreen() {
         ) : (
           <>
             <View style={pageStyles.listHeader}>
-              <ProtoSectionHeader title="SUGGESTIONS" />
+              <ProtoSectionHeader
+                title="SUGGESTIONS"
+                trailing={
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Ajouter une catégorie"
+                    hitSlop={8}
+                    onPress={openBlankCreate}
+                    style={({ pressed }) => [pressed && pageStyles.pressed]}
+                  >
+                    <PlusFabIcon
+                      size={16}
+                      color={showAddButton ? colors.text : colors.textDisabled}
+                    />
+                  </Pressable>
+                }
+              />
             </View>
 
             <View style={pageStyles.categoriesSectionShell}>
@@ -472,15 +592,18 @@ export default function BudgetScreen() {
       budgetMonth,
       canGoBudgetNext,
       canGoBudgetPrevious,
+      budgetGridColumnStyle,
       categoryCellWidthFor,
+      categoryLayout,
+      colors.border,
+      colors.text,
+      colors.textDisabled,
+      colors.textMuted,
       listCategories,
       deletingSelected,
-      displayMonth,
       goBudgetNext,
       goBudgetPrevious,
-      hubEyebrow,
       insets.top,
-      spendingCategories,
       isLight,
       managingCategories,
       onCategoriesGridLayout,
@@ -488,6 +611,7 @@ export default function BudgetScreen() {
       openBlankCreate,
       openDeleteSelectedConfirm,
       openSuggestionCreate,
+      selectCategoryLayout,
       selectedCategoryIds,
       showAddButton,
       toggleManagingCategories,
@@ -499,18 +623,6 @@ export default function BudgetScreen() {
   return (
     <PageTransition>
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <LinearGradient
-          colors={
-            isLight
-              ? ['rgba(0,168,84,0.06)', 'transparent']
-              : ['rgba(0,230,100,0.055)', 'transparent']
-          }
-          style={pageStyles.ambientGlow}
-          pointerEvents="none"
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-        />
-
         <FlatList
           ref={listRef}
           data={[]}
@@ -552,34 +664,73 @@ export default function BudgetScreen() {
 }
 
 const pageStyles = StyleSheet.create({
-  ambientGlow: {
-    position: 'absolute',
-    top: -100,
-    alignSelf: 'center',
-    width: 420,
-    height: 260,
-    zIndex: 0,
-  },
   headerBlock: {
     gap: PAGE_TITLE_CONTENT_GAP,
   },
-  monthSection: {
-    marginTop: spacing.lg + spacing.xs,
-    paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-  },
   heroSection: {
-    marginTop: PORTFOLIO_SECTION_GAP,
+    marginTop: spacing.md,
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
   listHeader: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     marginTop: SECTION_BREAK,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  sectionActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   /** Outer shell owns page padding so onLayout width === usable grid width. */
   categoriesSectionShell: {
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
     marginBottom: spacing.md,
+  },
+  categoryList: {
+    gap: BUDGET_CATEGORY_TILE.gap,
+  },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    width: '100%',
+    gap: BUDGET_CATEGORY_TILE.gap,
+  },
+  addTile: {
+    height: BUDGET_CATEGORY_TILE.gridHeight,
+    width: '100%',
+    flexGrow: 0,
+    flexShrink: 0,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: PLAN_FINANCE_CONTAINER.borderRadius,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    overflow: 'hidden',
+  },
+  /** Native: don't let the column's overflow clip the dashed stroke. */
+  addTileNativeFrame: {
+    overflow: 'visible',
+    flexShrink: 0,
+  },
+  /**
+   * Native card. flexBasis stays off so the 128px height is not reused as the
+   * row width. Dashed stroke uses an opaque theme color so Android paints it.
+   */
+  addTileNative: {
+    height: BUDGET_CATEGORY_TILE.gridHeight,
+    width: '100%',
+    alignSelf: 'stretch',
+    flexGrow: 0,
+    flexShrink: 0,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    overflow: 'visible',
+  },
+  addTileLabel: {
+    textAlign: 'center',
   },
   categoriesSection: {
     flexDirection: 'row',
@@ -611,19 +762,9 @@ const pageStyles = StyleSheet.create({
     alignItems: 'flex-start',
     paddingHorizontal: PAGE_PADDING_HORIZONTAL,
   },
-  headerRow: {
-    alignSelf: 'stretch',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
+  pageTitle: {
+    ...PAGE_TITLE_STYLE,
     marginTop: spacing.lg,
-  },
-  pageTitle: { ...PAGE_TITLE_STYLE, flex: 1, minWidth: 0 },
-  monthLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'capitalize' as const,
   },
 });
 

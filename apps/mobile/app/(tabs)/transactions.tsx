@@ -90,7 +90,7 @@ const ProtoDayGroup = memo(function ProtoDayGroup({
   return (
     <View style={[styles.group, { paddingHorizontal: horizontalGutter }]}>
       <Text style={[styles.dateLabel, { color: colors.textMuted }]}>{sectionLabel}</Text>
-      <ProtoGlassCard>
+      <ProtoGlassCard style={styles.dayCard}>
         {txs.map((tx, index) => (
           <ProtoTransactionRow
             key={tx.id}
@@ -196,51 +196,58 @@ export default function TransactionsScreen() {
 
   const listHeader = useMemo(
     () => (
-      <View style={{ paddingHorizontal: contentGutter, marginBottom: spacing.md }}>
-        <SpendAndSaveCard />
-      </View>
-    ),
-    [contentGutter],
-  );
-
-  const fixedChrome = (
-    <>
-      <TransactionsViewHeader topInset={insets.top} titleColor={colors.text} />
-      <View style={{ paddingHorizontal: contentGutter, marginBottom: spacing.md }}>
-        <View style={styles.searchToolbar}>
-          <ProtoSearchField
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            accessibilityLabel="Rechercher une transaction"
-          />
-          <ProtoToolbarIconButton
-            icon="receipt-outline"
-            onPress={() => {
-              tapHaptic();
-              router.push('/documents-library');
-            }}
-            accessibilityLabel="Bibliothèque de documents"
-          />
-          <ProtoToolbarIconButton
-            icon={dateFilter ? 'calendar' : 'calendar-outline'}
-            active={Boolean(dateFilter)}
-            onPress={openDatePicker}
-            accessibilityLabel="Rechercher par date"
-          />
+      <>
+        <TransactionsViewHeader topInset={insets.top} titleColor={colors.text} />
+        <View style={{ paddingHorizontal: contentGutter, marginBottom: spacing.md }}>
+          <View style={styles.searchToolbar}>
+            <ProtoSearchField
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              accessibilityLabel="Rechercher une transaction"
+            />
+            <ProtoToolbarIconButton
+              icon="receipt-outline"
+              onPress={() => {
+                tapHaptic();
+                router.push('/documents-library');
+              }}
+              accessibilityLabel="Bibliothèque de documents"
+            />
+            <ProtoToolbarIconButton
+              icon={dateFilter ? 'calendar' : 'calendar-outline'}
+              active={Boolean(dateFilter)}
+              onPress={openDatePicker}
+              accessibilityLabel="Rechercher par date"
+            />
+          </View>
+          {dateFilter ? (
+            <ProtoActiveFilterChip
+              icon="calendar"
+              label={formatFriendlyDateLabel(dateFilter)}
+              onPress={openDatePicker}
+              onClear={clearDateFilter}
+              accessibilityLabel={`Date filtrée : ${formatFriendlyDateLabel(dateFilter)}. Modifier`}
+              clearAccessibilityLabel="Effacer le filtre de date"
+            />
+          ) : null}
+          <TransactionsTypeFilter value={historyTypeFilter} onChange={setHistoryTypeFilter} />
         </View>
-        {dateFilter ? (
-          <ProtoActiveFilterChip
-            icon="calendar"
-            label={formatFriendlyDateLabel(dateFilter)}
-            onPress={openDatePicker}
-            onClear={clearDateFilter}
-            accessibilityLabel={`Date filtrée : ${formatFriendlyDateLabel(dateFilter)}. Modifier`}
-            clearAccessibilityLabel="Effacer le filtre de date"
-          />
-        ) : null}
-        <TransactionsTypeFilter value={historyTypeFilter} onChange={setHistoryTypeFilter} />
-      </View>
-    </>
+        <View style={{ paddingHorizontal: contentGutter, marginBottom: spacing.md }}>
+          <SpendAndSaveCard />
+        </View>
+      </>
+    ),
+    [
+      clearDateFilter,
+      colors.text,
+      contentGutter,
+      dateFilter,
+      historyTypeFilter,
+      insets.top,
+      openDatePicker,
+      router,
+      searchQuery,
+    ],
   );
 
   const renderDayGroup = useCallback(
@@ -263,7 +270,6 @@ export default function TransactionsScreen() {
   return (
     <PageTransition>
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        {fixedChrome}
         <FlatList
           ref={listRef}
           style={styles.listViewport}
@@ -273,7 +279,8 @@ export default function TransactionsScreen() {
           initialNumToRender={8}
           maxToRenderPerBatch={6}
           windowSize={7}
-          removeClippedSubviews={Platform.OS !== 'web'}
+          // Web leaves this off. On device it clips rows inside overflow:hidden day cards.
+          removeClippedSubviews={false}
           ListHeaderComponent={listHeader}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={[
@@ -358,7 +365,7 @@ export default function TransactionsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  listViewport: { flex: 1 },
+  listViewport: { flex: 1, width: '100%', alignSelf: 'stretch' },
   listWithHeader: {
     paddingBottom: FLOATING_NAV_CONTENT_PADDING,
   },
@@ -411,6 +418,12 @@ const styles = StyleSheet.create({
   },
   group: {
     marginBottom: spacing.md,
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  dayCard: {
+    width: '100%',
+    alignSelf: 'stretch',
   },
   dateLabel: {
     ...typographyKit.eyebrow,

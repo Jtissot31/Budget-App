@@ -289,13 +289,6 @@ export default function TransactionsInsightsScreen() {
           // Already on this screen — push keeps deep-link/share parity if the row is reused elsewhere.
           onPress: () => router.push('/transactions-insights'),
         },
-        {
-          key: 'strategies',
-          label: 'Stratégies',
-          icon: 'compass-outline',
-          accessibilityLabel: 'Ouvrir les stratégies',
-          onPress: () => router.push('/plans/explore'),
-        },
       ] as const satisfies readonly ProtoShortcutItem[],
     [router],
   );

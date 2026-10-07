@@ -1,4 +1,4 @@
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused } from "expo-router/react-navigation";
 import { useEffect, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 import { MotiView } from 'moti';

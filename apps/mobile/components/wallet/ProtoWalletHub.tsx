@@ -9,17 +9,16 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Sortable, { type SortableGridRenderItem } from 'react-native-sortables';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { PageTransition } from '@/components/PageTransition';
-import { ProtoGlassCard } from '@/components/proto/ProtoGlassCard';
-import { ProtoHeaderIconActions } from '@/components/proto/ProtoHeaderIconActions';
-import { ProtoSectionHeader } from '@/components/proto/ProtoSectionHeader';
 import {
   ACCOUNT_KIND_OPTIONS,
   createNewAccountForm,
@@ -37,11 +36,14 @@ import {
   saveSavingsGoalForm,
   type GoalForm,
 } from '@/components/SavingsGoalsForm';
-import { AccountPatrimoineTile } from '@/components/wallet/AccountCardPrototypes';
-import { WalletLoansSection } from '@/components/wallet/WalletLoansSection';
-import { WalletProgressGoalRow } from '@/components/wallet/WalletProgressGoalRow';
+import { BalanceAccountAddTile, BalanceAccountTile } from '@/components/wallet/BalanceAccountTile';
+import { BalanceGoalRow } from '@/components/wallet/BalanceGoalRow';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
-import { ONYX_CONTAINER, onyxContainerPressedStyle } from '@/constants/planFinanceKit';
+import {
+  BALANCE_ACCOUNT_TILE,
+  balanceAccountGridColumnStyle,
+  onyxContainerPressedStyle,
+} from '@/constants/planFinanceKit';
 import {
   destructiveIconColor,
   destructiveTextActionStyle,
@@ -49,6 +51,7 @@ import {
   moneyAmountTypography,
   PAGE_PADDING_HORIZONTAL,
   PAGE_TITLE_STYLE,
+  radius,
   spacing,
   subtleDeleteButtonStyle,
   typographyKit,
@@ -92,21 +95,21 @@ const ACCOUNT_TYPE_PICKER_OPTIONS: SettingsPickerOption<AccountKind>[] =
 const CHECK = 22;
 /** Hold-to-drag accounts — only while manage mode (avoids long-press select conflict). */
 const ACCOUNT_DRAG_ACTIVATION_MS = 220;
-const MAX_VISIBLE_ACCOUNTS = 8;
 
 function SelectCheck({ selected, borderColor }: { selected: boolean; borderColor: string }) {
+  const { colors } = useAppTheme();
   return (
     <View
       style={[
         styles.checkWell,
         {
-          backgroundColor: selected ? '#FFFFFF' : 'transparent',
-          borderColor: selected ? '#FFFFFF' : borderColor,
+          backgroundColor: selected ? colors.text : 'transparent',
+          borderColor: selected ? colors.text : borderColor,
         },
       ]}
     >
       {selected ? (
-        <AppIcon family="ionicons" name="checkmark" size={14} color="#0D0D0F" />
+        <AppIcon family="ionicons" name="checkmark" size={14} color={colors.background} />
       ) : null}
     </View>
   );
@@ -163,13 +166,16 @@ function AccountSortableTile({
       onLongPress={managing ? undefined : onLongPress}
       onTouchesDown={() => setPressed(true)}
       onTouchesUp={() => setPressed(false)}
-      style={[styles.accountTilePressable, pressed && onyxContainerPressedStyle()]}
+      style={[
+        styles.accountTilePressable,
+        { height: BALANCE_ACCOUNT_TILE.height },
+        pressed && onyxContainerPressedStyle(),
+      ]}
     >
-      <AccountPatrimoineTile
+      <BalanceAccountTile
         account={account}
         hideBalance={hideBalance}
-        pressable={false}
-        headerAccessory={
+        chip={
           managing ? (
             <SelectCheck selected={selected} borderColor={selectBorderColor} />
           ) : undefined
@@ -182,6 +188,7 @@ function AccountSortableTile({
 export function ProtoWalletHub() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const { colors, isLight } = useAppTheme();
   const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
@@ -405,16 +412,6 @@ export function ProtoWalletHub() {
     }
   }, [deletingGoals, load, selectedGoalIds]);
 
-  const handleLoansManagingChange = useCallback(
-    (managing: boolean) => {
-      if (managing) {
-        clearAccountsManaging();
-        clearGoalsManaging();
-      }
-    },
-    [clearAccountsManaging, clearGoalsManaging],
-  );
-
   const handleAccountsDragEnd = useCallback(
     ({ data }: { data: SimulatedAccount[] }) => {
       setAccountsDragging(false);
@@ -461,17 +458,37 @@ export function ProtoWalletHub() {
     }
   }, [closeGoalForm, goalForm, isLight, load]);
 
-  const totalBalance = useMemo(
-    () => accounts.reduce((sum, account) => sum + account.balance, 0),
+  const listedAccounts = useMemo(
+    () => accounts.filter((account) => !account.hidden),
     [accounts],
   );
 
-  const visibleAccounts = useMemo(
-    () => accounts.slice(0, MAX_VISIBLE_ACCOUNTS),
-    [accounts],
+  const netWorth = useMemo(
+    () => listedAccounts.reduce((sum, account) => sum + account.balance, 0),
+    [listedAccounts],
   );
-  const accountTileGap = ONYX_CONTAINER.listGap;
-  const canReorderAccounts = managingAccounts && visibleAccounts.length >= 2;
+
+  const liquidCash = useMemo(
+    () =>
+      listedAccounts.reduce((sum, account) => {
+        if (account.kind === 'checking' || account.kind === 'savings' || account.kind === 'cash') {
+          return sum + account.balance;
+        }
+        return sum;
+      }, 0),
+    [listedAccounts],
+  );
+
+  const goalsSavings = useMemo(
+    () => goals.reduce((sum, goal) => sum + (goal.currentAmount ?? 0), 0),
+    [goals],
+  );
+
+  const canReorderAccounts = managingAccounts && listedAccounts.length >= 2;
+  const [accountGridWidth, setAccountGridWidth] = useState(() =>
+    Math.max(0, windowWidth - PAGE_PADDING_HORIZONTAL * 2),
+  );
+  const accountColumnStyle = balanceAccountGridColumnStyle(accountGridWidth);
 
   const renderAccountItem = useCallback<SortableGridRenderItem<SimulatedAccount>>(
     ({ item }) => {
@@ -508,44 +525,95 @@ export function ProtoWalletHub() {
     ],
   );
 
+  const accountCountLabel =
+    listedAccounts.length === 1 ? '1 compte' : `${listedAccounts.length} comptes`;
+
   const accountsSection = (
     <View style={styles.sectionBlock}>
-      <ProtoSectionHeader
-        title="MES COMPTES"
-        trailing={
-          <ProtoHeaderIconActions
-            managing={managingAccounts}
-            onEdit={toggleManagingAccounts}
-            onAdd={openAddAccount}
-            editAccessibilityLabel="Gérer les comptes"
-            editDoneAccessibilityLabel="Terminer la gestion"
-            addAccessibilityLabel="Ajouter un compte"
-          />
-        }
-      />
-      <View style={styles.accountGrid}>
-        <Sortable.Grid
-          columns={2}
-          data={visibleAccounts}
-          keyExtractor={(item) => item.id}
-          renderItem={renderAccountItem}
-          rowGap={accountTileGap}
-          columnGap={accountTileGap}
-          itemEntering={null}
-          sortEnabled={canReorderAccounts}
-          dragActivationDelay={ACCOUNT_DRAG_ACTIVATION_MS}
-          activeItemScale={1.02}
-          activeItemOpacity={0.96}
-          inactiveItemOpacity={1}
-          inactiveItemScale={1}
-          overDrag="vertical"
-          onDragStart={() => {
-            tapHaptic();
-            setAccountsDragging(true);
-          }}
-          onDragEnd={handleAccountsDragEnd}
-        />
+      <View style={styles.sectionHeader}>
+        <Ionicons name="business-outline" size={14} color={colors.textMuted} />
+        <Text style={[styles.sectionLabel, { color: colors.textMuted }]} numberOfLines={1}>
+          Comptes et cartes
+        </Text>
+        {managingAccounts ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Terminer la gestion"
+            hitSlop={8}
+            onPress={toggleManagingAccounts}
+            style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+          >
+            <Text style={[styles.addAction, { color: colors.text }]}>Terminer</Text>
+          </Pressable>
+        ) : (
+          <Text
+            style={[
+              moneyAmountTypography({ tier: 'row' }),
+              styles.sectionAmount,
+              { color: colors.textMuted },
+            ]}
+            numberOfLines={1}
+          >
+            {hideBalances ? '••••' : formatDisplayMoneyAbsolute(liquidCash)}
+          </Text>
+        )}
       </View>
+      {managingAccounts ? (
+        <View style={styles.accountGridManage}>
+          <Sortable.Grid
+            columns={BALANCE_ACCOUNT_TILE.columns}
+            data={listedAccounts}
+            keyExtractor={(item) => item.id}
+            renderItem={renderAccountItem}
+            rowGap={BALANCE_ACCOUNT_TILE.gap}
+            columnGap={BALANCE_ACCOUNT_TILE.gap}
+            itemEntering={null}
+            sortEnabled={canReorderAccounts}
+            dragActivationDelay={ACCOUNT_DRAG_ACTIVATION_MS}
+            activeItemScale={1.02}
+            activeItemOpacity={0.96}
+            inactiveItemOpacity={1}
+            inactiveItemScale={1}
+            overDrag="vertical"
+            onDragStart={() => {
+              tapHaptic();
+              setAccountsDragging(true);
+            }}
+            onDragEnd={handleAccountsDragEnd}
+          />
+        </View>
+      ) : (
+        <View
+          style={styles.accountGrid}
+          onLayout={(event) => {
+            const next = event.nativeEvent.layout.width;
+            setAccountGridWidth((prev) => (prev === next ? prev : next));
+          }}
+        >
+          {listedAccounts.map((account) => {
+            const title = account.name.trim() || 'Compte';
+            return (
+              <Pressable
+                key={account.id}
+                accessibilityRole="button"
+                accessibilityLabel={title}
+                accessibilityHint="Appui long pour gérer. Ouvre le détail au toucher."
+                onPress={() => {
+                  tapHaptic();
+                  router.push({ pathname: '/account-detail', params: { accountId: account.id } });
+                }}
+                onLongPress={() => beginManagingAccount(account.id)}
+                style={({ pressed }) => [accountColumnStyle, pressed && onyxContainerPressedStyle()]}
+              >
+                <BalanceAccountTile account={account} hideBalance={hideBalances} />
+              </Pressable>
+            );
+          })}
+          <View style={accountColumnStyle}>
+            <BalanceAccountAddTile onPress={openAddAccount} />
+          </View>
+        </View>
+      )}
       {managingAccounts ? (
         <View style={styles.deleteBlock}>
           <Pressable
@@ -586,51 +654,53 @@ export function ProtoWalletHub() {
 
   const goalsSection = (
     <View style={styles.sectionBlock}>
-      <ProtoSectionHeader
-        title="OBJECTIFS D'ÉPARGNE"
-        trailing={
-          <ProtoHeaderIconActions
-            managing={managingGoals}
-            onEdit={toggleManagingGoals}
-            onAdd={openNewGoalForm}
-            editAccessibilityLabel="Gérer les objectifs"
-            editDoneAccessibilityLabel="Terminer la gestion"
-            addAccessibilityLabel="Ajouter un objectif d'épargne"
-          />
-        }
-      />
-      <ProtoGlassCard style={styles.sectionCard}>
-        {goals.length === 0 ? (
-          <Text style={[styles.emptyGoals, { color: colors.textMuted }]}>
-            Aucun objectif pour l’instant
-          </Text>
+      <View style={styles.sectionHeader}>
+        <Ionicons name="flag-outline" size={14} color={colors.textMuted} />
+        <Text style={[styles.sectionLabel, { color: colors.textMuted }]} numberOfLines={1}>
+          Objectifs d’épargne
+        </Text>
+        {managingGoals ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Terminer la gestion"
+            hitSlop={8}
+            onPress={toggleManagingGoals}
+            style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+          >
+            <Text style={[styles.addAction, { color: colors.text }]}>Terminer</Text>
+          </Pressable>
         ) : (
-          goals.map((goal, index) => {
-            const target = Math.max(goal.targetAmount ?? 0, 0);
-            const saved = Math.max(goal.currentAmount ?? 0, 0);
-            const pct = target > 0 ? Math.min(1, saved / target) : 0;
-            const done = pct >= 1;
-            const remaining = Math.max(target - saved, 0);
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Ajouter un objectif d'épargne"
+            hitSlop={8}
+            onPress={openNewGoalForm}
+            style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+          >
+            <Text style={[styles.addAction, { color: colors.textMuted }]}>+ Ajouter</Text>
+          </Pressable>
+        )}
+      </View>
+      {goals.length === 0 ? (
+        <Text style={[styles.emptyGoals, { color: colors.textMuted }]}>
+          Aucun objectif pour l’instant
+        </Text>
+      ) : (
+        <View
+          style={[
+            styles.goalsCard,
+            { backgroundColor: colors.modalSurface, borderColor: colors.border },
+          ]}
+        >
+          {goals.map((goal, index) => {
             const selected = selectedGoalIds.includes(goal.id);
-            const deadline =
-              goal.dueDate != null && goal.dueDate !== ''
-                ? new Date(goal.dueDate).toLocaleDateString('fr-CA', {
-                    month: 'short',
-                    year: 'numeric',
-                  })
-                : '';
             return (
-              <WalletProgressGoalRow
+              <BalanceGoalRow
                 key={goal.id}
                 icon={resolveSavingsGoalDisplayIcon(goal)}
                 title={goal.name}
-                pct={pct}
-                currentOverTotal={`${formatDisplayMoneyAbsolute(saved)} / ${formatDisplayMoneyAbsolute(target)}`}
-                remainingLabel={
-                  done ? 'Objectif atteint !' : `${formatDisplayMoneyAbsolute(remaining)} restant`
-                }
-                done={done}
-                leftMeta={deadline}
+                saved={goal.currentAmount ?? 0}
+                target={goal.targetAmount ?? 0}
                 managing={managingGoals}
                 selected={selected}
                 showTopDivider={index > 0}
@@ -650,9 +720,9 @@ export function ProtoWalletHub() {
                 onLongPress={() => beginManagingGoal(goal.id)}
               />
             );
-          })
-        )}
-      </ProtoGlassCard>
+          })}
+        </View>
+      )}
       {managingGoals && goals.length > 0 ? (
         <View style={styles.deleteBlock}>
           <Pressable
@@ -691,33 +761,15 @@ export function ProtoWalletHub() {
     </View>
   );
 
-  const loansSection = (
-    <View style={styles.sectionBlock}>
-      <WalletLoansSection
-        hideBalances={hideBalances}
-        suppressManaging={managingAccounts || managingGoals}
-        onManagingChange={handleLoansManagingChange}
-      />
-    </View>
-  );
+  const masked = hideBalances;
 
   return (
     <PageTransition animate={false}>
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <View
-          style={[
-            styles.fixedTitle,
-            {
-              paddingTop: insets.top + SCREEN_TOP_GUTTER,
-              paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-            },
-          ]}
-        >
-          <Text style={[PAGE_TITLE_STYLE, { color: colors.text }]}>Portefeuille</Text>
-        </View>
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={{
+            paddingTop: insets.top + SCREEN_TOP_GUTTER,
             paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING,
             paddingHorizontal: PAGE_PADDING_HORIZONTAL,
             gap: spacing.xl,
@@ -728,106 +780,145 @@ export function ProtoWalletHub() {
           }
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.soldeBlock}>
-            <Text style={[styles.soldeLabel, { color: colors.textMuted }]}>Solde total</Text>
-          <View style={styles.soldeRow}>
-            <Text
-              style={[
-                moneyAmountTypography({ tier: 'hero', fontSize: 34 }),
-                { color: colors.text, flexShrink: 1 },
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {hideBalances ? '••••••••' : formatDisplayMoneyAbsolute(totalBalance)}
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={hideBalances ? 'Afficher les soldes' : 'Masquer les soldes'}
-              hitSlop={10}
-              onPress={() => {
-                tapHaptic();
-                setHideBalances((v) => !v);
-              }}
-            >
-              <AppIcon
-                family="ionicons"
-                name={hideBalances ? 'eye-off-outline' : 'eye-outline'}
-                size={20}
-                color={colors.textMuted}
-              />
-            </Pressable>
-          </View>
-        </View>
+          <Text style={[PAGE_TITLE_STYLE, styles.pageTitle, { color: colors.text }]}>Portefeuille</Text>
 
-        <View style={styles.sectionsMeasure}>
+          <View
+            style={[
+              styles.summaryCard,
+              { backgroundColor: colors.modalSurface, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.summaryTop}>
+              <View style={styles.summaryCopy}>
+                <Text style={[styles.eyebrow, { color: colors.textMuted }]}>Patrimoine net</Text>
+                <View style={styles.summaryAmountRow}>
+                  <Text
+                    style={[
+                      moneyAmountTypography({ tier: 'hero', fontSize: 32 }),
+                      styles.summaryAmount,
+                      { color: colors.text },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.7}
+                  >
+                    {masked ? '••••••' : formatDisplayMoneyAbsolute(netWorth)}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={masked ? 'Afficher les soldes' : 'Masquer les soldes'}
+                    hitSlop={10}
+                    onPress={() => {
+                      tapHaptic();
+                      setHideBalances((value) => !value);
+                    }}
+                  >
+                    <AppIcon
+                      family="ionicons"
+                      name={masked ? 'eye-off-outline' : 'eye-outline'}
+                      size={18}
+                      color={colors.textMuted}
+                    />
+                  </Pressable>
+                </View>
+              </View>
+              <Text style={[styles.accountCount, { color: colors.textMuted }]} numberOfLines={1}>
+                {accountCountLabel}
+              </Text>
+            </View>
+            <View style={styles.summarySplit}>
+              <View style={[styles.summarySub, { borderColor: colors.border }]}>
+                <Text style={[styles.eyebrow, { color: colors.textMuted }]}>Liquidités</Text>
+                <Text
+                  style={[moneyAmountTypography({ tier: 'card' }), { color: colors.text }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  {masked ? '••••' : formatDisplayMoneyAbsolute(liquidCash)}
+                </Text>
+              </View>
+              <View style={[styles.summarySub, { borderColor: colors.border }]}>
+                <Text style={[styles.eyebrow, { color: colors.textMuted }]} numberOfLines={1}>
+                  Objectifs et épargne
+                </Text>
+                <Text
+                  style={[moneyAmountTypography({ tier: 'card' }), { color: colors.success }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  {masked ? '••••' : formatDisplayMoneyAbsolute(goalsSavings)}
+                </Text>
+              </View>
+            </View>
+          </View>
+
           {accountsSection}
           {goalsSection}
-          {loansSection}
-        </View>
-      </ScrollView>
+        </ScrollView>
 
-      <ConfirmDeleteModal
-        visible={confirmDeleteAccountsVisible}
-        title={
-          selectedAccountIds.length === 1
-            ? 'Supprimer ce compte ?'
-            : `Supprimer ${selectedAccountIds.length} comptes ?`
-        }
-        message="Les transactions existantes restent dans l'historique général."
-        confirmLabel={
-          selectedAccountIds.length === 1 ? 'Supprimer' : 'Supprimer la sélection'
-        }
-        onConfirm={() => void handleConfirmDeleteAccounts()}
-        onCancel={() => setConfirmDeleteAccountsVisible(false)}
-      />
+        <ConfirmDeleteModal
+          visible={confirmDeleteAccountsVisible}
+          title={
+            selectedAccountIds.length === 1
+              ? 'Supprimer ce compte ?'
+              : `Supprimer ${selectedAccountIds.length} comptes ?`
+          }
+          message="Les transactions existantes restent dans l'historique général."
+          confirmLabel={
+            selectedAccountIds.length === 1 ? 'Supprimer' : 'Supprimer la sélection'
+          }
+          onConfirm={() => void handleConfirmDeleteAccounts()}
+          onCancel={() => setConfirmDeleteAccountsVisible(false)}
+        />
 
-      <ConfirmDeleteModal
-        visible={confirmDeleteGoalsVisible}
-        title={
-          selectedGoalIds.length === 1
-            ? 'Supprimer cet objectif d’épargne ?'
-            : `Supprimer ${selectedGoalIds.length} objectifs d’épargne ?`
-        }
-        message="Les transactions liées restent dans l’historique."
-        confirmLabel={
-          selectedGoalIds.length === 1 ? 'Supprimer' : 'Supprimer la sélection'
-        }
-        onConfirm={() => void handleConfirmDeleteGoals()}
-        onCancel={() => setConfirmDeleteGoalsVisible(false)}
-      />
+        <ConfirmDeleteModal
+          visible={confirmDeleteGoalsVisible}
+          title={
+            selectedGoalIds.length === 1
+              ? 'Supprimer cet objectif d’épargne ?'
+              : `Supprimer ${selectedGoalIds.length} objectifs d’épargne ?`
+          }
+          message="Les transactions liées restent dans l’historique."
+          confirmLabel={
+            selectedGoalIds.length === 1 ? 'Supprimer' : 'Supprimer la sélection'
+          }
+          onConfirm={() => void handleConfirmDeleteGoals()}
+          onCancel={() => setConfirmDeleteGoalsVisible(false)}
+        />
 
-      <SettingsPickerSheet
-        visible={accountTypePickerVisible}
-        title="Type de compte"
-        options={ACCOUNT_TYPE_PICKER_OPTIONS}
-        selectedId={'' as AccountKind}
-        onClose={closeAccountTypePicker}
-        onSelect={handleSelectAccountType}
-      />
+        <SettingsPickerSheet
+          visible={accountTypePickerVisible}
+          title="Type de compte"
+          options={ACCOUNT_TYPE_PICKER_OPTIONS}
+          selectedId={'' as AccountKind}
+          onClose={closeAccountTypePicker}
+          onSelect={handleSelectAccountType}
+        />
 
-      <SimulatedAccountFormModal
-        form={accountForm}
-        setForm={setAccountForm}
-        saving={savingAccount}
-        onDismiss={closeAccountForm}
-        onSave={() => void saveAccount()}
-        feedback={accountFormFeedback}
-        lockedType={accountFormLockedType}
-      />
+        <SimulatedAccountFormModal
+          form={accountForm}
+          setForm={setAccountForm}
+          saving={savingAccount}
+          onDismiss={closeAccountForm}
+          onSave={() => void saveAccount()}
+          feedback={accountFormFeedback}
+          lockedType={accountFormLockedType}
+        />
 
-      <SavingsGoalFormModal
-        form={goalForm}
-        setForm={setGoalForm}
-        goals={goals}
-        dashboard={dashboard}
-        categoryBudgets={categoryBudgets}
-        recurringPayments={recurringPayments}
-        saving={savingGoal}
-        onDismiss={closeGoalForm}
-        onSave={() => void saveGoal()}
-        feedback={goalFormFeedback}
-      />
+        <SavingsGoalFormModal
+          form={goalForm}
+          setForm={setGoalForm}
+          goals={goals}
+          dashboard={dashboard}
+          categoryBudgets={categoryBudgets}
+          recurringPayments={recurringPayments}
+          saving={savingGoal}
+          onDismiss={closeGoalForm}
+          onSave={() => void saveGoal()}
+          feedback={goalFormFeedback}
+        />
       </View>
     </PageTransition>
   );
@@ -836,23 +927,97 @@ export function ProtoWalletHub() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   scroll: { flex: 1 },
-  fixedTitle: {
-    flexShrink: 0,
-    paddingBottom: spacing.lg,
+  pageTitle: {
+    marginBottom: -spacing.sm,
   },
-  soldeBlock: { marginTop: spacing.sm },
-  soldeLabel: { ...typographyKit.metaMedium, fontSize: 13, marginBottom: 6 },
-  soldeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  sectionsMeasure: { alignSelf: 'stretch', width: '100%', gap: spacing.xl },
-  sectionBlock: { width: '100%', alignSelf: 'stretch' },
-  sectionCard: { width: '100%', alignSelf: 'stretch' },
+  summaryCard: {
+    borderRadius: BALANCE_ACCOUNT_TILE.radius,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  summaryTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  summaryCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.xs,
+  },
+  summaryAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  summaryAmount: {
+    flexShrink: 1,
+  },
+  accountCount: {
+    ...typographyKit.microMedium,
+    flexShrink: 0,
+    marginTop: 2,
+  },
+  eyebrow: {
+    ...typographyKit.eyebrow,
+    fontSize: 11,
+    letterSpacing: 0.6,
+  },
+  summarySplit: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  summarySub: {
+    flex: 1,
+    minWidth: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    gap: spacing.xs,
+  },
+  sectionBlock: { width: '100%', alignSelf: 'stretch', gap: spacing.sm },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  sectionLabel: {
+    ...typographyKit.eyebrow,
+    fontSize: 11,
+    letterSpacing: 0.8,
+    flex: 1,
+    minWidth: 0,
+  },
+  sectionAmount: {
+    flexShrink: 0,
+  },
+  addAction: {
+    ...typographyKit.metaMedium,
+    flexShrink: 0,
+  },
   accountGrid: {
+    width: '100%',
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: BALANCE_ACCOUNT_TILE.gap,
+  },
+  accountGridManage: {
     width: '100%',
     alignSelf: 'stretch',
   },
   accountTilePressable: {
     width: '100%',
-    minWidth: 0,
+    height: BALANCE_ACCOUNT_TILE.height,
+    overflow: 'hidden',
+  },
+  goalsCard: {
+    borderRadius: BALANCE_ACCOUNT_TILE.radius,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
   checkWell: {
     width: CHECK,
@@ -863,6 +1028,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  emptyGoals: { ...typographyKit.metaMedium, padding: 16 },
-  deleteBlock: { marginTop: spacing.md },
+  emptyGoals: { ...typographyKit.metaMedium, paddingVertical: spacing.sm },
+  deleteBlock: { marginTop: spacing.sm },
 });

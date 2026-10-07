@@ -778,12 +778,15 @@ export function getFloatingTabBarOverlayInset(
   return safeBottom + FLOATING_TAB_BAR_PILL_HEIGHT;
 }
 
-/** Scroll clearance above fixed tab bar (icon row + former floating bottom gap removed). */
-const FLOATING_NAV_BASE_PADDING = 104;
+/**
+ * Scroll clearance above the docked bottom nav.
+ * Row chrome: paddingTop 10 + tab padding 4 + icon 21 + gap 4 + label 14,
+ * plus the bar's 12px minimum bottom padding (web inset is often 0) and a 12px gap.
+ * Safe-area inset is added by each screen (`insets.bottom + FLOATING_NAV_CONTENT_PADDING`).
+ */
+const FLOATING_NAV_BASE_PADDING = 10 + 4 + 21 + 4 + 14 + 12 + 12;
 
-export const FLOATING_NAV_CONTENT_PADDING =
-  FLOATING_NAV_BASE_PADDING +
-  (Platform.OS === 'android' ? FLOATING_TABBAR_ANDROID_BOTTOM_EXTRA : 0);
+export const FLOATING_NAV_CONTENT_PADDING = FLOATING_NAV_BASE_PADDING;
 
 export const PAGE_TITLE_CONTENT_GAP = spacing.xl;
 
@@ -1200,8 +1203,11 @@ export function detailSubSectionHeaderStyle(): TextStyle {
 export function detailSingleLineRowStyle(): ViewStyle {
   return {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    // Web wraps only when the line truly cannot fit. Native Yoga wraps a
+    // basis-0 value onto the next line, so detail rows stay nowrap there.
+    flexWrap: Platform.OS === 'web' ? 'wrap' : 'nowrap',
     alignItems: 'flex-start',
+    alignSelf: 'stretch',
     paddingVertical: spacing.sm,
     gap: spacing.sm,
   };

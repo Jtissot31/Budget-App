@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
-import { SparklineChart } from '@/components/chat/SparklineChart';
+import { SparklineChart } from '@/components/SparklineChart';
 import { typographyKit } from '@/constants/theme';
 import type {
   GoalContributionChartPeriod,

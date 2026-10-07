@@ -1,0 +1,48 @@
+/**
+ * CSS-variable mirror for react-native-reusables / NativeWind.
+ * Keep in sync with `global.css` Luna tokens.
+ */
+export const RNR_THEME = {
+  light: {
+    background: 'hsl(0 0% 100%)',
+    foreground: 'hsl(240 10% 4%)',
+    card: 'hsl(0 0% 100%)',
+    cardForeground: 'hsl(240 10% 4%)',
+    popover: 'hsl(0 0% 100%)',
+    popoverForeground: 'hsl(240 10% 4%)',
+    primary: 'hsl(142 71% 45%)',
+    primaryForeground: 'hsl(240 10% 4%)',
+    secondary: 'hsl(240 5% 96%)',
+    secondaryForeground: 'hsl(240 10% 4%)',
+    muted: 'hsl(240 5% 96%)',
+    mutedForeground: 'hsl(240 4% 46%)',
+    accent: 'hsl(240 5% 96%)',
+    accentForeground: 'hsl(240 10% 4%)',
+    destructive: 'hsl(0 84% 60%)',
+    border: 'hsl(240 6% 90%)',
+    input: 'hsl(240 6% 90%)',
+    ring: 'hsl(142 71% 45%)',
+    radius: '0.75rem',
+  },
+  dark: {
+    background: 'hsl(240 9% 3%)',
+    foreground: 'hsl(0 0% 98%)',
+    card: 'hsl(240 6% 7%)',
+    cardForeground: 'hsl(0 0% 98%)',
+    popover: 'hsl(240 6% 7%)',
+    popoverForeground: 'hsl(0 0% 98%)',
+    primary: 'hsl(142 71% 45%)',
+    primaryForeground: 'hsl(240 9% 3%)',
+    secondary: 'hsl(240 4% 12%)',
+    secondaryForeground: 'hsl(0 0% 98%)',
+    muted: 'hsl(240 4% 12%)',
+    mutedForeground: 'hsl(240 5% 64%)',
+    accent: 'hsl(240 4% 14%)',
+    accentForeground: 'hsl(0 0% 98%)',
+    destructive: 'hsl(0 71% 59%)',
+    border: 'hsla(0, 0%, 100%, 0.1)',
+    input: 'hsla(0, 0%, 100%, 0.12)',
+    ring: 'hsl(142 71% 45%)',
+    radius: '0.75rem',
+  },
+} as const;

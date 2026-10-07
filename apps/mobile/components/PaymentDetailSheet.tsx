@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { Pressable, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, type TextStyle } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PremiumSwitch } from '@/components/PremiumSwitch';
@@ -66,6 +66,7 @@ import {
   detailRowEditableContainer,
   detailRowSelectValueText,
   detailRowValueMoney,
+  nativeTextColumnFlex,
 } from '@/lib/textLayout';
 import type { FormFeedback } from '@/lib/formFeedback';
 import { useAppTheme } from '@/lib/themeContext';
@@ -1022,13 +1023,11 @@ function createStyles(colors: AppColors) {
       gap: spacing.md,
     },
     heroIdentityCopy: {
-      flex: 1,
-      minWidth: 0,
+      ...(Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex),
       gap: 4,
     },
     heroLabelField: {
-      flex: 1,
-      minWidth: 0,
+      ...(Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex),
       alignSelf: 'stretch',
     },
     heroLabel: {
@@ -1070,10 +1069,7 @@ function createStyles(colors: AppColors) {
     estimatedPayBannerIcon: {
       marginTop: 2,
     },
-    estimatedPayBannerText: {
-      flex: 1,
-      minWidth: 0,
-    },
+    estimatedPayBannerText: Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex,
     estimatedPayBannerLine: {
       color: colors.textSecondary,
       fontSize: typography.caption,

@@ -68,7 +68,7 @@ export const ROUTE_LABELS: Record<string, string> = {
   settings: 'Réglages',
 };
 
-export const HIDDEN_ROUTES = new Set(['settings', 'widgets']);
+export const HIDDEN_ROUTES = new Set(['settings']);
 
 function normalizeAppPathname(pathname: string | null | undefined): string | null {
   if (!pathname) return null;
@@ -80,16 +80,11 @@ export function isTransactionsInsightsPath(pathname: string | null | undefined):
   return normalizeAppPathname(pathname) === '/transactions-insights';
 }
 
-/** Bibliothèque / détail de stratégies — browse page, no add-transaction FAB. */
+/** Plan create / detail — no add-transaction FAB. */
 export function isPlansExplorePath(pathname: string | null | undefined): boolean {
   const normalized = normalizeAppPathname(pathname);
   if (!normalized) return false;
-  return (
-    normalized === '/plans/explore' ||
-    normalized.startsWith('/plans/template/') ||
-    normalized === '/plans/create' ||
-    /^\/plans\/[^/]+$/.test(normalized)
-  );
+  return normalized === '/plans/create' || /^\/plans\/[^/]+$/.test(normalized);
 }
 
 /** Analyse abonnements overlay — same FAB policy as dépenses insights. */

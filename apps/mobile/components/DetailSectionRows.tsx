@@ -245,12 +245,16 @@ const styles = StyleSheet.create({
   rowIcon: {
     width: 18,
     marginTop: 1,
+    flexGrow: 0,
+    flexShrink: 0,
   },
   amountRowIcon: {
     marginTop: 0,
   },
   rowIconSpacer: {
     width: 18,
+    flexGrow: 0,
+    flexShrink: 0,
   },
   rowLabel: {
     marginRight: spacing.sm,

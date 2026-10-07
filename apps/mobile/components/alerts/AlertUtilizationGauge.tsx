@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   hub: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,

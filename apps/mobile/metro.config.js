@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { getDefaultConfig } = require('expo/metro-config');
+const { withNativeWind } = require('nativewind/metro');
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
@@ -132,4 +133,5 @@ config.server.enhanceMiddleware = (middleware) => {
   };
 };
 
-module.exports = config;
+// NativeWind / react-native-reusables (shadcn-RN) — inlineRem matches rem-based tokens.
+module.exports = withNativeWind(config, { input: './global.css', inlineRem: 16 });

@@ -67,7 +67,6 @@ import {
 import { sanitizeDebtParametresForAcceleratedPlan } from '@/lib/plans/debtPlanCandidates';
 import { getLoans, getSimulatedAccounts } from '@/lib/db';
 import { tapHaptic } from '@/lib/haptics';
-import { setPendingPlanChatConfirmation } from '@/lib/plans/pendingPlanChatConfirmation';
 import type { SimulatedAccount } from '@/types';
 
 type QueueItem = Pick<
@@ -306,7 +305,6 @@ export default function PlanCreateScreen() {
         return;
       }
 
-      await setPendingPlanChatConfirmation(total);
       router.back();
     },
     [editPlanId, index, params.messageId, queue, router, suggestion, total],

@@ -56,6 +56,6 @@ const styles = StyleSheet.create({
   },
   /** Absolute only — no zIndex, so in-flow children paint above the halo. */
   haloWrap: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
 });

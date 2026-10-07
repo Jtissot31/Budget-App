@@ -3,7 +3,7 @@
  * Default neutral glass — no solid green fill disk.
  */
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -16,17 +16,39 @@ import { TRANSACTIONS_FAB_SIZE } from '@/constants/fabStyles';
 import { floatingGlassButtonPressed } from '@/constants/floatingGlassButton';
 import { useAppTheme } from '@/lib/themeContext';
 
-const STYLE_ID = 'fyn-glass-fab-web-v2';
+const STYLE_ID = 'fyn-glass-fab-web-v3';
+
+const GLASS_TONE_CLASSES = [
+  'fyn-glass-fab--green-dark',
+  'fyn-glass-fab--green-light',
+  'fyn-glass-fab--neutral-dark',
+  'fyn-glass-fab--neutral-light',
+] as const;
 
 function ensureGlassFabCss() {
   if (typeof document === 'undefined') return;
-  if (document.getElementById(STYLE_ID)) return;
-  const el = document.createElement('style');
-  el.id = STYLE_ID;
+  document.getElementById('fyn-glass-fab-web-v2')?.remove();
+  let el = document.getElementById(STYLE_ID);
+  if (!el) {
+    el = document.createElement('style');
+    el.id = STYLE_ID;
+    document.head.appendChild(el);
+  }
   el.textContent = `
     .fyn-glass-fab {
       pointer-events: auto;
       overflow: hidden;
+      box-sizing: border-box;
+      /* Lock a square disc. Width/height styles were getting dropped (see bindGlassNode). */
+      flex: none;
+      width: var(--fyn-glass-fab-size);
+      height: var(--fyn-glass-fab-size);
+      min-width: var(--fyn-glass-fab-size);
+      min-height: var(--fyn-glass-fab-size);
+      max-width: var(--fyn-glass-fab-size);
+      max-height: var(--fyn-glass-fab-size);
+      aspect-ratio: 1 / 1;
+      border-radius: 9999px;
       border-style: solid;
       border-width: 1px;
       backdrop-filter: blur(56px) saturate(1.7);
@@ -64,7 +86,31 @@ function ensureGlassFabCss() {
         inset 0 0.5px 0 rgba(255, 255, 255, 0.35);
     }
   `;
-  document.head.appendChild(el);
+}
+
+function isHtmlElement(node: unknown): node is HTMLElement {
+  return (
+    node != null &&
+    typeof node === 'object' &&
+    'classList' in node &&
+    'style' in node
+  );
+}
+
+/**
+ * NativeWind cssInterop maps Pressable `className` onto `style`. When `style`
+ * is a function (pressed state), that merge replaces the function entirely, so
+ * width, height, radius, and the caller's absolute position never reach the DOM.
+ * The tab-bar host is a full-width column, so the button then stretches into a
+ * short strip. Paint the glass class on the DOM node instead.
+ */
+function bindGlassNode(node: unknown, toneClass: string, size: number) {
+  if (!isHtmlElement(node)) return;
+  node.classList.add('fyn-glass-fab', toneClass);
+  for (const name of GLASS_TONE_CLASSES) {
+    if (name !== toneClass) node.classList.remove(name);
+  }
+  node.style.setProperty('--fyn-glass-fab-size', `${size}px`);
 }
 
 type Props = {
@@ -88,10 +134,7 @@ export function GlassFab({
 }: Props) {
   const { isLight } = useAppTheme();
   const cornerRadius = size / 2;
-
-  useEffect(() => {
-    ensureGlassFabCss();
-  }, []);
+  const nodeRef = useRef<HTMLElement | null>(null);
 
   const toneClass =
     tone === 'accentGreen'
@@ -102,8 +145,21 @@ export function GlassFab({
         ? 'fyn-glass-fab--neutral-light'
         : 'fyn-glass-fab--neutral-dark';
 
+  useEffect(() => {
+    ensureGlassFabCss();
+    if (nodeRef.current) bindGlassNode(nodeRef.current, toneClass, size);
+  }, [toneClass, size]);
+
   return (
     <Pressable
+      ref={(node) => {
+        const el = isHtmlElement(node) ? node : null;
+        nodeRef.current = el;
+        if (el) {
+          ensureGlassFabCss();
+          bindGlassNode(el, toneClass, size);
+        }
+      }}
       pointerEvents="auto"
       onPress={onPress}
       accessibilityRole="button"
@@ -115,12 +171,12 @@ export function GlassFab({
           width: size,
           height: size,
           borderRadius: cornerRadius,
+          flexGrow: 0,
+          flexShrink: 0,
         },
         style,
         pressed && floatingGlassButtonPressed,
       ]}
-      // RN Web: className paints the glass disc (backdrop-filter).
-      {...({ className: `fyn-glass-fab ${toneClass}` } as object)}
     >
       <View pointerEvents="none" style={styles.content}>
         {children}

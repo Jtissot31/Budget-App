@@ -516,7 +516,7 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '-90deg' }],
   },
   ringCenter: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,

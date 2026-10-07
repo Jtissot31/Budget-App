@@ -393,7 +393,7 @@ export function alertTypeHeaderTitle(kind: AlertCenterKind): string {
       return 'Adaptation de plan';
     case 'fyn':
     default:
-      return 'Alerte Fyn';
+      return 'Alerte';
   }
 }
 
@@ -687,16 +687,7 @@ function lowFundsSolutions(
         params: { view: 'agenda' },
       };
 
-  const fynFunds: AlertSolution = {
-    id: 'fyn-funds',
-    title: 'Trouver une solution avec Fyn',
-    description: 'Plan simple pour passer l’échéance.',
-    ctaLabel: 'Parler à Fyn',
-    icon: { family: 'ionicons', name: 'sparkles-outline' },
-    href: '/ai-chat',
-  };
-
-  return [transfer, secondAction, fynFunds];
+  return [transfer, secondAction];
 }
 
 export function alertListIcon(kind: AlertCenterKind): {
@@ -882,14 +873,6 @@ export function buildAlertDetailContent(
             icon: { family: 'ionicons', name: 'receipt-outline' },
             href: '/(tabs)/transactions',
           },
-          {
-            id: 'fyn-budget',
-            title: 'Pistes avec Fyn',
-            description: 'Suggestions selon tes habitudes.',
-            ctaLabel: 'Parler à Fyn',
-            icon: { family: 'ionicons', name: 'sparkles-outline' },
-            href: '/ai-chat',
-          },
         ],
       };
     }
@@ -914,22 +897,6 @@ export function buildAlertDetailContent(
             ctaLabel: 'Voir mes obligations',
             icon: { family: 'ionicons', name: 'document-text-outline' },
             href: '/(tabs)/goals',
-          },
-          {
-            id: 'debt-plan',
-            title: 'Choisir une stratégie de remboursement',
-            description: 'Avalanche (taux élevés) ou boule de neige (petits soldes).',
-            ctaLabel: 'Explorer les plans',
-            icon: { family: 'ionicons', name: 'trending-down-outline' },
-            href: '/plans/explore',
-          },
-          {
-            id: 'fyn-debt',
-            title: 'Plan personnalisé avec Fyn',
-            description: 'Trouve un rythme de remboursement réaliste.',
-            ctaLabel: 'Parler à Fyn',
-            icon: { family: 'ionicons', name: 'sparkles-outline' },
-            href: '/ai-chat',
           },
         ],
       };
@@ -958,7 +925,7 @@ export function buildAlertDetailContent(
         problemLabel: 'Proposition',
         problemBody:
           item.message ||
-          'Fyn a détecté une adaptation utile pour un de tes plans actifs.',
+          'Une adaptation est proposée pour un de tes plans actifs.',
         insightFallbackBody:
           'Les adaptations automatiques restent des propositions : rien ne change tant que tu n’as pas confirmé.',
         actionsLabel: 'Options',
@@ -996,7 +963,7 @@ export function buildAlertDetailContent(
     case 'fyn':
     default:
       return {
-        eyebrow: 'Conseil Fyn',
+        eyebrow: 'Conseil',
         icon: { family: 'ionicons', name: 'bulb-outline' },
         accentToken: 'accent',
         problemLabel: 'Le problème',
@@ -1006,20 +973,20 @@ export function buildAlertDetailContent(
         actionsLabel: 'Options',
         solutions: [
           {
-            id: 'fyn-chat',
-            title: 'Discuter avec Fyn',
-            description: 'Pose ta question pour obtenir une réponse concrète.',
-            ctaLabel: 'Ouvrir Fyn',
-            icon: { family: 'ionicons', name: 'chatbubble-ellipses-outline' },
-            href: '/ai-chat',
+            id: 'review-budget',
+            title: 'Revoir le budget',
+            description: 'Vérifie tes enveloppes et tes plafonds.',
+            ctaLabel: 'Voir mon budget',
+            icon: { family: 'ionicons', name: 'pie-chart-outline' },
+            href: '/(tabs)/budgets',
           },
           {
-            id: 'plans',
-            title: 'Explorer un plan financier',
-            description: 'Modèles pour épargner, rembourser ou stabiliser ton budget.',
-            ctaLabel: 'Explorer les plans',
-            icon: { family: 'ionicons', name: 'compass-outline' },
-            href: '/plans/explore',
+            id: 'review-activity',
+            title: 'Voir l’activité',
+            description: 'Repasse les dernières transactions.',
+            ctaLabel: 'Voir l’historique',
+            icon: { family: 'ionicons', name: 'receipt-outline' },
+            href: '/(tabs)/transactions',
           },
         ],
       };

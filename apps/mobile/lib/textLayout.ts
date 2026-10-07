@@ -1,4 +1,4 @@
-﻿import type { TextStyle } from 'react-native';
+﻿import { Platform, type TextStyle } from 'react-native';
 
 import { MONEY_AMOUNT_FONT } from '@/constants/interFonts';
 import { typographyKit } from '@/constants/typographyKit';
@@ -127,6 +127,19 @@ export const netWorthHeroAmount = moneyFromPreset(typographyKit.netWorthHero);
 /** Max width for right-column amounts in row layouts */
 export const ROW_VALUE_MAX_WIDTH = '40%' as const;
 
+/**
+ * Flexible text column in a horizontal detail row.
+ * Web CSS `flex: 1` still receives the leftover width.
+ * Native Yoga treats `flex: 1` as basis 0; with `minWidth: 0` the text
+ * collapses and the row wraps. Grow and shrink from an auto basis instead.
+ */
+export const nativeTextColumnFlex = {
+  flexGrow: 1,
+  flexShrink: 1,
+  flexBasis: 'auto' as const,
+  minWidth: 48,
+};
+
 /** Detail section row label — truncates before the value column grows */
 export const detailRowLabelSlot = {
   flexShrink: 0,
@@ -138,9 +151,9 @@ export const detailRowLabel = detailRowLabelSlot;
 
 /** Detail section row value slot — fills remaining row width */
 export const detailRowValueSlot = {
-  flex: 1,
-  flexShrink: 1,
-  minWidth: 0,
+  ...(Platform.OS === 'web'
+    ? { flex: 1, flexShrink: 1, minWidth: 0 }
+    : nativeTextColumnFlex),
   flexDirection: 'row' as const,
   alignItems: 'flex-start' as const,
   justifyContent: 'flex-end' as const,
@@ -151,8 +164,7 @@ export const detailRowValueContainer = detailRowValueSlot;
 
 /** EditableField container inside a detail row value column */
 export const detailRowEditableContainer = {
-  flex: 1,
-  minWidth: 0,
+  ...(Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex),
   alignSelf: 'stretch' as const,
 } as const;
 

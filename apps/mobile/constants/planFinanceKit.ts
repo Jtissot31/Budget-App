@@ -1,4 +1,4 @@
-import { StyleSheet, type TextStyle, type ViewStyle } from 'react-native';
+import { Platform, StyleSheet, type TextStyle, type ViewStyle } from 'react-native';
 import {
   CONTAINER_BORDER,
   CONTAINER_SURFACE,
@@ -93,10 +93,123 @@ export const ONYX_CONTAINER = {
     card: planFinanceKit.layout.cardPadding,
   },
   listGap: spacing.sm,
+  /** Same as listGap. Grid callers read `.gap` (BUDGET_CATEGORY_TILE.gap aliases this). */
+  gap: spacing.sm,
 } as const;
 
 /** @deprecated Use {@link ONYX_CONTAINER} — same tokens. */
 export const PLAN_FINANCE_CONTAINER = ONYX_CONTAINER;
+
+/** Fixed budget category card frames. Grid height is spacing.xxl * 4 (128). */
+export const BUDGET_CATEGORY_TILE = {
+  /** Full-width list row. */
+  rowHeight: spacing.xxl * 3,
+  /** Two-column grid tile, including the add tile. */
+  gridHeight: spacing.xxl * 4,
+  columns: 2,
+  gap: ONYX_CONTAINER.gap,
+} as const;
+
+/** Fixed frame for a full-width budget category row. */
+export function budgetCategoryRowFrameStyle(): Pick<ViewStyle, 'height' | 'overflow'> {
+  return {
+    height: BUDGET_CATEGORY_TILE.rowHeight,
+    overflow: 'hidden',
+  };
+}
+
+/** Fixed frame for a budget category grid tile. Fills its column. */
+export function budgetCategoryGridFrameStyle(): ViewStyle {
+  const height = BUDGET_CATEGORY_TILE.gridHeight;
+  if (Platform.OS === 'web') {
+    return {
+      height,
+      width: '100%',
+      overflow: 'hidden',
+    };
+  }
+  // Parent is a column. On Android, flex:1 (basis 0) overrides height and
+  // collapses the tile to a sliver after the screen regains focus.
+  return {
+    height,
+    width: '100%',
+    overflow: 'hidden',
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: height,
+  };
+}
+
+/**
+ * Equal grid column: half the row minus the shared gap.
+ * `contentWidth` is the grid's inner width (padding already excluded).
+ */
+export function budgetCategoryGridColumnStyle(contentWidth: number): ViewStyle {
+  const { columns, gap, gridHeight } = BUDGET_CATEGORY_TILE;
+  const safeGap = Number.isFinite(gap) ? gap : spacing.sm;
+  const width =
+    contentWidth > 0
+      ? Math.max(0, Math.floor((contentWidth - safeGap * (columns - 1)) / columns))
+      : undefined;
+
+  // Explicit half-width. Never leave width unset — a shrink-wrapped column
+  // plus a flex-basis-0 label collapses to one character.
+  return {
+    width: width ?? '48%',
+    ...(width != null ? { minWidth: width, maxWidth: width, flexBasis: width } : { flexBasis: '48%' as const }),
+    height: gridHeight,
+    flexGrow: 0,
+    flexShrink: 0,
+    overflow: 'hidden',
+  };
+}
+
+/**
+ * Balance tab account tiles — every cell, including add, is this frame.
+ * Taller than {@link BUDGET_CATEGORY_TILE.gridHeight} so 16px padding still
+ * leaves room for icon, name, subtitle, and a bottom-anchored amount.
+ */
+export const BALANCE_ACCOUNT_TILE = {
+  height: spacing.xxl * 4 + spacing.lg,
+  columns: BUDGET_CATEGORY_TILE.columns,
+  gap: BUDGET_CATEGORY_TILE.gap,
+  padding: spacing.lg,
+  radius: planFinanceKit.radius.card,
+} as const;
+
+/** Full-width savings-goal row on the Balance tab. */
+export const BALANCE_GOAL_ROW = {
+  height: BUDGET_CATEGORY_TILE.rowHeight,
+} as const;
+
+/** Fixed frame for a Balance account tile. */
+export function balanceAccountTileFrameStyle(): Pick<ViewStyle, 'height' | 'width' | 'overflow'> {
+  return {
+    height: BALANCE_ACCOUNT_TILE.height,
+    width: '100%',
+    overflow: 'hidden',
+  };
+}
+
+/**
+ * Equal Balance account column.
+ * `contentWidth` is the grid's inner width (page padding already excluded).
+ */
+export function balanceAccountGridColumnStyle(contentWidth: number): ViewStyle {
+  const { columns, gap, height } = BALANCE_ACCOUNT_TILE;
+  const width =
+    contentWidth > 0
+      ? Math.floor((contentWidth - gap * (columns - 1)) / columns)
+      : undefined;
+
+  return {
+    width,
+    height,
+    flexGrow: 0,
+    flexShrink: 0,
+    overflow: 'hidden',
+  };
+}
 
 export type PlanFinanceContainerColors = {
   containerBackground: string;

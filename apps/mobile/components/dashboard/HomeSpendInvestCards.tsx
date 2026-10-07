@@ -7,7 +7,7 @@ import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-nati
 import { useRouter } from 'expo-router';
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import { ProtoGlassCard } from '@/components/proto/ProtoGlassCard';
-import { SparklineChart } from '@/components/chat/SparklineChart';
+import { SparklineChart } from '@/components/SparklineChart';
 import type { MockStockHolding } from '@/constants/mockStockPortfolio';
 import { moneyAmountTypography, typographyKit } from '@/constants/theme';
 import {

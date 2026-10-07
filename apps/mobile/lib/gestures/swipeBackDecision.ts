@@ -83,7 +83,6 @@ const SWIPE_BACK_BLOCKED_PATHS = [
   '/budgets',
   '/goals',
   '/settings',
-  '/widgets',
   '/onboarding',
 ];
 

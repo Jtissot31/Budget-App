@@ -55,7 +55,7 @@ const ALERT_TYPE_PREVIEW_TITLES: Record<AlertTypePreferenceId, string> = {
   balance_low: ALERT_REASONS.balanceLow,
   budget_over: ALERT_REASONS.budgetOver,
   plan_adaptation: ALERT_REASONS.planAdaptation,
-  fyn: 'Conseil Fyn',
+  fyn: 'Autres conseils',
 };
 
 function groupCatalogBySection(): { section: AlertCenterSection; entries: AlertTypeCatalogEntry[] }[] {

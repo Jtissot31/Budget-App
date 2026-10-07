@@ -3,7 +3,7 @@ import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 import { Platform } from 'react-native';
 
 /**
- * Optional first-run intro (welcome → features → name → pay → housing → Fyn).
+ * Optional first-run intro (welcome → features → name → pay → housing).
  * Not forced on launch — open via settings « Revoir l’introduction ».
  * Pay + housing answers feed agenda estimates and Budgets (see `onboardingMoney.ts`).
  */

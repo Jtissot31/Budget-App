@@ -108,7 +108,7 @@ function TabBarDynamicBlurImpl({
       pointerEvents="none"
       collapsable={false}
       style={[
-        StyleSheet.absoluteFillObject,
+        StyleSheet.absoluteFill,
         { borderRadius: cornerRadius, overflow: clipBlur ? 'hidden' : 'visible' },
         style,
       ]}
@@ -121,19 +121,19 @@ function TabBarDynamicBlurImpl({
           minRefreshMs={refreshMs}
           live={liveCapture}
           enabled
-          style={[StyleSheet.absoluteFillObject, { borderRadius: cornerRadius }]}
+          style={[StyleSheet.absoluteFill, { borderRadius: cornerRadius }]}
         />
       ) : (
         <View
           style={[
-            StyleSheet.absoluteFillObject,
+            StyleSheet.absoluteFill,
             { borderRadius: cornerRadius, backgroundColor: wash },
           ]}
         />
       )}
       <View
         style={[
-          StyleSheet.absoluteFillObject,
+          StyleSheet.absoluteFill,
           {
             borderRadius: cornerRadius,
             borderWidth: StyleSheet.hairlineWidth,

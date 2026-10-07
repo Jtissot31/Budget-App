@@ -16,7 +16,7 @@ export function AppBackgroundGradient({ style }: Props) {
     return (
       <View
         pointerEvents="none"
-        style={[StyleSheet.absoluteFillObject, styles.darkCanvas, style]}
+        style={[StyleSheet.absoluteFill, styles.darkCanvas, style]}
       />
     );
   }
@@ -30,7 +30,7 @@ export function AppBackgroundGradient({ style }: Props) {
       locations={[...gradient.locations]}
       start={gradient.start}
       end={gradient.end}
-      style={[StyleSheet.absoluteFillObject, style]}
+      style={[StyleSheet.absoluteFill, style]}
     />
   );
 }

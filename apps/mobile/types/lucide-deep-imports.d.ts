@@ -1,8 +1,15 @@
 /**
- * Imports profonds lucide (`dist/cjs/icons/*.js`) — pattern app pour éviter
- * d'embarquer tout le catalogue. Résolus au runtime via `resolveLucideIcon`.
+ * Deep Lucide imports (`dist/cjs/icons/*.js`) — app pattern to avoid bundling
+ * the full catalog. Runtime still goes through `resolveLucideIcon` where needed.
  */
 declare module 'lucide-react-native/dist/cjs/icons/*' {
-  const mod: unknown;
-  export default mod;
+  import type { LucideIcon } from 'lucide-react-native';
+  const icon: LucideIcon;
+  export default icon;
+}
+
+declare module 'lucide-react-native/dist/cjs/icons/*.js' {
+  import type { LucideIcon } from 'lucide-react-native';
+  const icon: LucideIcon;
+  export default icon;
 }

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Fyn",
+    "name": "Budget-OX",
     "slug": "budget-tracker",
     "platforms": [
       "ios",
@@ -12,17 +12,11 @@
     "scheme": "budgettracker",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0A0A0A",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0A0A0A"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.budgettracker.app",
       "infoPlist": {
-        "CFBundleDisplayName": "Fyn"
+        "CFBundleDisplayName": "Budget-OX"
       }
     },
     "android": {
@@ -36,10 +30,16 @@
     },
     "plugins": [
       "expo-dev-client",
+      "expo-asset",
+      "expo-font",
+      "expo-image",
+      "expo-localization",
+      "expo-sharing",
+      "expo-status-bar",
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Budget Tracker utilise ta position pour pré-sélectionner ton pays et ta région."
+          "locationWhenInUsePermission": "Budget-OX utilise ta position pour pré-sélectionner ton pays et ta région."
         }
       ],
       [
@@ -55,15 +55,15 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Budget Tracker enregistre vos reçus dans votre photothèque.",
-          "savePhotosPermission": "Budget Tracker enregistre vos reçus dans votre photothèque."
+          "photosPermission": "Budget-OX enregistre vos reçus dans votre photothèque.",
+          "savePhotosPermission": "Budget-OX enregistre vos reçus dans votre photothèque."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Budget Tracker utilise ta galerie pour joindre un reçu, un certificat d’authenticité ou une photo de bien.",
-          "cameraPermission": "Budget Tracker utilise la caméra pour photographier tes reçus et les joindre à une transaction."
+          "photosPermission": "Budget-OX utilise ta galerie pour joindre un reçu, un certificat d’authenticité ou une photo de bien.",
+          "cameraPermission": "Budget-OX utilise la caméra pour photographier tes reçus et les joindre à une transaction."
         }
       ],
       "expo-document-picker",
@@ -71,7 +71,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Fyn utilise le micro pour te laisser dicter une transaction."
+          "microphonePermission": "Budget-OX utilise le micro pour te laisser dicter une transaction."
         }
       ],
       [

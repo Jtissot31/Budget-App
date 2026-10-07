@@ -2746,7 +2746,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   dragBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   modalKeyboard: { flex: 1, justifyContent: 'flex-end' },
   pressed: { opacity: 0.72 },

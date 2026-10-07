@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { SparklineChart } from '@/components/chat/SparklineChart';
+import { SparklineChart } from '@/components/SparklineChart';
 import {
   jakartaSemiboldText,
   moneyAmountTypography,

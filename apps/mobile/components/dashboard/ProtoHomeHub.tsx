@@ -1,34 +1,47 @@
 /**
- * Budget Proto Accueil — valeur nette, alertes, transactions récentes.
+ * Accueil — patrimoine, comptes, objectifs, factures à venir.
+ * Chiffres et libellés viennent des données réelles (jamais du mock visuel).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  LayoutChangeEvent,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AgendaBillRowCard, AGENDA_BILL_ROW_GAP } from '@/components/agenda/AgendaBillRowCard';
+import { calendarBoxParts } from '@/components/DashboardDateBadge';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { HomeAlertGlyph } from '@/components/alerts/HomeAlertGlyph';
+import { OnyxContainer } from '@/components/OnyxContainer';
 import { PageTransition } from '@/components/PageTransition';
-import { PremiumSwitch } from '@/components/PremiumSwitch';
-import { ProtoGlassCard } from '@/components/proto/ProtoGlassCard';
+import { ProgressBar } from '@/components/ProgressBar';
 import {
-  ProtoShortcutRow,
-  SHORTCUT_TILE_GAP,
-  type ProtoShortcutItem,
-} from '@/components/proto/ProtoShortcutRow';
-import { ProtoSectionHeader } from '@/components/proto/ProtoSectionHeader';
-import { SegmentedTabs } from '@/components/SegmentedTabs';
-import { SparklineChart } from '@/components/chat/SparklineChart';
-import { TransactionRow } from '@/components/TransactionRow';
+  ACCOUNT_KIND_OPTIONS,
+  createNewAccountForm,
+  saveSimulatedAccountForm,
+  SimulatedAccountFormModal,
+  type AccountForm,
+} from '@/components/SimulatedAccountForm';
+import {
+  SettingsPickerSheet,
+  type SettingsPickerOption,
+} from '@/components/SettingsPickerSheet';
+import {
+  createNewGoalForm,
+  SavingsGoalFormModal,
+  saveSavingsGoalForm,
+  type GoalForm,
+} from '@/components/SavingsGoalsForm';
+import { UserPickedIconWell } from '@/components/UserPickedIconWell';
+import { InstitutionMark } from '@/components/wallet/AccountCardPrototypes';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
-import { onyxContainerPressedStyle } from '@/constants/planFinanceKit';
+import { ONYX_CONTAINER, onyxContainerPressedStyle } from '@/constants/planFinanceKit';
 import {
   FLOATING_NAV_CONTENT_PADDING,
   moneyAmountTypography,
@@ -36,120 +49,229 @@ import {
   spacing,
   typographyKit,
 } from '@/constants/theme';
-import { useAlertCenter } from '@/hooks/useAlertCenter';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
-import { alertDetailRouteParams, formatAlertClockTime } from '@/lib/alerts';
 import {
-  alertHomeActionLine,
-  alertHomePrimaryTitle,
-  homeAlertPreviewAccent,
-  homeAlertPreviewSurface,
-} from '@/lib/alertPresentation';
+  accountBalanceDisplayName,
+  accountKindTypeLabel,
+} from '@/lib/accountBalancePresentation';
+import { buildNetWorthDailySeries } from '@/lib/buildNetWorthTrendSeries';
 import {
-  buildNetWorthDailySeries,
-  buildNetWorthTrendFromTransactions,
-  buildNetWorthWeeklySeriesForPeriod,
-} from '@/lib/buildNetWorthTrendSeries';
-import { ensureDbReady } from '@/lib/init';
-import {
-  getRecentIncomeTransactions,
+  getCategoryBudgets,
+  getDashboard,
   getRecurringPayments,
+  getSavingsGoals,
   getSimulatedAccounts,
-  getTransactions,
   getTransactionsSince,
 } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
-import {
-  COMPACT_DELTA_K_THRESHOLD,
-  formatDisplayMoneyAbsolute,
-  formatSignedDisplayMoney,
-} from '@/lib/formatDisplayMoney';
-import { openTransactionDetail } from '@/lib/openTransactionDetail';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { formatNumberDisplay } from '@/lib/formatNumber';
+import type { FormFeedback } from '@/lib/formFeedback';
+import { isFormSaveSuccess } from '@/lib/formFeedback';
 import { tapHaptic } from '@/lib/haptics';
+import { ensureDbReady } from '@/lib/init';
+import { buildRecurringBillsByDate } from '@/lib/protoAgendaBills';
+import { buildGoalProgressions } from '@/lib/savingsGamification';
 import { syncWithServer } from '@/lib/sync';
 import { useAppTheme } from '@/lib/themeContext';
-import type { RecurringPayment, SimulatedAccount, Transaction } from '@/types';
+import { getUserDisplayName } from '@/lib/userDisplay';
+import type {
+  AccountKind,
+  AgendaBill,
+  CategoryBudget,
+  DashboardSummary,
+  RecurringPayment,
+  SavingsGoal,
+  SimulatedAccount,
+  Transaction,
+} from '@/types';
 
-type ChartPeriod = '1M' | '3M' | '6M' | '1A' | '5A';
+const TREND_DAY_COUNT = 30;
+const UPCOMING_WINDOW_DAYS = 90;
+const FAB_SIZE = 56;
 
-const PERIOD_TABS: { id: ChartPeriod; label: string }[] = [
-  { id: '1M', label: '1M' },
-  { id: '3M', label: '3M' },
-  { id: '6M', label: '6M' },
-  { id: '1A', label: '1A' },
-  { id: '5A', label: '5A' },
-];
+const ACCOUNT_TYPE_PICKER_OPTIONS: SettingsPickerOption<AccountKind>[] =
+  ACCOUNT_KIND_OPTIONS.map(({ id, label, description, icon }) => ({
+    id,
+    label,
+    description,
+    icon,
+  }));
 
-const PERIOD_DAY_COUNT: Record<ChartPeriod, number> = {
-  '1M': 30,
-  '3M': 90,
-  '6M': 180,
-  '1A': 365,
-  '5A': 365 * 5,
-};
+function timeOfDayGreeting(now: Date): string {
+  const hour = now.getHours();
+  if (hour < 12) return 'Bonjour';
+  if (hour < 18) return 'Bon après-midi';
+  return 'Bonsoir';
+}
 
-function sparklineSinceIso(dayCount: number): string {
+function initialsFromName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  const first = parts[0]?.[0] ?? '';
+  const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '';
+  return `${first}${last}`.toLocaleUpperCase('fr-CA');
+}
+
+function trendSinceIso(dayCount: number): string {
   const since = new Date();
   since.setDate(since.getDate() - (dayCount + 1));
   since.setHours(0, 0, 0, 0);
   return since.toISOString();
 }
 
-function downsampleSeries(values: number[], maxPoints: number): number[] {
-  if (values.length <= maxPoints) return values;
-  const out: number[] = [];
-  const step = (values.length - 1) / (maxPoints - 1);
-  for (let i = 0; i < maxPoints; i += 1) {
-    out.push(values[Math.round(i * step)] ?? 0);
-  }
-  return out;
+function accountCardMeta(account: SimulatedAccount): string {
+  const kind = accountKindTypeLabel(account.kind);
+  const digits = (account.last4 ?? '').replace(/\D/g, '').slice(-4);
+  if (!digits) return kind;
+  return `${kind} ··${digits}`;
 }
 
-/** Accueil: keep recent-tx data loaded; set true to show the Récentes block again. */
-const SHOW_RECENTES = false;
+function formatBalance(balance: number): string {
+  const amount = formatDisplayMoneyAbsolute(Math.abs(balance));
+  return balance < 0 ? `−${amount}` : amount;
+}
 
-/** Accueil NOTIFICATIONS & ALERTES — two cards, then an in-place expand for the rest. */
-const HOME_ALERT_PREVIEW_LIMIT = 2;
+function formatSignedPct(pct: number): string {
+  const sign = pct > 0 ? '+' : pct < 0 ? '−' : '';
+  const body = formatNumberDisplay(Math.abs(pct), {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  return `${sign}${body} %`;
+}
+
+/** One upcoming money-out occurrence per recurring payment, soonest first. */
+function upcomingPaymentRows(
+  payments: readonly RecurringPayment[],
+  now: Date,
+): { dateKey: string; bill: AgendaBill }[] {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + UPCOMING_WINDOW_DAYS);
+  const byDate = buildRecurringBillsByDate(payments, start, end);
+  const rows: { dateKey: string; bill: AgendaBill }[] = [];
+  const seen = new Set<string>();
+  for (const dateKey of Object.keys(byDate).sort()) {
+    for (const bill of byDate[dateKey] ?? []) {
+      if ((bill.kind ?? 'payment') === 'income') continue;
+      const id = bill.sourceId ?? `${bill.name}:${bill.account}:${bill.amount}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      rows.push({ dateKey, bill });
+    }
+  }
+  return rows;
+}
+
+function HomeDarkCard({
+  children,
+  style,
+}: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { colors, isLight } = useAppTheme();
+  return (
+    <OnyxContainer
+      halo={isLight}
+      style={[!isLight && { backgroundColor: colors.modalSurface }, style]}
+    >
+      {children}
+    </OnyxContainer>
+  );
+}
+
+function CountChip({ label }: { label: string }) {
+  const { colors } = useAppTheme();
+  return (
+    <View style={[styles.chip, { backgroundColor: colors.iconWell }]}>
+      <Text style={[typographyKit.microMedium, { color: colors.textSecondary }]}>{label}</Text>
+    </View>
+  );
+}
+
+function SectionHeading({
+  title,
+  chip,
+  actionLabel,
+  actionAccessibilityLabel,
+  onAction,
+}: {
+  title: string;
+  chip: string;
+  actionLabel: string;
+  actionAccessibilityLabel: string;
+  onAction: () => void;
+}) {
+  const { colors } = useAppTheme();
+  return (
+    <View style={styles.sectionHeading}>
+      <View style={styles.sectionTitleRow}>
+        <Text style={[styles.sectionTitle, { color: colors.textMuted }]} numberOfLines={1}>
+          {title}
+        </Text>
+        <CountChip label={chip} />
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={actionAccessibilityLabel}
+        hitSlop={8}
+        onPress={onAction}
+        style={({ pressed }) => [styles.sectionAction, pressed && { opacity: 0.7 }]}
+      >
+        <Text style={[typographyKit.metaSemibold, { color: colors.text }]}>{actionLabel}</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 export function ProtoHomeHub() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { colors, isLight, setMode } = useAppTheme();
-  const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
-  const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
-  const [incomeTransactions, setIncomeTransactions] = useState<Transaction[]>([]);
-  const [sparklineTx, setSparklineTx] = useState<Transaction[]>([]);
-  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
-  const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('6M');
-  const [chartWidth, setChartWidth] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
-  const [homeAlertsExpanded, setHomeAlertsExpanded] = useState(false);
+  const { colors, isLight } = useAppTheme();
+  const greeting = timeOfDayGreeting(new Date());
 
-  const {
-    items: alertCenterItems,
-  } = useAlertCenter({
-    recurringPayments,
-    simulatedAccounts: accounts,
-    incomeTransactions,
-  });
+  const [displayName, setDisplayName] = useState('');
+  const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
+  const [goals, setGoals] = useState<SavingsGoal[]>([]);
+  const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
+  const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudget[]>([]);
+  const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
+  const [trendTransactions, setTrendTransactions] = useState<Transaction[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [accountTypePickerVisible, setAccountTypePickerVisible] = useState(false);
+  const [accountForm, setAccountForm] = useState<AccountForm | null>(null);
+  const [accountFormLockedType, setAccountFormLockedType] = useState(false);
+  const [savingAccount, setSavingAccount] = useState(false);
+  const [accountFormFeedback, setAccountFormFeedback] = useState<FormFeedback | null>(null);
+
+  const [goalForm, setGoalForm] = useState<GoalForm | null>(null);
+  const [savingGoal, setSavingGoal] = useState(false);
+  const [goalFormFeedback, setGoalFormFeedback] = useState<FormFeedback | null>(null);
 
   const load = useCallback(async () => {
     await ensureDbReady();
-    const dayCount = PERIOD_DAY_COUNT[chartPeriod];
-    const [nextAccounts, payments, income, sparkTx, allTx] = await Promise.all([
-      getSimulatedAccounts(),
-      getRecurringPayments(),
-      getRecentIncomeTransactions(),
-      getTransactionsSince(sparklineSinceIso(dayCount)),
-      getTransactions(),
-    ]);
+    const [name, nextAccounts, nextGoals, nextDashboard, nextBudgets, nextPayments, trendTx] =
+      await Promise.all([
+        getUserDisplayName(),
+        getSimulatedAccounts(),
+        getSavingsGoals(),
+        getDashboard(),
+        getCategoryBudgets(),
+        getRecurringPayments(),
+        getTransactionsSince(trendSinceIso(TREND_DAY_COUNT)),
+      ]);
+    setDisplayName(name);
     setAccounts(nextAccounts);
-    setRecurringPayments(payments);
-    setIncomeTransactions(income);
-    setSparklineTx(sparkTx);
-    const sorted = [...allTx].sort((a, b) => b.date.localeCompare(a.date));
-    setRecentTransactions(sorted.slice(0, 5));
-  }, [chartPeriod]);
+    setGoals(nextGoals);
+    setDashboard(nextDashboard);
+    setCategoryBudgets(nextBudgets);
+    setRecurringPayments(nextPayments);
+    setTrendTransactions(trendTx);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -170,85 +292,160 @@ export function ProtoHomeHub() {
     }
   }, [load]);
 
-  const totalNetWorth = useMemo(
-    () => accounts.filter((a) => !a.hidden).reduce((sum, a) => sum + a.balance, 0),
-    [accounts],
-  );
-
   const visibleAccounts = useMemo(
-    () => accounts.filter((a) => !a.hidden),
+    () => accounts.filter((account) => !account.hidden),
     [accounts],
   );
 
-  const sparklineValues = useMemo(() => {
-    if (chartPeriod === '1M') {
-      const daily = buildNetWorthDailySeries(
-        'accounts_only',
-        totalNetWorth,
-        visibleAccounts,
-        0,
-        sparklineTx,
-        new Date(),
-        30,
-      ).map((point) => point.value);
-      return downsampleSeries(daily, 24);
-    }
-    if (chartPeriod === '3M' || chartPeriod === '6M') {
-      return buildNetWorthWeeklySeriesForPeriod(
-        'accounts_only',
-        totalNetWorth,
-        visibleAccounts,
-        0,
-        sparklineTx,
-        chartPeriod === '3M' ? 3 : 6,
-      ).map((point) => point.value);
-    }
-    const months = chartPeriod === '5A' ? 60 : 12;
-    return buildNetWorthTrendFromTransactions(
+  const totalNetWorth = useMemo(
+    () => visibleAccounts.reduce((sum, account) => sum + account.balance, 0),
+    [visibleAccounts],
+  );
+
+  const netWorthPct = useMemo(() => {
+    if (visibleAccounts.length === 0) return null;
+    const series = buildNetWorthDailySeries(
       'accounts_only',
       totalNetWorth,
       visibleAccounts,
       0,
-      sparklineTx,
+      trendTransactions,
       new Date(),
-      months,
-      0,
+      TREND_DAY_COUNT,
     ).map((point) => point.value);
-  }, [chartPeriod, sparklineTx, totalNetWorth, visibleAccounts]);
+    if (series.length < 2) return null;
+    const first = series[0] ?? 0;
+    const last = series[series.length - 1] ?? 0;
+    if (first === 0 || Math.abs(last - first) < 0.01) return null;
+    const pct = ((last - first) / Math.abs(first)) * 100;
+    return Number.isFinite(pct) ? pct : null;
+  }, [totalNetWorth, trendTransactions, visibleAccounts]);
 
-  const delta = useMemo(() => {
-    if (sparklineValues.length < 2) return { amount: 0, pct: 0 };
-    const first = sparklineValues[0] ?? 0;
-    const last = sparklineValues[sparklineValues.length - 1] ?? 0;
-    const amount = last - first;
-    const pct = first !== 0 ? (amount / Math.abs(first)) * 100 : 0;
-    return { amount, pct };
-  }, [sparklineValues]);
+  const monthlyIncome = dashboard?.monthlyIncome ?? 0;
+  const monthlyExpenses = dashboard?.monthlyExpenses ?? 0;
+  const savingsRate =
+    monthlyIncome > 0 ? Math.round(((monthlyIncome - monthlyExpenses) / monthlyIncome) * 100) : null;
 
-  const heroPositive = delta.amount >= 0;
-  const displayHero = totalNetWorth;
-  const remainingAlertCount = Math.max(0, alertCenterItems.length - HOME_ALERT_PREVIEW_LIMIT);
-  const moreAlertsCollapsedLabel =
-    remainingAlertCount === 1
-      ? 'Voir l’autre alerte'
-      : `Voir les ${remainingAlertCount} autres alertes`;
-  const previewAlerts =
-    homeAlertsExpanded || remainingAlertCount === 0
-      ? alertCenterItems
-      : alertCenterItems.slice(0, HOME_ALERT_PREVIEW_LIMIT);
+  const goalProgressions = useMemo(() => buildGoalProgressions(goals), [goals]);
+  const activeGoalCount = goalProgressions.filter((goal) => !goal.completed).length;
 
-  const onChartLayout = useCallback((event: LayoutChangeEvent) => {
-    const next = Math.floor(event.nativeEvent.layout.width);
-    setChartWidth((prev) => (prev === next ? prev : next));
+  const upcoming = useMemo(
+    () => upcomingPaymentRows(recurringPayments, new Date()),
+    [recurringPayments],
+  );
+
+  const initials = initialsFromName(displayName);
+  const fabBottom = Math.max(insets.bottom, 12) + 64;
+
+  const openSettings = useCallback(() => {
+    tapHaptic();
+    router.push('/settings');
+  }, [router]);
+
+  const openAgenda = useCallback(() => {
+    tapHaptic();
+    router.navigate('/goals');
+  }, [router]);
+
+  const openAddTransaction = useCallback(() => {
+    tapHaptic();
+    router.push('/add-transaction');
+  }, [router]);
+
+  const openAccount = useCallback(
+    (accountId: string) => {
+      tapHaptic();
+      router.push({ pathname: '/account-detail', params: { accountId } });
+    },
+    [router],
+  );
+
+  const openGoal = useCallback(
+    (goalId: string) => {
+      tapHaptic();
+      router.push({ pathname: '/goal-detail', params: { goalId } });
+    },
+    [router],
+  );
+
+  const openAddAccount = useCallback(() => {
+    tapHaptic();
+    setAccountFormFeedback(null);
+    setAccountTypePickerVisible(true);
   }, []);
 
-  const onThemeSwitch = useCallback(
-    (light: boolean) => {
-      tapHaptic();
-      void setMode(light ? 'light' : 'dark');
+  const closeAccountTypePicker = useCallback(() => {
+    setAccountTypePickerVisible(false);
+  }, []);
+
+  const handleSelectAccountType = useCallback(
+    (kind: AccountKind) => {
+      setAccountFormFeedback(null);
+      setAccountFormLockedType(true);
+      setTimeout(() => {
+        setAccountForm(createNewAccountForm(accounts.length, kind));
+      }, 280);
     },
-    [setMode],
+    [accounts.length],
   );
+
+  const closeAccountForm = useCallback(() => {
+    setAccountForm(null);
+    setAccountFormLockedType(false);
+    setAccountFormFeedback(null);
+  }, []);
+
+  const saveAccount = useCallback(async () => {
+    if (!accountForm) return;
+    setSavingAccount(true);
+    setAccountFormFeedback(null);
+    try {
+      const result = await saveSimulatedAccountForm(accountForm);
+      if (isFormSaveSuccess(result)) {
+        const accountId = accountForm.id;
+        closeAccountForm();
+        dataEvents.emit();
+        await load();
+        router.push({ pathname: '/account-detail', params: { accountId } });
+        return;
+      }
+      setAccountFormFeedback(result);
+    } finally {
+      setSavingAccount(false);
+    }
+  }, [accountForm, closeAccountForm, load, router]);
+
+  const openNewGoalForm = useCallback(() => {
+    tapHaptic();
+    setGoalFormFeedback(null);
+    setGoalForm(createNewGoalForm());
+  }, []);
+
+  const closeGoalForm = useCallback(() => {
+    setGoalForm(null);
+    setGoalFormFeedback(null);
+  }, []);
+
+  const saveGoal = useCallback(async () => {
+    if (!goalForm) return;
+    setSavingGoal(true);
+    setGoalFormFeedback(null);
+    try {
+      const result = await saveSavingsGoalForm(goalForm, isLight);
+      if (isFormSaveSuccess(result)) {
+        closeGoalForm();
+        dataEvents.emit();
+        await load();
+        return;
+      }
+      setGoalFormFeedback(result);
+    } finally {
+      setSavingGoal(false);
+    }
+  }, [closeGoalForm, goalForm, isLight, load]);
+
+  const trendPositive = (netWorthPct ?? 0) >= 0;
+  const savingsPositive = (savingsRate ?? 0) >= 0;
 
   return (
     <PageTransition>
@@ -257,312 +454,412 @@ export function ProtoHomeHub() {
           style={styles.screen}
           contentContainerStyle={{
             paddingTop: insets.top + SCREEN_TOP_GUTTER,
-            paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING,
+            paddingBottom: fabBottom + FAB_SIZE + spacing.lg,
             paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-            gap: 18,
+            gap: spacing.xl,
           }}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
         >
-          <View style={styles.topChrome}>
+          <View style={styles.header}>
+            <View style={[styles.avatar, { backgroundColor: colors.iconWell }]}>
+              {initials ? (
+                <Text style={[typographyKit.rowTitle, { color: colors.text }]}>{initials}</Text>
+              ) : (
+                <AppIcon family="ionicons" name="person" size={20} color={colors.text} />
+              )}
+            </View>
+            <View style={styles.headerCopy}>
+              <Text style={[typographyKit.metaMedium, { color: colors.textMuted }]} numberOfLines={1}>
+                {greeting} 👋
+              </Text>
+              <Text
+                style={[typographyKit.sectionTitle, { color: colors.text }]}
+                numberOfLines={1}
+              >
+                {displayName}
+              </Text>
+            </View>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Ouvrir les réglages"
-              onPress={() => {
-                tapHaptic();
-                router.push('/settings');
-              }}
+              onPress={openSettings}
               style={({ pressed }) => [
-                styles.profileBtn,
-                { backgroundColor: colors.containerBackground },
+                styles.iconButton,
+                { backgroundColor: colors.iconWell },
                 pressed && onyxContainerPressedStyle(),
               ]}
             >
-              <AppIcon family="ionicons" name="person-outline" size={22} color={colors.text} />
+              <AppIcon family="ionicons" name="settings-outline" size={20} color={colors.text} />
             </Pressable>
-            <View style={styles.themeSwitchRow}>
-              <PremiumSwitch
-                value={isLight}
-                onValueChange={onThemeSwitch}
-                trackOnColor={
-                  isLight ? 'rgba(0, 0, 0, 0.32)' : 'rgba(255, 255, 255, 0.28)'
-                }
-                leftIcon={
-                  <AppIcon
-                    family="ionicons"
-                    name="sunny-outline"
-                    size={16}
-                    strokeWidth={3}
-                    color={isLight ? '#C2410C' : colors.warning}
-                  />
-                }
-                rightIcon={
-                  <AppIcon
-                    family="ionicons"
-                    name="moon-outline"
-                    size={16}
-                    strokeWidth={3}
-                    color={isLight ? colors.textMuted : colors.purple}
-                  />
-                }
-                accessibilityLabel={
-                  isLight ? 'Thème clair activé. Passer en mode sombre' : 'Thème sombre activé. Passer en mode clair'
-                }
-              />
-            </View>
           </View>
 
-          <View style={styles.heroBlock}>
-            <Text style={[styles.heroEyebrow, { color: colors.textMuted }]}>Valeur nette</Text>
-            <Text
-              style={[
-                moneyAmountTypography({ tier: 'hero', fontSize: 36 }),
-                { color: colors.text, textAlign: 'center', letterSpacing: -1 },
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.65}
-            >
-              {formatDisplayMoneyAbsolute(displayHero)}
-            </Text>
-            <View style={styles.deltaWrap}>
-              <View style={[styles.deltaPill, { backgroundColor: colors.surfaceElevated }]}>
-                <AppIcon
-                  family="ionicons"
-                  name={heroPositive ? 'arrow-up-outline' : 'arrow-down-outline'}
-                  size={11}
-                  color={heroPositive ? colors.accentGreen : colors.danger}
-                />
+          <HomeDarkCard style={styles.summaryCard}>
+            <View style={styles.summaryTop}>
+              <View style={styles.summaryCopy}>
+                <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>Patrimoine net</Text>
                 <Text
                   style={[
-                    styles.deltaText,
-                    { color: heroPositive ? colors.accentGreen : colors.danger },
+                    moneyAmountTypography({ tier: 'hero', fontSize: 32, lineHeight: 38 }),
+                    { color: colors.text },
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.65}
+                >
+                  {formatDisplayMoneyAbsolute(totalNetWorth)}
+                </Text>
+              </View>
+              {netWorthPct != null ? (
+                <View
+                  style={[
+                    styles.trendPill,
+                    {
+                      borderColor: trendPositive ? colors.accentGreen : colors.danger,
+                    },
                   ]}
                 >
-                  {formatSignedDisplayMoney(delta.amount, {
-                    leadingPlusWhenPositive: true,
-                    compactKThreshold: COMPACT_DELTA_K_THRESHOLD,
-                  })}{' '}
-                  · {heroPositive ? '+' : '−'}
-                  {Math.abs(delta.pct).toFixed(1)}%
+                  <AppIcon
+                    family="ionicons"
+                    name={trendPositive ? 'arrow-up' : 'arrow-down'}
+                    size={12}
+                    color={trendPositive ? colors.accentGreen : colors.danger}
+                  />
+                  <Text
+                    style={[
+                      typographyKit.metaSemibold,
+                      { color: trendPositive ? colors.accentGreen : colors.danger },
+                    ]}
+                  >
+                    {formatSignedPct(netWorthPct)}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={[styles.statRow, { borderTopColor: colors.borderSubtle }]}>
+              <View style={styles.statCell}>
+                <Text style={[styles.statLabel, { color: colors.textMuted }]}>Revenus</Text>
+                <Text
+                  style={[
+                    moneyAmountTypography({ tier: 'card', fontSize: 15, lineHeight: 20 }),
+                    { color: colors.accentGreen },
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  {monthlyIncome > 0
+                    ? `+${formatDisplayMoneyAbsolute(monthlyIncome)}`
+                    : formatDisplayMoneyAbsolute(0)}
+                </Text>
+              </View>
+              <View style={[styles.statDivider, { backgroundColor: colors.borderSubtle }]} />
+              <View style={styles.statCell}>
+                <Text style={[styles.statLabel, { color: colors.textMuted }]}>Dépenses</Text>
+                <Text
+                  style={[
+                    moneyAmountTypography({ tier: 'card', fontSize: 15, lineHeight: 20 }),
+                    { color: colors.danger },
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  {monthlyExpenses > 0
+                    ? `−${formatDisplayMoneyAbsolute(monthlyExpenses)}`
+                    : formatDisplayMoneyAbsolute(0)}
+                </Text>
+              </View>
+              <View style={[styles.statDivider, { backgroundColor: colors.borderSubtle }]} />
+              <View style={styles.statCell}>
+                <Text style={[styles.statLabel, { color: colors.textMuted }]}>Taux d’épargne</Text>
+                <Text
+                  style={[
+                    moneyAmountTypography({ tier: 'card', fontSize: 15, lineHeight: 20 }),
+                    {
+                      color:
+                        savingsRate == null
+                          ? colors.textMuted
+                          : savingsPositive
+                            ? colors.accentGreen
+                            : colors.danger,
+                    },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {savingsRate == null
+                    ? '—'
+                    : `${savingsRate < 0 ? '−' : ''}${formatNumberDisplay(Math.abs(savingsRate))} %`}
                 </Text>
               </View>
             </View>
+          </HomeDarkCard>
 
-            <View style={styles.chartWrap} onLayout={onChartLayout}>
-              {chartWidth > 0 && sparklineValues.length >= 2 ? (
-                <SparklineChart
-                  data={sparklineValues}
-                  width={chartWidth}
-                  height={96}
-                  positive={heroPositive}
-                  showFill
-                  showEndpointDot
-                  strokeWidth={2}
-                />
-              ) : (
-                <View style={{ height: 96 }} />
-              )}
-            </View>
-
-            <View style={styles.periodRow}>
-              <SegmentedTabs
-                tabs={PERIOD_TABS}
-                active={chartPeriod}
-                onChange={(id) => {
-                  tapHaptic();
-                  setChartPeriod(id);
-                }}
-                size="section"
-                variant="bare"
-                showDivider={false}
-              />
-            </View>
+          <View style={styles.section}>
+            <SectionHeading
+              title="Comptes"
+              chip={String(visibleAccounts.length)}
+              actionLabel="+ Ajouter"
+              actionAccessibilityLabel="Ajouter un compte"
+              onAction={openAddAccount}
+            />
+            {visibleAccounts.length === 0 ? (
+              <HomeDarkCard style={styles.emptyCard}>
+                <Text style={[typographyKit.metaMedium, { color: colors.textMuted }]}>
+                  Aucun compte pour le moment
+                </Text>
+              </HomeDarkCard>
+            ) : (
+              <View style={styles.accountGrid}>
+                {visibleAccounts.map((account) => {
+                  const rate =
+                    typeof account.interestRate === 'number' && account.interestRate > 0
+                      ? account.interestRate
+                      : null;
+                  const title = accountBalanceDisplayName(account) || 'Compte';
+                  return (
+                    <View
+                      key={account.id}
+                      style={visibleAccounts.length === 1 ? styles.accountCellSolo : styles.accountCell}
+                    >
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`${title}, ${formatBalance(account.balance)}`}
+                        onPress={() => openAccount(account.id)}
+                        style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
+                      >
+                        <HomeDarkCard style={styles.accountCard}>
+                          <View style={styles.accountTop}>
+                            <InstitutionMark account={account} size={32} />
+                            {rate != null ? (
+                              <View
+                                style={[
+                                  styles.ratePill,
+                                  { backgroundColor: colors.iconWell },
+                                ]}
+                              >
+                                <Text
+                                  style={[typographyKit.microMedium, { color: colors.accentGreen }]}
+                                >
+                                  {formatNumberDisplay(rate, { maximumFractionDigits: 2 })} %
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
+                          <Text
+                            style={[typographyKit.rowTitle, { color: colors.text }]}
+                            numberOfLines={1}
+                          >
+                            {title}
+                          </Text>
+                          <Text
+                            style={[typographyKit.microMedium, { color: colors.textMuted }]}
+                            numberOfLines={1}
+                          >
+                            {accountCardMeta(account)}
+                          </Text>
+                          <Text
+                            style={[
+                              moneyAmountTypography({ tier: 'card', fontSize: 18, lineHeight: 22 }),
+                              { color: account.balance < 0 ? colors.danger : colors.text },
+                            ]}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                            minimumFontScale={0.7}
+                          >
+                            {formatBalance(account.balance)}
+                          </Text>
+                        </HomeDarkCard>
+                      </Pressable>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
           </View>
 
-          <View>
-            <ProtoSectionHeader
-              title="Notifications & alertes"
-              actionLabel="Tout voir"
-              onAction={() => router.push('/alert-center')}
+          <View style={styles.section}>
+            <SectionHeading
+              title="Objectifs"
+              chip={activeGoalCount > 1 ? `${activeGoalCount} actifs` : `${activeGoalCount} actif`}
+              actionLabel="+ Objectif"
+              actionAccessibilityLabel="Nouvel objectif"
+              onAction={openNewGoalForm}
             />
-            <View style={styles.alertStack}>
-              {previewAlerts.length === 0 ? (
-                <ProtoGlassCard style={homeAlertPreviewSurface(colors, isLight)} padding={14}>
-                  <Text style={[styles.emptyCopy, { color: colors.textMuted }]}>
-                    Aucune alerte pour le moment
-                  </Text>
-                </ProtoGlassCard>
-              ) : (
-                previewAlerts.map((item) => {
-                  const accent = homeAlertPreviewAccent(item, colors, isLight);
-                  const surface = homeAlertPreviewSurface(colors, isLight);
-                  const reason = alertHomePrimaryTitle(item);
-                  const action = alertHomeActionLine(item);
-                  const clock = formatAlertClockTime(item.timestamp);
-                  return (
-                    <Pressable
-                      key={item.id}
-                      accessibilityRole="button"
-                      onPress={() => {
-                        tapHaptic();
-                        router.push({
-                          pathname: '/alert-detail',
-                          params: alertDetailRouteParams(item),
-                        });
-                      }}
-                      style={({ pressed }) => [pressed && { opacity: 0.85 }]}
-                    >
-                      <ProtoGlassCard style={[styles.alertCard, surface]} padding={0}>
-                        <View style={styles.alertInner}>
-                          <View style={[styles.alertIcon, { backgroundColor: accent.iconBg }]}>
-                            <HomeAlertGlyph icon={accent.icon} color={accent.iconColor} size={16} />
-                          </View>
-                          <View style={styles.alertCopy}>
-                            <View style={styles.alertTitleRow}>
-                              <Text
-                                style={[styles.alertTitle, { color: colors.text }]}
-                                numberOfLines={2}
-                              >
-                                {reason}
-                              </Text>
-                              {clock ? (
-                                <Text
-                                  style={[styles.alertTime, { color: colors.textMuted }]}
-                                  numberOfLines={1}
-                                >
-                                  {clock}
-                                </Text>
-                              ) : null}
-                            </View>
+            {goalProgressions.length === 0 ? (
+              <HomeDarkCard style={styles.emptyCard}>
+                <Text style={[typographyKit.metaMedium, { color: colors.textMuted }]}>
+                  Aucun objectif pour le moment
+                </Text>
+              </HomeDarkCard>
+            ) : (
+              <View style={styles.stack}>
+                {goalProgressions.map((goal) => (
+                  <Pressable
+                    key={goal.goalId}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${goal.name}, ${goal.pct} pour cent`}
+                    onPress={() => openGoal(goal.goalId)}
+                    style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
+                  >
+                    <HomeDarkCard style={styles.goalCard}>
+                      <View style={styles.goalTop}>
+                        <UserPickedIconWell icon={goal.icon} size={36} />
+                        <View style={styles.goalCopy}>
+                          <View style={styles.goalTitleRow}>
                             <Text
-                              style={[styles.alertMeta, { color: colors.textSecondary }]}
+                              style={[typographyKit.rowTitle, styles.goalName, { color: colors.text }]}
                               numberOfLines={1}
                             >
-                              {action}
+                              {goal.name}
+                            </Text>
+                            <Text style={[typographyKit.metaSemibold, { color: colors.accentGreen }]}>
+                              {formatNumberDisplay(goal.pct)} %
                             </Text>
                           </View>
+                          <Text
+                            style={[typographyKit.microMedium, { color: colors.textMuted }]}
+                            numberOfLines={1}
+                          >
+                            {formatDisplayMoneyAbsolute(goal.currentAmount)} sur{' '}
+                            {formatDisplayMoneyAbsolute(goal.targetAmount)}
+                          </Text>
                         </View>
-                      </ProtoGlassCard>
+                      </View>
+                      <ProgressBar
+                        progress={goal.progress}
+                        color={colors.accentGreen}
+                        trackColor={colors.borderSubtle}
+                        height={6}
+                      />
+                    </HomeDarkCard>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
+
+          <View style={styles.section}>
+            <SectionHeading
+              title="Factures à venir"
+              chip={`${upcoming.length} à venir`}
+              actionLabel="Calendrier"
+              actionAccessibilityLabel="Ouvrir l’agenda"
+              onAction={openAgenda}
+            />
+            {upcoming.length === 0 ? (
+              <HomeDarkCard style={styles.emptyCard}>
+                <Text style={[typographyKit.metaMedium, { color: colors.textMuted }]}>
+                  Aucune facture à venir
+                </Text>
+              </HomeDarkCard>
+            ) : (
+              <View style={styles.billList}>
+                {upcoming.map(({ dateKey, bill }) => {
+                  const { month, day } = calendarBoxParts(dateKey);
+                  const subtitle = bill.account?.trim() ?? '';
+                  return (
+                    <Pressable
+                      key={`${bill.sourceId ?? bill.name}:${dateKey}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${bill.name}, ${formatDisplayMoneyAbsolute(bill.amount)}`}
+                      onPress={openAgenda}
+                      style={({ pressed }) => [pressed && { opacity: 0.85 }]}
+                    >
+                      <AgendaBillRowCard>
+                        <View style={styles.billCard}>
+                          <View style={styles.dateStack}>
+                            <Text style={[typographyKit.microMedium, { color: colors.textMuted }]}>
+                              {month}
+                            </Text>
+                            <Text style={[typographyKit.rowTitle, { color: colors.text }]}>{day}</Text>
+                          </View>
+                          <View style={styles.billCopy}>
+                            <Text
+                              style={[typographyKit.rowTitle, { color: colors.text }]}
+                              numberOfLines={1}
+                            >
+                              {bill.name}
+                            </Text>
+                            {subtitle ? (
+                              <Text
+                                style={[typographyKit.microMedium, { color: colors.textMuted }]}
+                                numberOfLines={1}
+                              >
+                                {subtitle}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <Text
+                            style={[
+                              moneyAmountTypography({ tier: 'row' }),
+                              { color: colors.danger },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            −{formatDisplayMoneyAbsolute(bill.amount)}
+                          </Text>
+                        </View>
+                      </AgendaBillRowCard>
                     </Pressable>
                   );
-                })
-              )}
-              {remainingAlertCount > 0 ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    homeAlertsExpanded
-                      ? 'Réduire la liste des alertes'
-                      : moreAlertsCollapsedLabel
-                  }
-                  onPress={() => {
-                    tapHaptic();
-                    setHomeAlertsExpanded((open) => !open);
-                  }}
-                  style={({ pressed }) => [pressed && { opacity: 0.85 }]}
-                >
-                  <ProtoGlassCard
-                    style={[styles.alertMoreCard, homeAlertPreviewSurface(colors, isLight)]}
-                    padding={0}
-                  >
-                    <View style={styles.alertMoreInner}>
-                      <Text style={[styles.alertMoreLabel, { color: colors.textMuted }]}>
-                        {homeAlertsExpanded ? 'Réduire' : moreAlertsCollapsedLabel}
-                      </Text>
-                      <AppIcon
-                        family="ionicons"
-                        name={homeAlertsExpanded ? 'chevron-up' : 'chevron-down'}
-                        size={14}
-                        color={colors.textMuted}
-                      />
-                    </View>
-                  </ProtoGlassCard>
-                </Pressable>
-              ) : null}
-            </View>
+                })}
+              </View>
+            )}
           </View>
-
-          <View style={styles.shortcutGrid}>
-            <ProtoShortcutRow
-              items={
-                [
-                  {
-                    key: 'ai-chat',
-                    label: 'AI Chat',
-                    subtitle: 'Conseiller Fyn',
-                    icon: 'chatbubble-ellipses-outline',
-                    accessibilityLabel: 'Ouvrir AI Chat avec Fyn',
-                    onPress: () => router.push('/ai-chat'),
-                  },
-                  {
-                    key: 'strategies',
-                    label: 'Stratégies',
-                    subtitle: 'Finances',
-                    icon: 'compass-outline',
-                    accessibilityLabel: 'Explorer les stratégies financières',
-                    onPress: () => router.push('/plans/explore'),
-                  },
-                ] as const satisfies readonly [ProtoShortcutItem, ProtoShortcutItem]
-              }
-            />
-            <ProtoShortcutRow
-              items={
-                [
-                  {
-                    key: 'wealth',
-                    label: 'Patrimoine',
-                    subtitle: 'Explorer',
-                    icon: 'trending-up-outline',
-                    accessibilityLabel: 'Ouvrir le patrimoine',
-                    onPress: () => router.push('/patrimoine'),
-                  },
-                  {
-                    key: 'insights',
-                    label: 'Analyse',
-                    subtitle: 'Dépenses',
-                    icon: 'stats-chart-outline',
-                    accessibilityLabel: 'Ouvrir l’analyse des dépenses',
-                    onPress: () => router.push('/transactions-insights'),
-                  },
-                ] as const satisfies readonly [ProtoShortcutItem, ProtoShortcutItem]
-              }
-            />
-          </View>
-
-          {SHOW_RECENTES ? (
-            <View>
-              <ProtoSectionHeader
-                title="Récentes"
-                actionLabel="Tout voir"
-                onAction={() => router.push('/transactions')}
-              />
-              <ProtoGlassCard>
-                {recentTransactions.length === 0 ? (
-                  <Text style={[styles.emptyCopy, { color: colors.textMuted, padding: 16 }]}>
-                    Aucune transaction récente
-                  </Text>
-                ) : (
-                  recentTransactions.map((tx, index) => (
-                    <View key={tx.id}>
-                      {index > 0 ? (
-                        <View style={[styles.rowDivider, { backgroundColor: colors.borderSubtle }]} />
-                      ) : null}
-                      <TransactionRow
-                        transaction={tx}
-                        accounts={accounts}
-                        embedded
-                        onPressId={openTransactionDetail}
-                      />
-                    </View>
-                  ))
-                )}
-              </ProtoGlassCard>
-            </View>
-          ) : null}
         </ScrollView>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Nouvelle transaction"
+          onPress={openAddTransaction}
+          style={({ pressed }) => [
+            styles.fab,
+            {
+              backgroundColor: colors.text,
+              bottom: fabBottom,
+              right: PAGE_PADDING_HORIZONTAL,
+            },
+            pressed && { opacity: 0.82 },
+          ]}
+        >
+          <AppIcon family="ionicons" name="add" size={28} color={colors.background} />
+        </Pressable>
+
+        <SettingsPickerSheet
+          visible={accountTypePickerVisible}
+          title="Type de compte"
+          options={ACCOUNT_TYPE_PICKER_OPTIONS}
+          selectedId={'' as AccountKind}
+          onClose={closeAccountTypePicker}
+          onSelect={handleSelectAccountType}
+        />
+
+        <SimulatedAccountFormModal
+          form={accountForm}
+          setForm={setAccountForm}
+          saving={savingAccount}
+          onDismiss={closeAccountForm}
+          onSave={() => void saveAccount()}
+          feedback={accountFormFeedback}
+          lockedType={accountFormLockedType}
+        />
+
+        <SavingsGoalFormModal
+          form={goalForm}
+          setForm={setGoalForm}
+          goals={goals}
+          dashboard={dashboard}
+          categoryBudgets={categoryBudgets}
+          recurringPayments={recurringPayments}
+          saving={savingGoal}
+          onDismiss={closeGoalForm}
+          onSave={() => void saveGoal()}
+          feedback={goalFormFeedback}
+        />
       </View>
     </PageTransition>
   );
@@ -570,122 +867,190 @@ export function ProtoHomeHub() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  topChrome: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
+    gap: spacing.md,
   },
-  themeSwitchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  profileBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroBlock: {
+  headerCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  iconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
-    gap: 8,
-    width: '100%',
-    marginTop: spacing.sm,
+    justifyContent: 'center',
   },
-  heroEyebrow: {
-    ...typographyKit.metaMedium,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+  summaryCard: {
+    padding: spacing.lg,
+    gap: spacing.lg,
   },
-  deltaWrap: { marginTop: 2, maxWidth: '100%' },
-  deltaPill: {
+  summaryTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  summaryCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.xs,
+  },
+  trendPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
     paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 20,
-    maxWidth: '100%',
+    paddingVertical: 6,
+    marginTop: 18,
   },
-  deltaText: {
-    ...typographyKit.metaSemibold,
+  statRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: spacing.md,
+  },
+  statCell: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  statLabel: {
+    ...typographyKit.eyebrow,
     fontSize: 10,
+    letterSpacing: 0.6,
+  },
+  statDivider: {
+    width: StyleSheet.hairlineWidth,
+    marginHorizontal: spacing.sm,
+  },
+  section: {
+    gap: spacing.sm,
+  },
+  sectionHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  sectionTitleRow: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  sectionTitle: {
+    ...typographyKit.eyebrow,
+    fontSize: 11,
+    letterSpacing: 0.8,
     flexShrink: 1,
   },
-  chartWrap: {
-    width: '100%',
-    minHeight: 96,
-    marginTop: 4,
+  sectionAction: {
+    flexShrink: 0,
   },
-  periodRow: {
-    width: '100%',
-    marginTop: 14,
+  chip: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
   },
-  shortcutGrid: { gap: SHORTCUT_TILE_GAP },
-  alertStack: { gap: 8 },
-  alertCard: { borderRadius: 16 },
-  alertMoreCard: { borderRadius: 16 },
-  alertMoreInner: {
+  emptyCard: {
+    padding: spacing.lg,
+  },
+  accountGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -5,
+  },
+  accountCell: {
+    width: '50%',
+    paddingHorizontal: 5,
+    marginBottom: spacing.sm,
+  },
+  accountCellSolo: {
+    width: '100%',
+    paddingHorizontal: 5,
+    marginBottom: spacing.sm,
+  },
+  accountCard: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md + 2,
+    gap: 4,
+    minHeight: 132,
+  },
+  accountTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
   },
-  alertMoreLabel: {
-    ...typographyKit.metaSemibold,
-    fontSize: 13,
+  ratePill: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
-  alertInner: {
+  stack: {
+    gap: ONYX_CONTAINER.listGap,
+  },
+  goalCard: {
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  goalTop: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  alertIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 1,
+    gap: spacing.md,
   },
-  alertCopy: { flex: 1, minWidth: 0, gap: 2 },
-  alertTitleRow: {
+  goalCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  goalTitleRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
+    alignItems: 'center',
+    gap: spacing.sm,
   },
-  alertTitle: {
-    ...typographyKit.rowTitle,
-    fontSize: 14,
-    lineHeight: 18,
-    letterSpacing: -0.15,
+  goalName: {
     flex: 1,
     minWidth: 0,
   },
-  alertTime: {
-    ...typographyKit.micro,
-    fontSize: 11,
-    lineHeight: 14,
-    flexShrink: 0,
-    marginTop: 2,
+  billList: {
+    gap: AGENDA_BILL_ROW_GAP,
   },
-  alertMeta: {
-    ...typographyKit.micro,
-    fontSize: 11,
-    lineHeight: 14,
+  billCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
-  emptyCopy: {
-    ...typographyKit.metaMedium,
-    fontSize: 13,
+  dateStack: {
+    width: 40,
+    alignItems: 'center',
   },
-  rowDivider: {
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: 16,
+  billCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  fab: {
+    position: 'absolute',
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    borderRadius: FAB_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
   },
 });

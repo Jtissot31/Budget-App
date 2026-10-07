@@ -47,20 +47,20 @@ export function TabBarDynamicBlur({
     <View
       pointerEvents="none"
       style={[
-        StyleSheet.absoluteFillObject,
+        StyleSheet.absoluteFill,
         { borderRadius: cornerRadius, overflow: 'hidden' },
         style,
       ]}
     >
       <View
         style={[
-          StyleSheet.absoluteFillObject,
+          StyleSheet.absoluteFill,
           { borderRadius: cornerRadius, backgroundColor: wash },
         ]}
       />
       <View
         style={[
-          StyleSheet.absoluteFillObject,
+          StyleSheet.absoluteFill,
           {
             borderRadius: cornerRadius,
             borderWidth: StyleSheet.hairlineWidth,

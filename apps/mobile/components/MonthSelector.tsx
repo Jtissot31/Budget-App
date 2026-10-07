@@ -36,6 +36,8 @@ type Props = {
   periodAccessibilityLabel?: string;
   previousAccessibilityLabel?: string;
   nextAccessibilityLabel?: string;
+  /** Center the compact cluster in its parent instead of hugging the start edge. */
+  centered?: boolean;
 };
 
 const NAV_SIZE = 44;
@@ -67,6 +69,7 @@ export function MonthSelector({
   periodAccessibilityLabel,
   previousAccessibilityLabel = 'Mois précédent',
   nextAccessibilityLabel = 'Mois suivant',
+  centered = false,
 }: Props) {
   const { colors } = useAppTheme();
   const isCalendar = appearance === 'calendar';
@@ -79,7 +82,13 @@ export function MonthSelector({
       : isCalendar
         ? CALENDAR_NAV_SIZE
         : NAV_SIZE;
-  const chevronSize = isChip ? CHIP_CHEVRON_SIZE : isCalendar ? CALENDAR_CHEVRON_SIZE : CHEVRON_SIZE;
+  const chevronSize = isChip
+    ? CHIP_CHEVRON_SIZE
+    : isCompact
+      ? CHEVRON_SIZE
+      : isCalendar
+        ? CALENDAR_CHEVRON_SIZE
+        : CHEVRON_SIZE;
   const chevronStroke = isChip
     ? CHIP_CHEVRON_STROKE
     : isCalendar
@@ -114,6 +123,7 @@ export function MonthSelector({
         styles.row,
         isCalendar && styles.rowCalendar,
         isCompact && styles.rowCompact,
+        centered && styles.rowCentered,
         isChip && styles.rowChip,
       ]}
     >
@@ -149,9 +159,8 @@ export function MonthSelector({
         accessibilityRole="text"
         accessibilityLabel={resolvedA11y}
         style={[
-          styles.labelRow,
+          isCompact ? styles.labelRowCompact : styles.labelRow,
           isCalendar && styles.labelRowCalendar,
-          isCompact && styles.labelRowCompact,
           isChip && [
             styles.labelRowChip,
             {
@@ -177,6 +186,7 @@ export function MonthSelector({
             <Text
               style={[
                 styles.month,
+                isCompact && styles.monthCompact,
                 isChip && styles.monthChip,
                 jakartaSemiboldText,
                 { color: colors.text },
@@ -275,13 +285,29 @@ const styles = StyleSheet.create({
   /** Tight cluster — chevrons hugging the period label (Analyse dépenses). */
   rowCompact: {
     alignSelf: 'flex-start',
+    flexGrow: 0,
+    flexShrink: 0,
     minHeight: COMPACT_NAV_SIZE,
     gap: spacing.sm,
   },
+  rowCentered: {
+    alignSelf: 'center',
+  },
+  /**
+   * Must not inherit `labelRow`'s `flex: 1`. On Android that shorthand forces
+   * flexBasis 0, so the month text collapses to width 0 and only the chevrons show.
+   */
   labelRowCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
     flexGrow: 0,
     flexShrink: 0,
-    flexBasis: 'auto',
+  },
+  monthCompact: {
+    fontSize: 16,
+    lineHeight: 20,
   },
   labelRowCalendar: {
     gap: 0,

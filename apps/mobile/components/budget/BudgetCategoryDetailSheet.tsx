@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 
 import { BottomSheet } from '@/components/BottomSheet';
@@ -78,6 +78,7 @@ import {
   detailRowLabelSlot,
   detailRowLabelText,
   detailRowValueMoney,
+  nativeTextColumnFlex,
 } from '@/lib/textLayout';
 
 import { useAppTheme } from '@/lib/themeContext';
@@ -517,16 +518,20 @@ export function BudgetCategoryDetailSheet({
             pressed && styles.pressed,
           ]}
         >
-          <View style={[styles.ctaIconWell, { backgroundColor: colors.surfaceSolid }]}>
-            <AppIcon family="ionicons" name="list-outline" size={18} color={colors.text} />
+          <View style={styles.ctaRowInner}>
+            <View style={[styles.ctaIconWell, { backgroundColor: colors.surfaceSolid }]}>
+              <AppIcon family="ionicons" name="list-outline" size={18} color={colors.text} />
+            </View>
+            <Text style={[styles.ctaLabel, { color: colors.text }]} numberOfLines={1}>
+              Voir les transactions
+            </Text>
+            <AppIcon family="ionicons" 
+              name="chevron-forward"
+              size={16}
+              color={colors.textMuted}
+              style={transactionsExpanded ? styles.ctaChevronExpanded : undefined}
+            />
           </View>
-          <Text style={[styles.ctaLabel, { color: colors.text }]}>Voir les transactions</Text>
-          <AppIcon family="ionicons" 
-            name="chevron-forward"
-            size={16}
-            color={colors.textMuted}
-            style={transactionsExpanded ? styles.ctaChevronExpanded : undefined}
-          />
         </Pressable>
 
         {transactionsExpanded ? (
@@ -597,10 +602,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
-  headerText: {
-    flex: 1,
-    minWidth: 0,
-  },
+  headerText: Platform.OS === 'web' ? { flex: 1, minWidth: 0 } : nativeTextColumnFlex,
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -677,13 +679,17 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   ctaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: radius.card,
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  ctaRowInner: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    alignItems: 'center',
+    width: '100%',
+    gap: spacing.md,
   },
   ctaRowExpanded: {
     borderBottomLeftRadius: 0,
@@ -697,7 +703,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   ctaLabel: {
-    flex: 1,
+    ...(Platform.OS === 'web' ? { flex: 1 } : nativeTextColumnFlex),
     ...typographyKit.caption,
   },
   ctaChevronExpanded: {

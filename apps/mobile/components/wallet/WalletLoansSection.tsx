@@ -134,13 +134,8 @@ export function WalletLoansSection({
           <ProtoHeaderIconActions
             managing={managingLoans}
             onEdit={toggleManagingLoans}
-            onAdd={() => {
-              tapHaptic();
-              router.push('/plans/explore');
-            }}
             editAccessibilityLabel="Gérer les prêts et obligations"
             editDoneAccessibilityLabel="Terminer la gestion"
-            addAccessibilityLabel="Explorer dettes et prêts"
           />
         }
       />

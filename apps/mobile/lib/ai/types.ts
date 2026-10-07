@@ -777,10 +777,6 @@ export interface ChatMessage {
 
   imageUri?: string;
 
-  /** Assistant steps performed while generating this reply. */
-
-  activityPhases?: import('./activityPhases').ActivityPhase[];
-
   /** Curated plan suggestions for on-demand plan financier requests. */
   planSuggestions?: ChatPlanSuggestions;
 

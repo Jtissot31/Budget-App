@@ -3,7 +3,7 @@ import { LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import { HeroChartDelta } from '@/components/HeroChartDelta';
 import { NetWorthAmountRow } from '@/components/NetWorthAmountRow';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
-import { SparklineChart } from '@/components/chat/SparklineChart';
+import { SparklineChart } from '@/components/SparklineChart';
 import type { PortfolioChartCardPeriodData } from '@/components/PortfolioChartCard';
 import { radius, spacing } from '@/constants/theme';
 

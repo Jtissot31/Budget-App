@@ -1319,7 +1319,7 @@ function createStyles(colors: AppColors): AgendaViewStyles {
     minHeight: 34,
   },
   ctxMonthCentered: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -5,7 +5,7 @@
  * Subtle theme-aware hairline outline for edge readability over blur.
  * Android: elevation 0 so SemBlur can sample content behind the disc.
  */
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   Platform,
   Pressable,
@@ -48,48 +48,59 @@ export function GlassFab({
   tone = 'neutral',
 }: Props) {
   const { colors, isLight } = useAppTheme();
+  const [pressed, setPressed] = useState(false);
   const cornerRadius = size / 2;
   // Theme border + soft light/dark rim so the circle stays readable over live blur.
   const outlineColor = isLight
     ? 'rgba(0, 0, 0, 0.14)'
     : colors.containerBorder || 'rgba(255, 255, 255, 0.22)';
 
+  // NativeWind's Pressable interop spreads `style` with `{...style}`. A function
+  // has no enumerable keys, so that becomes `{}` and the full-width tab host
+  // stretches the button into a short bar. Keep this an array of plain objects.
+  const discStyle: ViewStyle = {
+    width: size,
+    height: size,
+    minWidth: size,
+    minHeight: size,
+    maxWidth: size,
+    maxHeight: size,
+    borderRadius: cornerRadius,
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
+    alignSelf: 'flex-end',
+    // SemBlur samples empty pixels if the disc is elevated offscreen.
+    elevation: Platform.OS === 'android' ? 0 : TRANSACTIONS_FAB_GLOW_BLUR.elevation,
+    // Clip blur/tint to the circular disc — no square plate around the FAB.
+    overflow: 'hidden',
+    ...(Platform.OS === 'ios'
+      ? {
+          shadowColor: '#000',
+          shadowOffset: TRANSACTIONS_FAB_GLOW_BLUR.shadowOffset,
+          shadowOpacity: TRANSACTIONS_FAB_GLOW_BLUR.shadowOpacity,
+          shadowRadius: TRANSACTIONS_FAB_GLOW_BLUR.shadowRadius,
+        }
+      : null),
+  };
+
   return (
     <Pressable
       pointerEvents="auto"
       onPress={onPress}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={accessibilityState}
-      style={({ pressed }) => [
-        styles.shell,
-        {
-          width: size,
-          height: size,
-          borderRadius: cornerRadius,
-          // SemBlur samples empty pixels if the disc is elevated offscreen.
-          elevation: Platform.OS === 'android' ? 0 : TRANSACTIONS_FAB_GLOW_BLUR.elevation,
-          // Clip blur/tint to the circular disc — no square plate around the FAB.
-          overflow: 'hidden',
-          ...(Platform.OS === 'ios'
-            ? {
-                shadowColor: '#000',
-                shadowOffset: TRANSACTIONS_FAB_GLOW_BLUR.shadowOffset,
-                shadowOpacity: TRANSACTIONS_FAB_GLOW_BLUR.shadowOpacity,
-                shadowRadius: TRANSACTIONS_FAB_GLOW_BLUR.shadowRadius,
-              }
-            : null),
-        },
-        style,
-        pressed && floatingGlassButtonPressed,
-      ]}
+      style={[styles.shell, discStyle, style, pressed ? floatingGlassButtonPressed : null]}
     >
       <View
         pointerEvents="none"
         collapsable={false}
         renderToHardwareTextureAndroid={false}
         style={[
-          StyleSheet.absoluteFillObject,
+          StyleSheet.absoluteFill,
           {
             borderRadius: cornerRadius,
             overflow: 'hidden',
@@ -108,7 +119,7 @@ export function GlassFab({
       <View
         pointerEvents="none"
         style={[
-          StyleSheet.absoluteFillObject,
+          StyleSheet.absoluteFill,
           {
             borderRadius: cornerRadius,
             borderWidth: StyleSheet.hairlineWidth,

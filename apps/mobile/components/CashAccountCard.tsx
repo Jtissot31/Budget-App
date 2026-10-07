@@ -56,7 +56,7 @@ const FLAP_PATH =
 function WalletSurface() {
   return (
     <Svg
-      style={StyleSheet.absoluteFillObject}
+      style={StyleSheet.absoluteFill}
       viewBox={`0 0 ${VB_W} ${VB_H}`}
       preserveAspectRatio="none"
       pointerEvents="none"
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   walletShell: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: VIEW_RADIUS,
     overflow: 'hidden',
     backgroundColor: C.leather,
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.04)',
   },
   content: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     flexDirection: 'column',
   },
   upperZone: {
