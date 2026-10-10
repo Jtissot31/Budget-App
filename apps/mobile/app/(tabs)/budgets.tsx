@@ -227,6 +227,10 @@ export default function BudgetScreen() {
   const usedRatio = totals.totalAllocated > 0 ? totals.totalSpent / totals.totalAllocated : 0;
   const usedPct = Math.round(usedRatio * 100);
   const toneFor = (ratio: number) => (ratio > 1 ? colors.danger : colors.text);
+  /** Summary ring: green up to 102 %, orange 103–110 %, red beyond. */
+  const usedPctRounded = Math.round(usedRatio * 100);
+  const summaryRingColor =
+    usedPctRounded <= 102 ? colors.accentGreen : usedPctRounded <= 110 ? '#F59E0B' : colors.danger;
 
   const daysLeft = useMemo(() => {
     if (!viewingCurrent) return 0;
@@ -299,7 +303,7 @@ export default function BudgetScreen() {
                       : { label: 'Tout est sous contrôle', color: colors.accentGreen }
                   }
                   aside={
-                    <RingGauge progress={usedRatio} color={toneFor(usedRatio)} size={76} stroke={8}>
+                    <RingGauge progress={usedRatio} color={summaryRingColor} size={76} stroke={8}>
                       <Text style={[styles.ringValue, { color: colors.text }]}>{usedPct}%</Text>
                       <Text style={[styles.ringCaption, { color: colors.textMuted }]}>utilisé</Text>
                     </RingGauge>

@@ -390,33 +390,30 @@ export function BudgetCategoryDetailSheet({
             }
             stats={[
               { label: 'Dépensé', value: formatDisplayMoneyAbsolute(category.spent) },
-              { label: 'Limite', value: formatDisplayMoneyAbsolute(localLimit) },
               isCurrentMonth && !over && daysLeft > 0
                 ? { label: 'Par jour', value: formatDisplayMoneyAbsolute(left / daysLeft) }
                 : { label: 'Jours', value: isCurrentMonth ? String(daysLeft) : '—' },
             ]}
-          />
+          >
+            <View style={styles.limitInline}>
+              <Text style={[styles.limitLabel, { color: colors.textMuted }]}>Limite mensuelle</Text>
+              <EditableField
+                editHandleRef={limitEditRef}
+                type="money"
+                value={String(localLimit)}
+                onSave={handleSaveLimit}
+                accessibilityLabel="Modifier la limite mensuelle"
+                textStyle={[styles.rowValue, detailRowValueMoney]}
+                containerStyle={styles.limitValueField}
+                align="right"
+              />
+            </View>
+          </SummaryCard>
         );
       })()}
 
       {insight ? <TransactionInsightCard insight={insight} /> : null}
 
-      <ListCard>
-        <View style={styles.limitRow}>
-          <AppIcon family="ionicons" name="create-outline" size={17} color={colors.textMuted} />
-          <Text style={[styles.limitLabel, { color: colors.textMuted }]}>Limite mensuelle</Text>
-          <EditableField
-            editHandleRef={limitEditRef}
-            type="money"
-            value={String(localLimit)}
-            onSave={handleSaveLimit}
-            accessibilityLabel="Modifier la limite mensuelle"
-            textStyle={[styles.rowValue, detailRowValueMoney]}
-            containerStyle={styles.limitValueField}
-            align="right"
-          />
-        </View>
-      </ListCard>
 
       <BudgetCashflowImpactCard
         mode="edit"
@@ -448,7 +445,7 @@ export function BudgetCategoryDetailSheet({
 
 const styles = StyleSheet.create({
   ringPct: { ...jakartaMediumText, fontSize: 15, fontWeight: "normal" },
-  limitRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, minHeight: 54 },
+  limitInline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   limitLabel: { ...jakartaMediumText, fontSize: 14, flex: 1 },
   sheet: {
     borderTopLeftRadius: DETAIL_SHEET_TOP_RADIUS,

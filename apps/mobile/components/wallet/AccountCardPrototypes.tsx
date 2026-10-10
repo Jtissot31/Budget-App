@@ -89,7 +89,7 @@ export type AccountPatrimoineTileProps = {
 export type AccountLineTileProps = AccountPatrimoineTileProps;
 
 /** Even padding for logos inside the white app-icon tile. */
-const TILE_LOGO_INSET_RATIO = 0.18;
+const TILE_LOGO_INSET_RATIO = 0.14;
 
 function kindIcon(kind: AccountKind): string {
   if (kind === 'credit') return 'card-outline';
@@ -127,7 +127,7 @@ export function InstitutionMark({
   tinted?: boolean;
   /** Tile-local: clear filled grey circle behind logos/icons. */
   transparentWell?: boolean;
-  /** App-icon look: logo on a white rounded tile with an even inset (list rows). */
+  /** List-row look: logo on a transparent background with an even inset. */
   tile?: boolean;
 }) {
   const { colors, isLight } = useAppTheme();
@@ -169,8 +169,7 @@ export function InstitutionMark({
         showLogo ? logoIconWellStyle(size, isLight) : userPickedIconWellStyle(size, isLight),
         transparentWell && styles.transparentWell,
         tile && showLogo && {
-          backgroundColor: '#FFFFFF',
-          borderRadius: Math.round(size * 0.28),
+          backgroundColor: 'transparent',
           borderWidth: 0,
         },
         tile && !showLogo && { backgroundColor: colors.surfaceElevated, borderRadius: Math.round(size * 0.28), borderWidth: 0 },

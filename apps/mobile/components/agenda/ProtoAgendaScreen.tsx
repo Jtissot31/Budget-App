@@ -30,7 +30,6 @@ import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { getCategoryIconName } from '@/constants/categoryOptions';
 import {
-  CHIP_BORDER_WIDTH,
   FLOATING_NAV_CONTENT_PADDING,
   jakartaBoldText,
   jakartaMediumText,
@@ -52,7 +51,6 @@ import {
   buildRecurringBillsByDate,
   dateKeyFromDate,
   dateKeyFromParts,
-  markersForDay,
   sumMonthCashflow,
 } from '@/lib/protoAgendaBills';
 import { formatBudgetMonthLabel } from '@/lib/budgetMonth';
@@ -565,7 +563,7 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
 
           {bodyMode === 'calendar' ? (
             <View style={styles.section}>
-              <ListCard padding={spacing.md}>
+              <ListCard padding={12}>
                 <View style={styles.dowRow}>
                   {DOW.map((d, i) => (
                     <Text key={`${d}-${i}`} style={[styles.dow, { color: colors.textMuted }]}>
@@ -577,15 +575,21 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                   {calendarCells.map((day, index) => {
                     if (day == null) return <View key={`e-${index}`} style={styles.cell} />;
                     const key = dateKeyFromParts(year, month0, day);
-                    const markers = markersForDay(key, billsByDate);
+                    const bills = billsByDate[key] ?? [];
+                    const out = bills.reduce(
+                      (sum, bill) => sum + ((bill.kind ?? 'payment') === 'income' ? 0 : Math.abs(bill.amount)),
+                      0,
+                    );
+                    const hasIncome = bills.some((bill) => (bill.kind ?? 'payment') === 'income');
                     const selected = safeSelectedDay === day;
                     const isToday = key === todayKey;
+                    const isPast = key < todayKey;
                     return (
                       <Pressable
                         key={key}
                         accessibilityRole="button"
                         accessibilityState={{ selected }}
-                        accessibilityLabel={isToday ? `${day}, aujourd’hui` : String(day)}
+                        accessibilityLabel={`${day}${isToday ? ', aujourd’hui' : ''}${out > 0 ? `, ${formatDisplayMoneyAbsolute(out)} à payer` : ''}`}
                         onPress={() => {
                           tapHaptic();
                           setSelectedDay((prev) => (prev === day ? null : day));
@@ -594,34 +598,37 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                       >
                         <View
                           style={[
-                            styles.dayWell,
-                            { borderWidth: CHIP_BORDER_WIDTH, borderColor: isToday ? colors.text : 'transparent' },
+                            styles.dayInner,
+                            bills.length > 0 && { backgroundColor: colors.surfaceElevated },
+                            selected && { borderColor: colors.text, borderWidth: 1.5 },
                           ]}
                         >
-                          <View style={[styles.dayInner, selected && { backgroundColor: colors.text }]}>
+                          <View style={[styles.dayNumWrap, isToday && { backgroundColor: colors.text }]}>
                             <Text
                               style={[
                                 styles.dayNum,
                                 {
-                                  color: selected
+                                  color: isToday
                                     ? colors.background
-                                    : isToday
-                                      ? colors.text
-                                      : colors.textSecondary,
+                                    : isPast
+                                      ? colors.textMuted
+                                      : colors.text,
                                 },
                               ]}
                             >
                               {day}
                             </Text>
-                            <View style={styles.dots}>
-                              {markers.hasExpense ? (
-                                <View style={[styles.dot, { backgroundColor: colors.danger }]} />
-                              ) : null}
-                              {markers.hasIncome ? (
-                                <View style={[styles.dot, { backgroundColor: colors.accentGreen }]} />
-                              ) : null}
-                            </View>
                           </View>
+                          {out > 0 ? (
+                            <Text
+                              style={[styles.dayAmount, { color: isPast ? colors.textMuted : colors.textSecondary }]}
+                              numberOfLines={1}
+                            >
+                              {out >= 1000 ? `${Math.round(out / 100) / 10}k` : Math.round(out)}
+                            </Text>
+                          ) : hasIncome ? (
+                            <View style={[styles.incomeDot, { backgroundColor: colors.accentGreen }]} />
+                          ) : null}
                         </View>
                       </Pressable>
                     );
@@ -637,12 +644,6 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
             }
             trailing={
               <View style={styles.sectionActions}>
-                {!managingPayments ? (
-                  <TextAction label="Ajouter" onPress={() => {
-                    tapHaptic();
-                    setAddTypeChooserVisible(true);
-                  }} />
-                ) : null}
                 <TextAction label={managingPayments ? 'Terminé' : 'Modifier'} onPress={toggleManagingPayments} />
               </View>
             }
@@ -759,6 +760,21 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
           onCancel={() => setConfirmDeleteVisible(false)}
         />
 
+        {!managingPayments && !addTypeChooserVisible ? (
+          <PressScale
+            accessibilityRole="button"
+            accessibilityLabel="Ajouter un paiement récurrent"
+            scaleTo={0.92}
+            onPress={() => {
+              tapHaptic();
+              setAddTypeChooserVisible(true);
+            }}
+            style={[styles.fab, { backgroundColor: colors.text, bottom: Math.max(insets.bottom, 12) + 64 }]}
+          >
+            <AppIcon family="ionicons" name="add" size={28} color={colors.background} />
+          </PressScale>
+        ) : null}
+
         {addTypeChooserVisible ? (
           <View style={styles.addTypeOverlay} accessibilityViewIsModal>
             <Pressable
@@ -845,22 +861,34 @@ const styles = StyleSheet.create({
   emptyRow: { paddingHorizontal: 14, paddingVertical: 18 },
   empty: { ...typographyKit.metaMedium, fontSize: 13 },
   payIconLogo: { borderRadius: 12, overflow: 'hidden' },
-  dowRow: { flexDirection: 'row', marginBottom: spacing.sm },
-  dow: { flex: 1, textAlign: 'center', ...typographyKit.microMedium, fontSize: 10 },
+  dowRow: { flexDirection: 'row', marginBottom: 6 },
+  dow: { flex: 1, textAlign: 'center', ...typographyKit.microMedium, fontSize: 11, textTransform: 'uppercase' },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: `${100 / 7}%`, aspectRatio: 1, padding: 2 },
-  dayWell: { flex: 1, width: '100%', height: '100%', alignSelf: 'stretch', borderRadius: radius.md },
+  cell: { width: `${100 / 7}%`, aspectRatio: 0.9, padding: 2 },
   dayInner: {
     flex: 1,
-    margin: 2,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
-    borderRadius: radius.sm,
+    gap: 2,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
   },
+  dayNumWrap: { minWidth: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   dayNum: { ...typographyKit.metaSemibold, fontSize: 13 },
-  dots: { flexDirection: 'row', gap: 3, minHeight: 5 },
-  dot: { width: 5, height: 5, borderRadius: 2.5 },
+  dayAmount: { ...typographyKit.metaMedium, fontSize: 9.5, lineHeight: 11 },
+  incomeDot: { width: 5, height: 5, borderRadius: 2.5 },
+  fab: {
+    position: 'absolute',
+    right: PAGE_PADDING_HORIZONTAL,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+    elevation: 6,
+  },
   addTypeOverlay: {
     ...StyleSheet.absoluteFill,
     zIndex: 40,

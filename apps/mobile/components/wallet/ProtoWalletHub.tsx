@@ -391,7 +391,7 @@ export function ProtoWalletHub() {
     return (
       <ListRow
         key={account.id}
-        leading={managingAccounts ? <SelectWell selected={selected} /> : <InstitutionMark account={account} size={40} tile />}
+        leading={managingAccounts ? <SelectWell selected={selected} /> : <View style={styles.logoSlot}><InstitutionMark account={account} size={36} tile /></View>}
         title={title}
         subtitle={accountMeta(account)}
         value={money(account.balance)}
@@ -832,6 +832,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   hint: { ...typographyKit.metaMedium, fontSize: 11, marginTop: spacing.sm, paddingHorizontal: 2 },
+  logoSlot: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   balanceBlock: { gap: 8 },
   balanceLabels: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   balanceLabel: { ...typographyKit.metaMedium, fontSize: 12 },

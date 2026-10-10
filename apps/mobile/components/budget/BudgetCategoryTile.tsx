@@ -1,7 +1,7 @@
 /**
  * Budget tab category tile — 2-column grid card: animated ring around the
  * category icon, name, what's left (or how much over), and spent / limit.
- * Soft identity accent per category; red only when the category is over budget.
+ * Neutral by default; muted amber from 90 % of the limit, red when over budget.
  */
 import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -23,6 +23,9 @@ type Props = {
   onPress: (id: string) => void;
 };
 
+/** Muted amber that sits well on the dark theme. */
+const WARNING_SOFT = '#E0B354';
+
 export const BudgetCategoryTile = memo(function BudgetCategoryTile({
   category,
   selecting = false,
@@ -34,7 +37,10 @@ export const BudgetCategoryTile = memo(function BudgetCategoryTile({
   const over = category.usage.isOverBudget;
   const left = category.limit - category.spent;
   const ratio = category.limit > 0 ? category.spent / category.limit : over ? 1 : 0;
-  const ringColor = over ? colors.danger : accent ?? colors.text;
+  // Colour carries meaning only: neutral when healthy, amber near the limit, red when over.
+  const nearLimit = !over && ratio >= 0.9;
+  const ringColor = over ? colors.danger : nearLimit ? WARNING_SOFT : colors.text;
+  void accent;
   const pct = Math.round(ratio * 100);
 
   return (
@@ -59,7 +65,7 @@ export const BudgetCategoryTile = memo(function BudgetCategoryTile({
           <View
             style={[
               styles.iconWell,
-              { backgroundColor: accent || over ? 'transparent' : colors.surfaceElevated },
+              { backgroundColor: colors.surfaceElevated },
             ]}
           >
             <BudgetCategoryIcon
