@@ -1,13 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppIcon } from '@/components/icons/AppIcon';
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -15,24 +7,16 @@ import {
   fixedHeaderScrollStyle,
   fixedHeaderScreenStyle,
 } from '@/components/FixedScreenHeader';
-import { OnyxContainer } from '@/components/OnyxContainer';
+import { EmptyRow, IconWell, ListCard, ListRow, SECTION_GAP, SectionLabel, SummaryCard } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
 import {
   PaymentDetailSheet,
   type PaymentDetailPayload,
 } from '@/components/PaymentDetailSheet';
-import { TransactionAmountLabel } from '@/components/TransactionAmountLabel';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import {
-  ONYX_CONTAINER,
-  onyxContainerPressedStyle,
-  onyxContainerRowLayoutStyle,
-} from '@/constants/planFinanceKit';
-import {
   FLOATING_NAV_CONTENT_PADDING,
-  moneyAmountTypography,
   PAGE_PADDING_HORIZONTAL,
-  PORTFOLIO_SECTION_GAP,
   spacing,
   typographyKit,
 } from '@/constants/theme';
@@ -51,8 +35,6 @@ import {
 import { analyzeSubscriptions } from '@/lib/subscriptionAnalysis';
 import { useAppTheme } from '@/lib/themeContext';
 import type { Loan, RecurringPayment } from '@/types';
-
-const ROW_ICON_SIZE = 40;
 
 function formatNextDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
@@ -136,13 +118,12 @@ export default function SubscriptionsInsightsScreen() {
   return (
     <PageTransition>
       <View style={[fixedHeaderScreenStyle, styles.screen, { backgroundColor: colors.background }]}>
-        <FixedScreenHeader title="Analyse abonnements" onBack={() => router.back()} />
+        <FixedScreenHeader title="Abonnements" onBack={() => router.back()} />
         <ScrollView
           style={fixedHeaderScrollStyle}
           contentContainerStyle={{
             paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING + spacing.xl,
             paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-            gap: PORTFOLIO_SECTION_GAP,
           }}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -153,144 +134,98 @@ export default function SubscriptionsInsightsScreen() {
             />
           }
         >
-          <OnyxContainer style={styles.summaryCard}>
-            <Text style={[typographyKit.eyebrow, { color: colors.textMuted }]}>
-              Coût mensuel estimé
-            </Text>
-            <Text style={[styles.summaryAmount, { color: colors.text }]}>
-              {formatDisplayMoneyAbsolute(analysis.monthlyTotal)}
-            </Text>
-            <View style={styles.summaryMetaRow}>
-              <Text style={[typographyKit.metaMedium, { color: colors.textMuted }]}>
-                {analysis.count} abonnement{analysis.count > 1 ? 's' : ''}
-              </Text>
-              <Text style={[typographyKit.metaMedium, { color: colors.textMuted }]}>
-                {formatDisplayMoneyAbsolute(analysis.yearlyTotal)} / an
-              </Text>
-            </View>
-          </OnyxContainer>
-
-          {analysis.topCategories.length > 0 ? (
-            <View style={styles.section}>
-              <Text style={[typographyKit.sectionTitle, { color: colors.text }]}>
-                Catégories
-              </Text>
-              <View style={styles.categoryList}>
-                {analysis.topCategories.map((category) => (
-                  <OnyxContainer
-                    key={category.categoryId ?? category.categoryName}
-                    style={styles.categoryCard}
-                  >
-                    <View style={styles.categoryCopy}>
-                      <Text
-                        style={[typographyKit.listPrimary, { color: colors.text }]}
-                        numberOfLines={1}
-                      >
-                        {category.categoryName}
-                      </Text>
-                      <Text style={[typographyKit.microMedium, { color: colors.textMuted }]}>
-                        {category.count} service{category.count > 1 ? 's' : ''}
-                      </Text>
-                    </View>
-                    <Text style={[moneyAmountTypography({ tier: 'row' }), { color: colors.text }]}>
-                      {formatDisplayMoneyAbsolute(category.monthlyTotal)}
-                    </Text>
-                  </OnyxContainer>
-                ))}
-              </View>
-            </View>
-          ) : null}
-
           <View style={styles.section}>
-            <Text style={[typographyKit.sectionTitle, { color: colors.text }]}>
-              Insights
-            </Text>
-            <View style={styles.insightList}>
-              {analysis.insights.map((insight) => (
-                <OnyxContainer key={insight} style={styles.insightCard}>
-                  <AppIcon
-                    family="ionicons"
-                    name="bulb-outline"
-                    size={18}
-                    color={colors.textMuted}
-                  />
-                  <Text style={[styles.insightText, { color: colors.textSecondary }]}>
-                    {insight}
-                  </Text>
-                </OnyxContainer>
-              ))}
-            </View>
+            <SummaryCard
+              label="Coût mensuel estimé"
+              amount={formatDisplayMoneyAbsolute(analysis.monthlyTotal)}
+              stats={[
+                { label: 'Abonnements', value: String(analysis.count) },
+                { label: 'Par année', value: formatDisplayMoneyAbsolute(analysis.yearlyTotal) },
+              ]}
+            />
           </View>
 
           <View style={styles.section}>
-            <Text style={[typographyKit.sectionTitle, { color: colors.text }]}>
-              Abonnements
-            </Text>
-            {analysis.items.length === 0 ? (
-              <OnyxContainer style={styles.emptyCard}>
-                <Text style={[typographyKit.body, { color: colors.textMuted }]}>
-                  Aucun abonnement récurrent détecté. Tu peux en ajouter depuis l’Agenda.
-                </Text>
-              </OnyxContainer>
-            ) : (
-              <View style={styles.subscriptionList}>
-                {analysis.items.map(({ payment, monthlyEquivalent }) => {
+            <SectionLabel title="Abonnements" />
+            <ListCard>
+              {analysis.items.length === 0 ? (
+                <EmptyRow label="Aucun abonnement détecté — ajoute-en depuis l’Agenda" />
+              ) : (
+                analysis.items.map(({ payment, monthlyEquivalent }, index) => {
                   const nextLabel = formatNextDate(payment.nextDate);
                   const metaParts = [
                     frequencyLabel(payment.frequency),
-                    payment.categoryName?.trim() || null,
-                    nextLabel ? `prochain ${nextLabel}` : null,
+                    nextLabel,
                   ].filter(Boolean);
-
                   return (
-                    <Pressable
+                    <ListRow
                       key={payment.id}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Détail ${payment.name}`}
-                      onPress={() => openPayment(payment)}
-                      style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
-                    >
-                      <OnyxContainer style={onyxContainerRowLayoutStyle()}>
+                      leading={
                         <UserPickedIconWell
-                          icon={resolveRecurringPaymentDisplayIconById(
-                            payment,
-                            loanByRecurringPaymentId,
-                          )}
+                          icon={resolveRecurringPaymentDisplayIconById(payment, loanByRecurringPaymentId)}
                           color={payment.color}
-                          size={ROW_ICON_SIZE}
+                          size={40}
                           wellGlyphWhite
-                          logoUrl={
-                            payment.logoUrl?.trim() || getMerchantLogoUrl(payment.name) || null
-                          }
+                          logoUrl={payment.logoUrl?.trim() || getMerchantLogoUrl(payment.name) || null}
                           merchantLabel={payment.name}
                         />
-                        <View style={styles.rowCopy}>
-                          <Text
-                            style={[typographyKit.listPrimary, { color: colors.text }]}
-                            numberOfLines={1}
-                          >
-                            {payment.name}
-                          </Text>
-                          <Text
-                            style={[typographyKit.microMedium, { color: colors.textMuted }]}
-                            numberOfLines={1}
-                          >
-                            {metaParts.join(' · ')}
-                          </Text>
-                        </View>
-                        <TransactionAmountLabel
-                          amount={formatDisplayMoneyAbsolute(monthlyEquivalent)}
-                          direction="expense"
-                          color={colors.text}
-                          textStyle={moneyAmountTypography({ tier: 'row' })}
-                        />
-                      </OnyxContainer>
-                    </Pressable>
+                      }
+                      title={payment.name}
+                      subtitle={metaParts.join(' · ')}
+                      value={`−${formatDisplayMoneyAbsolute(monthlyEquivalent)}`}
+                      valueSub="/ mois"
+                      isLast={index === analysis.items.length - 1}
+                      accessibilityLabel={`Détail ${payment.name}`}
+                      onPress={() => openPayment(payment)}
+                    />
                   );
-                })}
-              </View>
-            )}
+                })
+              )}
+            </ListCard>
           </View>
+
+          {analysis.topCategories.length > 0 ? (
+            <View style={styles.section}>
+              <SectionLabel title="Par catégorie" />
+              <ListCard>
+                {analysis.topCategories.map((category, index) => (
+                  <ListRow
+                    key={category.categoryId ?? category.categoryName}
+                    title={category.categoryName}
+                    subtitle={`${category.count} service${category.count > 1 ? 's' : ''}`}
+                    value={formatDisplayMoneyAbsolute(category.monthlyTotal)}
+                    valueSub="/ mois"
+                    progress={analysis.monthlyTotal > 0 ? category.monthlyTotal / analysis.monthlyTotal : 0}
+                    progressColor={colors.primary}
+                    isLast={index === analysis.topCategories.length - 1}
+                  />
+                ))}
+              </ListCard>
+            </View>
+          ) : null}
+
+          {analysis.insights.length > 0 ? (
+            <View style={styles.section}>
+              <SectionLabel title="À retenir" />
+              <ListCard>
+                {analysis.insights.map((insight, index) => (
+                  <View
+                    key={insight}
+                    style={[
+                      styles.insightRow,
+                      index < analysis.insights.length - 1 && {
+                        borderBottomWidth: StyleSheet.hairlineWidth,
+                        borderBottomColor: colors.containerBorder,
+                      },
+                    ]}
+                  >
+                    <IconWell icon="bulb-outline" size={32} />
+                    <Text style={[styles.insightText, { color: colors.textSecondary }]}>{insight}</Text>
+                  </View>
+                ))}
+              </ListCard>
+            </View>
+          ) : null}
         </ScrollView>
 
         <PaymentDetailSheet
@@ -308,58 +243,13 @@ export default function SubscriptionsInsightsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  pressed: { opacity: 0.82 },
-  summaryCard: {
-    padding: ONYX_CONTAINER.padding.card,
-    gap: spacing.sm,
-  },
-  summaryAmount: {
-    ...moneyAmountTypography({ tier: 'stat' }),
-  },
-  summaryMetaRow: {
+  section: { marginBottom: SECTION_GAP + spacing.sm },
+  insightRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: spacing.md,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
-  section: {
-    gap: spacing.sm,
-  },
-  categoryList: {
-    gap: ONYX_CONTAINER.listGap,
-  },
-  categoryCard: {
-    ...onyxContainerRowLayoutStyle(),
-    justifyContent: 'space-between',
-  },
-  categoryCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  insightList: {
-    gap: ONYX_CONTAINER.listGap,
-  },
-  insightCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    padding: ONYX_CONTAINER.padding.row,
-  },
-  insightText: {
-    ...typographyKit.body,
-    flex: 1,
-    lineHeight: 20,
-  },
-  subscriptionList: {
-    gap: ONYX_CONTAINER.listGap,
-  },
-  rowCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  emptyCard: {
-    padding: ONYX_CONTAINER.padding.card,
-  },
+  insightText: { ...typographyKit.metaMedium, flexShrink: 1, lineHeight: 19 },
 });

@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { RemoteLogoImage } from '@/components/IconFrame';
+import { SummaryCard, type SummaryStat } from '@/components/kit';
 import { OnyxContainer } from '@/components/OnyxContainer';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import {
@@ -87,6 +88,9 @@ export type AccountPatrimoineTileProps = {
 /** Same production affordances as {@link AccountPatrimoineTile} for odd-last rows. */
 export type AccountLineTileProps = AccountPatrimoineTileProps;
 
+/** Even padding for logos inside the white app-icon tile. */
+const TILE_LOGO_INSET_RATIO = 0.82;
+
 function kindIcon(kind: AccountKind): string {
   if (kind === 'credit') return 'card-outline';
   if (kind === 'savings') return 'wallet-outline';
@@ -116,12 +120,15 @@ export function InstitutionMark({
   size = ICON_WELL_SIZE,
   tinted = false,
   transparentWell = false,
+  tile = false,
 }: {
   account: SimulatedAccount;
   size?: number;
   tinted?: boolean;
   /** Tile-local: clear filled grey circle behind logos/icons. */
   transparentWell?: boolean;
+  /** List-row look: logo on a transparent background with an even inset. */
+  tile?: boolean;
 }) {
   const { colors, isLight } = useAppTheme();
   const manualIcon = account.icon?.trim() || null;
@@ -161,6 +168,11 @@ export function InstitutionMark({
       style={[
         showLogo ? logoIconWellStyle(size, isLight) : userPickedIconWellStyle(size, isLight),
         transparentWell && styles.transparentWell,
+        tile && showLogo && {
+          backgroundColor: 'transparent',
+          borderWidth: 0,
+        },
+        tile && !showLogo && { backgroundColor: colors.surfaceElevated, borderRadius: Math.round(size * 0.28), borderWidth: 0 },
         styles.mark,
       ]}
     >
@@ -169,7 +181,7 @@ export function InstitutionMark({
           asset={asset}
           size={size}
           contentFit="contain"
-          insetRatio={CARD_NETWORK_LOGO_INSET_RATIO}
+          insetRatio={tile ? TILE_LOGO_INSET_RATIO : CARD_NETWORK_LOGO_INSET_RATIO}
           onError={() => setAssetFailed(true)}
         />
       ) : uri ? (
@@ -177,7 +189,7 @@ export function InstitutionMark({
           uri={uri}
           size={size}
           contentFit="contain"
-          insetRatio={insetRatio}
+          insetRatio={tile ? TILE_LOGO_INSET_RATIO : insetRatio}
           onError={() => {
             if (sourceIndex < urls.length - 1) {
               setSourceIndex((i) => i + 1);
@@ -548,6 +560,58 @@ export function AccountDetailHeroCard({ account }: { account: SimulatedAccount }
         ) : null}
       </View>
     </OnyxContainer>
+  );
+}
+
+/**
+ * Account detail summary — same shell as the tab summaries (kit SummaryCard).
+ * Credit accounts show available / limit; callers append monthly flow stats.
+ */
+export function AccountDetailSummaryCard({
+  account,
+  stats = [],
+  footer,
+  badge,
+  children,
+}: {
+  account: SimulatedAccount;
+  stats?: SummaryStat[];
+  footer?: string;
+  badge?: { label: string; color: string };
+  children?: ReactNode;
+}) {
+  const { colors } = useAppTheme();
+  const { remaining, utilization } = creditMeta(account);
+  const creditLimit =
+    typeof account.creditLimit === 'number' && account.creditLimit > 0 ? account.creditLimit : undefined;
+  const creditStats: SummaryStat[] =
+    account.kind === 'credit'
+      ? [
+          ...(remaining != null ? [{ label: 'Disponible', value: formatDisplayMoneyAbsolute(remaining) }] : []),
+          ...(creditLimit != null ? [{ label: 'Limite', value: formatDisplayMoneyAbsolute(creditLimit) }] : []),
+        ]
+      : [];
+  const tone =
+    utilization == null ? colors.accentGreen : utilization >= 90 ? colors.danger : utilization >= 70 ? colors.warning : colors.accentGreen;
+
+  return (
+    <SummaryCard
+      label={accountDetailBalanceCaption(account)}
+      amount={formatSignedBalance(account.balance)}
+      amountValue={account.balance}
+      formatAmount={formatSignedBalance}
+      amountColor={accountBalanceValueColor(account, colors.text)}
+      badge={badge ?? (utilization != null ? { label: `${Math.round(utilization)} % utilisé`, color: tone } : undefined)}
+      stats={[...creditStats, ...stats]}
+      footer={footer}
+    >
+      {utilization != null ? (
+        <View style={[styles.track, { backgroundColor: colors.borderSubtle }]}>
+          <View style={[styles.trackFill, { width: `${Math.min(utilization, 100)}%`, backgroundColor: tone }]} />
+        </View>
+      ) : null}
+      {children}
+    </SummaryCard>
   );
 }
 

@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheet } from '@/components/BottomSheet';
 import { PageTransition } from '@/components/PageTransition';
-import { TransactionRow } from '@/components/TransactionRow';
+import { TransactionDayGroup } from '@/components/transactions/TransactionDayGroups';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { ghostCardShadow } from '@/constants/ghostUi';
 import { radius, spacing, typography, type AppColors } from '@/constants/theme';
@@ -281,23 +281,13 @@ export default function WealthAssetTransactionsScreen() {
               </Text>
             }
             renderItem={({ item: [date, txs] }) => (
-              <View style={stylesMemo.group}>
-                <Text style={[stylesMemo.groupLabel, { color: colors.textMuted }]}>
-                  {new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
-                </Text>
-                <View style={stylesMemo.groupTransactions}>
-                  {txs.map((tx) => (
-                    <TransactionRow
-                      key={tx.id}
-                      transaction={{
+              <TransactionDayGroup
+                date={date}
+                txs={txs.map((tx) => ({
                         ...tx,
                         label: getTransactionTitle(tx, tx.categoryName?.trim() || displayName),
-                      }}
-                      onPress={() => { tapHaptic(); openTransactionDetail(tx.id); }}
-                    />
-                  ))}
-                </View>
-              </View>
+                      }))}
+              />
             )}
           />
         </View>

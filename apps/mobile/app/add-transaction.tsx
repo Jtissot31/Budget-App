@@ -13,6 +13,8 @@ import {
   TextInput,
   useWindowDimensions,
   View,
+  type StyleProp,
+  type TextStyle,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -45,7 +47,10 @@ import { TransactionArticlesReceiptCard } from '@/components/TransactionArticles
 import { TransferModePicker, type TransferMode } from '@/components/TransferModePicker';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import { formValidationError, type FormFeedback } from '@/lib/formFeedback';
-import { DatePickerField } from '@/components/MinimalDatePicker';
+import { MinimalDatePicker } from '@/components/MinimalDatePicker';
+import { SegmentedTabs } from '@/components/SegmentedTabs';
+import { showToast } from '@/components/kit/Toast';
+import { formatFriendlyDateLabel } from '@/lib/formatFriendlyDateLabel';
 import {
   CHIP_BORDER_WIDTH,
   CHIP_PADDING_HORIZONTAL,
@@ -66,8 +71,8 @@ import {
   typography,
   typographyKit,
 } from '@/constants/theme';
-import { chipLabelTextProps, singleLineLabelStyle } from '@/lib/textLayout';
-import { hasMerchantLogoCandidate } from '@/components/TransactionAvatar';
+
+import { hasMerchantLogoCandidate, TransactionAvatar } from '@/components/TransactionAvatar';
 import {
   INCOME_CATEGORY,
   TRANSFER_CATEGORY,
@@ -315,6 +320,8 @@ export default function AddTransactionScreen() {
   const [budgetCategoryIds, setBudgetCategoryIds] = useState<Set<string>>(new Set());
   const [savedContacts, setSavedContacts] = useState<Contact[]>([]);
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  /** Name picked from the suggestion list — hides the list until the user edits the field. */
+  const [pickedSuggestion, setPickedSuggestion] = useState<string | null>(null);
   const [merchantOverrides, setMerchantOverrides] = useState<MerchantOverride[]>([]);
   const [simulatedAccounts, setSimulatedAccounts] = useState<SimulatedAccount[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -347,6 +354,8 @@ export default function AddTransactionScreen() {
   const [fallbackIcon, setFallbackIcon] = useState<string>(EXPENSE_MDI_ICON);
   const [articles, setArticles] = useState<ItemizedNote[]>([]);
   const [inlineArticleExpanded, setInlineArticleExpanded] = useState(false);
+  /** Articles are optional — collapsed behind a link until asked for. */
+  const [articlesOpen, setArticlesOpen] = useState(false);
   const formSheetKeyboardInset = useFormSheetKeyboardInset();
   const [hostHeight, setHostHeight] = useState(() => Dimensions.get('window').height);
   const onHostMetrics = useCallback((metrics: FormSheetHostValue) => {
@@ -404,11 +413,33 @@ export default function AddTransactionScreen() {
     return names;
   }, [allTransactions, merchantOverrides]);
 
+  /** Latest expense per merchant — powers the suggestion meta line and auto-category. */
+  const merchantLastExpense = useMemo(() => {
+    const map = new Map<string, Transaction>();
+    for (const tx of allTransactions) {
+      if (tx.type !== 'expense' || !tx.label.trim()) continue;
+      const key = normalizeMerchantKey(tx.label);
+      const prev = map.get(key);
+      if (!prev || tx.date > prev.date) map.set(key, tx);
+    }
+    return map;
+  }, [allTransactions]);
+
   const merchantSuggestions = useMemo(() => {
     if (type !== 'expense') return [];
     if (normalizeMerchantKey(debouncedLabel).length < 2) return [];
-    return searchMerchantNameSuggestions(debouncedLabel, merchantHistoryNames, 5);
-  }, [debouncedLabel, merchantHistoryNames, type]);
+    // Collapse spelling variants (Couche-Tard / Couchetard); merchants already used come first.
+    const seen = new Set<string>();
+    const unique = searchMerchantNameSuggestions(debouncedLabel, merchantHistoryNames, 10).filter((name) => {
+      const compact = normalizeMerchantKey(name).replace(/[^a-z0-9]/g, '');
+      if (seen.has(compact)) return false;
+      seen.add(compact);
+      return true;
+    });
+    const used = unique.filter((name) => merchantLastExpense.has(normalizeMerchantKey(name)));
+    const others = unique.filter((name) => !merchantLastExpense.has(normalizeMerchantKey(name)));
+    return [...used, ...others].slice(0, 4);
+  }, [debouncedLabel, merchantHistoryNames, merchantLastExpense, type]);
 
   const contactDirectoryRows = useMemo(
     () => buildContactDirectoryRows(allTransactions, savedContacts),
@@ -1011,7 +1042,9 @@ export default function AddTransactionScreen() {
   const hasContactSuggestions = contactSuggestions.length > 0;
   const incomeContactSelected = type === 'income' && incomeContactPickStatus !== 'none';
   const hasNameSuggestions =
-    (hasMerchantSuggestions || hasContactSuggestions) && !incomeContactSelected;
+    (hasMerchantSuggestions || hasContactSuggestions) &&
+    !incomeContactSelected &&
+    label.trim() !== pickedSuggestion;
   const isEditing = isEditMode && Boolean(editingTransaction);
   const sheetTitleType = editingTransaction?.type ?? type;
   const sheetTitle = isEditMode
@@ -1574,6 +1607,7 @@ export default function AddTransactionScreen() {
 
   const selectNameSuggestion = (name: string) => {
     tapHaptic();
+    setPickedSuggestion(name);
     setLabel(name);
     if (usesContactField) {
       setLinkedContactId(resolveContactIdForName(savedContacts, name));
@@ -1587,6 +1621,15 @@ export default function AddTransactionScreen() {
       applyIncomeContactSelectedFlow(name, isEmployer);
       return;
     }
+    if (type === 'expense') {
+      // Reuse the category from the last time this merchant was logged.
+      const last = merchantLastExpense.get(normalizeMerchantKey(name));
+      if (last?.categoryId && visibleCats.some((cat) => cat.id === last.categoryId)) {
+        setCategoryManuallySelected(true);
+        setCategoryId(last.categoryId);
+      }
+    }
+    labelInputRef.current?.blur();
     scrollToAmountSection();
   };
 
@@ -1967,6 +2010,17 @@ export default function AddTransactionScreen() {
     }
 
     successHaptic();
+    showToast({
+      title: isEditing
+        ? 'Modifications enregistrées'
+        : type === 'income'
+          ? 'Revenu ajouté'
+          : isTransfer
+            ? 'Virement enregistré'
+            : 'Dépense ajoutée',
+      subtitle: [label.trim(), displayAmount].filter(Boolean).join(' · '),
+      icon: type === 'income' ? 'arrow-down' : isTransfer ? 'swap-horizontal' : 'checkmark',
+    });
     router.back();
     } catch {
       setFormFeedback(
@@ -2057,39 +2111,27 @@ export default function AddTransactionScreen() {
               <View ref={scrollContentRef} collapsable={false} style={styles.sheetContentInner}>
               {!routeType && (
                 <View style={styles.section}>
-                  <DashboardSectionLabel style={sectionLabelStyle}>Type</DashboardSectionLabel>
-                  <View style={styles.wrapRow}>
-                    {(['expense', 'income', 'transfer'] as const).map((t) => {
-                      const on = type === t;
-                      return (
-                        <Pressable
-                          key={t}
-                          onPress={() => {
-                            tapHaptic();
-                            setCategoryManuallySelected(false);
-                            if (t !== 'transfer') {
-                              setTransferMode('accounts');
-                              setTransferReason('');
-                            }
-                            if (t !== 'income') {
-                              setIncomeReason('');
-                            }
-                            setLinkedContactId(null);
-                            setIncomeContactPickStatus('none');
-                            setType(t);
-                          }}
-                          style={[styles.chip, themed.control, styles.chipShell, on && themed.selected]}
-                        >
-                          <Text
-                            style={[styles.chipText, singleLineLabelStyle, themed.text, on && themed.selectedText]}
-                            {...chipLabelTextProps()}
-                          >
-                            {t === 'expense' ? 'Dépense' : t === 'income' ? 'Revenu' : 'Virement'}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+                  <SegmentedTabs
+                    tabs={TYPE_TABS}
+                    active={type}
+                    onChange={(t) => {
+                      tapHaptic();
+                      setCategoryManuallySelected(false);
+                      if (t !== 'transfer') {
+                        setTransferMode('accounts');
+                        setTransferReason('');
+                      }
+                      if (t !== 'income') {
+                        setIncomeReason('');
+                      }
+                      setLinkedContactId(null);
+                      setIncomeContactPickStatus('none');
+                      setType(t);
+                    }}
+                    size="section"
+                    variant="section"
+                    showDivider={false}
+                  />
                 </View>
               )}
 
@@ -2117,22 +2159,21 @@ export default function AddTransactionScreen() {
                       accessibilityRole="button"
                       accessibilityLabel="Remplissage auto avec scan de facture"
                       onPress={handleExpenseAutoFillScan}
-                      style={({ pressed }) => [
-                        styles.inlineScanControl,
-                        {
-                          backgroundColor: colors.surfaceElevated,
-                          borderColor: colors.border,
-                        },
-                        pressed && styles.pressed,
-                      ]}
+                      style={({ pressed }) => [styles.inlineScanHit, pressed && styles.pressed]}
                     >
+                      <View
+                        style={[
+                          styles.inlineScanControl,
+                          { backgroundColor: colors.surfaceElevated, borderColor: colors.border },
+                        ]}
+                      >
                       <View style={styles.inlineScanLabel}>
                         <AppIcon family="ionicons" name="scan-outline" size={14} color={colors.textMuted} />
                         <Text style={[styles.inlineScanText, { color: colors.textSecondary }]} numberOfLines={1}>
                           Remplissage auto
                         </Text>
                       </View>
-                      <AppIcon family="ionicons" name="receipt-outline" size={13} color={colors.textMuted} />
+                      </View>
                     </Pressable>
                   ) : null}
                   <DashboardSectionLabel style={sectionLabelStyle}>
@@ -2183,7 +2224,42 @@ export default function AddTransactionScreen() {
                     blurOnSubmit={type === 'income'}
                     onSubmitEditing={type === 'income' ? handleIncomeSourceSubmit : undefined}
                   />
-                  {hasNameSuggestions ? (
+                  {hasNameSuggestions && type === 'expense' && !usesContactField ? (
+                    <View style={styles.merchantChips}>
+                      {merchantSuggestions.map((name) => (
+                        <Pressable
+                          key={name}
+                          accessibilityRole="button"
+                          accessibilityLabel={'Sélectionner ' + name}
+                          onPress={() => selectNameSuggestion(name)}
+                          style={({ pressed }) => [pressed && styles.pressed]}
+                        >
+                          <View
+                            style={[
+                              styles.merchantChip,
+                              { backgroundColor: colors.surfaceElevated, borderColor: colors.border },
+                            ]}
+                          >
+                            <TransactionAvatar
+                              transaction={{
+                                id: 'suggest-' + name,
+                                label: name,
+                                amount: 0,
+                                type: 'expense',
+                                date: new Date().toISOString(),
+                                categoryId: '',
+                                syncStatus: 'synced',
+                              }}
+                              size={20}
+                            />
+                            <Text style={[styles.merchantChipText, { color: colors.text }]} numberOfLines={1}>
+                              {name}
+                            </Text>
+                          </View>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : hasNameSuggestions ? (
                     <View style={styles.suggestionRow}>
                       {(type === 'income' ? contactSuggestions : usesContactField ? contactSuggestions : merchantSuggestions).map((name) => (
                         <Pressable
@@ -2461,14 +2537,7 @@ export default function AddTransactionScreen() {
                 </MotiView>
               </View>
 
-              <DatePickerField
-                label="Date"
-                value={date}
-                placeholder="Choisir une date"
-                variant="sheet"
-                onChangeDate={setDate}
-                labelStyle={sectionLabelStyle}
-              />
+              <QuickDateField value={date} onChange={setDate} labelStyle={sectionLabelStyle} />
 
               {type === 'expense' ? (
                 <View style={styles.section}>
@@ -2681,7 +2750,23 @@ export default function AddTransactionScreen() {
                 </View>
               ) : null}
 
-              {type === 'expense' ? (
+              {type === 'expense' && !articlesOpen && articles.length === 0 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    tapHaptic();
+                    setArticlesOpen(true);
+                  }}
+                  style={({ pressed }) => [styles.articlesHit, pressed && styles.pressed]}
+                >
+                  <View style={styles.articlesLink}>
+                    <AppIcon family="ionicons" name="add-circle-outline" size={18} color={colors.textMuted} />
+                    <Text style={[styles.articlesLinkText, { color: colors.textMuted }]}>Détailler les articles</Text>
+                  </View>
+                </Pressable>
+              ) : null}
+
+              {type === 'expense' && (articlesOpen || articles.length > 0) ? (
                 <TransactionArticlesReceiptCard
                   articles={articles}
                   colors={colors}
@@ -2721,11 +2806,14 @@ export default function AddTransactionScreen() {
                 />
               ) : null}
 
-              <PrimarySaveButton
+
+              <View style={styles.saveInline}>
+                <PrimarySaveButton
                 label={saving ? 'Enregistrement...' : isEditing ? 'Enregistrer les modifications' : 'Enregistrer'}
                 onPress={() => void save()}
                 disabled={saving}
               />
+              </View>
               </View>
               </Animated.ScrollView>
             </GestureDetector>
@@ -2736,7 +2824,118 @@ export default function AddTransactionScreen() {
   );
 }
 
+const TYPE_TABS: { id: 'expense' | 'income' | 'transfer'; label: string }[] = [
+  { id: 'expense', label: 'Dépense' },
+  { id: 'income', label: 'Revenu' },
+  { id: 'transfer', label: 'Virement' },
+];
+
+/** Date in one tap: Aujourd'hui / Hier chips, calendar only for older dates. */
+function QuickDateField({
+  value,
+  onChange,
+  labelStyle,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  labelStyle?: StyleProp<TextStyle>;
+}) {
+  const { colors } = useAppTheme();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const today = getLocalDateInputValue();
+  const yesterdayDate = new Date();
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterday = getLocalDateInputValue(yesterdayDate);
+  const isOther = value !== today && value !== yesterday;
+  const chips = [
+    { id: 'today', label: 'Aujourd’hui', active: value === today, onPress: () => onChange(today) },
+    { id: 'yesterday', label: 'Hier', active: value === yesterday, onPress: () => onChange(yesterday) },
+    {
+      id: 'other',
+      label: isOther && value ? formatFriendlyDateLabel(value) : 'Calendrier',
+      active: isOther,
+      onPress: () => setPickerOpen(true),
+    },
+  ];
+  return (
+    <View style={styles.section}>
+      <Text style={labelStyle}>Date</Text>
+      <View style={styles.dateChips}>
+        {chips.map((chip) => (
+          <Pressable
+            key={chip.id}
+            accessibilityRole="button"
+            accessibilityState={{ selected: chip.active }}
+            onPress={() => {
+              tapHaptic();
+              chip.onPress();
+            }}
+            style={({ pressed }) => [pressed && styles.pressed]}
+          >
+            {/* Row layout on a plain View — Android Pressable does not reliably apply flexDirection. */}
+            <View
+              style={[
+                styles.dateChip,
+                {
+                  backgroundColor: chip.active ? colors.text : colors.surfaceElevated,
+                  borderColor: chip.active ? colors.text : colors.border,
+                },
+              ]}
+            >
+              {chip.id === 'other' ? (
+                <AppIcon
+                  family="ionicons"
+                  name="calendar-outline"
+                  size={14}
+                  color={chip.active ? colors.background : colors.textMuted}
+                />
+              ) : null}
+              <Text
+                style={[styles.dateChipText, { color: chip.active ? colors.background : colors.text }]}
+                numberOfLines={1}
+              >
+                {chip.label}
+              </Text>
+            </View>
+          </Pressable>
+        ))}
+      </View>
+      <MinimalDatePicker
+        visible={pickerOpen}
+        value={value}
+        allowClear={false}
+        onCancel={() => setPickerOpen(false)}
+        onConfirm={(next) => {
+          if (next) onChange(next);
+          setPickerOpen(false);
+        }}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  articlesHit: { alignSelf: 'flex-start' },
+  inlineScanHit: { alignSelf: 'flex-end' },
+  articlesLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+  },
+  articlesLinkText: { ...typographyKit.metaSemibold, fontSize: 13 },
+  dateChips: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  dateChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 38,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  dateChipText: { ...typographyKit.metaSemibold, fontSize: 13 },
   screen: {
     flex: 1,
     backgroundColor: 'transparent',
@@ -2835,6 +3034,41 @@ const styles = StyleSheet.create({
     ...jakartaBoldText,
     fontSize: typography.body,
   },
+  saveInline: { marginTop: spacing.md },
+  saveFooter: {
+    flexShrink: 0,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  merchantChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  merchantChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    height: 34,
+    paddingLeft: 7,
+    paddingRight: 12,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    maxWidth: 220,
+  },
+  merchantChipText: { ...typographyKit.metaSemibold, fontSize: 13, flexShrink: 1 },
+  merchantDropdown: {
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  merchantOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 12,
+    minHeight: 52,
+  },
+  merchantOptionName: { ...typographyKit.metaSemibold, fontSize: 15, flexShrink: 1, flexGrow: 1 },
+  merchantOptionMeta: { ...typographyKit.metaMedium, fontSize: 12, flexShrink: 0, maxWidth: '45%' },
   suggestionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

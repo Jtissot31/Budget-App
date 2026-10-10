@@ -12,13 +12,11 @@ import {
 } from '@/components/FixedScreenHeader';
 import { MonthSelector } from '@/components/MonthSelector';
 import { PageTransition } from '@/components/PageTransition';
-import {
-  ProtoShortcutGrid,
-  type ProtoShortcutItem,
-} from '@/components/proto/ProtoShortcutRow';
+import { EmptyRow, IconWell, ListCard, ListRow, SectionLabel } from '@/components/kit';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionRow } from '@/components/TransactionRow';
-import { OnyxContainer } from '@/components/OnyxContainer';
+import { UserPickedIconWell } from '@/components/UserPickedIconWell';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { CumulativeSpendStepChart } from '@/components/transactions/CumulativeSpendStepChart';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { ONYX_CONTAINER } from '@/constants/planFinanceKit';
@@ -268,30 +266,58 @@ export default function TransactionsInsightsScreen() {
     () =>
       [
         {
-          key: 'categories',
-          label: 'Catégories',
-          icon: 'pie-chart-outline',
-          accessibilityLabel: 'Voir la répartition par catégories',
-          onPress: () => router.push('/budgets'),
-        },
-        {
           key: 'analyze-subscriptions',
-          label: 'Analyser mes abonnements',
+          label: 'Abonnements',
+          subtitle: 'Ce que tu paies chaque mois',
           icon: 'repeat-outline',
           accessibilityLabel: 'Analyser mes abonnements',
           onPress: () => router.push('/subscriptions-insights'),
         },
         {
-          key: 'analyze-spend',
-          label: 'Analyser mes dépenses',
-          icon: 'stats-chart-outline',
-          accessibilityLabel: 'Analyser mes dépenses',
-          // Already on this screen — push keeps deep-link/share parity if the row is reused elsewhere.
-          onPress: () => router.push('/transactions-insights'),
+          key: 'categories',
+          label: 'Budget par catégorie',
+          subtitle: 'Limites et dépassements du mois',
+          icon: 'pie-chart-outline',
+          accessibilityLabel: 'Voir le budget par catégorie',
+          onPress: () => router.push('/budgets'),
         },
-      ] as const satisfies readonly ProtoShortcutItem[],
+      ] as const,
     [router],
   );
+
+  /** Expense totals per category for the displayed period (week / month / year). */
+  const categoryBreakdown = useMemo(() => {
+    const start = snapSpendTrendAnchor(displayAnchor, granularity);
+    const end = shiftSpendTrendAnchor(start, granularity, 1);
+    const byKey = new Map<
+      string,
+      { key: string; name: string; icon: string; color?: string; total: number; count: number }
+    >();
+    let grand = 0;
+    for (const tx of transactions) {
+      if (tx.type !== 'expense') continue;
+      const when = new Date(tx.date);
+      if (when < start || when >= end) continue;
+      const amount = Math.abs(tx.amount);
+      const key = tx.categoryId || tx.categoryName || 'autre';
+      const entry = byKey.get(key) ?? {
+        key,
+        name: tx.categoryName?.trim() || 'Autre',
+        icon: tx.categoryIcon || 'pricetag-outline',
+        color: tx.categoryColor,
+        total: 0,
+        count: 0,
+      };
+      entry.total += amount;
+      entry.count += 1;
+      byKey.set(key, entry);
+      grand += amount;
+    }
+    const rows = [...byKey.values()]
+      .sort((a, b) => b.total - a.total)
+      .map((row) => ({ ...row, share: grand > 0 ? row.total / grand : 0 }));
+    return { rows, grand };
+  }, [displayAnchor, granularity, transactions]);
 
   const fixedPageHeader = isReviewMode ? (
     <View
@@ -324,7 +350,7 @@ export default function TransactionsInsightsScreen() {
       </Text>
     </View>
   ) : (
-    <FixedScreenHeader title="Analyse dépenses" onBack={() => router.back()} />
+    <FixedScreenHeader title="Analyse des dépenses" onBack={() => router.back()} />
   );
 
   const listHeader = isReviewMode ? null : (
@@ -345,7 +371,7 @@ export default function TransactionsInsightsScreen() {
         />
       </View>
       <View style={styles.chartCardSection}>
-        <OnyxContainer style={styles.chartCard}>
+        <ListCard style={styles.chartCard}>
           <CumulativeSpendStepChart
             series={spendSeries}
             comparisonSeries={priorSpendSeries}
@@ -368,10 +394,56 @@ export default function TransactionsInsightsScreen() {
             variant="bare"
             showDivider={false}
           />
-        </OnyxContainer>
+        </ListCard>
       </View>
       <View style={styles.actionSection}>
-        <ProtoShortcutGrid items={actionTiles} />
+        <SectionLabel
+          title={`Par catégorie · ${navLabels.primary}`}
+          actionLabel="Budget"
+          onAction={() => router.push('/budgets')}
+        />
+        <ListCard>
+          {categoryBreakdown.rows.length === 0 ? (
+            <EmptyRow label="Aucune dépense sur cette période" />
+          ) : (
+            categoryBreakdown.rows.map((row, index) => (
+              <ListRow
+                key={row.key}
+                leading={
+                  <UserPickedIconWell
+                    icon={row.icon}
+                    color={row.color}
+                    size={40}
+                  />
+                }
+                title={row.name}
+                subtitle={`${row.count} transaction${row.count > 1 ? 's' : ''}`}
+                value={`−${formatDisplayMoneyAbsolute(row.total)}`}
+                valueSub={`${Math.round(row.share * 100)} %`}
+                progress={row.share}
+                progressColor={colors.primary}
+                isLast={index === categoryBreakdown.rows.length - 1}
+              />
+            ))
+          )}
+        </ListCard>
+      </View>
+      <View style={styles.actionSection}>
+        <SectionLabel title="Aller plus loin" />
+        <ListCard>
+          {actionTiles.map((tile, index) => (
+            <ListRow
+              key={tile.key}
+              leading={<IconWell icon={tile.icon} />}
+              title={tile.label}
+              subtitle={tile.subtitle}
+              chevron
+              isLast={index === actionTiles.length - 1}
+              accessibilityLabel={tile.accessibilityLabel}
+              onPress={tile.onPress}
+            />
+          ))}
+        </ListCard>
       </View>
     </View>
   );

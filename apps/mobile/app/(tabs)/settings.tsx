@@ -10,6 +10,7 @@ import { PageTransition } from '@/components/PageTransition';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { RegionPickerSheet } from '@/components/RegionPickerSheet';
 import { SettingsPickerSheet } from '@/components/SettingsPickerSheet';
+import { PageHeader } from '@/components/kit';
 import { SettingsSection } from '@/components/SettingsSection';
 import {
   SettingsCustomRow,
@@ -25,7 +26,6 @@ import {
   labelForOption,
 } from '@/constants/settingsOptions';
 import { formatRegionLabel } from '@/constants/regions';
-import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   destructiveTextActionStyle,
   FLOATING_NAV_CONTENT_PADDING,
@@ -238,16 +238,13 @@ export default function SettingsScreen() {
           contentContainerStyle={[
             styles.content,
             {
-              paddingTop: insets.top + SCREEN_TOP_GUTTER,
               paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING,
               paddingHorizontal: contentGutter,
             },
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.title} numberOfLines={1}>
-            Réglages
-          </Text>
+          <PageHeader title="Réglages" topInset={insets.top} />
 
           <SettingsSection title="Compte">
             <SettingsNavigationRow
@@ -283,12 +280,11 @@ export default function SettingsScreen() {
             />
           </SettingsSection>
 
-          <SettingsSection title="Apparence">
+          <SettingsSection title="Préférences">
             <SettingsCustomRow
               label="Thème"
               hint="Choisis l’ambiance visuelle de l’application."
               icon="color-palette-outline"
-              isLast
             >
               <SegmentedTabs
                 tabs={themeTabs}
@@ -299,31 +295,20 @@ export default function SettingsScreen() {
                 showDivider={false}
               />
             </SettingsCustomRow>
-          </SettingsSection>
-
-          <SettingsSection title="Région">
             <SettingsNavigationRow
               label="Région"
               hint="Conventions fiscales et régionales."
               icon="earth-outline"
               value={formatRegionLabel(region)}
               onPress={() => setActivePicker('region')}
-              isLast
             />
-          </SettingsSection>
-
-          <SettingsSection title="Monnaie">
             <SettingsNavigationRow
               label="Devise"
               hint="Symbole et format des montants dans l’app."
               icon="cash-outline"
               value={labelForOption(CURRENCY_OPTIONS, currency)}
               onPress={() => setActivePicker('currency')}
-              isLast
             />
-          </SettingsSection>
-
-          <SettingsSection title="Langue">
             <SettingsNavigationRow
               label="Langue"
               hint="Libellés et formats textuels de l’interface."
@@ -398,7 +383,7 @@ export default function SettingsScreen() {
             </SettingsCustomRow>
           </SettingsSection>
 
-          <SettingsSection title="Info">
+          <SettingsSection title="Paies">
             <SettingsNavigationRow
               label="Fréquence des paies"
               hint="Utilisée pour projeter les jours de paie dans l’agenda."

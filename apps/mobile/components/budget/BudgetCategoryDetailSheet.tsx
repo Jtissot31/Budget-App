@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 
 import { BottomSheet } from '@/components/BottomSheet';
@@ -20,11 +20,12 @@ import { ProgressBar } from '@/components/ProgressBar';
 
 import { SurfaceCard } from '@/components/SurfaceCard';
 
-import { TransactionRow } from '@/components/TransactionRow';
 
 import { BudgetCashflowImpactCard } from '@/components/budget/BudgetCashflowImpactCard';
 
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
+import { BudgetCategoryInsights } from '@/components/budget/BudgetCategoryInsights';
+import { ListCard, RingGauge, SummaryCard } from '@/components/kit';
 
 import { SPACING } from '@/constants/design-tokens';
 import {
@@ -43,8 +44,6 @@ import { deleteCategory, getCategories, updateCategoryLimit, updateCategoryName 
 
 import type { BudgetCategoryUiModel } from '@/lib/budgetCategoryModel';
 
-import { formatBudgetMonthLabel } from '@/lib/budgetMonth';
-
 import { getCategoryBudgetInsight } from '@/lib/categoryBudgetInsight';
 import {
   categoryBudgetBarTrackColor,
@@ -55,8 +54,6 @@ import {
 
 import {
   deleteCategoryBudget,
-  getTransactionsForBudgetCategoryInMonth,
-  sortTransactionsNewestFirst,
   upsertCategory,
   upsertCategoryBudget,
 } from '@/lib/db';
@@ -66,7 +63,6 @@ import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { parseFormattedNumber } from '@/lib/formatNumber';
 
 import { successHaptic, tapHaptic } from '@/lib/haptics';
-import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import {
   getPayEstimationSettings,
   toMonthlyAveragePayAmount,
@@ -83,7 +79,6 @@ import {
 
 import { useAppTheme } from '@/lib/themeContext';
 
-import type { Transaction } from '@/types';
 
 type Props = {
   category: BudgetCategoryUiModel | null;
@@ -148,13 +143,10 @@ export function BudgetCategoryDetailSheet({
   displayMonth,
   isCurrentMonth = true,
 }: Props) {
-  const { colors, isLight } = useAppTheme();
+  const { colors } = useAppTheme();
   const limitEditRef = useRef<EditableFieldHandle>(null);
   const [localName, setLocalName] = useState('');
   const [localLimit, setLocalLimit] = useState(0);
-  const [transactionsExpanded, setTransactionsExpanded] = useState(false);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [transactionsLoading, setTransactionsLoading] = useState(false);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [otherCategoriesAllocatedTotal, setOtherCategoriesAllocatedTotal] = useState(0);
@@ -167,9 +159,6 @@ export function BudgetCategoryDetailSheet({
   }, [category?.id, category?.name, category?.limit, visible]);
 
   useEffect(() => {
-    setTransactionsExpanded(false);
-    setTransactions([]);
-    setTransactionsLoading(false);
     setConfirmDeleteVisible(false);
     setDeleting(false);
   }, [category?.id, visible, displayMonth]);
@@ -287,50 +276,6 @@ export function BudgetCategoryDetailSheet({
     [category, localLimit, onSaved],
   );
 
-  const openTransactions = useCallback(() => {
-    tapHaptic();
-    setTransactionsExpanded((prev) => !prev);
-  }, []);
-
-  useEffect(() => {
-    if (!transactionsExpanded || !category) return;
-
-    let cancelled = false;
-    setTransactionsLoading(true);
-
-    void getTransactionsForBudgetCategoryInMonth(category.id, displayMonth)
-      .then((rows) => {
-        if (!cancelled) {
-          setTransactions(sortTransactionsNewestFirst(rows));
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setTransactionsLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [transactionsExpanded, category?.id, displayMonth]);
-
-  const emptyTransactionsLabel = useMemo(
-    () =>
-      isCurrentMonth
-        ? 'Aucune transaction ce mois-ci'
-        : `Aucune transaction en ${formatBudgetMonthLabel(displayMonth).toLowerCase()}`,
-    [displayMonth, isCurrentMonth],
-  );
-
-  const handlePressTransaction = useCallback(
-    (transactionId: string) => {
-      tapHaptic();
-      openTransactionDetail(transactionId);
-    },
-    [],
-  );
-
   const handlePressEdit = useCallback(() => {
     tapHaptic();
     limitEditRef.current?.startEditing();
@@ -422,55 +367,36 @@ export function BudgetCategoryDetailSheet({
         </View>
       }
     >
-      <View style={[accountDetailHeroBlockStyle(), styles.heroBlock]}>
-        <View style={styles.heroAmountRow}>
-          <Text style={[detailHeroAmount, styles.heroSpent, { color: colors.text }]}>
-            {formatDisplayMoneyAbsolute(category.spent)}
-          </Text>
-          <Text style={[detailHeroSecondaryAmount, { color: colors.textMuted }]}>
-            {' / '}
-            {formatDisplayMoneyAbsolute(localLimit)}
-          </Text>
-        </View>
-
-        {showStatusTag ? (
-          <View style={[styles.statusPill, { backgroundColor: pillBackground(barColor) }]}>
-            <Text style={[styles.statusPillText, jakartaMediumText, { color: barColor }]} numberOfLines={1}>
-              {statusText}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-
-      {insight ? <TransactionInsightCard insight={insight} /> : null}
-
-      {usage ? (
-        <SurfaceCard style={styles.budgetCard} padding={spacing.lg}>
-          <Text style={[detailSectionLabelStyle(), styles.budgetEyebrow, { color: colors.textMuted }]}>
-            BUDGET
-          </Text>
-          <ProgressBar
-            progress={usage.progress}
-            color={barColor}
-            height={6}
-            trackColor={barTrackColor}
-          />
-          <View style={[styles.budgetRows, { borderTopColor: colors.border }]}>
-            <View
-              style={[
-                detailSingleLineRowStyle(),
-                budgetDetailRows.length > 0 && {
-                  borderBottomWidth: StyleSheet.hairlineWidth,
-                  borderBottomColor: colors.border,
-                },
-              ]}
-            >
-              <AppIcon family="ionicons" name="wallet-outline" size={17} color={colors.textMuted} style={styles.rowIcon} />
-              <View style={detailRowLabelSlot}>
-                <Text style={[styles.rowLabel, detailRowLabelText, { color: colors.textMuted }]}>
-                  Limite mensuelle
-                </Text>
-              </View>
+      {(() => {
+        const left = localLimit - category.spent;
+        const over = left < 0;
+        const ratio = localLimit > 0 ? category.spent / localLimit : over ? 1 : 0;
+        const now = new Date();
+        const daysLeft = isCurrentMonth
+          ? new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1
+          : 0;
+        return (
+          <SummaryCard
+            label={over ? 'Au-dessus du budget' : 'Il te reste'}
+            amount={`${over ? '−' : ''}${formatDisplayMoneyAbsolute(Math.abs(left))}`}
+            amountValue={left}
+            formatAmount={(value) => `${value < 0 ? '−' : ''}${formatDisplayMoneyAbsolute(Math.abs(value))}`}
+            amountColor={over ? colors.danger : colors.text}
+            badge={showStatusTag && statusText ? { label: statusText, color: over ? colors.danger : colors.textMuted } : undefined}
+            aside={
+              <RingGauge progress={ratio} color={over ? colors.danger : colors.text} size={72} stroke={7}>
+                <Text style={[styles.ringPct, { color: colors.text }]}>{Math.round(ratio * 100)}%</Text>
+              </RingGauge>
+            }
+            stats={[
+              { label: 'Dépensé', value: formatDisplayMoneyAbsolute(category.spent) },
+              isCurrentMonth && !over && daysLeft > 0
+                ? { label: 'Par jour', value: formatDisplayMoneyAbsolute(left / daysLeft) }
+                : { label: 'Jours', value: isCurrentMonth ? String(daysLeft) : '—' },
+            ]}
+          >
+            <View style={styles.limitInline}>
+              <Text style={[styles.limitLabel, { color: colors.textMuted }]} numberOfLines={1}>Limite mensuelle</Text>
               <EditableField
                 editHandleRef={limitEditRef}
                 type="money"
@@ -482,18 +408,12 @@ export function BudgetCategoryDetailSheet({
                 align="right"
               />
             </View>
+          </SummaryCard>
+        );
+      })()}
 
-            {budgetDetailRows.map((row, rowIndex) => (
-              <DetailSingleLineRow
-                key={row.label}
-                row={row}
-                colors={colors}
-                isLast={rowIndex === budgetDetailRows.length - 1}
-              />
-            ))}
-          </View>
-        </SurfaceCard>
-      ) : null}
+      {insight ? <TransactionInsightCard insight={insight} /> : null}
+
 
       <BudgetCashflowImpactCard
         mode="edit"
@@ -502,79 +422,14 @@ export function BudgetCategoryDetailSheet({
         monthlyIncome={monthlyIncome}
       />
 
-      <View style={styles.transactionsSection}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ expanded: transactionsExpanded }}
-          accessibilityLabel="Voir les transactions"
-          onPress={openTransactions}
-          style={({ pressed }) => [
-            styles.ctaRow,
-            transactionsExpanded && styles.ctaRowExpanded,
-            {
-              backgroundColor: isLight ? colors.surfaceElevated : colors.input,
-              borderColor: colors.border,
-            },
-            pressed && styles.pressed,
-          ]}
-        >
-          <View style={styles.ctaRowInner}>
-            <View style={[styles.ctaIconWell, { backgroundColor: colors.surfaceSolid }]}>
-              <AppIcon family="ionicons" name="list-outline" size={18} color={colors.text} />
-            </View>
-            <Text style={[styles.ctaLabel, { color: colors.text }]} numberOfLines={1}>
-              Voir les transactions
-            </Text>
-            <AppIcon family="ionicons" 
-              name="chevron-forward"
-              size={16}
-              color={colors.textMuted}
-              style={transactionsExpanded ? styles.ctaChevronExpanded : undefined}
-            />
-          </View>
-        </Pressable>
-
-        {transactionsExpanded ? (
-          <View
-            style={[
-              styles.transactionsPanel,
-              {
-                backgroundColor: isLight ? colors.surfaceElevated : colors.input,
-                borderColor: colors.border,
-              },
-            ]}
-          >
-            {transactionsLoading ? (
-              <View style={styles.transactionsLoading}>
-                <ActivityIndicator size="small" color={colors.textMuted} />
-                <Text style={[styles.transactionsLoadingText, { color: colors.textMuted }]}>
-                  Chargement...
-                </Text>
-              </View>
-            ) : transactions.length === 0 ? (
-              <Text style={[styles.transactionsEmpty, { color: colors.textMuted }]}>
-                {emptyTransactionsLabel}
-              </Text>
-            ) : (
-              <ScrollView
-                style={styles.transactionsScroll}
-                contentContainerStyle={styles.transactionsList}
-                nestedScrollEnabled
-                showsVerticalScrollIndicator={false}
-              >
-                {transactions.map((tx) => (
-                  <TransactionRow
-                    key={tx.id}
-                    transaction={tx}
-                    embedded
-                    onPressId={handlePressTransaction}
-                  />
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        ) : null}
-      </View>
+      <BudgetCategoryInsights
+        categoryId={category.id}
+        categoryName={localName || category.name}
+        displayMonth={displayMonth}
+        isCurrentMonth={isCurrentMonth}
+        limit={localLimit}
+        spent={category.spent}
+      />
     </BottomSheet>
 
     <ConfirmDeleteModal
@@ -589,6 +444,17 @@ export function BudgetCategoryDetailSheet({
 }
 
 const styles = StyleSheet.create({
+  ringPct: { ...jakartaMediumText, fontSize: 15, fontWeight: "normal" },
+  // Fixed height + clip: some EditableField internals stretch vertically on Android.
+  limitInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    height: 44,
+    overflow: 'hidden',
+  },
+  limitLabel: { ...jakartaMediumText, fontSize: 14, flexShrink: 1 },
   sheet: {
     borderTopLeftRadius: DETAIL_SHEET_TOP_RADIUS,
     borderTopRightRadius: DETAIL_SHEET_TOP_RADIUS,

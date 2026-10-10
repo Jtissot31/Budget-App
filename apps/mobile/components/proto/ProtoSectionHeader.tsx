@@ -2,10 +2,9 @@
  * Shared Budget Proto section chrome — eyebrow + trailing action(s).
  */
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { AppIcon } from '@/components/icons/AppIcon';
+import { StyleSheet, Text, View } from 'react-native';
 import { typographyKit } from '@/constants/theme';
-import { tapHaptic } from '@/lib/haptics';
+import { PillButton } from '@/components/kit/PillButton';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
@@ -55,19 +54,12 @@ export function ProtoSectionHeader({
           {trailing}
         </View>
       ) : actionLabel && onAction ? (
-        <Pressable
-          accessibilityRole="button"
+        <PillButton
+          label={actionLabel}
           accessibilityLabel={actionAccessibilityLabel ?? actionLabel}
-          hitSlop={8}
-          onPress={() => {
-            tapHaptic();
-            onAction();
-          }}
-          style={({ pressed }) => [styles.action, pressed && { opacity: 0.7 }]}
-        >
-          <Text style={[styles.actionText, { color: colors.textMuted }]}>{actionLabel}</Text>
-          <AppIcon family="ionicons" name="chevron-forward" size={13} color={colors.textMuted} />
-        </Pressable>
+          icon={/^(ajouter|nouveau|créer)/i.test(actionLabel) ? 'add' : 'chevron-forward'}
+          onPress={onAction}
+        />
       ) : null}
     </View>
   );

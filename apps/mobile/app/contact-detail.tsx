@@ -15,7 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PremiumSwitch } from '@/components/PremiumSwitch';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
-import { TransactionRow } from '@/components/TransactionRow';
+import { TransactionDayGroup } from '@/components/transactions/TransactionDayGroups';
 import { PageTransition } from '@/components/PageTransition';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
@@ -565,22 +565,7 @@ export default function ContactDetailScreen() {
 
             {groupedTransactions.length > 0 ? (
               groupedTransactions.map(([date, txs]) => (
-                <View key={date} style={styles.transactionGroup}>
-                  <View style={styles.groupHeaderRow}>
-                    <Text style={[styles.transactionGroupLabel, { color: colors.textMuted }]}>
-                      {formatTransactionGroupDateLabel(date)}
-                    </Text>
-                  </View>
-                  <View style={styles.groupTransactions}>
-                    {txs.map((tx) => (
-                      <TransactionRow
-                        key={tx.id}
-                        transaction={{ ...tx, label: getTransactionTitle(tx, contactName) }}
-                        onPress={() => { tapHaptic(); openTransactionDetail(tx.id); }}
-                      />
-                    ))}
-                  </View>
-                </View>
+                <TransactionDayGroup key={date} date={date} txs={txs.map((tx) => ({ ...tx, label: getTransactionTitle(tx, contactName) }))} />
               ))
             ) : (
               <Text style={[styles.emptyInline, { color: colors.textMuted }]}>

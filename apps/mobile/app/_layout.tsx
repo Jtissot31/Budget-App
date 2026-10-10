@@ -30,6 +30,7 @@ import { ThemeProvider, useAppTheme } from '@/lib/themeContext';
 import { configureSystemTypographyDefaults, configureTypographyDefaults } from '@/lib/typographyDefaults';
 import { fontFamilies } from '@/constants/theme';
 import { cn } from '@/lib/utils';
+import { ToastHost } from '@/components/kit/Toast';
 
 export const unstable_settings = {
   initialRouteName: '(tabs)',
@@ -212,6 +213,7 @@ function RootLayoutContent() {
             <Stack.Screen name="alert-types" options={{ headerShown: false }} />
           </Stack>
           </SwipeBackHost>
+          <ToastHost />
         </View>
       </View>
     </>

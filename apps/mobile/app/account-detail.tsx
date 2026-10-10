@@ -24,14 +24,14 @@ import {
   formSheetScrollViewStyle,
   useFormSheetHeight,
 } from '@/lib/sheet/formSheetScroll';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { OnyxContainer } from '@/components/OnyxContainer';
 import { ProtoSectionHeader } from '@/components/proto/ProtoSectionHeader';
-import { AccountDetailHeroCard } from '@/components/wallet/AccountCardPrototypes';
+import { AccountDetailSummaryCard } from '@/components/wallet/AccountCardPrototypes';
+import { AnimatedBar, AreaSparkline, EmptyRow, IconWell, ListCard, ListRow, SectionLabel } from '@/components/kit';
 import { IconPickerSheet } from '@/components/IconPickerSheet';
 import { MdiIcon } from '@/components/MdiIcon';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
@@ -49,7 +49,7 @@ import { LogoIconFrame } from '@/components/IconFrame';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { getMerchantLogoUrl } from '@/lib/merchantLogo';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
-import { TransactionRow } from '@/components/TransactionRow';
+import { TransactionDayGroups } from '@/components/transactions/TransactionDayGroups';
 import {
   frequencyLabel,
   manualAccountOptions,
@@ -61,8 +61,6 @@ import {
 } from '@/lib/recurringPaymentsForm';
 import {
   ONYX_CONTAINER,
-  onyxContainerPressedStyle,
-  onyxContainerRowLayoutStyle,
 } from '@/constants/planFinanceKit';
 import {
   colors,
@@ -98,7 +96,6 @@ import {
 import { ensureCategoryInPickerList, loadRecurringPickerCategories } from '@/lib/budgetCategories';
 import { dataEvents } from '@/lib/events';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
-import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import {
   getAccountLogoAsset,
   getAccountLogoUrl,
@@ -115,13 +112,11 @@ import {
   buildLoanByRecurringPaymentId,
   resolveRecurringPaymentDisplayIconById,
 } from '@/lib/recurringPaymentPresentation';
-import { TransactionAmountLabel, recurringPaymentAmountDirection } from '@/components/TransactionAmountLabel';
-import { formatDisplayMoneyAbsolute, formatRecurringPaymentAmount } from '@/lib/formatDisplayMoney';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { parseFormattedNumber, sanitizeNumericInput } from '@/lib/formatNumber';
 import { UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import {
   filterTransactionsByType,
-  formatTransactionGroupDateLabel,
   groupTransactionsByDay,
   HISTORY_FILTER_OPTIONS,
   type HistoryTypeFilter,
@@ -141,8 +136,6 @@ function accountEditFormTitle(kind: AccountKind) {
 }
 
 const SUBSCRIPTION_CATEGORY_PATTERN = /abonnement|subscription|loisir|divertissement|streaming/;
-const RECURRING_ICON_SIZE = 40;
-const RECURRING_TRIGGER_ICON_SIZE = 17;
 
 function recurringPaymentTypeLabel(payment: RecurringPayment) {
   if ((payment.kind ?? 'payment') === 'income') return 'Revenu récurrent';
@@ -200,142 +193,6 @@ function recurringPaymentDefinitionMeta(payment: RecurringPayment, from: Date) {
   const next = payment.active ? nextRecurringOccurrence(payment, from) : null;
   if (next) parts.push(formatRecurringNextDate(next));
   return parts.join(' · ');
-}
-
-function DetailRow({
-  label,
-  value,
-  valueColor,
-  isLast,
-}: {
-  label: string;
-  value: string;
-  valueColor?: string;
-  isLast?: boolean;
-}) {
-  const { colors } = useAppTheme();
-
-  return (
-    <View style={[styles.detailRow, !isLast && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
-      <Text style={[styles.detailLabel, { color: colors.textMuted }]}>{label}</Text>
-      <Text style={[styles.detailValue, { color: valueColor ?? colors.text }]} numberOfLines={1}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-function FlowStatColumn({
-  label,
-  value,
-  valueColor,
-  align = 'left',
-}: {
-  label: string;
-  value: string;
-  valueColor?: string;
-  align?: 'left' | 'right';
-}) {
-  const { colors } = useAppTheme();
-  const textAlign = align === 'right' ? 'right' : 'left';
-
-  return (
-    <View style={[styles.flowCol, align === 'right' && styles.flowColEnd]}>
-      <Text
-        style={[
-          moneyAmountTypography({ tier: 'card', textAlign }),
-          { color: valueColor ?? colors.text },
-        ]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.7}
-      >
-        {value}
-      </Text>
-      <Text
-        style={[typographyKit.microUpper, { color: colors.textMuted, textAlign }]}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-    </View>
-  );
-}
-
-function CheckingMonthlyStatsRow({
-  revenues,
-  expenses,
-}: {
-  revenues: number;
-  expenses: number;
-}) {
-  const { colors } = useAppTheme();
-
-  return (
-    <OnyxContainer style={styles.flowCard}>
-      <FlowStatColumn
-        label="Revenu"
-        value={`+${formatMoney(revenues)}`}
-        valueColor={colors.success}
-      />
-      <View style={[styles.flowRule, { backgroundColor: colors.borderSubtle }]} />
-      <FlowStatColumn
-        label="Dépense"
-        value={`−${formatMoney(expenses)}`}
-        align="right"
-      />
-    </OnyxContainer>
-  );
-}
-
-function StatementStatsRow({
-  stats,
-}: {
-  stats: Array<{ label: string; value: string; valueColor?: string }>;
-}) {
-  const { colors } = useAppTheme();
-
-  return (
-    <OnyxContainer style={styles.flowCard}>
-      {stats.flatMap((stat, index) => {
-        const column = (
-          <FlowStatColumn
-            key={stat.label}
-            label={stat.label}
-            value={stat.value}
-            valueColor={stat.valueColor}
-            align={index === stats.length - 1 ? 'right' : 'left'}
-          />
-        );
-        if (index === 0) return [column];
-        return [
-          <View
-            key={`rule-${stat.label}`}
-            style={[styles.flowRule, { backgroundColor: colors.borderSubtle }]}
-          />,
-          column,
-        ];
-      })}
-    </OnyxContainer>
-  );
-}
-
-function RecurringChevron({ expanded, color }: { expanded: boolean; color: string }) {
-  const rotation = useSharedValue(expanded ? 1 : 0);
-
-  useEffect(() => {
-    rotation.value = withTiming(expanded ? 1 : 0, { duration: 220 });
-  }, [expanded, rotation]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value * 180}deg` }],
-  }));
-
-  return (
-    <Animated.View style={animatedStyle}>
-      <AppIcon family="ionicons" name="chevron-down" size={16} color={color} />
-    </Animated.View>
-  );
 }
 
 export default function AccountDetailScreen() {
@@ -445,8 +302,38 @@ export default function AccountDetailScreen() {
     if (!account) return [];
     return recurringPayments
       .filter((payment) => payment.accountId === account.id)
-      .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+      .sort((a, b) => (a.nextDate ?? '9999').localeCompare(b.nextDate ?? '9999'));
   }, [account, recurringPayments]);
+  /** Daily end-of-day balance for the last 30 days, rebuilt backwards from today's balance. */
+  const balanceSeries = useMemo(() => {
+    if (!account) return [] as number[];
+    const days = 30;
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    const values: number[] = [];
+    let running = account.balance;
+    let txIndex = 0;
+    const txs = accountTransactions; // newest first
+    for (let d = 0; d < days; d++) {
+      const dayEnd = new Date(end);
+      dayEnd.setDate(end.getDate() - d);
+      // Undo transactions that happened after this day's end.
+      while (txIndex < txs.length && new Date(txs[txIndex]!.date) > dayEnd) {
+        const tx = txs[txIndex]!;
+        if (tx.type === 'income') running -= Math.abs(tx.amount);
+        else if (tx.type === 'expense') running += Math.abs(tx.amount);
+        txIndex += 1;
+      }
+      values.push(running);
+    }
+    return values.reverse();
+  }, [account, accountTransactions]);
+  const visibleRecurringPayments = showRecurringPayments
+    ? accountRecurringPayments
+    : accountRecurringPayments.slice(0, 3);
+  const balanceChange =
+    balanceSeries.length > 1 ? balanceSeries[balanceSeries.length - 1]! - balanceSeries[0]! : null;
+
   const monthlyTransactionStats = useMemo(() => {
     if (!account || (account.kind !== 'checking' && account.kind !== 'credit' && account.kind !== 'cash')) return null;
     const now = new Date();
@@ -672,145 +559,125 @@ export default function AccountDetailScreen() {
       >
         {account ? (
           <>
-            <AccountDetailHeroCard account={account} />
-
-            {monthlyTransactionStats ? (
-              <CheckingMonthlyStatsRow
-                revenues={monthlyTransactionStats.revenues}
-                expenses={monthlyTransactionStats.expenses}
-              />
-            ) : null}
+            <AccountDetailSummaryCard
+              account={account}
+              badge={
+                balanceChange != null && Math.abs(balanceChange) >= 0.01
+                  ? {
+                      label: `${balanceChange >= 0 ? '+' : '−'}${formatMoney(Math.abs(balanceChange))} · 30 j`,
+                      color: balanceChange >= 0 ? colors.accentGreen : colors.danger,
+                    }
+                  : undefined
+              }
+            >
+              {balanceSeries.length > 1 ? (
+                <AreaSparkline
+                  data={balanceSeries}
+                  color={(balanceChange ?? 0) >= 0 ? colors.accentGreen : colors.danger}
+                  height={52}
+                />
+              ) : null}
+              {monthlyTransactionStats &&
+              (monthlyTransactionStats.revenues > 0 || monthlyTransactionStats.expenses > 0) ? (
+                <View style={styles.flowBars}>
+                  {[
+                    { key: 'in', label: 'Entrées', value: monthlyTransactionStats.revenues, color: colors.accentGreen, sign: '+' },
+                    { key: 'out', label: 'Sorties', value: monthlyTransactionStats.expenses, color: colors.text, sign: '−' },
+                  ].map((row) => {
+                    const max = Math.max(monthlyTransactionStats.revenues, monthlyTransactionStats.expenses, 1);
+                    return (
+                      <View key={row.key} style={styles.flowRow}>
+                        <Text style={[styles.flowLabel, { color: colors.textMuted }]}>{row.label}</Text>
+                        <View style={styles.flowTrackWrap}>
+                          <AnimatedBar
+                            progress={row.value / max}
+                            color={row.color}
+                            trackColor={colors.borderSubtle}
+                            height={8}
+                          />
+                        </View>
+                        <Text style={[styles.flowValue, { color: row.key === 'in' ? colors.accentGreen : colors.text }]}>
+                          {row.sign}
+                          {formatMoney(row.value)}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                  <Text style={[styles.flowCaption, { color: colors.textMuted }]}>Ce mois-ci</Text>
+                </View>
+              ) : null}
+            </AccountDetailSummaryCard>
 
             {account.kind === 'savings' && linkedSavingsGoal ? (
-              <StatementStatsRow
-                stats={[
-                  { label: 'Épargné', value: formatMoney(linkedSavingsGoal.currentAmount) },
-                  { label: 'Objectif', value: formatMoney(linkedSavingsGoal.targetAmount) },
-                  {
-                    label: 'Atteint',
-                    value: `${Math.round(
+              <View>
+                <SectionLabel title="Objectif lié" />
+                <ListCard>
+                  <ListRow
+                    leading={<IconWell icon="flag-outline" />}
+                    title={linkedSavingsGoal.name}
+                    subtitle={`${formatMoney(linkedSavingsGoal.currentAmount)} sur ${formatMoney(linkedSavingsGoal.targetAmount)}`}
+                    value={`${Math.round(
                       linkedSavingsGoal.targetAmount > 0
                         ? (linkedSavingsGoal.currentAmount / linkedSavingsGoal.targetAmount) * 100
                         : 0,
-                    )} %`,
-                    valueColor: colors.primary,
-                  },
-                ]}
-              />
+                    )} %`}
+                    valueColor={colors.accentGreen}
+                    progress={
+                      linkedSavingsGoal.targetAmount > 0
+                        ? linkedSavingsGoal.currentAmount / linkedSavingsGoal.targetAmount
+                        : 0
+                    }
+                    isLast
+                    onPress={() =>
+                      router.push({ pathname: '/goal-detail', params: { goalId: linkedSavingsGoal.id } })
+                    }
+                  />
+                </ListCard>
+              </View>
             ) : null}
 
-            <View style={styles.recurringSection}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Paiements récurrents liés à ce compte"
-                accessibilityHint="Affiche ou masque la liste des paiements récurrents"
-                accessibilityState={{ expanded: showRecurringPayments }}
-                android_ripple={null}
-                onPress={() => {
-                  tapHaptic();
-                  setShowRecurringPayments((visible) => !visible);
-                }}
-                style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
-              >
-                <OnyxContainer style={onyxContainerRowLayoutStyle()}>
-                  <View style={styles.recurringTriggerCopy}>
-                    <View style={styles.recurringTriggerTitleRow}>
-                      <AppIcon
-                        family="ionicons"
-                        name="calendar-outline"
-                        size={RECURRING_TRIGGER_ICON_SIZE}
-                        color={colors.textSecondary}
-                      />
-                      <Text style={[typographyKit.eyebrow, { color: colors.textMuted }]}>
-                        Paiements récurrents
-                      </Text>
-                    </View>
-                    {!showRecurringPayments ? (
-                      <Text style={[styles.recurringTriggerHint, { color: colors.textMuted }]} numberOfLines={1}>
-                        {accountRecurringPayments.length > 0
-                          ? `${accountRecurringPayments.length} lié${accountRecurringPayments.length > 1 ? 's' : ''} à ce compte`
-                          : 'Aucun paiement lié'}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <View style={styles.recurringTriggerMeta}>
-                    <Text style={[styles.recurringTriggerCount, { color: colors.textMuted }]}>
-                      {accountRecurringPayments.length}
-                    </Text>
-                    <RecurringChevron expanded={showRecurringPayments} color={colors.textMuted} />
-                  </View>
-                </OnyxContainer>
-              </Pressable>
-
-              {showRecurringPayments ? (
-                accountRecurringPayments.length > 0 ? (
-                  accountRecurringPayments.map((payment) => (
-                    <Pressable
+            <View>
+              <SectionLabel
+                title="Prochains prélèvements"
+                actionLabel={
+                  accountRecurringPayments.length > 3
+                    ? showRecurringPayments
+                      ? 'Réduire'
+                      : `Tout voir (${accountRecurringPayments.length})`
+                    : undefined
+                }
+                onAction={() => setShowRecurringPayments((visible) => !visible)}
+              />
+              {accountRecurringPayments.length === 0 ? (
+                <ListCard>
+                  <EmptyRow label="Aucun paiement récurrent lié à ce compte" />
+                </ListCard>
+              ) : (
+                <ListCard>
+                  {visibleRecurringPayments.map((payment, index) => (
+                    <ListRow
                       key={payment.id}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Modifier ${payment.name}`}
-                      android_ripple={null}
-                      onPress={() => void openEditRecurringPayment(payment)}
-                      style={({ pressed }) => [pressed && onyxContainerPressedStyle()]}
-                    >
-                      <OnyxContainer style={onyxContainerRowLayoutStyle()}>
+                      leading={
                         <UserPickedIconWell
                           icon={resolveRecurringPaymentDisplayIconById(payment, loanByRecurringPaymentId)}
                           color={payment.color}
-                          size={RECURRING_ICON_SIZE}
+                          size={40}
                           wellGlyphWhite
                           logoUrl={payment.logoUrl?.trim() || getMerchantLogoUrl(payment.name) || null}
                         />
-                        <View style={styles.recurringPaymentCopy}>
-                          <Text style={[typographyKit.listPrimary, { color: colors.text }]} numberOfLines={1}>
-                            {payment.name}
-                          </Text>
-                          <Text style={[typographyKit.microMedium, { color: colors.textMuted }]} numberOfLines={1}>
-                            {recurringPaymentDefinitionMeta(payment, today)}
-                          </Text>
-                        </View>
-                        <TransactionAmountLabel
-                          amount={formatRecurringPaymentAmount(payment.amount, payment.kind ?? 'payment')}
-                          direction={recurringPaymentAmountDirection(payment.kind ?? 'payment')}
-                          color={payment.kind === 'income' ? colors.success : colors.text}
-                          textStyle={styles.recurringPaymentAmount}
-                        />
-                      </OnyxContainer>
-                    </Pressable>
-                  ))
-                ) : (
-                  <OnyxContainer style={styles.emptyCard}>
-                    <Text style={[styles.recurringPanelEmpty, { color: colors.textMuted }]}>
-                      Aucun paiement récurrent pour ce compte.
-                    </Text>
-                  </OnyxContainer>
-                )
-              ) : null}
-            </View>
-
-            {account.kind === 'savings' && linkedSavingsGoal ? (
-              <OnyxContainer style={styles.savingsCard}>
-                <DetailRow label="Objectif" value={linkedSavingsGoal.name} isLast />
-                <View style={styles.savingsProgressBlock}>
-                  <View style={[styles.savingsProgressTrack, { backgroundColor: colors.border }]}>
-                    <View
-                      style={[
-                        styles.savingsProgressFill,
-                        {
-                          backgroundColor: colors.primary,
-                          width: `${Math.min(
-                            100,
-                            linkedSavingsGoal.targetAmount > 0
-                              ? (linkedSavingsGoal.currentAmount / linkedSavingsGoal.targetAmount) * 100
-                              : 0,
-                          )}%`,
-                        },
-                      ]}
+                      }
+                      title={payment.name}
+                      subtitle={recurringPaymentDefinitionMeta(payment, today)}
+                      value={`${payment.kind === 'income' ? '+' : '−'}${formatMoney(Math.abs(payment.amount))}`}
+                      valueColor={payment.kind === 'income' ? colors.accentGreen : colors.text}
+                      isLast={index === visibleRecurringPayments.length - 1}
+                      accessibilityLabel={`Modifier ${payment.name}`}
+                      onPress={() => void openEditRecurringPayment(payment)}
                     />
-                  </View>
-                </View>
-              </OnyxContainer>
-            ) : null}
+                  ))}
+                </ListCard>
+              )}
+            </View>
 
             <View style={styles.transactionList}>
               {searchExpanded ? (
@@ -924,25 +791,10 @@ export default function AccountDetailScreen() {
               ) : null}
 
               {groupedAccountTransactions.length > 0 ? (
-                groupedAccountTransactions.map(([date, txs]) => (
-                  <View key={date} style={styles.transactionGroup}>
-                    <View style={styles.groupHeaderRow}>
-                      <Text style={[styles.transactionGroupLabel, { color: colors.textMuted }]}>
-                        {formatTransactionGroupDateLabel(date)}
-                      </Text>
-                    </View>
-                    <View style={styles.groupTransactions}>
-                      {txs.map((tx) => (
-                        <TransactionRow
-                          key={tx.id}
-                          transaction={tx}
-                          accounts={accounts}
-                          onPress={() => { tapHaptic(); openTransactionDetail(tx.id); }}
-                        />
-                      ))}
-                    </View>
-                  </View>
-                ))
+                <TransactionDayGroups
+                  transactions={filteredAccountTransactions}
+                  accounts={accounts}
+                />
               ) : (
                 <OnyxContainer style={styles.emptyCard}>
                   <Text style={[styles.emptyInline, { color: colors.textMuted }]}>
@@ -1385,6 +1237,12 @@ function escapeRegExp(value: string) {
 }
 
 const styles = StyleSheet.create({
+  flowBars: { gap: 8 },
+  flowRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  flowLabel: { ...typographyKit.metaMedium, fontSize: 12, width: 54 },
+  flowTrackWrap: { flex: 1 },
+  flowValue: { ...typographyKit.metaSemibold, fontSize: 13, minWidth: 82, textAlign: 'right' },
+  flowCaption: { ...typographyKit.metaMedium, fontSize: 11 },
   screen: { flex: 1, backgroundColor: 'transparent' },
   backButton: {
     width: 38,
