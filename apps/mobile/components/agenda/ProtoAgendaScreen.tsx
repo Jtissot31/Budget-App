@@ -188,6 +188,7 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
   const [deletingSelected, setDeletingSelected] = useState(false);
   const [addTypeChooserVisible, setAddTypeChooserVisible] = useState(false);
   const [paidExpanded, setPaidExpanded] = useState(false);
+  const [calendarWidth, setCalendarWidth] = useState(0);
 
   const openAddFormForVariant = useCallback(
     (variant: RecurringPaymentAddVariant) => {
@@ -309,6 +310,24 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
     while (cells.length % 7 !== 0) cells.push(null);
     return cells;
   }, [daysInMonth, month0, year]);
+
+  /** Whole-pixel cell size so 7 columns always fit (no wrap → Sunday never drops). */
+  const cellSize = calendarWidth > 0 ? Math.floor(calendarWidth / 7) : 0;
+
+  /** Per-day payment status for the calendar dots. */
+  const dayStatus = useMemo(() => {
+    const map = new Map<string, { unpaid: boolean; income: boolean }>();
+    for (const entry of timeline) {
+      let unpaid = false;
+      let income = false;
+      for (const { bill, paid } of entry.billsPaid) {
+        if ((bill.kind ?? 'payment') === 'income') income = true;
+        else if (!paid) unpaid = true;
+      }
+      map.set(entry.dateKey, { unpaid, income });
+    }
+    return map;
+  }, [timeline]);
 
   const shiftMonth = useCallback(
     (delta: number) => {
@@ -564,75 +583,92 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
           {bodyMode === 'calendar' ? (
             <View style={styles.section}>
               <ListCard padding={12}>
-                <View style={styles.dowRow}>
-                  {DOW.map((d, i) => (
-                    <Text key={`${d}-${i}`} style={[styles.dow, { color: colors.textMuted }]}>
-                      {d}
-                    </Text>
-                  ))}
-                </View>
-                <View style={styles.grid}>
-                  {calendarCells.map((day, index) => {
-                    if (day == null) return <View key={`e-${index}`} style={styles.cell} />;
-                    const key = dateKeyFromParts(year, month0, day);
-                    const bills = billsByDate[key] ?? [];
-                    const out = bills.reduce(
-                      (sum, bill) => sum + ((bill.kind ?? 'payment') === 'income' ? 0 : Math.abs(bill.amount)),
-                      0,
-                    );
-                    const hasIncome = bills.some((bill) => (bill.kind ?? 'payment') === 'income');
-                    const selected = safeSelectedDay === day;
-                    const isToday = key === todayKey;
-                    const isPast = key < todayKey;
-                    return (
-                      <Pressable
-                        key={key}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                        accessibilityLabel={`${day}${isToday ? ', aujourd’hui' : ''}${out > 0 ? `, ${formatDisplayMoneyAbsolute(out)} à payer` : ''}`}
-                        onPress={() => {
-                          tapHaptic();
-                          setSelectedDay((prev) => (prev === day ? null : day));
-                        }}
-                        style={styles.cell}
-                      >
-                        <View
-                          style={[
-                            styles.dayInner,
-                            bills.length > 0 && { backgroundColor: colors.surfaceElevated },
-                            selected && { borderColor: colors.text, borderWidth: 1.5 },
-                          ]}
-                        >
-                          <View style={[styles.dayNumWrap, isToday && { backgroundColor: colors.text }]}>
-                            <Text
-                              style={[
-                                styles.dayNum,
-                                {
-                                  color: isToday
-                                    ? colors.background
-                                    : isPast
-                                      ? colors.textMuted
-                                      : colors.text,
-                                },
-                              ]}
-                            >
-                              {day}
-                            </Text>
-                          </View>
-                          {out > 0 ? (
-                            <Text
-                              style={[styles.dayAmount, { color: isPast ? colors.textMuted : colors.textSecondary }]}
-                              numberOfLines={1}
-                            >
-                              {out >= 1000 ? `${Math.round(out / 100) / 10}k` : Math.round(out)}
-                            </Text>
-                          ) : hasIncome ? (
-                            <View style={[styles.incomeDot, { backgroundColor: colors.accentGreen }]} />
-                          ) : null}
+                <View
+                  onLayout={(e) => {
+                    const w = Math.floor(e.nativeEvent.layout.width);
+                    setCalendarWidth((prev) => (prev === w ? prev : w));
+                  }}
+                >
+                  <View style={styles.weekRow}>
+                    {DOW.map((d, i) => (
+                      <View key={`${d}-${i}`} style={{ width: cellSize }}>
+                        <Text style={[styles.dow, { color: colors.textMuted }]}>{d}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  {calendarCells.length > 0 && cellSize > 0
+                    ? Array.from({ length: calendarCells.length / 7 }, (_, week) => (
+                        <View key={`w-${week}`} style={styles.weekRow}>
+                          {calendarCells.slice(week * 7, week * 7 + 7).map((day, index) => {
+                            if (day == null) {
+                              return <View key={`e-${week}-${index}`} style={{ width: cellSize, height: cellSize }} />;
+                            }
+                            const key = dateKeyFromParts(year, month0, day);
+                            const status = dayStatus.get(key);
+                            const selected = safeSelectedDay === day;
+                            const isToday = key === todayKey;
+                            const isPast = key < todayKey;
+                            const dotColor = status
+                              ? status.unpaid
+                                ? colors.text
+                                : status.income
+                                  ? colors.accentGreen
+                                  : colors.textMuted
+                              : null;
+                            return (
+                              <Pressable
+                                key={key}
+                                accessibilityRole="button"
+                                accessibilityState={{ selected }}
+                                accessibilityLabel={`${day}${isToday ? ', aujourd’hui' : ''}${status ? ', paiement prévu' : ''}`}
+                                onPress={() => {
+                                  tapHaptic();
+                                  setSelectedDay((prev) => (prev === day ? null : day));
+                                }}
+                              >
+                                <View style={[styles.dayCell, { width: cellSize, height: cellSize }]}>
+                                  <View
+                                    style={[
+                                      styles.dayCircle,
+                                      isToday && !selected && { borderColor: colors.text, borderWidth: 1.5 },
+                                      selected && { backgroundColor: colors.text },
+                                    ]}
+                                  >
+                                    <Text
+                                      style={[
+                                        styles.dayNum,
+                                        {
+                                          color: selected
+                                            ? colors.background
+                                            : isPast
+                                              ? colors.textMuted
+                                              : colors.text,
+                                        },
+                                      ]}
+                                    >
+                                      {day}
+                                    </Text>
+                                  </View>
+                                  <View style={[styles.dayDot, dotColor ? { backgroundColor: dotColor } : null]} />
+                                </View>
+                              </Pressable>
+                            );
+                          })}
                         </View>
-                      </Pressable>
-                    );
-                  })}
+                      ))
+                    : null}
+                </View>
+                <View style={[styles.calLegend, { borderTopColor: colors.borderSubtle }]}>
+                  {[
+                    { label: 'À payer', color: colors.text },
+                    { label: 'Payé', color: colors.textMuted },
+                    { label: 'Revenu', color: colors.accentGreen },
+                  ].map((item) => (
+                    <View key={item.label} style={styles.calLegendItem}>
+                      <View style={[styles.dayDot, { backgroundColor: item.color }]} />
+                      <Text style={[styles.calLegendText, { color: colors.textMuted }]}>{item.label}</Text>
+                    </View>
+                  ))}
                 </View>
               </ListCard>
             </View>
@@ -861,23 +897,22 @@ const styles = StyleSheet.create({
   emptyRow: { paddingHorizontal: 14, paddingVertical: 18 },
   empty: { ...typographyKit.metaMedium, fontSize: 13 },
   payIconLogo: { borderRadius: 12, overflow: 'hidden' },
-  dowRow: { flexDirection: 'row', marginBottom: 6 },
-  dow: { flex: 1, textAlign: 'center', ...typographyKit.microMedium, fontSize: 11, textTransform: 'uppercase' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: `${100 / 7}%`, aspectRatio: 0.9, padding: 2 },
-  dayInner: {
-    flex: 1,
-    borderRadius: 12,
-    alignItems: 'center',
+  weekRow: { flexDirection: 'row' },
+  dow: { textAlign: 'center', ...typographyKit.microMedium, fontSize: 11, paddingBottom: 6 },
+  dayCell: { alignItems: 'center', justifyContent: 'center', gap: 3 },
+  dayCircle: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  dayNum: { ...typographyKit.metaSemibold, fontSize: 14 },
+  dayDot: { width: 5, height: 5, borderRadius: 2.5 },
+  calLegend: {
+    flexDirection: 'row',
     justifyContent: 'center',
-    gap: 2,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
+    gap: 18,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 10,
+    marginTop: 6,
   },
-  dayNumWrap: { minWidth: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  dayNum: { ...typographyKit.metaSemibold, fontSize: 13 },
-  dayAmount: { ...typographyKit.metaMedium, fontSize: 9.5, lineHeight: 11 },
-  incomeDot: { width: 5, height: 5, borderRadius: 2.5 },
+  calLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  calLegendText: { ...typographyKit.metaMedium, fontSize: 11 },
   fab: {
     position: 'absolute',
     right: PAGE_PADDING_HORIZONTAL,

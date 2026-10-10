@@ -445,7 +445,15 @@ export function BudgetCategoryDetailSheet({
 
 const styles = StyleSheet.create({
   ringPct: { ...jakartaMediumText, fontSize: 15, fontWeight: "normal" },
-  limitInline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  // Fixed height + clip: some EditableField internals stretch vertically on Android.
+  limitInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    height: 44,
+    overflow: 'hidden',
+  },
   limitLabel: { ...jakartaMediumText, fontSize: 14, flexShrink: 1 },
   sheet: {
     borderTopLeftRadius: DETAIL_SHEET_TOP_RADIUS,
