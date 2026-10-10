@@ -23,6 +23,7 @@ import {
   SECTION_GAP,
   SectionLabel,
   SummaryCard,
+  PillButton,
 } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
 import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsForm';
@@ -858,17 +859,7 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
 }
 
 function TextAction({ label, onPress }: { label: string; onPress: () => void }) {
-  const { colors } = useAppTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      hitSlop={8}
-      onPress={onPress}
-      style={({ pressed }) => pressed && { opacity: 0.7 }}
-    >
-      <Text style={[typographyKit.metaSemibold, { fontSize: 11, color: colors.textMuted }]}>{label}</Text>
-    </Pressable>
-  );
+  return <PillButton label={label} onPress={onPress} />;
 }
 
 const styles = StyleSheet.create({

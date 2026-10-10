@@ -17,6 +17,7 @@ import {
   SECTION_GAP,
   SectionLabel,
   SummaryCard,
+  PillButton,
 } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
 import {
@@ -454,17 +455,7 @@ export default function BudgetScreen() {
 }
 
 function TextAction({ label, onPress }: { label: string; onPress: () => void }) {
-  const { colors } = useAppTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      hitSlop={8}
-      onPress={onPress}
-      style={({ pressed }) => pressed && styles.pressed}
-    >
-      <Text style={[typographyKit.metaSemibold, styles.textAction, { color: colors.textMuted }]}>{label}</Text>
-    </Pressable>
-  );
+  return <PillButton label={label} onPress={onPress} />;
 }
 
 const styles = StyleSheet.create({

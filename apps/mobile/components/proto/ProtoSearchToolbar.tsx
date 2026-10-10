@@ -106,8 +106,8 @@ export function ProtoToolbarIconButton({
         style={[
           styles.toolbarButton,
           {
-            backgroundColor: colors.containerBackground,
-            borderColor: active ? colors.primary : colors.containerBorder,
+            backgroundColor: active ? 'rgba(34,197,94,0.16)' : colors.surfaceElevated,
+            borderColor: 'transparent',
           },
         ]}
       >

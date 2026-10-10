@@ -17,6 +17,7 @@ import {
   AreaSparkline,
   DateWell,
   EmptyRow,
+  GoalTile,
   HeaderIconButton,
   ListCard,
   ListRow,
@@ -463,25 +464,25 @@ export function ProtoHomeHub() {
 
           <Reveal index={4} style={styles.section}>
             <SectionLabel title="Objectifs" actionLabel="Nouveau" onAction={openNewGoalForm} />
-            <ListCard>
-              {goalProgressions.length === 0 ? (
+            {goalProgressions.length === 0 ? (
+              <ListCard>
                 <EmptyRow label="Aucun objectif en cours" actionLabel="Créer" onAction={openNewGoalForm} />
-              ) : (
-                goalProgressions.map((goal, index) => (
-                  <ListRow
-                    key={goal.goalId}
-                    leading={<UserPickedIconWell icon={goal.icon} size={40} />}
-                    title={goal.name}
-                    subtitle={`${formatDisplayMoneyAbsolute(goal.currentAmount)} / ${formatDisplayMoneyAbsolute(goal.targetAmount)}`}
-                    value={`${formatNumberDisplay(goal.pct)} %`}
-                    valueColor={colors.accentGreen}
-                    progress={goal.progress}
-                    isLast={index === goalProgressions.length - 1}
-                    onPress={() => go({ pathname: '/goal-detail', params: { goalId: goal.goalId } })}
-                  />
-                ))
-              )}
-            </ListCard>
+              </ListCard>
+            ) : (
+              <View style={styles.goalGrid}>
+                {goalProgressions.map((goal) => (
+                  <View key={goal.goalId} style={styles.goalCell}>
+                    <GoalTile
+                      name={goal.name}
+                      icon={<UserPickedIconWell icon={goal.icon} size={32} />}
+                      saved={goal.currentAmount}
+                      target={goal.targetAmount}
+                      onPress={() => go({ pathname: '/goal-detail', params: { goalId: goal.goalId } })}
+                    />
+                  </View>
+                ))}
+              </View>
+            )}
           </Reveal>
         </ScrollView>
 
@@ -505,5 +506,7 @@ export function ProtoHomeHub() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   section: { marginBottom: SECTION_GAP + spacing.sm },
+  goalGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
+  goalCell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10 },
   ringText: { ...typographyKit.metaSemibold, fontSize: 11 },
 });

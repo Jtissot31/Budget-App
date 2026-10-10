@@ -13,6 +13,7 @@ import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { AppIcon } from '@/components/icons/AppIcon';
 import {
   HeaderIconButton,
+  GoalTile,
   IconWell,
   ListCard,
   ListRow,
@@ -21,6 +22,7 @@ import {
   SectionLabel,
   AreaSparkline,
   SummaryCard,
+  PillButton,
 } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
 import {
@@ -618,7 +620,7 @@ export function ProtoWalletHub() {
 
           <View style={styles.section}>
             <SectionLabel
-              title="Objectifs d’épargne"
+              title="Objectifs"
               trailing={
                 <View style={styles.sectionActions}>
                   {!managingGoals ? <TextAction label="Ajouter" onPress={openNewGoalForm} /> : null}
@@ -628,8 +630,8 @@ export function ProtoWalletHub() {
                 </View>
               }
             />
-            <ListCard>
-              {goals.length === 0 ? (
+            {goals.length === 0 ? (
+              <ListCard>
                 <ListRow
                   leading={<IconWell icon="flag-outline" />}
                   title="Créer un objectif"
@@ -637,42 +639,29 @@ export function ProtoWalletHub() {
                   isLast
                   onPress={openNewGoalForm}
                 />
-              ) : (
-                goals.map((goal, index) => {
-                  const saved = goal.currentAmount ?? 0;
-                  const target = goal.targetAmount ?? 0;
-                  const progress = target > 0 ? Math.min(1, saved / target) : 0;
-                  const selected = selectedGoalIds.includes(goal.id);
-                  return (
-                    <ListRow
-                      key={goal.id}
-                      leading={
-                        managingGoals ? (
-                          <SelectWell selected={selected} />
-                        ) : (
-                          <UserPickedIconWell icon={resolveSavingsGoalDisplayIcon(goal)} size={40} />
-                        )
-                      }
-                      title={goal.name}
-                      subtitle={
-                        hideBalances
-                          ? `${MASK} sur ${MASK}`
-                          : `${formatDisplayMoneyAbsolute(saved)} sur ${formatDisplayMoneyAbsolute(target)}`
-                      }
-                      value={`${formatNumberDisplay(Math.round(progress * 100))} %`}
-                      valueColor={colors.accentGreen}
-                      progress={progress}
-                      isLast={index === goals.length - 1}
+              </ListCard>
+            ) : (
+              <View style={styles.goalGrid}>
+                {goals.map((goal) => (
+                  <View key={goal.id} style={styles.goalCell}>
+                    <GoalTile
+                      name={goal.name}
+                      icon={<UserPickedIconWell icon={resolveSavingsGoalDisplayIcon(goal)} size={32} />}
+                      saved={goal.currentAmount ?? 0}
+                      target={goal.targetAmount ?? 0}
+                      hidden={hideBalances}
+                      selecting={managingGoals}
+                      selected={selectedGoalIds.includes(goal.id)}
                       onPress={() =>
                         managingGoals
                           ? toggleIn(setSelectedGoalIds)(goal.id)
                           : router.push({ pathname: '/goal-detail', params: { goalId: goal.id } })
                       }
                     />
-                  );
-                })
-              )}
-            </ListCard>
+                  </View>
+                ))}
+              </View>
+            )}
             {managingGoals ? (
               <DeleteButton
                 isLight={isLight}
@@ -762,20 +751,7 @@ export function ProtoWalletHub() {
 }
 
 function TextAction({ label, onPress }: { label: string; onPress: () => void }) {
-  const { colors } = useAppTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      hitSlop={8}
-      onPress={() => {
-        tapHaptic();
-        onPress();
-      }}
-      style={({ pressed }) => pressed && { opacity: 0.7 }}
-    >
-      <Text style={[typographyKit.metaSemibold, { fontSize: 11, color: colors.textMuted }]}>{label}</Text>
-    </Pressable>
-  );
+  return <PillButton label={label} onPress={onPress} />;
 }
 
 function DeleteButton({
@@ -832,6 +808,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   hint: { ...typographyKit.metaMedium, fontSize: 11, marginTop: spacing.sm, paddingHorizontal: 2 },
+  goalGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
+  goalCell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10 },
   logoSlot: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   balanceBlock: { gap: 8 },
   balanceLabels: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },

@@ -38,6 +38,8 @@ export { ProtoGlassCard as ListCard } from '@/components/proto/ProtoGlassCard';
 export { ProtoSectionHeader as SectionLabel } from '@/components/proto/ProtoSectionHeader';
 export { ProtoToolbarIconButton as HeaderIconButton } from '@/components/proto/ProtoSearchToolbar';
 export { FitText, useScreenScale } from './FitText';
+export { GoalTile } from './GoalTile';
+export { PillButton } from './PillButton';
 export { AnimatedBar, PressScale, Reveal, useCountUp } from './motion';
 export {
   AreaSparkline,
