@@ -251,5 +251,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  insightText: { ...typographyKit.metaMedium, flex: 1, lineHeight: 19 },
+  insightText: { ...typographyKit.metaMedium, flexShrink: 1, lineHeight: 19 },
 });

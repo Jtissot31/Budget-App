@@ -99,21 +99,25 @@ export function ProtoToolbarIconButton({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected: active }}
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.toolbarButton,
-        {
-          backgroundColor: colors.containerBackground,
-          borderColor: active ? colors.primary : colors.containerBorder,
-        },
-        pressed && styles.pressed,
-      ]}
+      style={({ pressed }) => [pressed && styles.pressed]}
     >
-      <AppIcon
-        family="ionicons"
-        name={icon}
-        size={20}
-        color={active ? colors.primary : colors.textMuted}
-      />
+      {/* Surface on a plain View: Android Pressable style functions are not reliably applied. */}
+      <View
+        style={[
+          styles.toolbarButton,
+          {
+            backgroundColor: colors.containerBackground,
+            borderColor: active ? colors.primary : colors.containerBorder,
+          },
+        ]}
+      >
+        <AppIcon
+          family="ionicons"
+          name={icon}
+          size={20}
+          color={active ? colors.primary : colors.textMuted}
+        />
+      </View>
     </Pressable>
   );
 }

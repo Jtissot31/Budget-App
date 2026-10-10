@@ -87,12 +87,10 @@ export function SettingsSelectField({
             tapHaptic();
             setPickerOpen(true);
           }}
-          style={({ pressed }) => [
-            styles.inputButton,
-            sheetSurface,
-            pressed && styles.pressed,
-          ]}
+          style={({ pressed }) => [pressed && styles.pressed]}
         >
+          {/* Layout + surface on a plain View: Android Pressable does not reliably apply them. */}
+          <View style={[styles.inputButton, sheetSurface]}>
           <View style={styles.valueRow}>
             {selectedBudgetIcon ? (
               <BudgetCategoryIcon
@@ -126,6 +124,7 @@ export function SettingsSelectField({
             </Text>
           </View>
           <AppIcon family="ionicons" name="chevron-down" size={16} color={colors.textMuted} />
+          </View>
         </Pressable>
       )}
 

@@ -1,4 +1,4 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { jakartaExtraBoldText, radius, typography } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -16,21 +16,26 @@ export function PrimarySaveButton({ label, onPress, disabled, loading, style }: 
 
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
       onPress={onPress}
       disabled={disabled || loading}
-      style={({ pressed }) => [
-        styles.btn,
-        { backgroundColor: colors.primary },
-        pressed && styles.pressed,
-        (disabled || loading) && styles.disabled,
-        style,
-      ]}
+      style={({ pressed }) => [pressed && styles.pressed, style]}
     >
-      {loading ? (
-        <ActivityIndicator color={colors.background} />
-      ) : (
-        <Text style={[styles.text, { color: colors.background }]}>{label}</Text>
-      )}
+      {/* Fill + layout on a plain View: Android Pressable style functions are not reliably applied. */}
+      <View
+        style={[
+          styles.btn,
+          { backgroundColor: colors.primary },
+          (disabled || loading) && styles.disabled,
+        ]}
+      >
+        {loading ? (
+          <ActivityIndicator color={colors.background} />
+        ) : (
+          <Text style={[styles.text, { color: colors.background }]}>{label}</Text>
+        )}
+      </View>
     </Pressable>
   );
 }

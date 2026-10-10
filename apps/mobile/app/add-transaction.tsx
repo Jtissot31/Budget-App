@@ -2159,22 +2159,21 @@ export default function AddTransactionScreen() {
                       accessibilityRole="button"
                       accessibilityLabel="Remplissage auto avec scan de facture"
                       onPress={handleExpenseAutoFillScan}
-                      style={({ pressed }) => [
-                        styles.inlineScanControl,
-                        {
-                          backgroundColor: colors.surfaceElevated,
-                          borderColor: colors.border,
-                        },
-                        pressed && styles.pressed,
-                      ]}
+                      style={({ pressed }) => [styles.inlineScanHit, pressed && styles.pressed]}
                     >
+                      <View
+                        style={[
+                          styles.inlineScanControl,
+                          { backgroundColor: colors.surfaceElevated, borderColor: colors.border },
+                        ]}
+                      >
                       <View style={styles.inlineScanLabel}>
                         <AppIcon family="ionicons" name="scan-outline" size={14} color={colors.textMuted} />
                         <Text style={[styles.inlineScanText, { color: colors.textSecondary }]} numberOfLines={1}>
                           Remplissage auto
                         </Text>
                       </View>
-                      <AppIcon family="ionicons" name="receipt-outline" size={13} color={colors.textMuted} />
+                      </View>
                     </Pressable>
                   ) : null}
                   <DashboardSectionLabel style={sectionLabelStyle}>
@@ -2758,10 +2757,12 @@ export default function AddTransactionScreen() {
                     tapHaptic();
                     setArticlesOpen(true);
                   }}
-                  style={({ pressed }) => [styles.articlesLink, pressed && styles.pressed]}
+                  style={({ pressed }) => [styles.articlesHit, pressed && styles.pressed]}
                 >
-                  <AppIcon family="ionicons" name="list-outline" size={16} color={colors.textMuted} />
-                  <Text style={[styles.articlesLinkText, { color: colors.textMuted }]}>Détailler les articles</Text>
+                  <View style={styles.articlesLink}>
+                    <AppIcon family="ionicons" name="add-circle-outline" size={18} color={colors.textMuted} />
+                    <Text style={[styles.articlesLinkText, { color: colors.textMuted }]}>Détailler les articles</Text>
+                  </View>
                 </Pressable>
               ) : null}
 
@@ -2806,17 +2807,16 @@ export default function AddTransactionScreen() {
               ) : null}
 
 
-              </View>
-              </Animated.ScrollView>
-            </GestureDetector>
-            {/* Always-visible save — never hidden below the fold or behind the keyboard. */}
-            <View style={[styles.saveFooter, { paddingBottom: Math.max(insets.bottom, 12) + 4, borderTopColor: colors.borderSubtle }]}>
-              <PrimarySaveButton
+              <View style={styles.saveInline}>
+                <PrimarySaveButton
                 label={saving ? 'Enregistrement...' : isEditing ? 'Enregistrer les modifications' : 'Enregistrer'}
                 onPress={() => void save()}
                 disabled={saving}
               />
-            </View>
+              </View>
+              </View>
+              </Animated.ScrollView>
+            </GestureDetector>
           </Animated.View>
         </GestureDetector>
       </FormSheetModalBody>
@@ -2915,6 +2915,8 @@ function QuickDateField({
 }
 
 const styles = StyleSheet.create({
+  articlesHit: { alignSelf: 'flex-start' },
+  inlineScanHit: { alignSelf: 'flex-end' },
   articlesLink: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3032,6 +3034,7 @@ const styles = StyleSheet.create({
     ...jakartaBoldText,
     fontSize: typography.body,
   },
+  saveInline: { marginTop: spacing.md },
   saveFooter: {
     flexShrink: 0,
     paddingHorizontal: spacing.lg,
@@ -3064,7 +3067,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     minHeight: 52,
   },
-  merchantOptionName: { ...typographyKit.metaSemibold, fontSize: 15, flex: 1, minWidth: 0 },
+  merchantOptionName: { ...typographyKit.metaSemibold, fontSize: 15, flexShrink: 1, flexGrow: 1 },
   merchantOptionMeta: { ...typographyKit.metaMedium, fontSize: 12, flexShrink: 0, maxWidth: '45%' },
   suggestionRow: {
     flexDirection: 'row',

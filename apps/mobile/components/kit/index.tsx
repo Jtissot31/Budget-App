@@ -294,7 +294,7 @@ export function EmptyRow({ label, actionLabel, onAction }: { label: string; acti
   const { colors } = useAppTheme();
   return (
     <View style={styles.emptyRow}>
-      <Text style={[styles.rowSubtitle, jakartaMediumText, { color: colors.textMuted, flex: 1 }]}>
+      <Text style={[styles.rowSubtitle, jakartaMediumText, { color: colors.textMuted, flexShrink: 1, flexGrow: 1 }]}>
         {label}
       </Text>
       {actionLabel && onAction ? (

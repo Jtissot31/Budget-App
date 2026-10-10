@@ -89,7 +89,7 @@ export type AccountPatrimoineTileProps = {
 export type AccountLineTileProps = AccountPatrimoineTileProps;
 
 /** Even padding for logos inside the white app-icon tile. */
-const TILE_LOGO_INSET_RATIO = 0.14;
+const TILE_LOGO_INSET_RATIO = 0.82;
 
 function kindIcon(kind: AccountKind): string {
   if (kind === 'credit') return 'card-outline';

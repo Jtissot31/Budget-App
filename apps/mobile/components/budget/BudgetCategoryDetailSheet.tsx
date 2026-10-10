@@ -396,7 +396,7 @@ export function BudgetCategoryDetailSheet({
             ]}
           >
             <View style={styles.limitInline}>
-              <Text style={[styles.limitLabel, { color: colors.textMuted }]}>Limite mensuelle</Text>
+              <Text style={[styles.limitLabel, { color: colors.textMuted }]} numberOfLines={1}>Limite mensuelle</Text>
               <EditableField
                 editHandleRef={limitEditRef}
                 type="money"
@@ -446,7 +446,7 @@ export function BudgetCategoryDetailSheet({
 const styles = StyleSheet.create({
   ringPct: { ...jakartaMediumText, fontSize: 15, fontWeight: "normal" },
   limitInline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  limitLabel: { ...jakartaMediumText, fontSize: 14, flex: 1 },
+  limitLabel: { ...jakartaMediumText, fontSize: 14, flexShrink: 1 },
   sheet: {
     borderTopLeftRadius: DETAIL_SHEET_TOP_RADIUS,
     borderTopRightRadius: DETAIL_SHEET_TOP_RADIUS,
