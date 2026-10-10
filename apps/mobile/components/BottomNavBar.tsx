@@ -52,18 +52,22 @@ interface BottomNavBarProps {
 
 export function BottomNavBar({ currentTab, onTabPress }: BottomNavBarProps) {
   const insets = useSafeAreaInsets();
+  const { isLight } = useAppTheme();
+  const activeColor = isLight ? '#0A0A0F' : '#FFFFFF';
+  const inactiveColor = isLight ? '#8E8E9A' : '#71717A';
   const solidFill = Platform.OS !== 'ios';
 
   return (
     <View
       style={[
         styles.container,
-        solidFill && styles.barBackground,
+        solidFill && { backgroundColor: isLight ? '#FFFFFF' : '#09090B' },
+        { borderTopColor: isLight ? 'rgba(0, 0, 0, 0.08)' : '#27272A' },
         { paddingBottom: Math.max(insets.bottom, 12) },
       ]}
     >
       {Platform.OS === 'ios' ? (
-        <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+        <BlurView intensity={80} tint={isLight ? 'light' : 'dark'} style={StyleSheet.absoluteFill} />
       ) : null}
 
       <View style={styles.navRow}>
@@ -82,9 +86,9 @@ export function BottomNavBar({ currentTab, onTabPress }: BottomNavBarProps) {
               <Ionicons
                 name={isActive ? tab.activeIcon : tab.icon}
                 size={21}
-                color={isActive ? '#FFFFFF' : '#71717A'}
+                color={isActive ? activeColor : inactiveColor}
               />
-              <Text style={[styles.tabLabel, isActive ? styles.activeLabel : styles.inactiveLabel]}>
+              <Text style={[styles.tabLabel, { color: isActive ? activeColor : inactiveColor }]}>
                 {tab.label}
               </Text>
             </TouchableOpacity>
@@ -160,12 +164,8 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
     borderTopWidth: 1,
-    borderTopColor: '#27272A',
     paddingTop: 10,
     overflow: 'hidden',
-  },
-  barBackground: {
-    backgroundColor: '#09090B',
   },
   navRow: {
     flexDirection: 'row',
@@ -187,12 +187,6 @@ const styles = StyleSheet.create({
     ...jakartaBoldText,
     fontSize: 9,
     letterSpacing: -0.2,
-  },
-  activeLabel: {
-    color: '#FFFFFF',
-  },
-  inactiveLabel: {
-    color: '#71717A',
   },
   voiceFab: {
     position: 'absolute',
