@@ -104,7 +104,7 @@ export function TodayCard() {
         <View
           style={[
             styles.streakPill,
-            { backgroundColor: colors.surfaceElevated },
+            { backgroundColor: streak.days > 0 ? 'rgba(249,115,22,0.16)' : colors.surfaceElevated },
           ]}
           accessibilityLabel={`Série de ${streak.days} jours`}
         >
@@ -120,11 +120,11 @@ export function TodayCard() {
               style={[
                 styles.weekDot,
                 day.done
-                  ? { backgroundColor: colors.text }
+                  ? { backgroundColor: colors.accentGreen }
                   : { borderWidth: 1.5, borderColor: day.isToday ? colors.text : colors.borderStrong },
               ]}
             >
-              {day.done ? <AppIcon family="ionicons" name="checkmark" size={12} color={colors.background} /> : null}
+              {day.done ? <AppIcon family="ionicons" name="checkmark" size={13} color="#06210F" /> : null}
             </View>
             <Text
               style={[

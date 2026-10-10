@@ -155,6 +155,8 @@ export function DateWell({ month, day }: { month: string; day: string | number }
 type ListRowProps = {
   title: string;
   subtitle?: string;
+  /** Override the muted subtitle colour (e.g. amber for « Demain »). */
+  subtitleColor?: string;
   leading?: ReactNode;
   /** Right column, primary line (money uses transaction-row amount face). */
   value?: string;
@@ -176,6 +178,7 @@ type ListRowProps = {
 export function ListRow({
   title,
   subtitle,
+  subtitleColor,
   leading,
   value,
   valueColor,
@@ -206,7 +209,7 @@ export function ListRow({
           </FitText>
           {subtitle ? (
             <FitText
-              style={[styles.rowSubtitle, jakartaMediumText, { color: colors.textMuted }]}
+              style={[styles.rowSubtitle, jakartaMediumText, { color: subtitleColor ?? colors.textMuted }]}
               fontSize={12.5}
               lineHeight={16}
               minScale={0.72}

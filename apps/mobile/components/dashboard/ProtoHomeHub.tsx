@@ -107,6 +107,14 @@ function formatSignedPct(pct: number): string {
   return `${sign}${body} %`;
 }
 
+/** Due today, tomorrow or the day after — worth highlighting. */
+function dueSoon(dateKey: string, now = new Date()): boolean {
+  const due = new Date(`${dateKey}T12:00:00`);
+  const today = new Date(now);
+  today.setHours(12, 0, 0, 0);
+  return Math.round((due.getTime() - today.getTime()) / 86_400_000) <= 2;
+}
+
 function relativeDueLabel(dateKey: string, now: Date): string {
   const due = new Date(`${dateKey}T12:00:00`);
   const today = new Date(now);
@@ -304,7 +312,9 @@ export function ProtoHomeHub() {
 
   const trendColor = (netWorthPct ?? 0) >= 0 ? colors.accentGreen : colors.danger;
   const budgetRatio = budget.limit > 0 ? budget.spent / budget.limit : 0;
-  const budgetColor = budgetRatio > 1 ? colors.danger : colors.text;
+  // Same thresholds as the Budget tab ring: green ≤ 102 %, orange ≤ 110 %, red beyond.
+  const budgetPct = Math.round(budgetRatio * 100);
+  const budgetColor = budgetPct <= 102 ? colors.accentGreen : budgetPct <= 110 ? '#F59E0B' : colors.danger;
 
   const budgetSubtitle =
     budget.over > 0
@@ -439,6 +449,8 @@ export function ProtoHomeHub() {
                       leading={<DateWell month={month} day={day} />}
                       title={bill.name}
                       subtitle={relativeDueLabel(dateKey, new Date())}
+                      subtitleColor={dueSoon(dateKey) ? '#F59E0B' : undefined}
+                      valueColor={dueSoon(dateKey) ? '#F59E0B' : undefined}
                       value={`−${formatDisplayMoneyAbsolute(bill.amount)}`}
                       isLast={index === rows.length - 1}
                       onPress={() => router.navigate('/goals')}
