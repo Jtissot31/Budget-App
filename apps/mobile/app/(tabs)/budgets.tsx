@@ -16,7 +16,6 @@ import {
   RingGauge,
   SECTION_GAP,
   SectionLabel,
-  SUBTLE_ACCENTS,
   SummaryCard,
 } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
@@ -226,7 +225,6 @@ export default function BudgetScreen() {
   const remaining = totals.totalAllocated - totals.totalSpent;
   const usedRatio = totals.totalAllocated > 0 ? totals.totalSpent / totals.totalAllocated : 0;
   const usedPct = Math.round(usedRatio * 100);
-  const toneFor = (ratio: number) => (ratio > 1 ? colors.danger : colors.text);
   /** Summary ring: green up to 102 %, orange 103–110 %, red beyond. */
   const usedPctRounded = Math.round(usedRatio * 100);
   const summaryRingColor =
@@ -362,11 +360,10 @@ export default function BudgetScreen() {
                   }
                 />
                 <View style={styles.tileGrid}>
-                  {listCategories.map((category, index) => (
+                  {listCategories.map((category) => (
                     <View key={category.id} style={styles.tileCell}>
                       <BudgetCategoryTile
                         category={category}
-                        accent={SUBTLE_ACCENTS[index % SUBTLE_ACCENTS.length]}
                         selecting={managingCategories}
                         selected={selectedCategoryIds.includes(category.id)}
                         onPress={onCategoryRowPress}

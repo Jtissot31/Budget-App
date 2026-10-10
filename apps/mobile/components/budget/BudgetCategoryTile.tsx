@@ -1,7 +1,7 @@
 /**
  * Budget tab category tile — 2-column grid card: animated ring around the
  * category icon, name, what's left (or how much over), and spent / limit.
- * Neutral by default; muted amber from 90 % of the limit, red when over budget.
+ * Icons stay neutral; only the ring carries colour (amber from 90 %, red when over).
  */
 import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -18,8 +18,6 @@ type Props = {
   category: BudgetCategoryUiModel;
   selecting?: boolean;
   selected?: boolean;
-  /** Soft identity colour for the ring + icon well (never good/bad meaning). */
-  accent?: string;
   onPress: (id: string) => void;
 };
 
@@ -30,7 +28,6 @@ export const BudgetCategoryTile = memo(function BudgetCategoryTile({
   category,
   selecting = false,
   selected = false,
-  accent,
   onPress,
 }: Props) {
   const { colors } = useAppTheme();
@@ -40,7 +37,6 @@ export const BudgetCategoryTile = memo(function BudgetCategoryTile({
   // Colour carries meaning only: neutral when healthy, amber near the limit, red when over.
   const nearLimit = !over && ratio >= 0.9;
   const ringColor = over ? colors.danger : nearLimit ? WARNING_SOFT : colors.text;
-  void accent;
   const pct = Math.round(ratio * 100);
 
   return (
@@ -74,7 +70,6 @@ export const BudgetCategoryTile = memo(function BudgetCategoryTile({
               id={category.id}
               wellSize={34}
               glyphSize={17}
-              tint={over ? colors.danger : accent}
             />
           </View>
         </RingGauge>
