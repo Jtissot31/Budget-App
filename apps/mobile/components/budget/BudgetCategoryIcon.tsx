@@ -20,6 +20,8 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   /** Renders the neutral “add category” glyph in the standard icon slot. */
   variant?: 'category' | 'add';
+  /** Category colour: glyph in that colour on a soft tinted rounded well. */
+  tint?: string | null;
 };
 
 export function BudgetCategoryIcon({
@@ -30,9 +32,10 @@ export function BudgetCategoryIcon({
   wellSize = BUDGET_CATEGORY_ICON_WELL_SIZE,
   style,
   variant = 'category',
+  tint,
 }: Props) {
   const { isLight } = useAppTheme();
-  const glyphColor = isLight ? 'rgba(17,17,17,0.82)' : BUDGET_CATEGORY_ICON_GLYPH_COLOR;
+  const glyphColor = tint ?? (isLight ? 'rgba(17,17,17,0.82)' : BUDGET_CATEGORY_ICON_GLYPH_COLOR);
 
   const glyph =
     variant === 'add' ? (
@@ -55,12 +58,18 @@ export function BudgetCategoryIcon({
           width: wellSize,
           height: wellSize,
         },
+        tint ? { backgroundColor: tintBackground(tint), borderRadius: Math.round(wellSize * 0.3) } : null,
         style,
       ]}
     >
       {glyph}
     </View>
   );
+}
+
+/** Hex (#RRGGBB) → same colour at ~16 % opacity; other formats fall back to a neutral well. */
+function tintBackground(color: string): string {
+  return /^#[0-9a-f]{6}$/i.test(color) ? `${color}29` : 'rgba(255,255,255,0.08)';
 }
 
 function BudgetCategoryGlyph({

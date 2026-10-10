@@ -21,11 +21,11 @@ export type TabItem = {
 };
 
 const TABS: TabItem[] = [
-  { key: 'Home', label: 'HOME', icon: 'home-outline', activeIcon: 'home' },
-  { key: 'Activity', label: 'ACTIVITY', icon: 'receipt-outline', activeIcon: 'receipt' },
+  { key: 'Home', label: 'ACCUEIL', icon: 'home-outline', activeIcon: 'home' },
+  { key: 'Activity', label: 'ACTIVITÉ', icon: 'receipt-outline', activeIcon: 'receipt' },
   { key: 'Budget', label: 'BUDGET', icon: 'pie-chart-outline', activeIcon: 'pie-chart' },
   { key: 'Agenda', label: 'AGENDA', icon: 'calendar-outline', activeIcon: 'calendar' },
-  { key: 'Balance', label: 'BALANCE', icon: 'wallet-outline', activeIcon: 'wallet' },
+  { key: 'Balance', label: 'WALLET', icon: 'wallet-outline', activeIcon: 'wallet' },
 ];
 
 /** Expo-router screen names for the five existing tab destinations. */

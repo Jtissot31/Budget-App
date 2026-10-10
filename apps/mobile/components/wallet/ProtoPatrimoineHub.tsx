@@ -1,12 +1,12 @@
 /**
  * Patrimoine explorer — placements summary + stock / physical holdings.
- * Opened from Accueil « Patrimoine · Explorer ».
+ * Opened from Portefeuille « Placements et biens ».
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppIcon } from '@/components/icons/AppIcon';
+import { FixedScreenHeader } from '@/components/FixedScreenHeader';
 import { HomeSpendInvestCards } from '@/components/dashboard/HomeSpendInvestCards';
 import { PageTransition } from '@/components/PageTransition';
 import { PatrimoineHoldingsSections } from '@/components/PatrimoineHoldingsSections';
@@ -14,9 +14,7 @@ import {
   SettingsPickerSheet,
   type SettingsPickerOption,
 } from '@/components/SettingsPickerSheet';
-import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
-  jakartaExtraBoldText,
   PAGE_PADDING_HORIZONTAL,
   spacing,
 } from '@/constants/theme';
@@ -81,7 +79,6 @@ export function ProtoPatrimoineHub() {
   const [wealthAssets, setWealthAssets] = useState<WealthAsset[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [holdingsDragging, setHoldingsDragging] = useState(false);
   const [wealthTypePickerVisible, setWealthTypePickerVisible] = useState(false);
 
   const load = useCallback(async () => {
@@ -133,24 +130,7 @@ export function ProtoPatrimoineHub() {
   return (
     <PageTransition>
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.md }]}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retour"
-            hitSlop={12}
-            onPress={() => {
-              tapHaptic();
-              router.back();
-            }}
-            style={({ pressed }) => [styles.backHit, pressed && styles.pressed]}
-          >
-            <AppIcon family="material" name="arrow-back" size={22} color={colors.text} />
-          </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.text }, jakartaExtraBoldText]}>
-            Patrimoine
-          </Text>
-          <View style={styles.headerSpacer} />
-        </View>
+        <FixedScreenHeader title="Patrimoine" onBack={() => router.back()} />
 
         <ScrollView
           style={styles.scroll}
@@ -159,7 +139,6 @@ export function ProtoPatrimoineHub() {
             paddingHorizontal: PAGE_PADDING_HORIZONTAL,
             gap: spacing.xl,
           }}
-          scrollEnabled={!holdingsDragging}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -174,13 +153,11 @@ export function ProtoPatrimoineHub() {
           <PatrimoineHoldingsSections
             wealthAssets={patrimoineAssets}
             loansById={loansById}
-            flushTop
             onAddWealthAsset={openNewWealthForm}
             onOpenWealthAsset={(asset) => {
               tapHaptic();
               router.push({ pathname: '/wealth-asset-detail', params: { id: asset.id } });
             }}
-            onDragStateChange={setHoldingsDragging}
           />
         </ScrollView>
       </View>

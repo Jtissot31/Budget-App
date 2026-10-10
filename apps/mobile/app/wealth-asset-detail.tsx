@@ -27,7 +27,7 @@ import {
   type PortfolioChartCardHandle,
 } from '@/components/PortfolioChartCard';
 import { SurfaceCard } from '@/components/SurfaceCard';
-import { TransactionRow } from '@/components/TransactionRow';
+import { TransactionDayGroup } from '@/components/transactions/TransactionDayGroups';
 import {
   DASHBOARD_VALUE_GREEN,
   DASHBOARD_VALUE_RED,
@@ -528,23 +528,7 @@ export default function WealthAssetDetailScreen() {
                 {groupedTransactions.length > 0 ? (
                   <View style={styles.transactionGroups}>
                     {groupedTransactions.map(([date, txs]) => (
-                      <View key={date} style={styles.transactionGroup}>
-                        <Text style={[styles.transactionGroupLabel, { color: colors.textMuted }]}>
-                          {formatTransactionGroupDateLabel(date)}
-                        </Text>
-                        <View style={styles.groupTransactions}>
-                          {txs.map((tx) => (
-                            <TransactionRow
-                              key={tx.id}
-                              transaction={{
-                                ...tx,
-                                label: getTransactionTitle(tx, tx.categoryName?.trim() || displayTitle),
-                              }}
-                              onPress={() => { tapHaptic(); openTransactionDetail(tx.id); }}
-                            />
-                          ))}
-                        </View>
-                      </View>
+                      <TransactionDayGroup key={date} date={date} txs={txs.map((tx) => ({ ...tx, label: getTransactionTitle(tx, tx.categoryName?.trim() || displayTitle), }))} />
                     ))}
                   </View>
                 ) : (

@@ -1,8 +1,6 @@
 import { ReactNode } from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
-import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
-import { SurfaceCard } from '@/components/SurfaceCard';
-import { SETTINGS_LAYOUT } from '@/constants/theme';
+import { ListCard, SectionLabel } from '@/components/kit';
 
 type Props = {
   title: string;
@@ -10,21 +8,18 @@ type Props = {
   style?: ViewStyle;
 };
 
-/** Grouped settings block — eyebrow header + card shell. */
+/** Grouped settings block — kit eyebrow + glass list card (Transactions style). */
 export function SettingsSection({ title, children, style }: Props) {
   return (
     <View style={[styles.section, style]}>
-      <DashboardSectionLabel numberOfLines={1}>{title}</DashboardSectionLabel>
-      <SurfaceCard padding={0} style={styles.card} innerStyle={styles.cardInner}>
-        {children}
-      </SurfaceCard>
+      <SectionLabel title={title} />
+      <ListCard style={styles.card}>{children}</ListCard>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   section: {
-    gap: SETTINGS_LAYOUT.sectionLabelGap,
     alignSelf: 'stretch',
     width: '100%',
     maxWidth: '100%',
@@ -35,12 +30,5 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: '100%',
     minWidth: 0,
-  },
-  cardInner: {
-    overflow: 'hidden',
-    width: '100%',
-    maxWidth: '100%',
-    minWidth: 0,
-    alignSelf: 'stretch',
   },
 });

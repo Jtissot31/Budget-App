@@ -39,7 +39,7 @@ function stockTickerInitial(ticker: string): string {
   return short.charAt(0).toUpperCase() || '?';
 }
 
-function StockHoldingLogo({ ticker }: { ticker: string }) {
+export function StockHoldingLogo({ ticker }: { ticker: string }) {
   const { colors } = useAppTheme();
   const asset = useMemo(() => getStockLogoAsset(ticker), [ticker]);
   const [failed, setFailed] = useState(false);
