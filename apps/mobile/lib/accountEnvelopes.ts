@@ -31,7 +31,7 @@ export const DEFAULT_ENVELOPE_ICON = '💰';
 
 /** One-tap starting points (empty state + « Nouvelle enveloppe » sheet). */
 export const ENVELOPE_PRESETS: { name: string; icon: string }[] = [
-  { name: 'Factures', icon: '🧾' },
+  { name: 'Factures', icon: '💡' },
   { name: 'Loisirs', icon: '🎉' },
   { name: 'Épargne', icon: '🌱' },
   { name: 'Dépenses', icon: '🛒' },
@@ -40,7 +40,7 @@ export const ENVELOPE_PRESETS: { name: string; icon: string }[] = [
 ];
 
 export const ENVELOPE_EMOJIS = [
-  '💰', '🧾', '🛒', '🎉', '🌱', '🚨', '✈️', '🏠', '🚗', '🍔',
+  '💰', '💡', '🛒', '🎉', '🌱', '🚨', '✈️', '🏠', '🚗', '🍔',
   '🎁', '🎓', '🐾', '💊', '👶', '🎮', '📱', '💪', '☕', '🎵',
 ] as const;
 
