@@ -1,44 +1,24 @@
 /**
  * Dictée vocale d'une transaction (onglet Transactions, FAB commande vocale).
  *
- * Le micro s'active **tout seul** à l'ouverture : permission → enregistrement
- * `expo-audio` → transcription Gemini (`useVoiceCapture`). Tout fonctionne dans
- * Expo Go, sans module natif de reconnaissance vocale.
- *
- * Le transcript est analysé par `parseSpokenTransaction`, puis affiché en récap.
- * Le type (dépense / revenu) est déduit automatiquement — pas de toggle. Rien n'est
- * enregistré sans confirmation : Confirmer ouvre le formulaire d'ajout pré-rempli.
- *
- * Hauteurs : ~1/3 pendant l'écoute ; ~0.45 une fois la transcription / le récap
- * prêts, pour afficher les données sans les compacter.
+ * Le micro s'active tout seul à l'ouverture et s'arrête quand tu as fini de parler
+ * (détection adaptative dans `useVoiceCapture`). Pendant l'écoute, l'orbe respire avec ta
+ * voix et un anneau se remplit pendant le silence final. Puis : « Voici ce que j'ai compris »
+ * — montant, commerce, type / catégorie / compte en puces, ce qui manque en « + ».
+ * Rien n'est enregistré sans confirmation : « Ajouter » ouvre le formulaire pré-rempli.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { MotiView } from 'moti';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheet } from '@/components/BottomSheet';
+import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { OnyxContainer } from '@/components/OnyxContainer';
+import { PressScale, Reveal } from '@/components/kit/motion';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
-import { VoiceListeningWave } from '@/components/voice/VoiceListeningWave';
-import { ONYX_CONTAINER } from '@/constants/planFinanceKit';
-import {
-  jakartaExtraBoldText,
-  jakartaMediumText,
-  radius,
-  spacing,
-  typography,
-} from '@/constants/theme';
+import { VoiceOrb } from '@/components/voice/VoiceOrb';
+import { jakartaBoldText, jakartaMediumText, jakartaSemiboldText, moneyAmountTypography, spacing } from '@/constants/theme';
 import { useVoiceCapture, type VoiceCaptureErrorKind } from '@/hooks/useVoiceCapture';
 import { loadBudgetCategoriesForPicker } from '@/lib/budgetCategories';
 import { formatDisplayMoneyAbsoluteExact } from '@/lib/formatDisplayMoney';
@@ -48,47 +28,16 @@ import { SHEET_HANDLE_DRAG_ZONE_HEIGHT } from '@/lib/sheet/useDraggableSheetGest
 import { useAppTheme } from '@/lib/themeContext';
 import type { Category, SimulatedAccount } from '@/types';
 
-const DICTATION_EXAMPLE = "« 50$ d'essence chez Petro-Canada »";
+const EXAMPLE = '« 50 $ d’essence chez Petro-Canada »';
+/** One height for every phase — the sheet never jumps. */
+const SHEET_HEIGHT_RATIO = 0.52;
 
-/**
- * Pendant l'écoute / démarrage : tiers bas — l'historique reste visible au-dessus.
- */
-const SHEET_LISTENING_HEIGHT_RATIO = 1 / 3;
-/**
- * Après capture (transcription + récap / erreur de parsing) : un peu plus haut
- * pour aérer titre, transcript, résumé et CTA sans scroll.
- */
-const SHEET_RECAP_HEIGHT_RATIO = 0.45;
-/** Poignée + X fermer (dans la zone de drag) — pas de titleRow BottomSheet. */
-const SHEET_CHROME_HEIGHT = SHEET_HANDLE_DRAG_ZONE_HEIGHT;
-/** Bouton X — même gabarit que PaymentDetailSheet / SettingsPickerSheet. */
-const CLOSE_BUTTON_SIZE = 34;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-const ERROR_COPY: Record<VoiceCaptureErrorKind, { title: string; message: string }> = {
-  permission: {
-    title: 'Micro non autorisé',
-    message: "Autorise l'accès au microphone dans les réglages de l'appareil.",
-  },
-  recording: {
-    title: 'Micro indisponible',
-    message: "L'enregistrement n'a pas pu démarrer. Réessaie dans un instant.",
-  },
-  'no-speech': {
-    title: "Je n'ai rien entendu",
-    message: `Parle plus près du micro, par ex. ${DICTATION_EXAMPLE}.`,
-  },
-  'no-api-key': {
-    title: 'Clé Gemini absente',
-    message: 'Ajoute ta clé API Gemini dans les réglages IA.',
-  },
-  network: {
-    title: 'Transcription impossible',
-    message: 'Vérifie ta connexion internet puis réessaie.',
-  },
+const ERROR_COPY: Record<VoiceCaptureErrorKind, { icon: string; title: string; message: string }> = {
+  permission: { icon: 'mic-off-outline', title: 'Micro non autorisé', message: 'Autorise le micro dans les réglages de l’appareil.' },
+  recording: { icon: 'mic-off-outline', title: 'Micro indisponible', message: 'L’enregistrement n’a pas démarré. Réessaie.' },
+  'no-speech': { icon: 'volume-mute-outline', title: 'Je n’ai rien entendu', message: `Essaie par ex. ${EXAMPLE}.` },
+  'no-api-key': { icon: 'key-outline', title: 'Clé Gemini absente', message: 'Ajoute ta clé API Gemini dans les réglages IA.' },
+  network: { icon: 'cloud-offline-outline', title: 'Transcription impossible', message: 'Vérifie ta connexion puis réessaie.' },
 };
 
 type Props = {
@@ -102,313 +51,203 @@ type Props = {
 export function VoiceTransactionSheet({ visible, onClose, accounts, merchantNames }: Props) {
   const router = useRouter();
   const { colors } = useAppTheme();
-  const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-
-  const {
-    status,
-    errorKind,
-    transcript,
-    level,
-    durationMillis,
-    silenceAutoStop,
-    stop,
-    retry,
-    editTranscript,
-  } = useVoiceCapture(visible);
-
+  const { status, errorKind, transcript, level, silenceProgress, speechDetected, stop, retry, editTranscript } =
+    useVoiceCapture(visible);
   const [categories, setCategories] = useState<Category[]>([]);
-
-  /** Écoute compacte ; remonte dès la transcription / le récap. */
-  const isRecapPhase =
-    status === 'transcribing' || status === 'ready' || (status === 'error' && errorKind != null);
-  const heightRatio = isRecapPhase ? SHEET_RECAP_HEIGHT_RATIO : SHEET_LISTENING_HEIGHT_RATIO;
-  const sheetMaxHeight = Math.round(windowHeight * heightRatio);
-  /**
-   * Contenu au-dessus de la nav système. Pendant l'écoute : safe area + `spacing.lg`
-   * pour que « Touche pour arrêter. » ne soit pas rogné sous la barre de navigation.
-   */
-  const safeBottomPad = Math.max(insets.bottom, spacing.sm);
-  const bodyBottomPadding = isRecapPhase ? safeBottomPad : safeBottomPad + spacing.lg;
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
     let cancelled = false;
     void loadBudgetCategoriesForPicker()
-      .then((loaded) => {
-        if (!cancelled) setCategories(loaded);
-      })
-      .catch(() => {
-        if (!cancelled) setCategories([]);
-      });
+      .then((loaded) => !cancelled && setCategories(loaded))
+      .catch(() => !cancelled && setCategories([]));
     return () => {
       cancelled = true;
     };
   }, [visible]);
 
+  useEffect(() => {
+    if (status !== 'ready') setEditing(false);
+  }, [status]);
+
   const parsed = useMemo(
     () => parseSpokenTransaction(transcript, { accounts, categories, merchants: merchantNames }),
     [accounts, categories, merchantNames, transcript],
   );
-
-  /** Type déduit par le parseur — pas de override UI. */
-  const inferredType = parsed.type;
-
-  const matchedCategory = useMemo(
-    () => categories.find((category) => category.id === parsed.categoryId) ?? null,
+  const category = useMemo(
+    () => categories.find((c) => c.id === parsed.categoryId) ?? null,
     [categories, parsed.categoryId],
   );
-
   const understood = parsed.amount !== null || Boolean(parsed.merchant);
-
-  /** Place restante pour l'état actif — tout doit y tenir sans scroll. */
-  const contentRoom = Math.max(
-    96,
-    sheetMaxHeight - SHEET_CHROME_HEIGHT - bodyBottomPadding,
-  );
-  const haloSize = clamp(Math.round(contentRoom * 0.28), 48, 64);
-  const stopSize = clamp(Math.round(contentRoom * 0.2), 40, 48);
-  /**
-   * Hauteur estimée du stack écoute (halo → stop). Si la hint ne rentre pas
-   * dans le tiers restant, on la masque plutôt que de la rogner.
-   */
-  const listeningHintLineHeight = typography.meta + 4;
-  const listeningCoreHeight =
-    haloSize +
-    spacing.xs +
-    typography.body +
-    4 +
-    spacing.xs +
-    typography.caption +
-    2 +
-    spacing.xs +
-    stopSize;
-  const showListeningHint =
-    contentRoom >= listeningCoreHeight + spacing.xs + listeningHintLineHeight;
-
-  const summaryParts = useMemo(() => {
-    const parts: string[] = [];
-    if (parsed.amount !== null) parts.push(formatDisplayMoneyAbsoluteExact(parsed.amount));
-    if (parsed.merchant) parts.push(parsed.merchant);
-    if (inferredType === 'expense' && matchedCategory?.name) parts.push(matchedCategory.name);
-    if (parsed.accountLabel) parts.push(parsed.accountLabel);
-    return parts;
-  }, [inferredType, matchedCategory?.name, parsed.accountLabel, parsed.amount, parsed.merchant]);
 
   const handleConfirm = useCallback(() => {
     tapHaptic();
-
-    const params: Record<string, string> = {};
-    // Le type dépense est celui par défaut du formulaire : ne pas le forcer garde
-    // le sélecteur Type visible pour une correction éventuelle.
-    if (inferredType !== 'expense') params.type = inferredType;
+    const params: Record<string, string> = { type: parsed.type };
     if (parsed.amount !== null) params.amount = String(parsed.amount);
     if (parsed.merchant) params.label = parsed.merchant;
-    if (inferredType === 'expense' && parsed.categoryId) params.categoryId = parsed.categoryId;
+    if (parsed.type === 'expense' && parsed.categoryId) params.categoryId = parsed.categoryId;
     if (parsed.accountId) params.accountId = parsed.accountId;
-
     onClose();
     router.push({ pathname: '/add-transaction', params });
-  }, [inferredType, onClose, parsed, router]);
+  }, [onClose, parsed, router]);
 
   const handleRetry = useCallback(() => {
     tapHaptic();
     retry();
   }, [retry]);
 
-  const handleStop = useCallback(() => {
-    tapHaptic();
-    stop();
-  }, [stop]);
-
-  /** Même chemin que backdrop / drag-dismiss : `onClose` → hook coupe le micro. */
   const handleClose = useCallback(() => {
     tapHaptic();
     onClose();
   }, [onClose]);
 
-  const closeButton = (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="Fermer"
-      hitSlop={12}
-      onPress={handleClose}
-      style={({ pressed }) => [
-        styles.closeButton,
-        {
-          backgroundColor: colors.surfaceElevated,
-          borderColor: colors.border,
-        },
-        pressed && styles.pressed,
-      ]}
-    >
-      <AppIcon family="ionicons" name="close" size={18} color={colors.textMuted} />
-    </Pressable>
-  );
-
-  const sheetHandle = (
+  const handle = (
     <View style={styles.handleBar}>
-      <View style={[styles.handlePill, { backgroundColor: colors.border }]} />
-      {closeButton}
+      <View style={[styles.handlePill, { backgroundColor: colors.borderStrong }]} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Fermer" hitSlop={14} onPress={handleClose} style={styles.close}>
+        <AppIcon family="ionicons" name="close" size={22} color={colors.textMuted} />
+      </Pressable>
     </View>
   );
 
-  function renderBody() {
-    if (status === 'starting') {
-      return (
-        <View style={styles.centered}>
-          <ActivityIndicator color={colors.text} />
-          <Text style={[styles.stateTitle, { color: colors.text }]}>Activation du micro…</Text>
-          <Text style={[styles.stateHint, { color: colors.textMuted }]} numberOfLines={1}>
-            {"Autorise l'accès si l'appareil le demande."}
-          </Text>
-        </View>
-      );
-    }
-
-    if (status === 'listening') {
-      return (
-        <View style={styles.listeningLayout}>
-          <MotiView
-            from={{ opacity: 0.55, scale: 0.94 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: 'timing', duration: 900, loop: true, repeatReverse: true }}
-            style={[
-              styles.listeningHalo,
-              {
-                width: haloSize,
-                height: haloSize,
-                borderRadius: haloSize / 2,
-                backgroundColor: colors.surfaceElevated,
-                borderColor: colors.containerBorder,
-              },
-            ]}
-          >
-            <VoiceListeningWave
-              level={level}
-              color={colors.text}
-              size={Math.round(haloSize * 0.48)}
-            />
-          </MotiView>
-
-          <Text style={[styles.stateTitle, { color: colors.text }]}>{"J'écoute…"}</Text>
-          <Text style={[styles.duration, { color: colors.textMuted }]}>
-            {formatDuration(durationMillis)}
-          </Text>
-
-          <Pressable
-            onPress={handleStop}
+  function renderListening() {
+    const thinking = status === 'transcribing';
+    const title = thinking ? 'Je comprends…' : status === 'starting' ? 'Un instant…' : speechDetected ? 'Je t’écoute…' : 'Parle naturellement';
+    const hint = thinking
+      ? 'Analyse de ce que tu viens de dire'
+      : silenceProgress > 0
+        ? 'Je termine…'
+        : speechDetected
+          ? 'Je m’arrête quand tu as fini'
+          : `Par ex. ${EXAMPLE}`;
+    return (
+      <View style={styles.center}>
+        <VoiceOrb mode={thinking ? 'thinking' : status === 'listening' ? 'listening' : 'idle'} level={level} silenceProgress={silenceProgress} />
+        <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
+        <Text style={[styles.hint, { color: colors.textMuted }]} numberOfLines={2}>
+          {hint}
+        </Text>
+        {status === 'listening' ? (
+          <PressScale
             accessibilityRole="button"
-            accessibilityLabel="Arrêter l'écoute"
-            style={({ pressed }) => [
-              styles.stopButton,
-              {
-                width: stopSize,
-                height: stopSize,
-                borderRadius: stopSize / 2,
-                // Même contraste que le FAB commande vocale (`colors.text` + glyphe `background`).
-                backgroundColor: colors.text,
-              },
-              pressed && styles.pressed,
-            ]}
+            accessibilityLabel="Terminer l’écoute"
+            onPress={() => {
+              tapHaptic();
+              stop();
+            }}
+            scaleTo={0.95}
+            style={[styles.secondaryPill, { backgroundColor: colors.surfaceElevated }]}
           >
-            <View style={[styles.stopGlyph, { backgroundColor: colors.background }]} />
-          </Pressable>
-          {showListeningHint ? (
-            <Text style={[styles.stateHint, { color: colors.textMuted }]} numberOfLines={1}>
-              {silenceAutoStop ? "Je m'arrête quand tu as fini." : 'Touche pour arrêter.'}
-            </Text>
-          ) : null}
+            <View style={[styles.stopGlyph, { backgroundColor: colors.text }]} />
+            <Text style={[styles.secondaryPillText, { color: colors.text }]}>Terminer</Text>
+          </PressScale>
+        ) : null}
+      </View>
+    );
+  }
+
+  function renderError(kind: VoiceCaptureErrorKind) {
+    const copy = ERROR_COPY[kind];
+    return (
+      <View style={styles.center}>
+        <View style={[styles.errorIcon, { backgroundColor: colors.surfaceElevated }]}>
+          <AppIcon family="ionicons" name={copy.icon} size={28} color={colors.text} />
         </View>
-      );
-    }
+        <Text style={[styles.title, { color: colors.text }]}>{copy.title}</Text>
+        <Text style={[styles.hint, { color: colors.textMuted }]} numberOfLines={2}>
+          {copy.message}
+        </Text>
+        <PrimarySaveButton label="Réessayer" onPress={handleRetry} style={styles.fullWidth} />
+      </View>
+    );
+  }
 
-    if (status === 'transcribing') {
-      return (
-        <View style={styles.centered}>
-          <ActivityIndicator color={colors.text} />
-          <Text style={[styles.stateTitle, { color: colors.text }]}>Je transcris…</Text>
-          <Text style={[styles.stateHint, { color: colors.textMuted }]} numberOfLines={1}>
-            Analyse de ce que tu viens de dire.
-          </Text>
-        </View>
-      );
-    }
+  function renderTranscript() {
+    return editing ? (
+      <TextInput
+        value={transcript}
+        onChangeText={editTranscript}
+        autoFocus
+        onBlur={() => setEditing(false)}
+        style={[styles.quoteInput, { color: colors.text, backgroundColor: colors.surfaceElevated }]}
+        accessibilityLabel="Transcription — modifiable"
+      />
+    ) : (
+      <Pressable accessibilityRole="button" accessibilityLabel="Modifier la transcription" onPress={() => setEditing(true)} hitSlop={6}>
+        <Text style={[styles.quote, { color: colors.textMuted }]} numberOfLines={2}>
+          « {transcript} »  <Text style={{ color: colors.textSecondary }}>Modifier</Text>
+        </Text>
+      </Pressable>
+    );
+  }
 
-    if (status === 'error' && errorKind) {
-      const copy = ERROR_COPY[errorKind];
-      // Pas de titre « Dicter… » : uniquement le problème + Réessayer (+ X dans la poignée).
-      return (
-        <View style={styles.stack}>
-          <View style={styles.errorCopy}>
-            <Text style={[styles.stateTitle, { color: colors.text }]} numberOfLines={1}>
-              {copy.title}
-            </Text>
-            <Text style={[styles.stateHint, { color: colors.textMuted }]} numberOfLines={2}>
-              {copy.message}
-            </Text>
-          </View>
-          <PrimarySaveButton label="Réessayer" onPress={handleRetry} style={styles.cta} />
-        </View>
-      );
-    }
-
-    if (status !== 'ready') return null;
-
-    // Échec de parsing : même règle — pas de titre feuille, seulement le problème.
+  function renderResult() {
     if (!understood) {
       return (
-        <View style={styles.stack}>
-          <OnyxContainer halo={false} style={styles.transcriptShell}>
-            <TextInput
-              value={transcript}
-              onChangeText={editTranscript}
-              multiline={false}
-              numberOfLines={1}
-              placeholder="Transcription"
-              placeholderTextColor={colors.textMuted}
-              style={[styles.transcript, { color: colors.text }]}
-              accessibilityLabel="Transcription — modifiable"
-            />
-          </OnyxContainer>
-          <View style={styles.errorCopy}>
-            <Text style={[styles.stateTitle, { color: colors.text }]} numberOfLines={1}>
-              {"Je n'ai pas compris"}
-            </Text>
-            <Text style={[styles.stateHint, { color: colors.textMuted }]} numberOfLines={2}>
-              {`Il me faut un montant ou un commerce. Corrige ou redis, par ex. ${DICTATION_EXAMPLE}.`}
-            </Text>
+        <View style={styles.result}>
+          <Text style={[styles.eyebrow, { color: colors.textMuted }]}>Je n’ai pas tout compris</Text>
+          {renderTranscript()}
+          <Text style={[styles.hint, styles.left, { color: colors.textMuted }]}>Il me faut au moins un montant ou un commerce.</Text>
+          <View style={styles.actions}>
+            <RetryButton onPress={handleRetry} />
+            <PrimarySaveButton label="Remplir à la main" onPress={handleConfirm} style={styles.flex} />
           </View>
-          <PrimarySaveButton label="Redire" onPress={handleRetry} style={styles.cta} />
         </View>
       );
     }
 
-    // Récap réussi : type inféré, Confirmer seulement (pas de Redire / toggle).
+    const chips: { key: string; label: string; icon?: React.ReactNode; missing?: boolean }[] = [
+      { key: 'type', label: parsed.type === 'income' ? 'Revenu' : 'Dépense' },
+    ];
+    if (parsed.type === 'expense') {
+      chips.push(
+        category
+          ? {
+              key: 'category',
+              label: category.name,
+              icon: <BudgetCategoryIcon icon={category.icon} name={category.name} id={category.id} tint={colors.text} bare wellSize={16} glyphSize={13} />,
+            }
+          : { key: 'category', label: 'Catégorie', missing: true },
+      );
+    }
+    chips.push(parsed.accountLabel ? { key: 'account', label: parsed.accountLabel } : { key: 'account', label: 'Compte', missing: true });
+
     return (
-      <View style={styles.stack}>
-        <Text style={[styles.sheetTitle, { color: colors.text }]}>Dicter une transaction</Text>
-
-        <OnyxContainer halo={false} style={styles.transcriptShell}>
-          <TextInput
-            value={transcript}
-            onChangeText={editTranscript}
-            multiline={false}
-            numberOfLines={1}
-            placeholder="Transcription"
-            placeholderTextColor={colors.textMuted}
-            style={[styles.transcript, { color: colors.text }]}
-            accessibilityLabel="Transcription — modifiable"
-          />
-        </OnyxContainer>
-
-        <OnyxContainer halo={false} style={styles.summaryShell}>
-          <Text style={[styles.summaryText, { color: colors.text }]} numberOfLines={2}>
-            {summaryParts.join(' · ')}
+      <View style={styles.result}>
+        <Text style={[styles.eyebrow, { color: colors.textMuted }]}>Voici ce que j’ai compris</Text>
+        <Reveal>
+          <Text style={[moneyAmountTypography({ tier: 'stat', fontSize: 34 }), { color: colors.text }]}>
+            {parsed.amount !== null ? `${parsed.type === 'income' ? '+' : '−'}${formatDisplayMoneyAbsoluteExact(parsed.amount)}` : '— $'}
           </Text>
-        </OnyxContainer>
-
-        <PrimarySaveButton label="Confirmer" onPress={handleConfirm} style={styles.cta} />
+          <Text style={[styles.merchant, { color: parsed.merchant ? colors.text : colors.textMuted }]} numberOfLines={1}>
+            {parsed.merchant ?? 'Commerce à préciser'}
+          </Text>
+        </Reveal>
+        <Reveal index={1} style={styles.chips}>
+          {chips.map((chip) => (
+            <View
+              key={chip.key}
+              style={[
+                styles.chip,
+                chip.missing
+                  ? { borderColor: colors.borderStrong, borderStyle: 'dashed', borderWidth: 1 }
+                  : { backgroundColor: colors.surfaceElevated },
+              ]}
+            >
+              {chip.missing ? <AppIcon family="ionicons" name="add" size={13} color={colors.textMuted} /> : chip.icon ?? null}
+              <Text style={[styles.chipText, { color: chip.missing ? colors.textMuted : colors.text }]} numberOfLines={1}>
+                {chip.label}
+              </Text>
+            </View>
+          ))}
+        </Reveal>
+        {renderTranscript()}
+        <View style={styles.actions}>
+          <RetryButton onPress={handleRetry} />
+          <PrimarySaveButton label="Ajouter" onPress={handleConfirm} style={styles.flex} />
+        </View>
       </View>
     );
   }
@@ -418,153 +257,77 @@ export function VoiceTransactionSheet({ visible, onClose, accounts, merchantName
       visible={visible}
       onClose={handleClose}
       hideTitleRow
-      handle={sheetHandle}
-      heightRatio={heightRatio}
+      handle={handle}
+      heightRatio={SHEET_HEIGHT_RATIO}
       scrollable={false}
-      // Safe-area dans le corps ; le fill nav est géré par BottomSheet.
       sheetStyle={styles.sheet}
       scrollContentContainerStyle={{
         paddingHorizontal: spacing.lg,
-        paddingBottom: bodyBottomPadding,
+        paddingBottom: Math.max(insets.bottom, spacing.sm) + spacing.md,
         flex: 1,
+        minHeight: SHEET_HANDLE_DRAG_ZONE_HEIGHT,
       }}
     >
       <View style={styles.body}>
-        <View style={styles.bodyMain}>{renderBody()}</View>
+        {status === 'error' && errorKind
+          ? renderError(errorKind)
+          : status === 'ready'
+            ? renderResult()
+            : renderListening()}
       </View>
     </BottomSheet>
   );
 }
 
-function formatDuration(millis: number): string {
-  const totalSeconds = Math.floor(millis / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+/** Round « Redire » mic button next to the primary action. */
+function RetryButton({ onPress }: { onPress: () => void }) {
+  const { colors } = useAppTheme();
+  return (
+    <PressScale
+      accessibilityRole="button"
+      accessibilityLabel="Redire"
+      onPress={onPress}
+      scaleTo={0.92}
+      style={[styles.retry, { backgroundColor: colors.surfaceElevated }]}
+    >
+      <AppIcon family="ionicons" name="mic" size={20} color={colors.text} />
+    </PressScale>
+  );
 }
 
 const styles = StyleSheet.create({
-  sheet: {
-    paddingBottom: 0,
-  },
-  /** Poignée centrée + X à droite — dans la zone de drag existante (pas de titleRow). */
-  handleBar: {
-    alignSelf: 'stretch',
-    width: '100%',
-    height: '100%',
+  sheet: { paddingBottom: 0 },
+  handleBar: { alignSelf: 'stretch', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
+  handlePill: { width: 36, height: 4, borderRadius: 2 },
+  close: { position: 'absolute', right: spacing.lg, top: '50%', marginTop: -11 },
+  body: { flex: 1, minHeight: 0, justifyContent: 'center' },
+  center: { alignItems: 'center', gap: spacing.sm },
+  title: { ...jakartaBoldText, fontSize: 20, letterSpacing: -0.3, textAlign: 'center', marginTop: spacing.sm },
+  hint: { ...jakartaMediumText, fontSize: 13.5, lineHeight: 19, textAlign: 'center', paddingHorizontal: spacing.md },
+  left: { textAlign: 'left', paddingHorizontal: 0 },
+  secondaryPill: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
+    gap: 8,
+    height: 38,
+    paddingHorizontal: 16,
+    borderRadius: 19,
+    marginTop: spacing.sm,
   },
-  handlePill: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-  },
-  closeButton: {
-    position: 'absolute',
-    right: spacing.lg,
-    top: '50%',
-    marginTop: -(CLOSE_BUTTON_SIZE / 2),
-    width: CLOSE_BUTTON_SIZE,
-    height: CLOSE_BUTTON_SIZE,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  body: {
-    flex: 1,
-    minHeight: 0,
-  },
-  bodyMain: {
-    flex: 1,
-    minHeight: 0,
-    justifyContent: 'center',
-  },
-  stack: {
-    gap: spacing.sm,
-    justifyContent: 'center',
-  },
-  centered: {
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  /** Écoute : colonne centrée, pas de débordement sous le padding safe-area. */
-  listeningLayout: {
-    flex: 1,
-    minHeight: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    // Respire au-dessus du paddingBottom du corps (safe area + md).
-    paddingBottom: spacing.xs,
-  },
-  sheetTitle: {
-    ...jakartaExtraBoldText,
-    fontSize: typography.caption,
-    textAlign: 'center',
-    marginBottom: 2,
-  },
-  listeningHalo: {
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stateTitle: {
-    ...jakartaExtraBoldText,
-    fontSize: typography.body,
-    textAlign: 'center',
-  },
-  stateHint: {
-    ...jakartaMediumText,
-    fontSize: typography.meta,
-    lineHeight: typography.meta + 4,
-    textAlign: 'center',
-    paddingHorizontal: spacing.sm,
-  },
-  duration: {
-    ...jakartaMediumText,
-    fontSize: typography.caption,
-    fontVariant: ['tabular-nums'],
-  },
-  stopButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stopGlyph: {
-    width: 14,
-    height: 14,
-    borderRadius: 3,
-  },
-  errorCopy: {
-    gap: 2,
-    alignItems: 'center',
-    paddingVertical: spacing.xs,
-  },
-  transcriptShell: {
-    paddingHorizontal: ONYX_CONTAINER.padding.row,
-    paddingVertical: spacing.sm,
-  },
-  transcript: {
-    ...jakartaMediumText,
-    fontSize: typography.caption,
-    lineHeight: typography.caption + 4,
-    padding: 0,
-    margin: 0,
-  },
-  summaryShell: {
-    paddingHorizontal: ONYX_CONTAINER.padding.row,
-    paddingVertical: spacing.md,
-  },
-  summaryText: {
-    ...jakartaExtraBoldText,
-    fontSize: typography.caption,
-    lineHeight: typography.caption + 4,
-    textAlign: 'center',
-  },
-  cta: {
-    paddingVertical: spacing.sm + 2,
-  },
-  pressed: { opacity: 0.7 },
+  secondaryPillText: { ...jakartaSemiboldText, fontSize: 13.5 },
+  stopGlyph: { width: 10, height: 10, borderRadius: 2 },
+  errorIcon: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+  fullWidth: { alignSelf: 'stretch', marginTop: spacing.md },
+
+  result: { gap: spacing.md },
+  eyebrow: { ...jakartaSemiboldText, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' },
+  merchant: { ...jakartaSemiboldText, fontSize: 17, marginTop: 2 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 30, paddingHorizontal: 11, borderRadius: 15, maxWidth: '100%' },
+  chipText: { ...jakartaSemiboldText, fontSize: 12.5, flexShrink: 1 },
+  quote: { ...jakartaMediumText, fontSize: 13, lineHeight: 18, fontStyle: 'italic' },
+  quoteInput: { ...jakartaMediumText, fontSize: 14, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
+  retry: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
+  flex: { flex: 1 },
 });
