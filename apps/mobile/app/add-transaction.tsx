@@ -340,7 +340,7 @@ export default function AddTransactionScreen() {
   const accountManuallySelectedRef = useRef(Boolean(routeAccountId));
   /** Route category (voice dictation) waits for the picker list, then applies once. */
   const routeCategoryAppliedRef = useRef(false);
-  const [transferMode, setTransferMode] = useState<TransferMode>('accounts');
+  const [transferMode, setTransferMode] = useState<TransferMode>('person');
   const [transferReason, setTransferReason] = useState('');
   const [transferReasonSuggestions, setTransferReasonSuggestions] = useState<string[]>([]);
   const [transferEntryStep, setTransferEntryStep] = useState<TransferEntryStep>('reason');
@@ -2118,7 +2118,7 @@ export default function AddTransactionScreen() {
                       tapHaptic();
                       setCategoryManuallySelected(false);
                       if (t !== 'transfer') {
-                        setTransferMode('accounts');
+                        setTransferMode('person');
                         setTransferReason('');
                       }
                       if (t !== 'income') {
