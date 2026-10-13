@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { ListCard, PressScale, RingGauge, withAlpha } from '@/components/kit';
+import { ListCard, PressScale, withAlpha } from '@/components/kit';
 import { jakartaMediumText, jakartaSemiboldText, typographyKit } from '@/constants/theme';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { getCategoriesForMonth, initializeCategories } from '@/lib/budgetCategories';
@@ -16,7 +16,6 @@ import { mapBudgetCategoriesToUi } from '@/lib/budgetCategoryModel';
 import { startOfMonth } from '@/lib/budgetMonth';
 import {
   buildCopilotInsights,
-  copilotHealthScore,
   copilotHeadline,
   type CopilotInput,
   type CopilotInsight,
@@ -295,15 +294,9 @@ export function CopilotWidget({ gentle = false }: { gentle?: boolean }) {
     >
       <ListCard>
         <View style={styles.head}>
-          {/* Health score ring — same score as the Copilote hub. */}
-          <RingGauge
-            progress={copilotHealthScore(insights) / 100}
-            color={toWatch > 0 ? WARN_TONE : colors.accentGreen}
-            size={44}
-            stroke={4}
-          >
-            <Text style={[styles.scoreText, jakartaSemiboldText, { color: colors.text }]}>{copilotHealthScore(insights)}</Text>
-          </RingGauge>
+          <View style={[styles.spark, { backgroundColor: colors.surfaceElevated }]}>
+            <AppIcon family="ionicons" name="sparkles" size={15} color={colors.text} />
+          </View>
           {/* Title on its own line, status pill (full size) right under it — never squeezes « Copilote ». */}
           <View style={styles.headStack}>
             <Text style={[styles.headTitle, jakartaSemiboldText, { color: colors.text }]} numberOfLines={1}>
@@ -317,6 +310,21 @@ export function CopilotWidget({ gentle = false }: { gentle?: boolean }) {
             </View>
           </View>
           <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
+        </View>
+        {/* At-a-glance mix: one segment per tip — amber to look at, green going well, grey good to know. */}
+        <View style={styles.mixBar}>
+          {insights.map((insight) => {
+            const tone = gentle && insight.tone === 'risk' ? 'warn' : insight.tone;
+            return (
+              <View
+                key={insight.id}
+                style={[
+                  styles.mixSegment,
+                  { backgroundColor: tone === 'info' ? colors.borderStrong : toneColor(tone, colors) },
+                ]}
+              />
+            );
+          })}
         </View>
         {/* Two tip tiles side by side — icon first, short title, no paragraphs. */}
         <View style={styles.tiles}>
@@ -356,7 +364,8 @@ const styles = StyleSheet.create({
   status: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 28, paddingHorizontal: 11, borderRadius: 14, flexShrink: 0 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   headStack: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 6 },
-  scoreText: { fontSize: 13 },
+  mixBar: { flexDirection: 'row', gap: 4, height: 6, marginHorizontal: 14, marginBottom: 12 },
+  mixSegment: { flex: 1, borderRadius: 3 },
   tiles: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingBottom: 12 },
   tipTile: { flex: 1, minWidth: 0, borderRadius: 16, padding: 12, gap: 10 },
   tipIcon: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
