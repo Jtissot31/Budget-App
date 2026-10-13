@@ -9,6 +9,7 @@
  */
 import type { ReactNode } from 'react';
 import { Dimensions, Image, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { captureScreen } from 'react-native-view-shot';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -62,7 +63,9 @@ export function GlassLens({
   style,
 }: Props) {
   const { isLight } = useAppTheme();
-  const tint = isLight ? `rgba(255,255,255,${tintStrength + 0.2})` : `rgba(28,28,32,${tintStrength})`;
+  // Graphite glass in dark mode — clearly raised above the dimmed screen, still see-through.
+  const tint = isLight ? `rgba(255,255,255,${tintStrength + 0.35})` : `rgba(72,72,82,${Math.min(0.92, 0.42 + tintStrength)})`;
+  const sheen = isLight ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.12)';
   const fallback = isLight ? 'rgba(255,255,255,0.9)' : 'rgba(38,38,44,0.95)';
 
   return (
@@ -86,6 +89,8 @@ export function GlassLens({
           />
         ) : null}
         <View style={[StyleSheet.absoluteFill, { backgroundColor: tint }]} />
+        {/* Soft light wash in the upper half — a fill, not an outline. */}
+        <LinearGradient colors={[sheen, 'rgba(255,255,255,0)']} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 0.6 }} style={StyleSheet.absoluteFill} />
       </View>
       {children}
     </View>
