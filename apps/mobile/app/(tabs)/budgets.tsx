@@ -20,6 +20,7 @@ import {
   PillButton,
   AnimatedFill,
   Reveal,
+  accentForKey,
 } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
 import {
@@ -391,6 +392,7 @@ export default function BudgetScreen() {
                               icon={category.icon}
                               name={category.name}
                               id={category.id}
+                              tint={accentForKey(category.id)}
                               wellSize={40}
                               glyphSize={18}
                             />

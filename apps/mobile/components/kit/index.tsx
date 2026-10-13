@@ -56,6 +56,7 @@ export {
   RingGauge,
   SplitBar,
   SUBTLE_ACCENTS,
+  accentForKey,
   withAlpha,
   type SplitSegment,
 } from './charts';

@@ -7,7 +7,7 @@ import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { FitText, PressScale, RingGauge } from '@/components/kit';
+import { accentForKey, FitText, PressScale, RingGauge } from '@/components/kit';
 import { jakartaMediumText, jakartaSemiboldText, moneyAmountTypography } from '@/constants/theme';
 import type { BudgetCategoryUiModel } from '@/lib/budgetCategoryModel';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
@@ -34,10 +34,10 @@ export const BudgetCategoryTile = memo(function BudgetCategoryTile({
   const over = category.usage.isOverBudget;
   const left = category.limit - category.spent;
   const ratio = category.limit > 0 ? category.spent / category.limit : over ? 1 : 0;
-  // Colour carries meaning only, on the ring: neutral when healthy, sand near the limit, coral when over.
-  // Exactly at the limit (rent, phone paid in full) is fine — only « almost there » gets the sand ring.
+  // Status lives on the ring: green when healthy, amber near the limit, red when over.
+  // Exactly at the limit (rent, phone paid in full) is fine — only « almost there » gets the amber ring.
   const nearLimit = !over && ratio >= 0.9 && ratio < 0.995;
-  const ringColor = over ? BUDGET_OVER : nearLimit ? BUDGET_NEAR : colors.text;
+  const ringColor = over ? BUDGET_OVER : nearLimit ? BUDGET_NEAR : colors.accentGreen;
   const pct = Math.round(ratio * 100);
 
   return (
@@ -59,16 +59,12 @@ export const BudgetCategoryTile = memo(function BudgetCategoryTile({
     >
       <View style={styles.top}>
         <RingGauge progress={ratio} color={ringColor} size={54} stroke={5}>
-          <View
-            style={[
-              styles.iconWell,
-              { backgroundColor: colors.surfaceElevated },
-            ]}
-          >
+          <View style={styles.iconWell}>
             <BudgetCategoryIcon
               icon={category.icon}
               name={category.name}
               id={category.id}
+              tint={accentForKey(category.id)}
               wellSize={34}
               glyphSize={17}
             />
@@ -82,7 +78,7 @@ export const BudgetCategoryTile = memo(function BudgetCategoryTile({
             color={selected ? colors.text : colors.textMuted}
           />
         ) : (
-          <Text style={[styles.pct, jakartaSemiboldText, { color: over ? BUDGET_OVER : colors.textMuted }]}>
+          <Text style={[styles.pct, jakartaSemiboldText, { color: over ? BUDGET_OVER : nearLimit ? BUDGET_NEAR : colors.textMuted }]}>
             {`${pct} %`}
           </Text>
         )}
