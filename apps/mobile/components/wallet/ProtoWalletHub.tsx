@@ -477,7 +477,7 @@ export function ProtoWalletHub() {
           balance={account.balance}
           envelopes={envelopes}
           hideBalances={hideBalances}
-          onAdd={() => setEnvelopeDraft(newEnvelopeDraft(account.id, envelopes.length))}
+          onAdd={(preset) => setEnvelopeDraft(newEnvelopeDraft(account.id, envelopes.length, preset))}
           onEdit={(envelope) => setEnvelopeDraft({ envelope, isNew: false })}
         />
         {!isLast ? <View style={[styles.envelopeDivider, { backgroundColor: colors.borderSubtle }]} /> : null}

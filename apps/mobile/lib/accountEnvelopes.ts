@@ -10,7 +10,7 @@ export type AccountEnvelope = {
   id: string;
   accountId: string;
   name: string;
-  /** Ionicons glyph name. */
+  /** Emoji (current) or an Ionicons glyph name (older envelopes) — see `isEnvelopeEmoji`. */
   icon: string;
   amount: number;
   displayOrder: number;
@@ -27,31 +27,27 @@ type EnvelopeRow = {
   created_at: string;
 };
 
-export const DEFAULT_ENVELOPE_ICON = 'wallet-outline';
+export const DEFAULT_ENVELOPE_ICON = '💰';
 
-/** One-tap starting points in the « Nouvelle enveloppe » sheet. */
+/** One-tap starting points (empty state + « Nouvelle enveloppe » sheet). */
 export const ENVELOPE_PRESETS: { name: string; icon: string }[] = [
-  { name: 'Dépenses', icon: 'cart-outline' },
-  { name: 'Factures', icon: 'receipt-outline' },
-  { name: 'Loisirs', icon: 'game-controller-outline' },
-  { name: 'Épargne', icon: 'leaf-outline' },
-  { name: 'Urgence', icon: 'medkit-outline' },
+  { name: 'Factures', icon: '🧾' },
+  { name: 'Loisirs', icon: '🎉' },
+  { name: 'Épargne', icon: '🌱' },
+  { name: 'Dépenses', icon: '🛒' },
+  { name: 'Urgence', icon: '🚨' },
+  { name: 'Voyage', icon: '✈️' },
 ];
 
-export const ENVELOPE_ICONS = [
-  'cart-outline',
-  'receipt-outline',
-  'game-controller-outline',
-  'leaf-outline',
-  'medkit-outline',
-  'home-outline',
-  'car-outline',
-  'airplane-outline',
-  'gift-outline',
-  'restaurant-outline',
-  'school-outline',
-  'paw-outline',
+export const ENVELOPE_EMOJIS = [
+  '💰', '🧾', '🛒', '🎉', '🌱', '🚨', '✈️', '🏠', '🚗', '🍔',
+  '🎁', '🎓', '🐾', '💊', '👶', '🎮', '📱', '💪', '☕', '🎵',
 ] as const;
+
+/** Older envelopes stored an Ionicons name (« cart-outline »); new ones store an emoji. */
+export function isEnvelopeEmoji(icon: string): boolean {
+  return !/^[a-z0-9-]+$/.test(icon);
+}
 
 function fromRow(row: EnvelopeRow): AccountEnvelope {
   return {
