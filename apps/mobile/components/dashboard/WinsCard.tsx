@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Animated from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { PressScale, Reveal, usePopOnActive } from '@/components/kit/motion';
@@ -23,7 +24,7 @@ function todayKey(): string {
 
 export function WinsCard({ wins }: { wins: HomeWins }) {
   const router = useRouter();
-  const { colors } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
   const [shown, setShown] = useState(false);
   const pop = usePopOnActive(shown, 1.22);
   const celebrate = wins.mood !== 'fresh';
@@ -45,11 +46,34 @@ export function WinsCard({ wins }: { wins: HomeWins }) {
   }, [celebrate]);
 
   const accent = colors.accentGreen;
+  // Layered « aurora » background: a wash from the top-left, a second glow from the
+  // bottom-right and a faint sheen. Green/teal when celebrating, calm indigo otherwise.
+  const [primary, secondary] = celebrate ? ['34,197,94', '20,184,166'] : ['99,102,241', '59,130,246'];
+  const strength = isLight ? 0.16 : 0.24;
 
   return (
     <View style={[styles.card, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
-      {/* Soft green glow in the corner — celebratory without shouting. */}
-      {celebrate ? <View pointerEvents="none" style={[styles.glow, { backgroundColor: accent }]} /> : null}
+      <LinearGradient
+        pointerEvents="none"
+        colors={[`rgba(${primary},${strength})`, `rgba(${primary},0)`]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0.75, y: 0.9 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <LinearGradient
+        pointerEvents="none"
+        colors={[`rgba(${secondary},0)`, `rgba(${secondary},${strength * 0.85})`]}
+        start={{ x: 0.35, y: 0.2 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <LinearGradient
+        pointerEvents="none"
+        colors={[isLight ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0)']}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 0.45 }}
+        style={StyleSheet.absoluteFill}
+      />
 
       <View style={styles.head}>
         <Animated.View style={[styles.badge, { backgroundColor: celebrate ? `${accent}26` : colors.surfaceElevated }, pop]}>
@@ -102,7 +126,6 @@ export function WinsCard({ wins }: { wins: HomeWins }) {
 
 const styles = StyleSheet.create({
   card: { borderRadius: 22, borderWidth: 1, padding: 16, gap: 14, overflow: 'hidden' },
-  glow: { position: 'absolute', top: -60, right: -40, width: 160, height: 160, borderRadius: 80, opacity: 0.1 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   badge: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   headCopy: { flex: 1, minWidth: 0, gap: 2 },

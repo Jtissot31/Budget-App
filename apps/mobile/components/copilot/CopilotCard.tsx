@@ -276,10 +276,17 @@ export function CopilotWidget({ gentle = false }: { gentle?: boolean }) {
           <View style={[styles.spark, { backgroundColor: colors.surfaceElevated }]}>
             <AppIcon family="ionicons" name="sparkles" size={15} color={colors.text} />
           </View>
-          <Text style={[styles.headTitle, jakartaSemiboldText, { color: colors.text }]}>Copilote</Text>
-          <View style={[styles.status, { backgroundColor: withAlpha(toHex(headTone), 0.14) }]}>
-            <View style={[styles.statusDot, { backgroundColor: headTone }]} />
-            <Text style={[styles.statusText, { color: headTone }]}>{status.title}</Text>
+          {/* Title on its own line, status pill (full size) right under it — never squeezes « Copilote ». */}
+          <View style={styles.headStack}>
+            <Text style={[styles.headTitle, jakartaSemiboldText, { color: colors.text }]} numberOfLines={1}>
+              Copilote
+            </Text>
+            <View style={[styles.status, styles.statusStacked, { backgroundColor: withAlpha(toHex(headTone), 0.14) }]}>
+              <View style={[styles.statusDot, { backgroundColor: headTone }]} />
+              <Text style={[styles.statusText, { color: headTone }]} numberOfLines={1}>
+                {status.title}
+              </Text>
+            </View>
           </View>
           <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
         </View>
@@ -307,6 +314,8 @@ const styles = StyleSheet.create({
   headTitle: { fontSize: 15, letterSpacing: -0.2, flexGrow: 1, flexShrink: 1 },
   status: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 28, paddingHorizontal: 11, borderRadius: 14, flexShrink: 0 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
+  headStack: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 6 },
+  statusStacked: { maxWidth: '100%' },
   statusText: { ...typographyKit.metaSemibold, fontSize: 12.5 },
   row: {
     flexDirection: 'row',
