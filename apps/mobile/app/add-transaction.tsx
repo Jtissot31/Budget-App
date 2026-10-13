@@ -38,7 +38,7 @@ import {
 } from '@/components/AddArticleSheet';
 import { BudgetCategoryPicker } from '@/components/BudgetCategoryPicker';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
-import { SettingsSelectField } from '@/components/SettingsSelectField';
+import { ChipSelectField } from '@/components/ChipSelectField';
 import type { SettingsPickerOption } from '@/components/SettingsPickerSheet';
 import { GhostNumpad } from '@/components/GhostNumpad';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
@@ -2541,7 +2541,7 @@ export default function AddTransactionScreen() {
 
               {type === 'expense' ? (
                 <View style={styles.section}>
-                  <SettingsSelectField
+                  <ChipSelectField
                     label="Méthode de paiement"
                     options={accountPickerOptions}
                     selectedId={accountId}
@@ -2568,6 +2568,7 @@ export default function AddTransactionScreen() {
                   }}
                 >
                   <BudgetCategoryPicker
+                    variant="chips"
                     categories={visibleCats}
                     searchText={categorySearchText}
                     selectedId={categoryId}
@@ -2583,7 +2584,7 @@ export default function AddTransactionScreen() {
 
               {type !== 'expense' && !isTransfer ? (
                 <View style={styles.section}>
-                  <SettingsSelectField
+                  <ChipSelectField
                     label="Compte de dépôt"
                     options={accountPickerOptions}
                     selectedId={accountId}
@@ -2616,6 +2617,7 @@ export default function AddTransactionScreen() {
                   onLayout={(e) => { categorySectionYRef.current = e.nativeEvent.layout.y; }}
                 >
                   <BudgetCategoryPicker
+                    variant="chips"
                     categories={visibleCats}
                     searchText={categorySearchText}
                     selectedId={categoryId}
@@ -2631,7 +2633,7 @@ export default function AddTransactionScreen() {
 
               {isPersonTransferFrom ? (
                 <View style={styles.section}>
-                  <SettingsSelectField
+                  <ChipSelectField
                     label="Compte de dépôt"
                     options={accountPickerOptions}
                     selectedId={accountId}
@@ -2655,6 +2657,7 @@ export default function AddTransactionScreen() {
                   onLayout={(e) => { categorySectionYRef.current = e.nativeEvent.layout.y; }}
                 >
                   <BudgetCategoryPicker
+                    variant="chips"
                     categories={visibleCats}
                     searchText={categorySearchText}
                     selectedId={categoryId}
@@ -2679,7 +2682,7 @@ export default function AddTransactionScreen() {
                   {!hasTransferEndpoints ? (
                     <Text style={[styles.sectionHint, themed.textMuted]}>Aucun compte ou objectif trouvé.</Text>
                   ) : (
-                    <SettingsSelectField
+                    <ChipSelectField
                       label="De"
                       options={transferSourcePickerOptions}
                       selectedId={accountId}
@@ -2705,7 +2708,7 @@ export default function AddTransactionScreen() {
                   ]}
                   onLayout={(e) => { sourceAccountSectionYRef.current = e.nativeEvent.layout.y; }}
                 >
-                  <SettingsSelectField
+                  <ChipSelectField
                     label="Compte source"
                     options={accountPickerOptions}
                     selectedId={accountId}
@@ -2730,7 +2733,7 @@ export default function AddTransactionScreen() {
                   ]}
                   onLayout={(e) => { destinationAccountSectionYRef.current = e.nativeEvent.layout.y; }}
                 >
-                  <SettingsSelectField
+                  <ChipSelectField
                     label="Vers"
                     options={transferDestinationPickerOptions}
                     selectedId={destinationAccountId}
