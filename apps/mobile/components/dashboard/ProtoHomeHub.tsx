@@ -431,159 +431,163 @@ export function ProtoHomeHub() {
             }
           />
 
+          {/* Cold start: nothing but the title until real data is ready, then every section
+              appears at once — no empty values, no late pop-in. Later visits use the cache. */}
           {hasLoaded ? (
+            <>
+              <Reveal index={0} style={styles.section}>
+                <WinsCard wins={homeWins} />
+              </Reveal>
+
             <Reveal index={0} style={styles.section}>
-              <WinsCard wins={homeWins} />
+              <SummaryCard
+                label="Patrimoine net"
+                amount={signedMoney(totalNetWorth)}
+                amountValue={totalNetWorth}
+                formatAmount={signedMoney}
+                badge={
+                  netWorthPct != null
+                    ? { label: `${formatSignedPct(netWorthPct)} · 30 j`, color: trendColor }
+                    : undefined
+                }
+                stats={[
+                  {
+                    label: 'Revenus',
+                    value: `+${formatDisplayMoneyAbsolute(monthlyIncome)}`,
+                    color: colors.accentGreen,
+                  },
+                  {
+                    label: 'Dépenses',
+                    value: `−${formatDisplayMoneyAbsolute(monthlyExpenses)}`,
+                  },
+                  {
+                    label: 'Épargne',
+                    value:
+                      savingsRate == null
+                        ? '—'
+                        : `${savingsRate < 0 ? '−' : ''}${formatNumberDisplay(Math.abs(savingsRate))} %`,
+                    color:
+                      savingsRate == null
+                        ? colors.textMuted
+                        : savingsRate >= 0
+                          ? colors.accentGreen
+                          : colors.textMuted,
+                  },
+                ]}
+                onPress={() => router.navigate('/accounts')}
+                accessibilityLabel="Patrimoine net, ouvrir le portefeuille"
+              >
+                {netWorthSeries.length > 1 ? (
+                  <AreaSparkline data={netWorthSeries} color={trendColor} height={52} />
+                ) : null}
+              </SummaryCard>
             </Reveal>
-          ) : null}
 
-          <Reveal index={0} style={styles.section}>
-            <SummaryCard
-              label="Patrimoine net"
-              amount={signedMoney(totalNetWorth)}
-              amountValue={totalNetWorth}
-              formatAmount={signedMoney}
-              badge={
-                netWorthPct != null
-                  ? { label: `${formatSignedPct(netWorthPct)} · 30 j`, color: trendColor }
-                  : undefined
-              }
-              stats={[
-                {
-                  label: 'Revenus',
-                  value: `+${formatDisplayMoneyAbsolute(monthlyIncome)}`,
-                  color: colors.accentGreen,
-                },
-                {
-                  label: 'Dépenses',
-                  value: `−${formatDisplayMoneyAbsolute(monthlyExpenses)}`,
-                },
-                {
-                  label: 'Épargne',
-                  value:
-                    savingsRate == null
-                      ? '—'
-                      : `${savingsRate < 0 ? '−' : ''}${formatNumberDisplay(Math.abs(savingsRate))} %`,
-                  color:
-                    savingsRate == null
-                      ? colors.textMuted
-                      : savingsRate >= 0
-                        ? colors.accentGreen
-                        : colors.textMuted,
-                },
-              ]}
-              onPress={() => router.navigate('/accounts')}
-              accessibilityLabel="Patrimoine net, ouvrir le portefeuille"
-            >
-              {netWorthSeries.length > 1 ? (
-                <AreaSparkline data={netWorthSeries} color={trendColor} height={52} />
-              ) : null}
-            </SummaryCard>
-          </Reveal>
+            <Reveal index={1} style={styles.section}>
+              <CopilotWidget gentle />
+            </Reveal>
 
-          <Reveal index={1} style={styles.section}>
-            <CopilotWidget gentle />
-          </Reveal>
+            <Reveal index={1} style={styles.section}>
+              <TodayCard />
+            </Reveal>
 
-          <Reveal index={1} style={styles.section}>
-            <TodayCard />
-          </Reveal>
+            <Reveal index={2} style={styles.section}>
+              <SectionLabel title="Budget du mois" actionLabel="Détails" onAction={() => router.navigate('/budgets')} />
+              <ListCard>
+                {budget.limit > 0 ? (
+                  <ListRow
+                    leading={
+                      <RingGauge progress={budgetRatio} color={budgetColor} size={48} stroke={4}>
+                        <Text style={[styles.ringText, { color: colors.text }]}>
+                          {`${Math.min(999, Math.round(budgetRatio * 100))}%`}
+                        </Text>
+                      </RingGauge>
+                    }
+                    title={
+                      budget.remaining < 0
+                        ? `${formatDisplayMoneyAbsolute(-budget.remaining)} au-delà du plan`
+                        : `${signedMoney(budget.remaining)} restants`
+                    }
+                    subtitle={budgetSubtitle}
+                    isLast
+                    chevron
+                    onPress={() => router.navigate('/budgets')}
+                  />
+                ) : (
+                  <EmptyRow
+                    label="Aucun budget défini"
+                    actionLabel="Créer"
+                    onAction={() => router.navigate('/budgets')}
+                  />
+                )}
+              </ListCard>
+            </Reveal>
 
-          <Reveal index={2} style={styles.section}>
-            <SectionLabel title="Budget du mois" actionLabel="Détails" onAction={() => router.navigate('/budgets')} />
-            <ListCard>
-              {budget.limit > 0 ? (
-                <ListRow
-                  leading={
-                    <RingGauge progress={budgetRatio} color={budgetColor} size={48} stroke={4}>
-                      <Text style={[styles.ringText, { color: colors.text }]}>
-                        {`${Math.min(999, Math.round(budgetRatio * 100))}%`}
-                      </Text>
-                    </RingGauge>
-                  }
-                  title={
-                    budget.remaining < 0
-                      ? `${formatDisplayMoneyAbsolute(-budget.remaining)} au-delà du plan`
-                      : `${signedMoney(budget.remaining)} restants`
-                  }
-                  subtitle={budgetSubtitle}
-                  isLast
-                  chevron
-                  onPress={() => router.navigate('/budgets')}
-                />
+            <Reveal index={3} style={styles.section}>
+              <SectionLabel title="Prochain paiement" actionLabel="Agenda" onAction={() => router.navigate('/goals')} />
+              {upcoming.length === 0 ? (
+                <ListCard>
+                  <EmptyRow label="Rien à payer d’ici 45 jours" />
+                </ListCard>
               ) : (
-                <EmptyRow
-                  label="Aucun budget défini"
-                  actionLabel="Créer"
-                  onAction={() => router.navigate('/budgets')}
+                <NextPayments
+                  rows={upcoming}
+                  onOpen={(row) =>
+                    row?.bill.sourceId
+                      ? router.push({ pathname: '/payment-detail', params: { id: row.bill.sourceId, date: row.dateKey } })
+                      : router.navigate('/goals')
+                  }
                 />
               )}
-            </ListCard>
-          </Reveal>
-
-          <Reveal index={3} style={styles.section}>
-            <SectionLabel title="Prochain paiement" actionLabel="Agenda" onAction={() => router.navigate('/goals')} />
-            {upcoming.length === 0 ? (
-              <ListCard>
-                <EmptyRow label="Rien à payer d’ici 45 jours" />
-              </ListCard>
-            ) : (
-              <NextPayments
-                rows={upcoming}
-                onOpen={(row) =>
-                  row?.bill.sourceId
-                    ? router.push({ pathname: '/payment-detail', params: { id: row.bill.sourceId, date: row.dateKey } })
-                    : router.navigate('/goals')
-                }
-              />
-            )}
-          </Reveal>
-
-          {budget.spent > 0 ? (
-            <Reveal index={4} style={styles.section}>
-              <SectionLabel
-                title="Où va ton argent"
-                actionLabel="Analyse"
-                onAction={() => go('/transactions-insights')}
-              />
-              <SpendingSnapshot
-                categories={budgetCategories}
-                onOpenCategory={(id) => router.push({ pathname: '/budget-category', params: { id } })}
-              />
             </Reveal>
-          ) : null}
 
-          <Reveal index={5} style={styles.section}>
-            <SectionLabel
-              title="Objectifs"
-              actionLabel={goalProgressions.length > 0 ? 'Tout voir' : 'Nouveau'}
-              onAction={goalProgressions.length > 0 ? () => router.navigate('/accounts') : openNewGoalForm}
-            />
-            {goalTotals.count > 1 ? (
-              <View style={styles.goalSummary}>
-                <GoalsOverview {...goalTotals} />
-              </View>
+            {budget.spent > 0 ? (
+              <Reveal index={4} style={styles.section}>
+                <SectionLabel
+                  title="Où va ton argent"
+                  actionLabel="Analyse"
+                  onAction={() => go('/transactions-insights')}
+                />
+                <SpendingSnapshot
+                  categories={budgetCategories}
+                  onOpenCategory={(id) => router.push({ pathname: '/budget-category', params: { id } })}
+                />
+              </Reveal>
             ) : null}
-            {goalProgressions.length === 0 ? (
-              <ListCard>
-                <EmptyRow label="Aucun objectif en cours" actionLabel="Créer" onAction={openNewGoalForm} />
-              </ListCard>
-            ) : (
-              <View style={styles.goalGrid}>
-                {homeGoals.map((goal) => (
-                  <View key={goal.goalId} style={styles.goalCell}>
-                    <GoalTile
-                      name={goal.name}
-                      icon={<UserPickedIconWell icon={goal.icon} size={32} />}
-                      saved={goal.currentAmount}
-                      target={goal.targetAmount}
-                      onPress={() => go({ pathname: '/goal-detail', params: { goalId: goal.goalId } })}
-                    />
-                  </View>
-                ))}
-              </View>
-            )}
-          </Reveal>
+
+            <Reveal index={5} style={styles.section}>
+              <SectionLabel
+                title="Objectifs"
+                actionLabel={goalProgressions.length > 0 ? 'Tout voir' : 'Nouveau'}
+                onAction={goalProgressions.length > 0 ? () => router.navigate('/accounts') : openNewGoalForm}
+              />
+              {goalTotals.count > 1 ? (
+                <View style={styles.goalSummary}>
+                  <GoalsOverview {...goalTotals} />
+                </View>
+              ) : null}
+              {goalProgressions.length === 0 ? (
+                <ListCard>
+                  <EmptyRow label="Aucun objectif en cours" actionLabel="Créer" onAction={openNewGoalForm} />
+                </ListCard>
+              ) : (
+                <View style={styles.goalGrid}>
+                  {homeGoals.map((goal) => (
+                    <View key={goal.goalId} style={styles.goalCell}>
+                      <GoalTile
+                        name={goal.name}
+                        icon={<UserPickedIconWell icon={goal.icon} size={32} />}
+                        saved={goal.currentAmount}
+                        target={goal.targetAmount}
+                        onPress={() => go({ pathname: '/goal-detail', params: { goalId: goal.goalId } })}
+                      />
+                    </View>
+                  ))}
+                </View>
+              )}
+            </Reveal>
+            </>
+          ) : null}
         </ScrollView>
 
         <SavingsGoalFormModal
