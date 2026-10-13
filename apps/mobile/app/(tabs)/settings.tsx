@@ -7,6 +7,7 @@ import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { PageTransition } from '@/components/PageTransition';
+import { ChipSelectField } from '@/components/ChipSelectField';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { RegionPickerSheet } from '@/components/RegionPickerSheet';
 import { SettingsPickerSheet } from '@/components/SettingsPickerSheet';
@@ -308,12 +309,20 @@ export default function SettingsScreen() {
               value={formatRegionLabel(region)}
               onPress={() => setActivePicker('region')}
             />
-            <SettingsNavigationRow
-              label="Devise"
-              icon="cash-outline"
-              value={labelForOption(CURRENCY_OPTIONS, currency)}
-              onPress={() => setActivePicker('currency')}
-            />
+            {/* Few options → one-tap inline chips instead of a picker sheet. */}
+            <SettingsCustomRow label="Devise" icon="cash-outline">
+              <ChipSelectField
+                label="Devise"
+                showLabel={false}
+                reorderSelected={false}
+                options={CURRENCY_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
+                selectedId={currency}
+                onSelect={(id) => {
+                  setCurrency(id as typeof currency);
+                  void setDisplayCurrency(id as typeof currency);
+                }}
+              />
+            </SettingsCustomRow>
             {/* Three options → inline one-tap switch, same control as « Thème » (no picker sheet). */}
             <SettingsCustomRow label="Langue" icon="language-outline" isLast>
               <SegmentedTabs
@@ -397,13 +406,20 @@ export default function SettingsScreen() {
           </SettingsSection>
 
           <SettingsSection title="Revenus">
-            <SettingsNavigationRow
-              label="Fréquence des paies"
-              hint="Pour prévoir tes paies dans l’agenda"
-              icon="repeat-outline"
-              value={payFrequency ? payEstimationFrequencyLabel(payFrequency) : 'Non définie'}
-              onPress={() => setActivePicker('pay_frequency')}
-            />
+            <SettingsCustomRow label="Fréquence des paies" icon="repeat-outline">
+              <ChipSelectField
+                label="Fréquence des paies"
+                showLabel={false}
+                reorderSelected={false}
+                options={PAY_ESTIMATION_FREQUENCY_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
+                selectedId={payFrequency ?? ''}
+                onSelect={(id) => {
+                  const next = id as PayEstimationFrequency;
+                  setPayFrequency(next);
+                  void persistPayEstimationFrequency(next);
+                }}
+              />
+            </SettingsCustomRow>
             <SettingsCustomRow
               label="Avant-dernière paie"
               icon="calendar-outline"

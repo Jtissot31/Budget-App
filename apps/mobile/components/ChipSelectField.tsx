@@ -30,6 +30,8 @@ type Props = {
   placeholder?: string;
   /** Move the selected chip to the front (animated). Off = chips stay put, only the selection highlights. */
   reorderSelected?: boolean;
+  /** Hide the section label (e.g. inside a Settings row that already shows one). */
+  showLabel?: boolean;
 };
 
 export function ChipSelectField({
@@ -41,6 +43,7 @@ export function ChipSelectField({
   labelStyle,
   style,
   reorderSelected = true,
+  showLabel = true,
 }: Props) {
   const { colors } = useAppTheme();
   const scrollRef = useRef<ScrollView>(null);
@@ -59,7 +62,7 @@ export function ChipSelectField({
 
   return (
     <View style={[styles.field, style]}>
-      <Text style={[styles.label, { color: colors.textMuted }, labelStyle]}>{label}</Text>
+      {showLabel ? <Text style={[styles.label, { color: colors.textMuted }, labelStyle]}>{label}</Text> : null}
       {options.length === 0 ? (
         <Text style={[styles.emptyHint, { color: colors.textMuted }]}>{emptyHint ?? 'Aucune option disponible.'}</Text>
       ) : (
