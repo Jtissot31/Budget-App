@@ -211,6 +211,7 @@ function RootLayoutContent() {
             <Stack.Screen name="patrimoine" options={{ headerShown: false }} />
             <Stack.Screen name="plans" options={{ headerShown: false }} />
             <Stack.Screen name="scan" options={{ headerShown: false, presentation: 'modal' }} />
+            <Stack.Screen name="connect-bank" options={{ headerShown: false, presentation: 'modal', gestureEnabled: false }} />
             <Stack.Screen
               name="budget-category"
               options={{

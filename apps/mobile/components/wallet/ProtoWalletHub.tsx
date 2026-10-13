@@ -32,7 +32,6 @@ import {
   SimulatedAccountFormModal,
   type AccountForm,
 } from '@/components/SimulatedAccountForm';
-import { showToast } from '@/components/kit/Toast';
 import { AddAccountSheet } from '@/components/wallet/AddAccountSheet';
 import {
   createNewGoalForm,
@@ -216,16 +215,11 @@ export function ProtoWalletHub() {
     [accounts.length],
   );
 
-  /** Plaid bank sync entry point — not wired to a backend yet. */
+  /** Plaid bank-sync flow (preview data until the backend exists). */
   const handleConnectBank = useCallback(() => {
-    setTimeout(() => {
-      showToast({
-        title: 'Connexion bancaire bientôt disponible',
-        subtitle: 'La synchronisation Plaid arrive prochainement.',
-        icon: 'link',
-      });
-    }, 280);
-  }, []);
+    // Let the sheet Modal dismiss before presenting the flow.
+    setTimeout(() => router.push('/connect-bank'), 280);
+  }, [router]);
 
   const closeAccountForm = useCallback(() => {
     setAccountForm(null);
