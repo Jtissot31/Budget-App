@@ -13,7 +13,7 @@ import {
 import { MonthSelector } from '@/components/MonthSelector';
 import { MerchantLogo } from '@/components/MerchantLogo';
 import { PageTransition } from '@/components/PageTransition';
-import { accentForKey, EmptyRow, IconWell, ListCard, ListRow, SectionLabel } from '@/components/kit';
+import { EmptyRow, IconWell, ListCard, ListRow, SectionLabel } from '@/components/kit';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionRow } from '@/components/TransactionRow';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
@@ -439,7 +439,6 @@ export default function TransactionsInsightsScreen() {
                     icon={row.icon}
                     name={row.name}
                     id={row.key}
-                    tint={accentForKey(row.key)}
                     wellSize={40}
                     glyphSize={18}
                   />

@@ -7,7 +7,7 @@ import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { accentForKey, FitText, PressScale, RingGauge } from '@/components/kit';
+import { FitText, PressScale, RingGauge } from '@/components/kit';
 import { jakartaMediumText, jakartaSemiboldText, moneyAmountTypography } from '@/constants/theme';
 import type { BudgetCategoryUiModel } from '@/lib/budgetCategoryModel';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
@@ -60,12 +60,12 @@ export const BudgetCategoryTile = memo(function BudgetCategoryTile({
       <View style={styles.top}>
         <RingGauge progress={ratio} color={ringColor} size={54} stroke={5}>
           {/* Round tinted well — same shape as the savings-goal tile. */}
-          <View style={[styles.iconWell, { backgroundColor: `${accentForKey(category.id)}29` }]}>
+          <View style={[styles.iconWell, { backgroundColor: colors.surfaceElevated }]}>
             <BudgetCategoryIcon
               icon={category.icon}
               name={category.name}
               id={category.id}
-              tint={accentForKey(category.id)}
+              tint={colors.text}
               bare
               wellSize={34}
               glyphSize={17}

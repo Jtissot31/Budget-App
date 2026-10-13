@@ -7,7 +7,6 @@ import { useEffect, useMemo, useRef } from 'react';
 import Animated, { LinearTransition } from 'react-native-reanimated';
 import { ScrollView, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
-import { accentForKey } from '@/components/kit/charts';
 import { PressScale } from '@/components/kit/motion';
 import { PickerLeadingTile, type SettingsPickerOption } from '@/components/SettingsPickerSheet';
 import { FORM_SECTION_LABEL_STYLE, jakartaMediumText, jakartaSemiboldText, spacing, typography } from '@/constants/theme';
@@ -93,7 +92,7 @@ export function ChipSelectField({
                       icon={option.budgetCategoryIcon.icon}
                       name={option.budgetCategoryIcon.name ?? option.label}
                       id={option.id}
-                      tint={accentForKey(option.id)}
+                      tint={selected ? colors.background : colors.text}
                       bare
                       wellSize={CHIP_ICON}
                       glyphSize={16}

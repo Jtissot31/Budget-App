@@ -9,7 +9,6 @@ import {
 } from '@/components/DraggableSheetSurface';
 import { FormSheetModalBody, formSheetScrollViewStyle, useFormSheetHeight } from '@/lib/sheet/formSheetScroll';
 import { RemoteLogoImage } from '@/components/IconFrame';
-import { accentForKey } from '@/components/kit/charts';
 import { PressScale, Reveal } from '@/components/kit/motion';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { jakartaBoldText, jakartaMediumText, jakartaSemiboldText, spacing, typography } from '@/constants/theme';
@@ -226,7 +225,7 @@ export function SettingsPickerSheet<T extends string>({
               icon={option.budgetCategoryIcon.icon}
               name={option.budgetCategoryIcon.name ?? option.label}
               id={option.id}
-              tint={accentForKey(option.id)}
+              tint={colors.text}
               bare
               wellSize={PICKER_LEADING_TILE_SIZE}
               glyphSize={20}

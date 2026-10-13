@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
-import { accentForKey } from '@/components/kit/charts';
 import { PressScale } from '@/components/kit/motion';
 import {
   FIELD_LEADING_TILE_SIZE,
@@ -97,7 +96,7 @@ export function SettingsSelectField({
                 icon={selectedBudgetIcon.icon}
                 name={selectedBudgetIcon.name ?? selectedLabel}
                 id={selectedOption?.id}
-                tint={selectedOption ? accentForKey(selectedOption.id) : null}
+                tint={colors.text}
                 bare
                 wellSize={FIELD_CATEGORY_ICON_WELL}
                 glyphSize={FIELD_CATEGORY_ICON_GLYPH}
