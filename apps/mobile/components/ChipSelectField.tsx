@@ -1,9 +1,10 @@
 /**
  * Inline single-choice field: a labeled, horizontally scrolling row of chips — no popup.
  * Same props/options as `SettingsSelectField`, so call sites can swap freely.
- * The selected chip is filled and kept scrolled into view.
+ * The selected chip is filled and moves to the front, so the current choice is always visible first.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import Animated, { LinearTransition } from 'react-native-reanimated';
 import { ScrollView, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import { accentForKey } from '@/components/kit/charts';
@@ -15,8 +16,7 @@ import { useAppTheme } from '@/lib/themeContext';
 
 const CHIP_HEIGHT = 38;
 const CHIP_ICON = 18;
-/** Leave the previous chip peeking when auto-scrolling to the selection. */
-const SCROLL_LEAD = 24;
+const REORDER = LinearTransition.springify().damping(18).stiffness(220);
 
 type Props = {
   label: string;
@@ -34,16 +34,17 @@ type Props = {
 export function ChipSelectField({ label, options, selectedId, onSelect, emptyHint, labelStyle, style }: Props) {
   const { colors } = useAppTheme();
   const scrollRef = useRef<ScrollView>(null);
-  const chipX = useRef<Record<string, number>>({});
 
-  // Keep the selected chip visible (e.g. a pre-filled category far down the list).
+  // Selected option first; the rest keep their original order.
+  const ordered = useMemo(() => {
+    const selected = options.find((option) => option.id === selectedId);
+    return selected ? [selected, ...options.filter((option) => option.id !== selectedId)] : options;
+  }, [options, selectedId]);
+
+  // Bring the row back to the start so the (now first) selected chip is in view.
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const x = chipX.current[selectedId];
-      if (x != null) scrollRef.current?.scrollTo({ x: Math.max(0, x - SCROLL_LEAD), animated: true });
-    }, 60);
-    return () => clearTimeout(timer);
-  }, [selectedId, options.length]);
+    scrollRef.current?.scrollTo({ x: 0, animated: true });
+  }, [selectedId]);
 
   return (
     <View style={[styles.field, style]}>
@@ -58,16 +59,11 @@ export function ChipSelectField({ label, options, selectedId, onSelect, emptyHin
           keyboardShouldPersistTaps="always"
           contentContainerStyle={styles.row}
         >
-          {options.map((option) => {
+          {ordered.map((option) => {
             const selected = option.id === selectedId;
             const fg = selected ? colors.background : colors.text;
             return (
-              <View
-                key={option.id}
-                onLayout={(event) => {
-                  chipX.current[option.id] = event.nativeEvent.layout.x;
-                }}
-              >
+              <Animated.View key={option.id} layout={REORDER}>
                 <PressScale
                   accessibilityRole="radio"
                   accessibilityState={{ selected }}
@@ -108,7 +104,7 @@ export function ChipSelectField({ label, options, selectedId, onSelect, emptyHin
                     {option.fieldLabel?.trim() || option.label}
                   </Text>
                 </PressScale>
-              </View>
+              </Animated.View>
             );
           })}
         </ScrollView>
