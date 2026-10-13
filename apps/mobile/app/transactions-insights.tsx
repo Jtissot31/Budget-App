@@ -13,10 +13,10 @@ import {
 import { MonthSelector } from '@/components/MonthSelector';
 import { MerchantLogo } from '@/components/MerchantLogo';
 import { PageTransition } from '@/components/PageTransition';
-import { EmptyRow, IconWell, ListCard, ListRow, SectionLabel } from '@/components/kit';
+import { accentForKey, EmptyRow, IconWell, ListCard, ListRow, SectionLabel } from '@/components/kit';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionRow } from '@/components/TransactionRow';
-import { UserPickedIconWell } from '@/components/UserPickedIconWell';
+import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { CumulativeSpendStepChart } from '@/components/transactions/CumulativeSpendStepChart';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
@@ -434,10 +434,14 @@ export default function TransactionsInsightsScreen() {
               <ListRow
                 key={row.key}
                 leading={
-                  <UserPickedIconWell
+                  // Category icons may be Lucide names (« Utensils »); BudgetCategoryIcon resolves every format.
+                  <BudgetCategoryIcon
                     icon={row.icon}
-                    color={row.color}
-                    size={40}
+                    name={row.name}
+                    id={row.key}
+                    tint={accentForKey(row.key)}
+                    wellSize={40}
+                    glyphSize={18}
                   />
                 }
                 title={row.name}
