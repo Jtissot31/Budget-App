@@ -158,6 +158,12 @@ export function InstitutionMark({
   const preferAsset = asset != null && !assetFailed;
   const uri = !preferAsset && !remoteFailed ? urls[sourceIndex] : null;
   const showLogo = preferAsset || Boolean(uri);
+  // Card-network marks (bundled Visa asset, or a visa/mastercard/amex logo URL) read best on white.
+  const isCardNetworkLogo =
+    account.kind !== 'cash' &&
+    (preferAsset
+      ? CARD_NETWORK_LOGO_URI_RE.test(`${account.institution ?? ''} ${account.name}`)
+      : uri != null && CARD_NETWORK_LOGO_URI_RE.test(uri));
   const glyphColor = tinted
     ? accountBalanceIconTone(account.kind, colors)
     : colors.textMuted;
@@ -171,7 +177,8 @@ export function InstitutionMark({
         showLogo ? logoIconWellStyle(size, isLight) : userPickedIconWellStyle(size, isLight),
         transparentWell && styles.transparentWell,
         tile && showLogo && {
-          backgroundColor: 'transparent',
+          backgroundColor: isCardNetworkLogo ? '#FFFFFF' : 'transparent',
+          borderRadius: Math.round(size * 0.28),
           borderWidth: 0,
         },
         tile && !showLogo && { backgroundColor: colors.surfaceElevated, borderRadius: Math.round(size * 0.28), borderWidth: 0 },
