@@ -19,7 +19,7 @@ import { useAppTheme } from '@/lib/themeContext';
 /** Leading logo / glyph tile — must match `RemoteLogoImage` size for centered contain. */
 export const PICKER_LEADING_TILE_SIZE = 32;
 /** Closed `SettingsSelectField` trigger — matches budget category well. */
-export const FIELD_LEADING_TILE_SIZE = 32;
+export const FIELD_LEADING_TILE_SIZE = 24;
 /** Compact picker tiles need a larger logo fill than the default 68% well inset. */
 const PICKER_LOGO_INSET_RATIO = 0.9;
 /** Wide card-network wordmarks (Visa, etc.) read better with almost full-tile fill. */

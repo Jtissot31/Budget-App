@@ -14,16 +14,16 @@ import {
   containerSurfaceStyle,
   FORM_SECTION_LABEL_STYLE,
   jakartaMediumText,
+  radius,
   spacing,
   typography,
-  typographyKit,
 } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
 /** Compact leading glyph in the closed field — same size for every category. */
 const FIELD_CATEGORY_ICON_WELL = FIELD_LEADING_TILE_SIZE;
-const FIELD_CATEGORY_ICON_GLYPH = 19;
+const FIELD_CATEGORY_ICON_GLYPH = 17;
 
 type Props = {
   label: string;
@@ -150,11 +150,11 @@ const styles = StyleSheet.create({
     ...FORM_SECTION_LABEL_STYLE,
   },
   inputButton: {
-    minHeight: 56,
-    borderRadius: 16,
+    minHeight: 48,
+    borderRadius: radius.lg,
     paddingLeft: spacing.md,
     paddingRight: spacing.md,
-    paddingVertical: spacing.sm + 2,
+    paddingVertical: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -165,13 +165,15 @@ const styles = StyleSheet.create({
     minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm + 4,
+    gap: spacing.sm + 2,
   },
   inputText: {
     flex: 1,
     minWidth: 0,
     flexShrink: 1,
-    ...typographyKit.bodyMedium,
+    ...jakartaMediumText,
+    fontSize: 15,
+    lineHeight: 20,
   },
   emptyHint: {
     ...jakartaMediumText,

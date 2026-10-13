@@ -3025,14 +3025,15 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: 2,
   },
+  // Same height / size as SettingsSelectField so text inputs and selects line up.
   input: {
-    minHeight: 50,
+    minHeight: 48,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    ...jakartaBoldText,
-    fontSize: typography.body,
+    paddingVertical: spacing.sm + 2,
+    ...jakartaMediumText,
+    fontSize: 15,
   },
   saveInline: { marginTop: spacing.md },
   saveFooter: {
