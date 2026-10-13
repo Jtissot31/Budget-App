@@ -3,7 +3,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Dimensions,
-  InteractionManager,
   Keyboard,
   Platform,
   Pressable,
@@ -1410,31 +1409,32 @@ export default function AddTransactionScreen() {
   useEffect(() => {
     if (editId) return;
 
-    let focusTimer: ReturnType<typeof setTimeout> | undefined;
-    const interaction = InteractionManager.runAfterInteractions(() => {
-      focusTimer = setTimeout(() => {
-        if (isTransfer) {
-          if (isAnyPersonTransfer) {
-            labelInputRef.current?.focus();
-            return;
-          }
-          if (isStandardTransfer) {
-            setTransferEntryStep('reason');
-            transferReasonInputRef.current?.focus();
-            return;
-          }
-        }
-        // Income: keep sheet scrolled to top so "Nouveau revenu" stays visible on open.
-        if (type === 'income') return;
-        labelInputRef.current?.focus();
-      }, 180);
-    });
+    // Open the keyboard on the first field (merchant / employer / contact) as soon as the
+    // sheet is up. Android drops focus() calls made during the screen's slide-in, so try once
+    // the transition has settled and retry if the input still isn't focused.
+    const focusFirstField = () => {
+      if (isStandardTransfer) {
+        setTransferEntryStep('reason');
+        transferReasonInputRef.current?.focus();
+        return;
+      }
+      labelInputRef.current?.focus();
+    };
+    const firstFieldFocused = () =>
+      isStandardTransfer
+        ? Boolean(transferReasonInputRef.current?.isFocused())
+        : Boolean(labelInputRef.current?.isFocused());
+
+    const focusTimer = setTimeout(focusFirstField, 380);
+    const retryTimer = setTimeout(() => {
+      if (!firstFieldFocused()) focusFirstField();
+    }, 750);
 
     return () => {
-      interaction.cancel();
-      if (focusTimer) clearTimeout(focusTimer);
+      clearTimeout(focusTimer);
+      clearTimeout(retryTimer);
     };
-  }, [editId, isAnyPersonTransfer, isStandardTransfer, isTransfer, transferMode, type]);
+  }, [editId, isStandardTransfer, transferMode, type]);
 
   const advanceToTransferAmountStep = useCallback(() => {
     Keyboard.dismiss();
