@@ -18,6 +18,8 @@ import {
   SectionLabel,
   SummaryCard,
   PillButton,
+  AnimatedFill,
+  Reveal,
 } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
 import {
@@ -317,7 +319,7 @@ export default function BudgetScreen() {
 
           {!hasLoaded ? null : listCategories.length > 0 ? (
             <>
-              <View style={styles.section}>
+              <Reveal index={0} style={styles.section}>
                 <SummaryCard
                   label={remaining < 0 ? 'Dépassement' : 'Il te reste'}
                   amount={signedMoney(remaining)}
@@ -346,11 +348,12 @@ export default function BudgetScreen() {
                   {/* Pace: how much of the budget is used vs how far we are into the month. */}
                   <View style={styles.paceBlock}>
                     <View style={[styles.paceTrack, { backgroundColor: colors.borderSubtle }]}>
-                      <View
+                      <AnimatedFill
+                        progress={Math.min(1, usedRatio)}
+                        delay={150}
                         style={[
                           styles.paceFill,
                           {
-                            width: `${Math.min(1, usedRatio) * 100}%`,
                             backgroundColor: usedRatio > 1 ? BUDGET_OVER : usedRatio > monthProgress + 0.1 ? BUDGET_NEAR : colors.accentGreen,
                           },
                         ]}
@@ -371,10 +374,10 @@ export default function BudgetScreen() {
                     ) : null}
                   </View>
                 </SummaryCard>
-              </View>
+              </Reveal>
 
               {watchList.length > 0 && !managingCategories ? (
-                <View style={styles.section}>
+                <Reveal index={1} style={styles.section}>
                   <SectionLabel title="À surveiller" />
                   <ListCard>
                     {watchList.map(({ category, projected }, index) => {
@@ -409,10 +412,10 @@ export default function BudgetScreen() {
                       );
                     })}
                   </ListCard>
-                </View>
+                </Reveal>
               ) : null}
 
-              <View style={styles.section}>
+              <Reveal index={2} style={styles.section}>
                 <SectionLabel
                   title="Catégories"
                   trailing={
@@ -423,15 +426,15 @@ export default function BudgetScreen() {
                   }
                 />
                 <View style={styles.tileGrid}>
-                  {listCategories.map((category) => (
-                    <View key={category.id} style={styles.tileCell}>
+                  {listCategories.map((category, index) => (
+                    <Reveal key={category.id} index={3 + index} style={styles.tileCell}>
                       <BudgetCategoryTile
                         category={category}
                         selecting={managingCategories}
                         selected={selectedCategoryIds.includes(category.id)}
                         onPress={onCategoryRowPress}
                       />
-                    </View>
+                    </Reveal>
                   ))}
                   {!managingCategories && showAddButton ? (
                     <View style={styles.tileCell}>
@@ -482,7 +485,7 @@ export default function BudgetScreen() {
                     </View>
                   </Pressable>
                 ) : null}
-              </View>
+              </Reveal>
             </>
           ) : (
             <View style={styles.section}>

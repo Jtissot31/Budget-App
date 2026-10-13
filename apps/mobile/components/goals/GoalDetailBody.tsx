@@ -6,6 +6,7 @@
  * 4. Versements : historique récent.
  */
 import { StyleSheet, Text, View } from 'react-native';
+import { AnimatedFill } from '@/components/kit/motion';
 import { useRouter } from 'expo-router';
 import { GoalProgressChart } from '@/components/GoalProgressChart';
 import {
@@ -125,7 +126,7 @@ export function GoalDetailBody({ goal, projection, transactions, accounts, onEdi
         >
           <View style={styles.milestoneBlock}>
             <View style={[styles.track, { backgroundColor: colors.borderSubtle }]}>
-              <View style={[styles.fill, { width: `${ratio * 100}%`, backgroundColor: colors.accentGreen }]} />
+              <AnimatedFill progress={ratio} style={[styles.fill, { backgroundColor: colors.accentGreen }]} />
               {MILESTONES.map((m) => (
                 <View
                   key={m}

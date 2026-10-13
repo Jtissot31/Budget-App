@@ -1,4 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AnimatedFill } from '@/components/kit/motion';
 import { AppIcon } from '@/components/icons/AppIcon';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
@@ -104,12 +105,12 @@ export default function SavingsGoalsScreen() {
 
                 <View style={styles.progressRow}>
                   <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
-                    <View
+                    <AnimatedFill
+                      progress={goal.progress / 100}
                       style={[
                         styles.progressFill,
                         {
                           backgroundColor: progressColor,
-                          width: `${Math.min(100, Math.max(0, goal.progress))}%`,
                         },
                       ]}
                     />

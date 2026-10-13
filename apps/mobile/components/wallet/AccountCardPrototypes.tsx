@@ -13,6 +13,7 @@ import {
   type AccessibilityRole,
   type AccessibilityState,
 } from 'react-native';
+import { AnimatedFill } from '@/components/kit/motion';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { RemoteLogoImage } from '@/components/IconFrame';
 import { SummaryCard, type SummaryStat } from '@/components/kit';
@@ -216,7 +217,7 @@ function UtilizationTrack({ percent, tone }: { percent: number; tone: string }) 
   const { colors } = useAppTheme();
   return (
     <View style={[styles.track, { backgroundColor: colors.borderSubtle }]}>
-      <View style={[styles.trackFill, { width: `${Math.min(percent, 100)}%`, backgroundColor: tone }]} />
+      <AnimatedFill progress={percent / 100} style={[styles.trackFill, { backgroundColor: tone }]} />
     </View>
   );
 }
@@ -592,7 +593,7 @@ export function AccountDetailSummaryCard({
     >
       {utilization != null ? (
         <View style={[styles.track, { backgroundColor: colors.borderSubtle }]}>
-          <View style={[styles.trackFill, { width: `${Math.min(utilization, 100)}%`, backgroundColor: tone }]} />
+          <AnimatedFill progress={utilization / 100} style={[styles.trackFill, { backgroundColor: tone }]} />
         </View>
       ) : null}
       {children}

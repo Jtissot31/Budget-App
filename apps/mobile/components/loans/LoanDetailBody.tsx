@@ -8,6 +8,7 @@
  */
 import type { RefObject } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { AnimatedFill } from '@/components/kit/motion';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { ChildSupportBreakdownChart } from '@/components/ChildSupportBreakdownChart';
@@ -150,7 +151,7 @@ export function LoanDetailBody({
           {principal > 0 && !isLineOfCredit && !isChildSupport ? (
             <View style={styles.repaidBlock}>
               <View style={[styles.track, { backgroundColor: colors.borderSubtle }]}>
-                <View style={[styles.fill, { width: `${ratio * 100}%`, backgroundColor: colors.accentGreen }]} />
+                <AnimatedFill progress={ratio} style={[styles.fill, { backgroundColor: colors.accentGreen }]} />
               </View>
               <View style={styles.repaidLegend}>
                 <Text style={[styles.legendText, jakartaMediumText, { color: colors.textMuted }]}>

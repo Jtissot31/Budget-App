@@ -25,6 +25,7 @@ import {
   SectionLabel,
   SummaryCard,
   PillButton,
+  Reveal,
 } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
 import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsForm';
@@ -558,7 +559,7 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
             }
           />
 
-          <View style={styles.section}>
+          <Reveal index={0} style={styles.section}>
             <SummaryCard
               label={monthCash.unpaidCount > 0 ? 'Reste à payer' : 'Tout est payé'}
               amount={formatDisplayMoneyAbsolute(monthCash.unpaidOut)}
@@ -592,7 +593,7 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                 },
               ]}
             />
-          </View>
+          </Reveal>
 
           {nextItem && !selectedDateKey && !managingPayments ? (
             <PressScale
@@ -650,7 +651,7 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
           </View>
 
           {bodyMode === 'calendar' ? (
-            <View style={styles.section}>
+            <Reveal index={1} style={styles.section}>
               <ListCard padding={12}>
                 <View
                   onLayout={(e) => {
@@ -774,7 +775,7 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                   ))}
                 </View>
               </ListCard>
-            </View>
+            </Reveal>
           ) : null}
 
           <SectionLabel

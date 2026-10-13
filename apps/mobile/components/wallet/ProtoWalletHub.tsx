@@ -23,6 +23,7 @@ import {
   AreaSparkline,
   SummaryCard,
   PillButton,
+  Reveal,
 } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
 import {
@@ -467,7 +468,7 @@ export function ProtoWalletHub() {
             }
           />
 
-          <View style={styles.section}>
+          <Reveal index={0} style={styles.section}>
             <SummaryCard
               label="Valeur nette"
               amount={hideBalances ? '••••••' : signedMoney(netWorth)}
@@ -520,9 +521,9 @@ export function ProtoWalletHub() {
                 </View>
               ) : null}
             </SummaryCard>
-          </View>
+          </Reveal>
 
-          <View style={styles.section}>
+          <Reveal index={1} style={styles.section}>
             <SectionLabel
               title="Comptes"
               trailing={
@@ -591,9 +592,9 @@ export function ProtoWalletHub() {
                 <ListCard>{addAccountRow}</ListCard>
               </>
             )}
-          </View>
+          </Reveal>
 
-          <View style={styles.section}>
+          <Reveal index={2} style={styles.section}>
             <SectionLabel title="Patrimoine" />
             <ListCard>
               <ListRow
@@ -605,10 +606,10 @@ export function ProtoWalletHub() {
                 onPress={() => router.push('/patrimoine')}
               />
             </ListCard>
-          </View>
+          </Reveal>
 
           {loans.length > 0 ? (
-            <View style={styles.section}>
+            <Reveal index={3} style={styles.section}>
               <SectionLabel title="Prêts" />
               <ListCard>
                 {loans.map((loan, index) => {
@@ -629,10 +630,10 @@ export function ProtoWalletHub() {
                   );
                 })}
               </ListCard>
-            </View>
+            </Reveal>
           ) : null}
 
-          <View style={styles.section}>
+          <Reveal index={4} style={styles.section}>
             <SectionLabel
               title="Objectifs"
               trailing={
@@ -685,7 +686,7 @@ export function ProtoWalletHub() {
                 onPress={() => setConfirmDeleteGoalsVisible(true)}
               />
             ) : null}
-          </View>
+          </Reveal>
 
         </ScrollView>
 

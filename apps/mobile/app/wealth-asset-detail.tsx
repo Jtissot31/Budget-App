@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { AnimatedFill } from '@/components/kit/motion';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
@@ -313,24 +314,24 @@ export default function WealthAssetDetailScreen() {
           <>
             <View style={[progressBar.track, styles.equityTrack, { backgroundColor: trackColor }]}>
               {equityBarWidth > 0 ? (
-                <View
+                <AnimatedFill
+                  progress={Math.max(equityBarWidth, 3) / 100}
                   style={[
                     progressBar.fill,
                     styles.equitySegment,
                     {
-                      width: `${Math.max(equityBarWidth, 3)}%`,
                       backgroundColor: colors.primary,
                     },
                   ]}
                 />
               ) : null}
               {mortgageBarWidth > 0 ? (
-                <View
+                <AnimatedFill
+                  progress={mortgageBarWidth / 100}
                   style={[
                     progressBar.fill,
                     styles.equitySegment,
                     {
-                      width: `${mortgageBarWidth}%`,
                       backgroundColor: isLight ? 'rgba(17,17,17,0.18)' : 'rgba(255,255,255,0.18)',
                     },
                   ]}
@@ -384,11 +385,11 @@ export default function WealthAssetDetailScreen() {
         ) : (
           <>
             <View style={[progressBar.track, { backgroundColor: trackColor }]}>
-              <View
+              <AnimatedFill
+                progress={Math.max(Math.min(progressPct, 100), 3) / 100}
                 style={[
                   progressBar.fill,
                   {
-                    width: `${Math.max(Math.min(progressPct, 100), 3)}%`,
                     backgroundColor: isGainLoss ? colors.danger : colors.primary,
                   },
                 ]}

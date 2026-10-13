@@ -40,7 +40,15 @@ export { ProtoToolbarIconButton as HeaderIconButton } from '@/components/proto/P
 export { FitText, useScreenScale } from './FitText';
 export { GoalTile } from './GoalTile';
 export { PillButton } from './PillButton';
-export { AnimatedBar, PressScale, Reveal, useCountUp } from './motion';
+export {
+  AnimatedBar,
+  AnimatedFill,
+  PressScale,
+  Reveal,
+  useCountUp,
+  usePopOnActive,
+  usePressScale,
+} from './motion';
 export {
   AreaSparkline,
   CHART_PALETTE,
