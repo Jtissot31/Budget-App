@@ -348,7 +348,7 @@ function PaymentFormModal({
   const sheetHeight = useFormSheetHeight(0.92);
   const keyboardInset = useFormSheetKeyboardInset();
   const sectionLabelStyle = useMemo(
-    () => [FORM_SECTION_LABEL_STYLE, { color: themeColors.text }],
+    () => [FORM_SECTION_LABEL_STYLE, { color: themeColors.textMuted }],
     [themeColors.text],
   );
   const [showLogoPicker, setShowLogoPicker] = useState(false);

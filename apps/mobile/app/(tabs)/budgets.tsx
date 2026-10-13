@@ -1,7 +1,7 @@
 // Budget tab — résumé du mois + une liste groupée de catégories (style historique).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { BudgetCategoryDetailSheet } from '@/components/budget/BudgetCategoryDetailSheet';
@@ -18,6 +18,8 @@ import {
   SectionLabel,
   SummaryCard,
   PillButton,
+  AnimatedFill,
+  Reveal,
 } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
 import {
@@ -58,6 +60,7 @@ import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 import { dataEvents } from '@/lib/events';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
+import { BUDGET_NEAR, BUDGET_OVER } from '@/lib/budgetTone';
 import { useAppTheme } from '@/lib/themeContext';
 
 function currentMonthStart(): Date {
@@ -79,11 +82,15 @@ function signedMoney(value: number): string {
 
 export default function BudgetScreen() {
   const router = useRouter();
+  /** Deep link: `/budgets?category=<id>` opens that category's detail. */
+  const { category: categoryParam } = useLocalSearchParams<{ category?: string }>();
   const insets = useSafeAreaInsets();
   const { colors, isLight } = useAppTheme();
   const scrollRef = useRef<ScrollView>(null);
 
   const [categories, setCategories] = useState<BudgetCategoryUiModel[]>([]);
+  /** False until the first month finishes loading — avoids flashing the empty state. */
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [detailCategoryId, setDetailCategoryId] = useState<string | null>(null);
   const [managingCategories, setManagingCategories] = useState(false);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
@@ -121,6 +128,7 @@ export default function BudgetScreen() {
 
     setDisplayMonth(month);
     setCategories(mapBudgetCategoriesToUi(budgets));
+    setHasLoaded(true);
   }, []);
 
   const navigateToMonth = useCallback(
@@ -157,6 +165,12 @@ export default function BudgetScreen() {
 
   const totals = useMemo(() => computeBudgetTotals(categories), [categories]);
   const listCategories = useMemo(() => sortBudgetCategoriesByPriority(categories), [categories]);
+
+  useEffect(() => {
+    if (!categoryParam || !categories.some((c) => c.id === categoryParam)) return;
+    setDetailCategoryId(categoryParam);
+    router.setParams({ category: undefined });
+  }, [categories, categoryParam, router]);
   const showAddButton = canAddBudgetCategory(categories.length);
 
   const toggleManagingCategories = useCallback(() => {
@@ -229,7 +243,7 @@ export default function BudgetScreen() {
   /** Summary ring: green up to 102 %, orange 103–110 %, red beyond. */
   const usedPctRounded = Math.round(usedRatio * 100);
   const summaryRingColor =
-    usedPctRounded <= 102 ? colors.accentGreen : usedPctRounded <= 110 ? '#F59E0B' : colors.danger;
+    usedPctRounded <= 102 ? colors.accentGreen : usedPctRounded <= 110 ? BUDGET_NEAR : BUDGET_OVER;
 
   const daysLeft = useMemo(() => {
     if (!viewingCurrent) return 0;
@@ -246,6 +260,22 @@ export default function BudgetScreen() {
   }, []);
 
   const overCount = listCategories.filter((c) => c.usage.isOverBudget).length;
+
+  /** Categories already over, or at least half used and on pace to finish the month over their limit. */
+  const watchList = useMemo(() => {
+    const pace = viewingCurrent ? Math.max(monthProgress, 0.1) : 1;
+    return listCategories
+      .filter((c) => c.limit > 0 && c.spent > 0)
+      .map((c) => ({ category: c, projected: c.spent / pace }))
+      // A category sitting exactly at its limit is usually a fixed bill (rent, phone) — no projection there.
+      .filter(
+        ({ category, projected }) =>
+          category.spent > category.limit ||
+          (category.spent < category.limit && category.spent >= category.limit * 0.5 && projected > category.limit * 1.05),
+      )
+      .sort((a, b) => b.projected / b.category.limit - a.projected / a.category.limit)
+      .slice(0, 3);
+  }, [listCategories, monthProgress, viewingCurrent]);
 
   return (
     <PageTransition>
@@ -287,22 +317,22 @@ export default function BudgetScreen() {
             }
           />
 
-          {listCategories.length > 0 ? (
+          {!hasLoaded ? null : listCategories.length > 0 ? (
             <>
-              <View style={styles.section}>
+              <Reveal index={0} style={styles.section}>
                 <SummaryCard
                   label={remaining < 0 ? 'Dépassement' : 'Il te reste'}
                   amount={signedMoney(remaining)}
                   amountValue={remaining}
                   formatAmount={signedMoney}
-                  amountColor={remaining < 0 ? colors.danger : colors.text}
+                  amountColor={colors.text}
                   badge={
                     overCount > 0
-                      ? { label: overCount === 1 ? '1 catégorie dépassée' : overCount + ' catégories dépassées', color: colors.danger }
+                      ? { label: overCount === 1 ? '1 catégorie à revoir' : overCount + ' catégories à revoir', color: colors.textSecondary }
                       : { label: 'Tout est sous contrôle', color: colors.accentGreen }
                   }
                   aside={
-                    <RingGauge progress={usedRatio} color={summaryRingColor} size={76} stroke={8}>
+                    <RingGauge progress={usedRatio} color={summaryRingColor} size={92} stroke={8}>
                       <Text style={[styles.ringValue, { color: colors.text }]}>{usedPct}%</Text>
                       <Text style={[styles.ringCaption, { color: colors.textMuted }]}>utilisé</Text>
                     </RingGauge>
@@ -318,12 +348,13 @@ export default function BudgetScreen() {
                   {/* Pace: how much of the budget is used vs how far we are into the month. */}
                   <View style={styles.paceBlock}>
                     <View style={[styles.paceTrack, { backgroundColor: colors.borderSubtle }]}>
-                      <View
+                      <AnimatedFill
+                        progress={Math.min(1, usedRatio)}
+                        delay={150}
                         style={[
                           styles.paceFill,
                           {
-                            width: `${Math.min(1, usedRatio) * 100}%`,
-                            backgroundColor: usedRatio > 1 ? colors.danger : usedRatio > monthProgress + 0.1 ? colors.warning : colors.accentGreen,
+                            backgroundColor: usedRatio > 1 ? BUDGET_OVER : usedRatio > monthProgress + 0.1 ? BUDGET_NEAR : colors.accentGreen,
                           },
                         ]}
                       />
@@ -343,34 +374,89 @@ export default function BudgetScreen() {
                     ) : null}
                   </View>
                 </SummaryCard>
-              </View>
+              </Reveal>
 
-              <View style={styles.section}>
+              {watchList.length > 0 && !managingCategories ? (
+                <Reveal index={1} style={styles.section}>
+                  <SectionLabel title="À surveiller" />
+                  <ListCard>
+                    {watchList.map(({ category, projected }, index) => {
+                      const over = category.spent > category.limit;
+                      const tone = over ? BUDGET_OVER : BUDGET_NEAR;
+                      return (
+                        <ListRow
+                          key={category.id}
+                          leading={
+                            <BudgetCategoryIcon
+                              icon={category.icon}
+                              name={category.name}
+                              id={category.id}
+                              wellSize={40}
+                              glyphSize={18}
+                            />
+                          }
+                          title={category.name}
+                          subtitle={
+                            over
+                              ? `Dépassé de ${formatDisplayMoneyAbsolute(category.spent - category.limit)}`
+                              : `Projection fin du mois : ${formatDisplayMoneyAbsolute(projected)}`
+                          }
+                          value={`${Math.round((category.spent / category.limit) * 100)} %`}
+                          valueColor={tone}
+                          valueSub={`sur ${formatDisplayMoneyAbsolute(category.limit)}`}
+                          progress={Math.min(1, category.spent / category.limit)}
+                          progressColor={tone}
+                          isLast={index === watchList.length - 1}
+                          onPress={() => onCategoryRowPress(category.id)}
+                        />
+                      );
+                    })}
+                  </ListCard>
+                </Reveal>
+              ) : null}
+
+              <Reveal index={2} style={styles.section}>
                 <SectionLabel
                   title="Catégories"
                   trailing={
-                    <View style={styles.sectionActions}>
-                      {!managingCategories && showAddButton ? (
-                        <TextAction label="Ajouter" onPress={openBlankCreate} />
-                      ) : null}
-                      <TextAction
-                        label={managingCategories ? 'Terminé' : 'Modifier'}
-                        onPress={toggleManagingCategories}
-                      />
-                    </View>
+                    <TextAction
+                      label={managingCategories ? 'Terminé' : 'Modifier'}
+                      onPress={toggleManagingCategories}
+                    />
                   }
                 />
                 <View style={styles.tileGrid}>
-                  {listCategories.map((category) => (
-                    <View key={category.id} style={styles.tileCell}>
+                  {listCategories.map((category, index) => (
+                    <Reveal key={category.id} index={3 + index} style={styles.tileCell}>
                       <BudgetCategoryTile
                         category={category}
                         selecting={managingCategories}
                         selected={selectedCategoryIds.includes(category.id)}
                         onPress={onCategoryRowPress}
                       />
-                    </View>
+                    </Reveal>
                   ))}
+                  {!managingCategories && showAddButton ? (
+                    <View style={styles.tileCell}>
+                      {/* Static flex style on the Pressable so the tile fills the row height. */}
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Nouvelle catégorie"
+                        onPress={() => {
+                          tapHaptic();
+                          openBlankCreate();
+                        }}
+                        style={styles.addTileHit}
+                      >
+                        <View style={[styles.addTile, { borderColor: colors.borderStrong }]}>
+                          <View style={[styles.addTileIcon, { backgroundColor: colors.surfaceElevated }]}>
+                            <AppIcon family="ionicons" name="add" size={22} color={colors.text} />
+                          </View>
+                          <Text style={[styles.addTileText, { color: colors.text }]}>Nouvelle catégorie</Text>
+                        </View>
+                      </Pressable>
+                    </View>
+                  ) : null}
                 </View>
 
                 {managingCategories ? (
@@ -382,23 +468,24 @@ export default function BudgetScreen() {
                       setConfirmDeleteSelectedVisible(true);
                     }}
                     style={({ pressed }) => [
-                      subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
                       styles.deleteButton,
                       pressed && styles.pressed,
                       (deletingSelected || selectedCategoryIds.length === 0) && styles.disabled,
                     ]}
                   >
-                    <AppIcon family="ionicons" name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
-                    <Text style={destructiveTextActionStyle(isLight)}>
-                      {deletingSelected
-                        ? 'Suppression…'
-                        : selectedCategoryIds.length === 0
-                          ? 'Sélectionne des catégories'
-                          : `Supprimer ${selectedCategoryIds.length} catégorie${selectedCategoryIds.length > 1 ? 's' : ''}`}
-                    </Text>
+                    <View style={subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' })}>
+                      <AppIcon family="ionicons" name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
+                      <Text style={destructiveTextActionStyle(isLight)}>
+                        {deletingSelected
+                          ? 'Suppression…'
+                          : selectedCategoryIds.length === 0
+                            ? 'Sélectionne des catégories'
+                            : `Supprimer ${selectedCategoryIds.length} catégorie${selectedCategoryIds.length > 1 ? 's' : ''}`}
+                      </Text>
+                    </View>
                   </Pressable>
                 ) : null}
-              </View>
+              </Reveal>
             </>
           ) : (
             <View style={styles.section}>
@@ -469,6 +556,20 @@ const styles = StyleSheet.create({
   paceText: { ...typographyKit.metaMedium, fontSize: 11.5 },
   tileGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
   tileCell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10 },
+  addTileHit: { flex: 1 },
+  addTile: {
+    flex: 1,
+    minHeight: 150,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    padding: 14,
+  },
+  addTileIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  addTileText: { ...typographyKit.metaSemibold, fontSize: 13.5, textAlign: 'center' },
   sectionActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   textAction: { fontSize: 11 },
   ringValue: { ...typographyKit.metaSemibold, fontSize: 15 },

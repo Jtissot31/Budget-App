@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useRef } from 'react';
-import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Pressable,
   ScrollView,
@@ -11,25 +10,24 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PageTransition } from '@/components/PageTransition';
 import { StockDetailHero, StockDetailIdentity } from '@/components/stock/StockDetailSections';
+import { StockPositionCard } from '@/components/stock/StockPositionCard';
 import { StockSavingsDetailCard } from '@/components/stock/StockSavingsDetailCard';
+import { FixedScreenHeader } from '@/components/FixedScreenHeader';
 import {
   CHART_FULL_BLEED_RIGHT_INSET,
   PortfolioChartCard,
   type NetWorthChartPeriod,
   type PortfolioChartCardHandle,
 } from '@/components/PortfolioChartCard';
-import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { getMockStockDetail } from '@/constants/mockStockDetail';
 import {
   buildStockChartTrendPoints,
   STOCK_NET_WORTH_CHART_PERIODS,
 } from '@/lib/intradayStockSparkline';
-import { jakartaExtraBoldText } from '@/constants/plusJakartaFonts';
 import {
   DASHBOARD_VALUE_GREEN,
   DASHBOARD_VALUE_RED,
   spacing,
-  typography,
 } from '@/constants/theme';
 import { formatDisplayMoney } from '@/lib/formatDisplayMoney';
 import { useAppTheme } from '@/lib/themeContext';
@@ -64,31 +62,7 @@ export default function StockDetailScreen() {
   return (
     <PageTransition>
       <View style={styles.screen}>
-        <View
-          style={[
-            styles.topBar,
-            { paddingTop: insets.top + SCREEN_TOP_GUTTER + spacing.lg + spacing.md },
-          ]}
-        >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retour"
-            hitSlop={12}
-            onPress={() => router.back()}
-            style={({ pressed }) => [
-              styles.backButton,
-              { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
-              pressed && styles.pressed,
-            ]}
-          >
-            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
-          </Pressable>
-          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-            {detail?.holding.ticker ?? 'Détail action'}
-          </Text>
-          <View style={styles.topBarSpacer} />
-        </View>
-
+        <FixedScreenHeader title={detail?.displayTicker ?? 'Détail action'} onBack={() => router.back()} />
         <ScrollView
           showsVerticalScrollIndicator={false}
           onScrollBeginDrag={dismissChartCursor}
@@ -123,6 +97,7 @@ export default function StockDetailScreen() {
               </View>
 
               <Pressable onPress={dismissChartCursor} accessibilityRole="none" style={styles.belowChart}>
+                <StockPositionCard detail={detail} />
                 <StockSavingsDetailCard detail={detail} />
               </Pressable>
             </>
@@ -141,32 +116,6 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: 'transparent',
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-  },
-  backButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    flex: 1,
-    textAlign: 'center',
-    marginHorizontal: spacing.sm,
-    ...jakartaExtraBoldText,
-    fontSize: typography.body,
-    letterSpacing: -0.2,
-  },
-  topBarSpacer: {
-    width: 38,
   },
   content: {
     paddingHorizontal: spacing.lg,

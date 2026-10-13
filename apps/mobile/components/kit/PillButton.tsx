@@ -3,12 +3,14 @@
  * Replaces thin-outline / bare-text actions. Layout lives on an inner View because
  * Android Pressable style functions are not reliably applied.
  */
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { typographyKit } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
+import { usePressScale } from './motion';
 
 type Props = {
   label: string;
@@ -32,6 +34,7 @@ export function PillButton({ label, onPress, icon, tone = 'neutral', accessibili
   const { colors } = useAppTheme();
   const glyph = icon ?? iconFor(label);
   const primary = tone === 'primary';
+  const press = usePressScale(0.92);
   const fg = primary ? colors.background : colors.text;
   return (
     <Pressable
@@ -42,14 +45,15 @@ export function PillButton({ label, onPress, icon, tone = 'neutral', accessibili
         tapHaptic();
         onPress();
       }}
-      style={({ pressed }) => [pressed && styles.pressed]}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
     >
-      <View style={[styles.pill, { backgroundColor: primary ? colors.text : colors.surfaceElevated }]}>
+      <Animated.View style={[styles.pill, press.animatedStyle, { backgroundColor: primary ? colors.text : colors.surfaceElevated }]}>
         {glyph ? <AppIcon family="ionicons" name={glyph} size={14} color={fg} /> : null}
-        <Text style={[styles.label, { color: fg }]} numberOfLines={1}>
+        <Text style={[styles.label, { color: fg }]}>
           {label}
         </Text>
-      </View>
+      </Animated.View>
     </Pressable>
   );
 }
@@ -64,5 +68,4 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   label: { ...typographyKit.metaSemibold, fontSize: 12 },
-  pressed: { opacity: 0.75 },
 });

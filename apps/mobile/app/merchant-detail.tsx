@@ -13,20 +13,14 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MerchantEditModal, type MerchantEditTarget } from '@/components/MerchantEditModal';
-import { ModifierButton } from '@/components/ModifierButton';
 import { MerchantLogo } from '@/components/MerchantLogo';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionDayGroup } from '@/components/transactions/TransactionDayGroups';
+import { FixedScreenHeader } from '@/components/FixedScreenHeader';
+import { PillButton, SummaryCard } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
-import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
-  accountDetailHeroActionsStyle,
-  accountDetailHeroBlockStyle,
   accountDetailSectionDividerStyle,
-  accountDetailStatementStatColStyle,
-  accountDetailStatementStatLabelStyle,
-  accountDetailStatementStatsRowStyle,
-  accountDetailStatementStatValueStyle,
   jakartaExtraBoldText,
   jakartaMediumText,
   jakartaSemiboldText,
@@ -39,22 +33,20 @@ import { getMerchantOverrides, getTransactions, sortTransactionsNewestFirst } fr
 import { dataEvents } from '@/lib/events';
 import { normalizeMerchantKey, resolveCanonicalMerchantOriginalName } from '@/lib/merchantLogo';
 import { tapHaptic } from '@/lib/haptics';
-import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import { parseItemizedNote } from '@/lib/itemizedNote';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
-import { EMPTY_DETAIL_VALUE } from '@/lib/detailDisplay';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import {
   filterTransactionsByType,
-  formatTransactionGroupDateLabel,
   groupTransactionsByDay,
   HISTORY_FILTER_OPTIONS,
   type HistoryTypeFilter,
   transactionMatchesSearch,
 } from '@/lib/transactionListUtils';
 import type { MerchantOverride, Transaction } from '@/types';
+import { FitText } from '@/components/kit/FitText';
 
 type ReceiptPreview = {
   id: string;
@@ -102,47 +94,6 @@ function buildReceiptPreviews(transactions: Transaction[]): ReceiptPreview[] {
   });
 }
 
-function StatementStatColumn({
-  label,
-  value,
-  valueColor,
-  align = 'center',
-  prominent,
-}: {
-  label: string;
-  value: string;
-  valueColor?: string;
-  align?: 'left' | 'center' | 'right';
-  prominent?: boolean;
-}) {
-  const { colors } = useAppTheme();
-  const textAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
-
-  return (
-    <View style={accountDetailStatementStatColStyle({ align, prominent })}>
-      <Text
-        style={[
-          accountDetailStatementStatValueStyle(prominent),
-          { color: valueColor ?? colors.text, textAlign },
-        ]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-      >
-        {value}
-      </Text>
-      <Text
-        style={[
-          accountDetailStatementStatLabelStyle(),
-          { color: colors.textMuted, textAlign },
-        ]}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-    </View>
-  );
-}
-
 function FlowDivider() {
   const { isLight } = useAppTheme();
   return <View style={accountDetailSectionDividerStyle(isLight)} />;
@@ -152,7 +103,7 @@ export default function MerchantDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ merchant?: string }>();
   const insets = useSafeAreaInsets();
-  const { colors, isLight } = useAppTheme();
+  const { colors } = useAppTheme();
   const merchantKey = typeof params.merchant === 'string' ? params.merchant : '';
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [overrides, setOverrides] = useState<MerchantOverride[]>([]);
@@ -220,6 +171,19 @@ export default function MerchantDetailScreen() {
     return best || null;
   }, [visibleTransactions]);
 
+  const spentThisMonth = useMemo(() => {
+    const monthKey = new Date().toISOString().slice(0, 7);
+    return expenseTransactions
+      .filter((tx) => tx.date.slice(0, 7) === monthKey)
+      .reduce((sum, tx) => sum + tx.amount, 0);
+  }, [expenseTransactions]);
+
+  const lastVisitLabel = useMemo(() => {
+    const last = expenseTransactions[0]?.date;
+    if (!last) return null;
+    return new Date(`${last.slice(0, 10)}T12:00:00`).toLocaleDateString('fr-CA', { day: 'numeric', month: 'short' });
+  }, [expenseTransactions]);
+
   const receiptPreviews = useMemo(
     () => buildReceiptPreviews(visibleTransactions),
     [visibleTransactions],
@@ -249,26 +213,11 @@ export default function MerchantDetailScreen() {
   return (
     <PageTransition>
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <View style={[styles.topBar, { paddingTop: insets.top + SCREEN_TOP_GUTTER }]}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retour"
-            hitSlop={12}
-            style={({ pressed }) => [
-              styles.backButton,
-              { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
-              pressed && styles.pressed,
-            ]}
-            onPress={() => router.back()}
-          >
-            <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
-          </Pressable>
-          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-            {merchantName}
-          </Text>
-          <View style={styles.topBarSpacer} />
-        </View>
-
+        <FixedScreenHeader
+          title={merchantName}
+          onBack={() => router.back()}
+          trailing={<PillButton label="Modifier" onPress={openEditor} accessibilityLabel="Modifier le marchand" />}
+        />
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
@@ -287,50 +236,41 @@ export default function MerchantDetailScreen() {
             />
           }
         >
-          <View style={accountDetailHeroBlockStyle()}>
-            <View style={accountDetailHeroActionsStyle()}>
-              <ModifierButton accessibilityLabel="Modifier le marchand" onPress={openEditor} />
-            </View>
-
-            <View style={styles.heroIdentityRow}>
-              <MerchantLogo
-                name={merchantName}
-                logoUrl={override?.logoUrl}
-                icon={override?.icon}
-                useAutoLogo={override?.useAutoLogo !== false}
-                size={MERCHANT_LOGO_SIZE}
-              />
-              <View style={styles.heroIdentityCopy}>
-                <Text style={[styles.heroMerchantName, { color: colors.text }]} numberOfLines={2}>
-                  {merchantName}
-                </Text>
-                {dominantCategory ? (
-                  <Text style={[styles.heroCategory, { color: colors.textMuted }]} numberOfLines={1}>
-                    {dominantCategory}
-                  </Text>
-                ) : null}
-              </View>
+          <View style={styles.heroIdentityRow}>
+            <MerchantLogo
+              name={merchantName}
+              logoUrl={override?.logoUrl}
+              icon={override?.icon}
+              useAutoLogo={override?.useAutoLogo !== false}
+              size={MERCHANT_LOGO_SIZE}
+            />
+            <View style={styles.heroIdentityCopy}>
+              <Text style={[styles.heroMerchantName, { color: colors.text }]} numberOfLines={2}>
+                {merchantName}
+              </Text>
+              {dominantCategory ? (
+                <FitText style={[styles.heroCategory, { color: colors.textMuted }]}>
+                  {dominantCategory}
+                </FitText>
+              ) : null}
             </View>
           </View>
 
-          <View style={accountDetailStatementStatsRowStyle()}>
-            <StatementStatColumn
-              label="Total dépensé"
-              value={formatMoney(totalSpent)}
-              align="left"
-            />
-            <StatementStatColumn
-              label="Transactions"
-              value={String(visibleTransactions.length)}
-              align="center"
-              prominent
-            />
-            <StatementStatColumn
-              label="Panier moyen"
-              value={averageBasket != null ? formatMoney(averageBasket) : EMPTY_DETAIL_VALUE}
-              align="right"
-            />
-          </View>
+          <SummaryCard
+            label="Dépensé au total"
+            amount={formatMoney(totalSpent)}
+            amountValue={totalSpent}
+            formatAmount={formatMoney}
+            badge={{
+              label: `${expenseTransactions.length} achat${expenseTransactions.length > 1 ? 's' : ''}`,
+              color: colors.textMuted,
+            }}
+            stats={[
+              { label: 'Panier moyen', value: averageBasket != null ? formatMoney(averageBasket) : '—' },
+              { label: 'Ce mois', value: formatMoney(spentThisMonth) },
+              { label: 'Dernier achat', value: lastVisitLabel ?? '—' },
+            ]}
+          />
 
           <FlowDivider />
 
@@ -389,9 +329,9 @@ export default function MerchantDetailScreen() {
                         <AppIcon family="ionicons" name="receipt-outline" size={20} color={colors.textMuted} />
                       </View>
                     )}
-                    <Text style={[styles.receiptThumbnailLabel, { color: colors.textMuted }]} numberOfLines={1}>
+                    <FitText style={[styles.receiptThumbnailLabel, { color: colors.textMuted }]}>
                       {entry.articleName}
-                    </Text>
+                    </FitText>
                   </View>
                 ))}
               </ScrollView>
@@ -496,30 +436,6 @@ export default function MerchantDetailScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-  },
-  backButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    flex: 1,
-    textAlign: 'center',
-    marginHorizontal: spacing.sm,
-    ...jakartaExtraBoldText,
-    fontSize: typography.caption,
-    letterSpacing: -0.2,
-  },
-  topBarSpacer: { width: 38 },
   content: {
     paddingHorizontal: spacing.lg,
     gap: spacing.lg,

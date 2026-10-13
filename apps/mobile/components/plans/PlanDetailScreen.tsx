@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AnimatedFill } from '@/components/kit/motion';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -172,12 +173,12 @@ export function PlanDetailScreen({ planId }: Props) {
                 {plan.heroPrimary ?? planHeroAmountLine(plan)}
               </Text>
               <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
-                <View
+                <AnimatedFill
+                  progress={plan.progress / 100}
                   style={[
                     styles.progressFill,
                     {
                       backgroundColor: plan.progressPositive ? theme.accent : theme.danger,
-                      width: `${Math.min(100, Math.max(0, plan.progress))}%`,
                     },
                   ]}
                 />

@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
+import { PressScale } from '@/components/kit/motion';
 import {
   FIELD_LEADING_TILE_SIZE,
   PickerLeadingTile,
@@ -15,14 +16,13 @@ import {
   radius,
   spacing,
   typography,
-  typographyKit,
 } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
 /** Compact leading glyph in the closed field — same size for every category. */
-const FIELD_CATEGORY_ICON_WELL = 28;
-const FIELD_CATEGORY_ICON_GLYPH = 18;
+const FIELD_CATEGORY_ICON_WELL = FIELD_LEADING_TILE_SIZE;
+const FIELD_CATEGORY_ICON_GLYPH = 17;
 
 type Props = {
   label: string;
@@ -74,29 +74,30 @@ export function SettingsSelectField({
 
   return (
     <View style={[styles.field, style]}>
-      <Text style={[styles.label, { color: colors.text }, labelStyle]}>{label}</Text>
+      <Text style={[styles.label, { color: colors.textMuted }, labelStyle]}>{label}</Text>
       {disabled ? (
         <Text style={[styles.emptyHint, { color: colors.textMuted }]}>
           {emptyHint ?? 'Aucune option disponible.'}
         </Text>
       ) : (
-        <Pressable
+        <PressScale
           accessibilityRole="button"
-          accessibilityLabel={`Choisir ${label.toLowerCase()}`}
+          accessibilityLabel={selectedLabel ? `${label} : ${selectedLabel}. Modifier` : `Choisir ${label.toLowerCase()}`}
           onPress={() => {
             tapHaptic();
             setPickerOpen(true);
           }}
-          style={({ pressed }) => [pressed && styles.pressed]}
+          scaleTo={0.98}
+          style={[styles.inputButton, sheetSurface]}
         >
-          {/* Layout + surface on a plain View: Android Pressable does not reliably apply them. */}
-          <View style={[styles.inputButton, sheetSurface]}>
           <View style={styles.valueRow}>
             {selectedBudgetIcon ? (
               <BudgetCategoryIcon
                 icon={selectedBudgetIcon.icon}
                 name={selectedBudgetIcon.name ?? selectedLabel}
                 id={selectedOption?.id}
+                tint={colors.text}
+                bare
                 wellSize={FIELD_CATEGORY_ICON_WELL}
                 glyphSize={FIELD_CATEGORY_ICON_GLYPH}
               />
@@ -107,8 +108,7 @@ export function SettingsSelectField({
                 logoAsset={selectedLogoAsset}
                 label={selectedLabel}
                 iconColor={colors.textSecondary}
-                wellBackground={colors.input}
-                defaultBorder={colors.border}
+                wellBackground="transparent"
                 size={FIELD_LEADING_TILE_SIZE}
               />
             ) : null}
@@ -124,8 +124,7 @@ export function SettingsSelectField({
             </Text>
           </View>
           <AppIcon family="ionicons" name="chevron-down" size={16} color={colors.textMuted} />
-          </View>
-        </Pressable>
+        </PressScale>
       )}
 
       <SettingsPickerSheet
@@ -150,11 +149,11 @@ const styles = StyleSheet.create({
     ...FORM_SECTION_LABEL_STYLE,
   },
   inputButton: {
-    minHeight: 50,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
+    minHeight: 48,
+    borderRadius: radius.lg,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.md,
+    paddingVertical: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -165,20 +164,19 @@ const styles = StyleSheet.create({
     minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.sm + 2,
   },
   inputText: {
     flex: 1,
     minWidth: 0,
     flexShrink: 1,
-    ...typographyKit.bodyMedium,
+    ...jakartaMediumText,
+    fontSize: 15,
+    lineHeight: 20,
   },
   emptyHint: {
     ...jakartaMediumText,
     fontSize: typography.meta,
     lineHeight: 18,
-  },
-  pressed: {
-    opacity: 0.72,
   },
 });

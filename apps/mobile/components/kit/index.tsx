@@ -40,7 +40,15 @@ export { ProtoToolbarIconButton as HeaderIconButton } from '@/components/proto/P
 export { FitText, useScreenScale } from './FitText';
 export { GoalTile } from './GoalTile';
 export { PillButton } from './PillButton';
-export { AnimatedBar, PressScale, Reveal, useCountUp } from './motion';
+export {
+  AnimatedBar,
+  AnimatedFill,
+  PressScale,
+  Reveal,
+  useCountUp,
+  usePopOnActive,
+  usePressScale,
+} from './motion';
 export {
   AreaSparkline,
   CHART_PALETTE,
@@ -48,6 +56,7 @@ export {
   RingGauge,
   SplitBar,
   SUBTLE_ACCENTS,
+  accentForKey,
   withAlpha,
   type SplitSegment,
 } from './charts';
@@ -163,6 +172,8 @@ type ListRowProps = {
   /** Right column, primary line (money uses transaction-row amount face). */
   value?: string;
   valueColor?: string;
+  /** Quieter value (15 px semibold) for balance lists where the amount shouldn't dominate. */
+  compactValue?: boolean;
   /** Right column, small muted second line. */
   valueSub?: string;
   valueSubColor?: string;
@@ -184,6 +195,7 @@ export function ListRow({
   leading,
   value,
   valueColor,
+  compactValue = false,
   valueSub,
   valueSubColor,
   progress,
@@ -224,23 +236,27 @@ export function ListRow({
           value != null || valueSub != null ? (
             <View style={styles.valueCol}>
               {value != null ? (
-                <Text
+                <FitText
+                  align="right"
+                  minScale={0.8}
                   style={[
-                    transactionRowAmountTypography({ fontSize: 15, lineHeight: 20 }),
+                    compactValue
+                      ? [jakartaSemiboldText, { fontSize: 15, lineHeight: 20 }]
+                      : transactionRowAmountTypography({ fontSize: 16.5, lineHeight: 22 }),
                     { color: valueColor ?? colors.text, letterSpacing: -0.3 },
                   ]}
-                  numberOfLines={1}
                 >
                   {value}
-                </Text>
+                </FitText>
               ) : null}
               {valueSub ? (
-                <Text
+                <FitText
+                  align="right"
+                  minScale={0.8}
                   style={[styles.rowSubtitle, jakartaMediumText, { color: valueSubColor ?? colors.textMuted }]}
-                  numberOfLines={1}
                 >
                   {valueSub}
-                </Text>
+                </FitText>
               ) : null}
             </View>
           ) : null
@@ -344,6 +360,8 @@ type SummaryCardProps = {
   onPress?: () => void;
   accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
+  /** Page hero: same content without the card container (sits directly on the canvas). */
+  bare?: boolean;
 };
 
 function SummaryAmount({
@@ -374,6 +392,11 @@ function SummaryAmount({
 }
 
 /** Same shell as `SpendAndSaveCard`, with a larger hero amount and a chart slot. */
+/** Container-less stand-in for ProtoGlassCard (same props) — used by `SummaryCard bare`. */
+function BareShell({ children, style }: { children?: ReactNode; padding?: number; style?: StyleProp<ViewStyle> }) {
+  return <View style={[styles.bareShell, style]}>{children}</View>;
+}
+
 export function SummaryCard({
   label,
   amount,
@@ -388,18 +411,20 @@ export function SummaryCard({
   onPress,
   accessibilityLabel,
   style,
+  bare = false,
 }: SummaryCardProps) {
   const { colors } = useAppTheme();
+  const Shell = bare ? BareShell : ProtoGlassCard;
   const card = (
-    <ProtoGlassCard padding={16} style={[styles.summaryCard, style]}>
+    <Shell padding={16} style={[styles.summaryCard, style]}>
       <View style={styles.summaryTop}>
         <View style={styles.summaryHero}>
           <View style={styles.summaryLabelRow}>
-            <Text style={[styles.summaryLabel, { color: colors.textMuted }]} numberOfLines={1}>
+            <FitText style={[styles.summaryLabel, { color: colors.textMuted }]}>
               {label}
-            </Text>
+            </FitText>
             {badge && !aside ? (
-              <Text style={[styles.summaryBadge, { color: badge.color }]} numberOfLines={1}>
+              <Text style={[styles.summaryBadge, { color: badge.color }]}>
                 {badge.label}
               </Text>
             ) : null}
@@ -411,7 +436,7 @@ export function SummaryCard({
             color={amountColor ?? colors.text}
           />
           {badge && aside ? (
-            <Text style={[styles.summaryBadge, { color: badge.color }]} numberOfLines={1}>
+            <Text style={[styles.summaryBadge, { color: badge.color }]}>
               {badge.label}
             </Text>
           ) : null}
@@ -433,16 +458,16 @@ export function SummaryCard({
                 },
               ]}
             >
-              <Text style={[styles.statLabel, { color: colors.textMuted }]} numberOfLines={1}>
+              <FitText style={[styles.statLabel, { color: colors.textMuted }]}>
                 {stat.label}
-              </Text>
+              </FitText>
               <FitText
                 style={[
-                  transactionRowAmountTypography({ fontSize: 15, lineHeight: 20 }),
+                  transactionRowAmountTypography({ fontSize: 16, lineHeight: 21 }),
                   { color: stat.color ?? colors.text, letterSpacing: -0.3 },
                 ]}
-                fontSize={15}
-                lineHeight={20}
+                fontSize={16}
+                lineHeight={21}
                 minScale={0.6}
               >
                 {stat.value}
@@ -456,7 +481,7 @@ export function SummaryCard({
           {footer}
         </Text>
       ) : null}
-    </ProtoGlassCard>
+    </Shell>
   );
   if (!onPress) return <Reveal>{card}</Reveal>;
   return (
@@ -521,7 +546,7 @@ const styles = StyleSheet.create({
   copy: { flex: 1, minWidth: 0, justifyContent: 'center', marginRight: ROW_GAP },
   rowTitle: { letterSpacing: -0.2 },
   rowSubtitle: { fontSize: 12.5, lineHeight: 16, marginTop: 2 },
-  valueCol: { alignItems: 'flex-end', flexShrink: 0, maxWidth: '45%' },
+  valueCol: { alignItems: 'flex-end', flexShrink: 1, minWidth: 0, maxWidth: '50%' },
   chevron: { marginLeft: spacing.xs },
   progress: { marginRight: ROW_PAD_H, marginTop: -4, marginBottom: 12 },
   emptyRow: {
@@ -532,11 +557,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   summaryCard: { gap: 12 },
+  bareShell: { paddingVertical: 4 },
   summaryTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   summaryHero: { flex: 1, minWidth: 0, gap: 4 },
   summaryLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   summaryLabel: { ...typographyKit.metaMedium, fontSize: 12, letterSpacing: -0.1, flexShrink: 1 },
-  summaryBadge: { ...typographyKit.metaSemibold, fontSize: 12 },
+  summaryBadge: { ...typographyKit.metaSemibold, fontSize: 12.5, flexShrink: 0 },
   summaryFooter: { ...typographyKit.metaMedium, fontSize: 11.5, letterSpacing: -0.1 },
   statRow: {
     flexDirection: 'row',

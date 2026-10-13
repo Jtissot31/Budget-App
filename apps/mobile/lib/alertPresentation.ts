@@ -613,9 +613,10 @@ function creditLimitSolutions(
       description: 'Libère de la marge tout de suite.',
       detailBody:
         'Effectue un paiement sur ta carte pour faire baisser le solde utilisé. Tu récupères de la marge disponible et tu réduis le risque de dépasser ta limite après le prochain prélèvement.',
-      ctaLabel: 'Ouvrir le portefeuille',
+      ctaLabel: item.accountId ? 'Voir la carte' : 'Ouvrir le Wallet',
       icon: { family: 'ionicons', name: 'card-outline' },
-      href: '/(tabs)/accounts',
+      href: item.accountId ? '/account-detail' : '/(tabs)/accounts',
+      params: accountParams,
     },
     {
       id: 'transfer-in',
@@ -683,8 +684,7 @@ function lowFundsSolutions(
         description: 'Décale le paiement juste après l’arrivée du salaire.',
         ctaLabel: 'Voir l’agenda',
         icon: { family: 'ionicons', name: 'calendar-outline' },
-        href: '/(tabs)/transactions',
-        params: { view: 'agenda' },
+        href: '/(tabs)/goals',
       };
 
   return [transfer, secondAction];
@@ -861,9 +861,11 @@ export function buildAlertDetailContent(
             id: 'review-budget',
             title: 'Réajuster l’enveloppe',
             description: 'Augmente ou redistribue le budget.',
-            ctaLabel: 'Voir mon budget',
+            ctaLabel: category ? `Ouvrir ${category}` : 'Voir mon budget',
             icon: { family: 'ionicons', name: 'pie-chart-outline' },
-            href: '/(tabs)/budgets',
+            // Straight to that category's detail when the alert names it.
+            href: category ? '/budget-category' : '/(tabs)/budgets',
+            params: category ? { name: category } : undefined,
           },
           {
             id: 'review-spending',
@@ -894,9 +896,9 @@ export function buildAlertDetailContent(
             id: 'open-debt',
             title: 'Consulter le prêt',
             description: 'Vérifie le solde, le taux et la prochaine échéance.',
-            ctaLabel: 'Voir mes obligations',
+            ctaLabel: 'Voir mes prêts',
             icon: { family: 'ionicons', name: 'document-text-outline' },
-            href: '/(tabs)/goals',
+            href: '/(tabs)/accounts',
           },
         ],
       };
@@ -945,7 +947,7 @@ export function buildAlertDetailContent(
             description: 'Consulte le plan avant de décider.',
             ctaLabel: 'Ouvrir le plan',
             icon: { family: 'ionicons', name: 'map-outline' },
-            href: item.relatedPlanId ? '/plans/[id]' : '/(tabs)/goals',
+            href: item.relatedPlanId ? '/plans/[id]' : '/plans-list',
             params: item.relatedPlanId ? { id: item.relatedPlanId } : undefined,
           },
           {

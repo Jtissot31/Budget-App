@@ -15,9 +15,11 @@ import { getTransactions, sortTransactionsNewestFirst } from '@/lib/db';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { tapHaptic } from '@/lib/haptics';
 import { openTransactionDetail } from '@/lib/openTransactionDetail';
+import { BUDGET_OVER } from '@/lib/budgetTone';
 import { useAppTheme } from '@/lib/themeContext';
 import { buildMockMonthTransactions, mockPastMonthTotal } from '@/lib/budgetCategoryMockHistory';
 import type { Transaction } from '@/types';
+import { FitText } from '@/components/kit/FitText';
 
 const TREND_MONTHS = 6;
 const RECENT_LIMIT = 5;
@@ -159,7 +161,7 @@ export function BudgetCategoryInsights({
           {
             label: 'Projection fin de mois',
             value: formatDisplayMoneyAbsolute(pace.projected),
-            color: projectedOver ? colors.danger : undefined,
+            color: projectedOver ? BUDGET_OVER : undefined,
           },
           { label: 'Par jour restant', value: pace.perDay > 0 ? formatDisplayMoneyAbsolute(pace.perDay) : '—' },
         ]
@@ -192,23 +194,22 @@ export function BudgetCategoryInsights({
                 },
               ]}
             >
-              <Text style={[styles.statLabel, { color: colors.textMuted }]} numberOfLines={1}>
+              <FitText style={[styles.statLabel, { color: colors.textMuted }]}>
                 {stat.label}
-              </Text>
-              <Text
+              </FitText>
+              <FitText
                 style={[
                   transactionRowAmountTypography({ fontSize: 17, lineHeight: 22 }),
                   { color: stat.color ?? colors.text },
                 ]}
-                numberOfLines={1}
               >
                 {stat.value}
-              </Text>
+              </FitText>
             </View>
           ))}
         </ListCard>
         {projectedOver ? (
-          <Text style={[styles.hint, { color: colors.danger }]}>
+          <Text style={[styles.hint, { color: colors.textSecondary }]}>
             À ce rythme, tu dépasseras de {formatDisplayMoneyAbsolute(pace!.projected - limit)}.
           </Text>
         ) : null}
@@ -242,7 +243,7 @@ export function BudgetCategoryInsights({
                     const isLast = i === months.length - 1;
                     const over = limit > 0 && m.total > limit;
                     const fill = over
-                      ? colors.danger
+                      ? BUDGET_OVER
                       : isLast
                         ? colors.text
                         : colors.borderStrong;

@@ -7,10 +7,11 @@ import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { DatePickerField } from '@/components/MinimalDatePicker';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { PageTransition } from '@/components/PageTransition';
+import { ChipSelectField } from '@/components/ChipSelectField';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { RegionPickerSheet } from '@/components/RegionPickerSheet';
 import { SettingsPickerSheet } from '@/components/SettingsPickerSheet';
-import { PageHeader } from '@/components/kit';
+import { HeaderIconButton, PageHeader } from '@/components/kit';
 import { SettingsSection } from '@/components/SettingsSection';
 import {
   SettingsCustomRow,
@@ -86,6 +87,12 @@ import { GeminiApiKeySheet } from '@/components/GeminiApiKeySheet';
 import { useAppTheme } from '@/lib/themeContext';
 
 type PickerKind = 'currency' | 'language' | 'region' | 'pay_frequency' | null;
+
+const LANGUAGE_TABS: { id: DisplayLanguage; label: string }[] = [
+  { id: 'fr-CA', label: '🇨🇦 FR' },
+  { id: 'en-CA', label: '🇨🇦 EN' },
+  { id: 'en-US', label: '🇺🇸 US' },
+];
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -244,19 +251,34 @@ export default function SettingsScreen() {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <PageHeader title="Réglages" topInset={insets.top} />
+          <PageHeader
+            title="Réglages"
+            topInset={insets.top}
+            trailing={
+              <HeaderIconButton
+                icon="close"
+                accessibilityLabel="Quitter les réglages"
+                onPress={() => {
+                  tapHaptic();
+                  if (router.canGoBack()) router.back();
+                  else router.navigate('/');
+                }}
+              />
+            }
+          />
 
           <SettingsSection title="Compte">
             <SettingsNavigationRow
               label={cloudConnected ? 'Compte connecté' : 'Se connecter'}
               hint={
                 cloudConnected
-                  ? 'Synchronisation cloud activée sur cet appareil.'
-                  : 'Lie ton compte pour sauvegarder dans le cloud.'
+                  ? 'Sauvegarde cloud active'
+                  : 'Sauvegarde tes données dans le cloud'
               }
               icon={cloudConnected ? 'person' : 'person-outline'}
               value={cloudConnected ? 'Actif' : connecting ? 'Connexion…' : undefined}
               onPress={() => void handleConnectAccount()}
+              isLast
               accessory={
                 cloudConnected ? (
                   <View style={[styles.statusBadge, { backgroundColor: colors.successMuted }]}>
@@ -265,25 +287,11 @@ export default function SettingsScreen() {
                 ) : undefined
               }
             />
-            <SettingsNavigationRow
-              label="Revoir l’introduction"
-              hint="Relance l’écran d’intro (optionnel)."
-              icon="sparkles-outline"
-              onPress={() => {
-                tapHaptic();
-                void (async () => {
-                  await resetOnboarding();
-                  router.replace('/onboarding');
-                })();
-              }}
-              isLast
-            />
           </SettingsSection>
 
-          <SettingsSection title="Préférences">
+          <SettingsSection title="Apparence et région">
             <SettingsCustomRow
               label="Thème"
-              hint="Choisis l’ambiance visuelle de l’application."
               icon="color-palette-outline"
             >
               <SegmentedTabs
@@ -297,32 +305,46 @@ export default function SettingsScreen() {
             </SettingsCustomRow>
             <SettingsNavigationRow
               label="Région"
-              hint="Conventions fiscales et régionales."
               icon="earth-outline"
               value={formatRegionLabel(region)}
               onPress={() => setActivePicker('region')}
             />
-            <SettingsNavigationRow
-              label="Devise"
-              hint="Symbole et format des montants dans l’app."
-              icon="cash-outline"
-              value={labelForOption(CURRENCY_OPTIONS, currency)}
-              onPress={() => setActivePicker('currency')}
-            />
-            <SettingsNavigationRow
-              label="Langue"
-              hint="Libellés et formats textuels de l’interface."
-              icon="language-outline"
-              value={labelForOption(LANGUAGE_OPTIONS, language)}
-              onPress={() => setActivePicker('language')}
-              isLast
-            />
+            {/* Few options → one-tap inline chips instead of a picker sheet. */}
+            <SettingsCustomRow label="Devise" icon="cash-outline">
+              <ChipSelectField
+                label="Devise"
+                showLabel={false}
+                reorderSelected={false}
+                options={CURRENCY_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
+                selectedId={currency}
+                onSelect={(id) => {
+                  setCurrency(id as typeof currency);
+                  void setDisplayCurrency(id as typeof currency);
+                }}
+              />
+            </SettingsCustomRow>
+            {/* Three options → inline one-tap switch, same control as « Thème » (no picker sheet). */}
+            <SettingsCustomRow label="Langue" icon="language-outline" isLast>
+              <SegmentedTabs
+                tabs={LANGUAGE_TABS}
+                active={language}
+                onChange={(id) => {
+                  if (id === language) return;
+                  tapHaptic();
+                  setLanguage(id);
+                  void setDisplayLanguage(id);
+                }}
+                size="section"
+                variant="section"
+                showDivider={false}
+              />
+            </SettingsCustomRow>
           </SettingsSection>
 
           <SettingsSection title="Saisie">
             <SettingsToggleRow
               label="Haptique"
-              hint="Vibration légère lors des actions tactiles."
+              hint="Vibration au toucher"
               icon="phone-portrait-outline"
               value={hapticEnabled}
               onValueChange={(enabled) => {
@@ -332,7 +354,7 @@ export default function SettingsScreen() {
             />
             <SettingsToggleRow
               label="Suggestions"
-              hint="Propositions de marchands, contacts et libellés."
+              hint="Marchands et contacts pendant la saisie"
               icon="sparkles-outline"
               value={autocompleteEnabled}
               onValueChange={(enabled) => {
@@ -342,7 +364,7 @@ export default function SettingsScreen() {
             />
             <SettingsCustomRow
               label="Date"
-              hint="Affichage des dates dans les formulaires."
+              hint="Format dans les formulaires"
               icon="calendar-outline"
             >
               <SegmentedTabs
@@ -362,7 +384,7 @@ export default function SettingsScreen() {
             </SettingsCustomRow>
             <SettingsCustomRow
               label="Pavé"
-              hint="Comportement par défaut lors de la saisie des montants."
+              hint="Clavier des montants"
               icon="keypad-outline"
               isLast
             >
@@ -383,17 +405,23 @@ export default function SettingsScreen() {
             </SettingsCustomRow>
           </SettingsSection>
 
-          <SettingsSection title="Paies">
-            <SettingsNavigationRow
-              label="Fréquence des paies"
-              hint="Utilisée pour projeter les jours de paie dans l’agenda."
-              icon="repeat-outline"
-              value={payFrequency ? payEstimationFrequencyLabel(payFrequency) : 'Non définie'}
-              onPress={() => setActivePicker('pay_frequency')}
-            />
+          <SettingsSection title="Revenus">
+            <SettingsCustomRow label="Fréquence des paies" icon="repeat-outline">
+              <ChipSelectField
+                label="Fréquence des paies"
+                showLabel={false}
+                reorderSelected={false}
+                options={PAY_ESTIMATION_FREQUENCY_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
+                selectedId={payFrequency ?? ''}
+                onSelect={(id) => {
+                  const next = id as PayEstimationFrequency;
+                  setPayFrequency(next);
+                  void persistPayEstimationFrequency(next);
+                }}
+              />
+            </SettingsCustomRow>
             <SettingsCustomRow
               label="Avant-dernière paie"
-              hint="Date de la paie précédant la dernière."
               icon="calendar-outline"
             >
               <DatePickerField
@@ -409,7 +437,7 @@ export default function SettingsScreen() {
             </SettingsCustomRow>
             <SettingsCustomRow
               label="Dernière paie"
-              hint="Point de départ pour estimer les prochaines paies dans l’agenda."
+              hint="Point de départ des estimations"
               icon="calendar-outline"
             >
               <DatePickerField
@@ -425,7 +453,7 @@ export default function SettingsScreen() {
             </SettingsCustomRow>
             <SettingsCustomRow
               label="Montant moyen des paies"
-              hint="Optionnel — affiché sur les dépôts estimés de l’agenda."
+              hint="Optionnel"
               icon="cash-outline"
               isLast
             >
@@ -444,10 +472,10 @@ export default function SettingsScreen() {
             </SettingsCustomRow>
           </SettingsSection>
 
-          <SettingsSection title="Dictée vocale">
+          <SettingsSection title="Saisie vocale">
             <SettingsNavigationRow
               label="Clé Gemini"
-              hint="Transcrit la dictée de transactions sur cet appareil. Sans serveur."
+              hint="Pour ajouter une dépense à la voix"
               icon="key-outline"
               value={
                 geminiApiKeyConfigured
@@ -488,7 +516,7 @@ export default function SettingsScreen() {
           <SettingsSection title="Données cloud">
             <View style={styles.dangerBlock}>
               <Text style={[styles.dangerHint, { color: colors.textMuted }]}>
-                Supprime définitivement les données hébergées sur le serveur. Les données locales de cet appareil ne sont pas effacées.
+                Efface les données du serveur. Celles de ce téléphone restent.
               </Text>
               <Pressable
                 accessibilityRole="button"
@@ -498,32 +526,46 @@ export default function SettingsScreen() {
                   tapHaptic();
                   setConfirmDeleteVisible(true);
                 }}
-                style={({ pressed }) => [
-                  subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
-                  pressed && styles.pressed,
-                  deletingCloud && styles.disabled,
-                ]}
+                style={({ pressed }) => [pressed && styles.pressed, deletingCloud && styles.disabled]}
               >
-                <AppIcon family="ionicons" name="trash-outline" size={16} color={colors.danger} />
-                <Text style={destructiveTextActionStyle(isLight)}>
-                  {deletingCloud ? 'Suppression…' : 'Supprimer les données cloud'}
-                </Text>
+                <View style={subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' })}>
+                  <AppIcon family="ionicons" name="trash-outline" size={16} color={colors.danger} />
+                  <Text style={destructiveTextActionStyle(isLight)}>
+                    {deletingCloud ? 'Suppression…' : 'Supprimer les données cloud'}
+                  </Text>
+                </View>
               </Pressable>
             </View>
           </SettingsSection>
 
-          <SettingsSection title="Dev (temporaire)">
+          <SettingsSection title="Aide">
             <SettingsNavigationRow
-              label="Catalogue icônes Lucide"
-              hint="Parcourir et choisir une icône visuellement."
-              icon="grid-outline"
+              label="Revoir l’introduction"
+              icon="sparkles-outline"
               onPress={() => {
                 tapHaptic();
-                router.push('/lucide-icons');
+                void (async () => {
+                  await resetOnboarding();
+                  router.replace('/onboarding');
+                })();
               }}
               isLast
             />
           </SettingsSection>
+
+          {__DEV__ ? (
+            <SettingsSection title="Développeur">
+              <SettingsNavigationRow
+                label="Catalogue icônes Lucide"
+                icon="grid-outline"
+                onPress={() => {
+                  tapHaptic();
+                  router.push('/lucide-icons');
+                }}
+                isLast
+              />
+            </SettingsSection>
+          ) : null}
 
           <Text style={[styles.footer, { color: colors.textMuted }]}>Budget-OX · v1.0</Text>
         </ScrollView>

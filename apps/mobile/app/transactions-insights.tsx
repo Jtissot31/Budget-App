@@ -11,11 +11,12 @@ import {
   fixedHeaderScreenStyle,
 } from '@/components/FixedScreenHeader';
 import { MonthSelector } from '@/components/MonthSelector';
+import { MerchantLogo } from '@/components/MerchantLogo';
 import { PageTransition } from '@/components/PageTransition';
 import { EmptyRow, IconWell, ListCard, ListRow, SectionLabel } from '@/components/kit';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { TransactionRow } from '@/components/TransactionRow';
-import { UserPickedIconWell } from '@/components/UserPickedIconWell';
+import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { CumulativeSpendStepChart } from '@/components/transactions/CumulativeSpendStepChart';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
@@ -54,6 +55,7 @@ import { dataEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
 import { openTransactionDetail } from '@/lib/openTransactionDetail';
 import { ensureDbReady } from '@/lib/init';
+import { normalizeMerchantKey } from '@/lib/merchantLogo';
 import {
   getTransactionValidationIssues,
   REVIEW_TRANSACTION_WINDOW,
@@ -61,6 +63,8 @@ import {
 } from '@/lib/transactionInsights';
 import { useAppTheme } from '@/lib/themeContext';
 import type { SimulatedAccount, Transaction } from '@/types';
+
+const TOP_MERCHANTS = 5;
 
 const SPEND_TREND_TABS: { id: SpendTrendGranularity; label: string }[] = [
   { id: 'week', label: '1S' },
@@ -319,6 +323,26 @@ export default function TransactionsInsightsScreen() {
     return { rows, grand };
   }, [displayAnchor, granularity, transactions]);
 
+  /** Where the money went, by merchant, for the same period. */
+  const merchantBreakdown = useMemo(() => {
+    const start = snapSpendTrendAnchor(displayAnchor, granularity);
+    const end = shiftSpendTrendAnchor(start, granularity, 1);
+    const byKey = new Map<string, { key: string; name: string; total: number; count: number }>();
+    for (const tx of transactions) {
+      if (tx.type !== 'expense') continue;
+      const when = new Date(tx.date);
+      if (when < start || when >= end) continue;
+      const name = tx.label?.trim();
+      if (!name) continue;
+      const key = normalizeMerchantKey(name);
+      const entry = byKey.get(key) ?? { key, name, total: 0, count: 0 };
+      entry.total += Math.abs(tx.amount);
+      entry.count += 1;
+      byKey.set(key, entry);
+    }
+    return [...byKey.values()].sort((a, b) => b.total - a.total).slice(0, TOP_MERCHANTS);
+  }, [displayAnchor, granularity, transactions]);
+
   const fixedPageHeader = isReviewMode ? (
     <View
       style={[
@@ -410,10 +434,13 @@ export default function TransactionsInsightsScreen() {
               <ListRow
                 key={row.key}
                 leading={
-                  <UserPickedIconWell
+                  // Category icons may be Lucide names (« Utensils »); BudgetCategoryIcon resolves every format.
+                  <BudgetCategoryIcon
                     icon={row.icon}
-                    color={row.color}
-                    size={40}
+                    name={row.name}
+                    id={row.key}
+                    wellSize={40}
+                    glyphSize={18}
                   />
                 }
                 title={row.name}
@@ -423,11 +450,41 @@ export default function TransactionsInsightsScreen() {
                 progress={row.share}
                 progressColor={colors.primary}
                 isLast={index === categoryBreakdown.rows.length - 1}
+                chevron
+                onPress={() => {
+                  tapHaptic();
+                  router.push({ pathname: '/budget-category', params: { id: row.key, name: row.name } });
+                }}
               />
             ))
           )}
         </ListCard>
       </View>
+      {merchantBreakdown.length > 0 ? (
+        <View style={styles.actionSection}>
+          <SectionLabel title="Top marchands" />
+          <ListCard>
+            {merchantBreakdown.map((row, index) => (
+              <ListRow
+                key={row.key}
+                leading={<MerchantLogo name={row.name} size={40} />}
+                title={row.name}
+                subtitle={`${row.count} achat${row.count > 1 ? 's' : ''}`}
+                value={`−${formatDisplayMoneyAbsolute(row.total)}`}
+                valueSub={
+                  categoryBreakdown.grand > 0 ? `${Math.round((row.total / categoryBreakdown.grand) * 100)} %` : undefined
+                }
+                chevron
+                isLast={index === merchantBreakdown.length - 1}
+                onPress={() => {
+                  tapHaptic();
+                  router.push({ pathname: '/merchant-detail', params: { merchant: row.name } });
+                }}
+              />
+            ))}
+          </ListCard>
+        </View>
+      ) : null}
       <View style={styles.actionSection}>
         <SectionLabel title="Aller plus loin" />
         <ListCard>

@@ -31,6 +31,8 @@ import { configureSystemTypographyDefaults, configureTypographyDefaults } from '
 import { fontFamilies } from '@/constants/theme';
 import { cn } from '@/lib/utils';
 import { ToastHost } from '@/components/kit/Toast';
+import { preloadCopilotData } from '@/components/copilot/CopilotCard';
+import { preloadHomeData } from '@/components/dashboard/ProtoHomeHub';
 
 export const unstable_settings = {
   initialRouteName: '(tabs)',
@@ -89,6 +91,8 @@ function RootLayoutContent() {
       try {
         await ensureDbReady();
         console.log('[Boot] database ready');
+        // Warm Accueil + Copilote so they open with real content (no empty first frame).
+        void Promise.all([preloadHomeData(), preloadCopilotData()]).catch(() => undefined);
       } catch (error) {
         console.warn('[Boot] database init failed', error);
       }
@@ -152,7 +156,10 @@ function RootLayoutContent() {
               // iOS interactive pop (full-width). Android uses SwipeBackHost.
               gestureEnabled: true,
               fullScreenGestureEnabled: true,
-              contentStyle: { backgroundColor: 'transparent' },
+              // Opaque from the first frame: a transparent scene let the screen below
+              // (often the last tab, e.g. Wallet) flash through while a detail page opened.
+              // Sheets/modals keep their own transparent contentStyle.
+              contentStyle: { backgroundColor: colors.background },
             }}
           >
             <Stack.Screen
@@ -200,6 +207,7 @@ function RootLayoutContent() {
             <Stack.Screen name="savings-goals" options={{ headerShown: false }} />
             <Stack.Screen name="transactions-insights" options={{ headerShown: false }} />
             <Stack.Screen name="subscriptions-insights" options={{ headerShown: false }} />
+            <Stack.Screen name="copilot" options={{ headerShown: false }} />
             <Stack.Screen name="documents-library" options={{ headerShown: false }} />
             <Stack.Screen name="paycheck-allocation" options={{ headerShown: false }} />
             <Stack.Screen name="lucide-icons" options={{ headerShown: false }} />
@@ -208,6 +216,27 @@ function RootLayoutContent() {
             <Stack.Screen name="patrimoine" options={{ headerShown: false }} />
             <Stack.Screen name="plans" options={{ headerShown: false }} />
             <Stack.Screen name="scan" options={{ headerShown: false, presentation: 'modal' }} />
+            <Stack.Screen name="connect-bank" options={{ headerShown: false, presentation: 'modal', gestureEnabled: false }} />
+            <Stack.Screen
+              name="budget-category"
+              options={{
+                headerShown: false,
+                presentation: 'transparentModal',
+                // The sheet animates itself — no scene transition, nothing flashes behind it.
+                animation: 'none',
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
+            <Stack.Screen
+              name="payment-detail"
+              options={{
+                headerShown: false,
+                presentation: 'transparentModal',
+                // The sheet animates itself — no scene transition, nothing flashes behind it.
+                animation: 'none',
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
             <Stack.Screen name="alert-center" options={{ headerShown: false }} />
             <Stack.Screen name="alert-detail" options={{ headerShown: false }} />
             <Stack.Screen name="alert-types" options={{ headerShown: false }} />

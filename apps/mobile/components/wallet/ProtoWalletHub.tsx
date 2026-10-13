@@ -23,16 +23,16 @@ import {
   AreaSparkline,
   SummaryCard,
   PillButton,
+  Reveal,
 } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
 import {
-  ACCOUNT_KIND_OPTIONS,
   createNewAccountForm,
   saveSimulatedAccountForm,
   SimulatedAccountFormModal,
   type AccountForm,
 } from '@/components/SimulatedAccountForm';
-import { SettingsPickerSheet, type SettingsPickerOption } from '@/components/SettingsPickerSheet';
+import { AddAccountSheet } from '@/components/wallet/AddAccountSheet';
 import {
   createNewGoalForm,
   SavingsGoalFormModal,
@@ -47,9 +47,17 @@ import {
   FLOATING_NAV_CONTENT_PADDING,
   PAGE_PADDING_HORIZONTAL,
   spacing,
+  jakartaSemiboldText,
   subtleDeleteButtonStyle,
   typographyKit,
 } from '@/constants/theme';
+import { getEnvelopesByAccount, type AccountEnvelope } from '@/lib/accountEnvelopes';
+import {
+  AccountEnvelopesPanel,
+  EnvelopeSheet,
+  newEnvelopeDraft,
+  type EnvelopeDraft,
+} from '@/components/wallet/AccountEnvelopes';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { accountBalanceDisplayName, accountKindTypeLabel } from '@/lib/accountBalancePresentation';
 import { ensureDbReady } from '@/lib/init';
@@ -87,10 +95,6 @@ import type {
   SimulatedAccount,
   Transaction,
 } from '@/types';
-
-const ACCOUNT_TYPE_PICKER_OPTIONS: SettingsPickerOption<AccountKind>[] = ACCOUNT_KIND_OPTIONS.map(
-  ({ id, label, description, icon }) => ({ id, label, description, icon }),
-);
 
 const ACCOUNT_DRAG_ACTIVATION_MS = 220;
 const MASK = '••••';
@@ -140,6 +144,9 @@ export function ProtoWalletHub() {
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
   const [hideBalances, setHideBalances] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [envelopesByAccount, setEnvelopesByAccount] = useState<Record<string, AccountEnvelope[]>>({});
+  const [expandedAccountIds, setExpandedAccountIds] = useState<string[]>([]);
+  const [envelopeDraft, setEnvelopeDraft] = useState<EnvelopeDraft | null>(null);
 
   const [managingAccounts, setManagingAccounts] = useState(false);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
@@ -183,6 +190,7 @@ export function ProtoWalletHub() {
     setRecurringPayments(nextPayments);
     setLoans(nextLoans);
     setTrendTx(nextTrend);
+    setEnvelopesByAccount(await getEnvelopesByAccount());
   }, []);
 
   useEffect(() => {
@@ -218,6 +226,12 @@ export function ProtoWalletHub() {
     },
     [accounts.length],
   );
+
+  /** Plaid bank-sync flow (preview data until the backend exists). */
+  const handleConnectBank = useCallback(() => {
+    // Let the sheet Modal dismiss before presenting the flow.
+    setTimeout(() => router.push('/connect-bank'), 280);
+  }, [router]);
 
   const closeAccountForm = useCallback(() => {
     setAccountForm(null);
@@ -387,26 +401,69 @@ export function ProtoWalletHub() {
 
   /* ── Rows ── */
 
+  const toggleAccountExpanded = (id: string) => {
+    tapHaptic();
+    setExpandedAccountIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
   const renderAccountRow = (account: SimulatedAccount, isLast: boolean, interactive = true) => {
     const selected = selectedAccountIds.includes(account.id);
     const title = accountBalanceDisplayName(account) || 'Compte';
-    return (
+    // Envelopes: liquid accounts only, outside « Modifier » mode.
+    const supportsEnvelopes = interactive && !managingAccounts && isLiquid(account.kind);
+    const envelopes = envelopesByAccount[account.id] ?? [];
+    const expanded = supportsEnvelopes && expandedAccountIds.includes(account.id);
+    const meta = accountMeta(account);
+    const row = (
       <ListRow
         key={account.id}
         leading={managingAccounts ? <SelectWell selected={selected} /> : <View style={styles.logoSlot}><InstitutionMark account={account} size={36} tile /></View>}
         title={title}
-        subtitle={accountMeta(account)}
+        subtitle={
+          supportsEnvelopes && envelopes.length > 0
+            ? `${meta} · ${envelopes.length} enveloppe${envelopes.length > 1 ? 's' : ''}`
+            : meta
+        }
         value={money(account.balance)}
         valueColor={account.balance < 0 && !hideBalances ? colors.danger : colors.text}
+        compactValue
         trailing={
           managingAccounts && listedAccounts.length > 1 ? (
             <View style={styles.dragHandle}>
               <Text style={[styles.manageValue, { color: colors.textMuted }]}>{money(account.balance)}</Text>
               <AppIcon family="ionicons" name="reorder-two" size={20} color={colors.textMuted} />
             </View>
+          ) : supportsEnvelopes ? (
+            <View style={styles.envelopeTrailing}>
+              <Text
+                style={[
+                  jakartaSemiboldText,
+                  { fontSize: 15, lineHeight: 20 },
+                  { color: account.balance < 0 && !hideBalances ? colors.danger : colors.text, letterSpacing: -0.3 },
+                ]}
+                numberOfLines={1}
+              >
+                {money(account.balance)}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={expanded ? 'Masquer les enveloppes' : 'Afficher les enveloppes'}
+                accessibilityState={{ expanded }}
+                hitSlop={12}
+                onPress={() => toggleAccountExpanded(account.id)}
+                style={[styles.expandButton, { backgroundColor: expanded ? colors.surfaceElevated : 'transparent' }]}
+              >
+                <AppIcon
+                  family="ionicons"
+                  name={expanded ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={colors.textMuted}
+                />
+              </Pressable>
+            </View>
           ) : undefined
         }
-        isLast={isLast}
+        isLast={isLast && !expanded}
         onPress={
           interactive
             ? () => router.push({ pathname: '/account-detail', params: { accountId: account.id } })
@@ -414,7 +471,28 @@ export function ProtoWalletHub() {
         }
       />
     );
+    if (!expanded) return row;
+    return (
+      <View key={account.id}>
+        {row}
+        <AccountEnvelopesPanel
+          balance={account.balance}
+          envelopes={envelopes}
+          hideBalances={hideBalances}
+          onAdd={(preset) => setEnvelopeDraft(newEnvelopeDraft(account.id, envelopes.length, preset))}
+          onEdit={(envelope) => setEnvelopeDraft({ envelope, isNew: false })}
+        />
+        {!isLast ? <View style={[styles.envelopeDivider, { backgroundColor: colors.borderSubtle }]} /> : null}
+      </View>
+    );
   };
+
+  const draftAccount = envelopeDraft ? accounts.find((a) => a.id === envelopeDraft.envelope.accountId) ?? null : null;
+  const draftAvailable = (() => {
+    if (!envelopeDraft || !draftAccount) return 0;
+    const others = (envelopesByAccount[draftAccount.id] ?? []).filter((e) => e.id !== envelopeDraft.envelope.id);
+    return draftAccount.balance - others.reduce((sum, e) => sum + e.amount, 0);
+  })();
 
   const renderSortableAccount = useCallback<SortableGridRenderItem<SimulatedAccount>>(
     ({ item, index }) => (
@@ -430,7 +508,7 @@ export function ProtoWalletHub() {
     <ListRow
       leading={<IconWell icon="add" color={colors.text} />}
       title="Ajouter un compte"
-      subtitle="Chèque, épargne, carte de crédit…"
+      subtitle="Connecter ma banque ou ajouter à la main"
       isLast
       onPress={openAddAccount}
     />
@@ -467,7 +545,7 @@ export function ProtoWalletHub() {
             }
           />
 
-          <View style={styles.section}>
+          <Reveal index={0} style={styles.section}>
             <SummaryCard
               label="Valeur nette"
               amount={hideBalances ? '••••••' : signedMoney(netWorth)}
@@ -478,18 +556,24 @@ export function ProtoWalletHub() {
                 netWorthPct != null && !hideBalances
                   ? {
                       label: `${netWorthPct >= 0 ? '+' : '−'}${Math.abs(netWorthPct).toFixed(1).replace('.', ',')} % · 30 j`,
-                      color: netWorthPct >= 0 ? colors.accentGreen : colors.danger,
+                      color: netWorthPct >= 0 ? colors.accentGreen : colors.textMuted,
                     }
                   : undefined
               }
               stats={[
                 { label: 'Disponible', value: money(availableNow) },
-                { label: 'Épargne', value: money(savingsTotal) },
+                {
+                  label: 'Épargne',
+                  // Compact from 1 000 $ so the stat stays short (11 250,50 $ → 11,25K$).
+                  value: hideBalances
+                    ? MASK
+                    : formatDisplayMoneyAbsolute(savingsTotal, { compactKThreshold: 1_000, compactKDecimals: 2 }),
+                },
                 creditLimitTotal > 0
                   ? {
                       label: 'Crédit utilisé',
                       value: `${Math.round(creditUtilization * 100)} %`,
-                      color: creditUtilization >= 0.7 ? colors.danger : undefined,
+                      color: creditUtilization >= 0.7 ? '#F59E0B' : undefined,
                     }
                   : { label: 'Crédit', value: money(creditTotal) },
               ]}
@@ -497,7 +581,7 @@ export function ProtoWalletHub() {
               {!hideBalances && netWorthSeries.length > 1 ? (
                 <AreaSparkline
                   data={netWorthSeries}
-                  color={(netWorthPct ?? 0) >= 0 ? colors.accentGreen : colors.danger}
+                  color={(netWorthPct ?? 0) >= 0 ? colors.accentGreen : colors.textMuted}
                   height={48}
                 />
               ) : null}
@@ -505,14 +589,14 @@ export function ProtoWalletHub() {
                 <View style={styles.balanceBlock}>
                   <View style={styles.balanceLabels}>
                     <Text style={[styles.balanceLabel, { color: colors.textMuted }]}>
-                      Liquidités <Text style={{ color: colors.text }}>{formatCompactCurrency(liquidCash)}</Text>
+                      Liquidités <Text style={{ color: colors.accentGreen }}>{formatCompactCurrency(liquidCash)}</Text>
                     </Text>
                     <Text style={[styles.balanceLabel, { color: colors.textMuted }]}>
-                      Dettes de carte <Text style={{ color: colors.danger }}>{formatCompactCurrency(creditUsed)}</Text>
+                      Dettes <Text style={{ color: colors.danger }}>{formatCompactCurrency(creditUsed)}</Text>
                     </Text>
                   </View>
                   <View style={styles.balanceBar}>
-                    <View style={{ flex: Math.max(liquidCash, 0.0001), backgroundColor: colors.text, borderRadius: 4 }} />
+                    <View style={{ flex: Math.max(liquidCash, 0.0001), backgroundColor: colors.accentGreen, borderRadius: 4 }} />
                     {creditUsed > 0 ? (
                       <View style={{ flex: creditUsed, backgroundColor: colors.danger, borderRadius: 4, marginLeft: 3 }} />
                     ) : null}
@@ -520,17 +604,20 @@ export function ProtoWalletHub() {
                 </View>
               ) : null}
             </SummaryCard>
-          </View>
+          </Reveal>
 
-          <View style={styles.section}>
+          <Reveal index={1} style={styles.section}>
             <SectionLabel
               title="Comptes"
               trailing={
                 listedAccounts.length > 0 ? (
-                  <TextAction
-                    label={managingAccounts ? 'Terminé' : 'Modifier'}
-                    onPress={toggleManagingAccounts}
-                  />
+                  <View style={styles.headerActions}>
+                    {!managingAccounts ? <TextAction label="Ajouter" onPress={openAddAccount} /> : null}
+                    <TextAction
+                      label={managingAccounts ? 'Terminé' : 'Modifier'}
+                      onPress={toggleManagingAccounts}
+                    />
+                  </View>
                 ) : undefined
               }
             />
@@ -588,13 +675,28 @@ export function ProtoWalletHub() {
                     </ListCard>
                   </>
                 ) : null}
-                <ListCard>{addAccountRow}</ListCard>
+                {/* Empty state only — with accounts, « Ajouter » lives in the section header. */}
+                {listedAccounts.length === 0 ? <ListCard>{addAccountRow}</ListCard> : null}
               </>
             )}
-          </View>
+          </Reveal>
+
+          <Reveal index={2} style={styles.section}>
+            <SectionLabel title="Patrimoine" />
+            <ListCard>
+              <ListRow
+                leading={<IconWell icon="home-outline" />}
+                title="Placements et biens"
+                subtitle="Actions, immobilier, véhicules"
+                chevron
+                isLast
+                onPress={() => router.push('/patrimoine')}
+              />
+            </ListCard>
+          </Reveal>
 
           {loans.length > 0 ? (
-            <View style={styles.section}>
+            <Reveal index={3} style={styles.section}>
               <SectionLabel title="Prêts" />
               <ListCard>
                 {loans.map((loan, index) => {
@@ -615,10 +717,10 @@ export function ProtoWalletHub() {
                   );
                 })}
               </ListCard>
-            </View>
+            </Reveal>
           ) : null}
 
-          <View style={styles.section}>
+          <Reveal index={4} style={styles.section}>
             <SectionLabel
               title="Objectifs"
               trailing={
@@ -671,21 +773,8 @@ export function ProtoWalletHub() {
                 onPress={() => setConfirmDeleteGoalsVisible(true)}
               />
             ) : null}
-          </View>
+          </Reveal>
 
-          <View style={styles.section}>
-            <SectionLabel title="Patrimoine" />
-            <ListCard>
-              <ListRow
-                leading={<IconWell icon="home-outline" />}
-                title="Placements et biens"
-                subtitle="Actions, immobilier, véhicules"
-                chevron
-                isLast
-                onPress={() => router.push('/patrimoine')}
-              />
-            </ListCard>
-          </View>
         </ScrollView>
 
         <ConfirmDeleteModal
@@ -714,13 +803,18 @@ export function ProtoWalletHub() {
           onCancel={() => setConfirmDeleteGoalsVisible(false)}
         />
 
-        <SettingsPickerSheet
+        <AddAccountSheet
           visible={accountTypePickerVisible}
-          title="Type de compte"
-          options={ACCOUNT_TYPE_PICKER_OPTIONS}
-          selectedId={'' as AccountKind}
           onClose={() => setAccountTypePickerVisible(false)}
-          onSelect={handleSelectAccountType}
+          onSelectKind={handleSelectAccountType}
+          onConnectBank={handleConnectBank}
+        />
+
+        <EnvelopeSheet
+          draft={envelopeDraft}
+          accountName={draftAccount ? accountBalanceDisplayName(draftAccount) || 'Compte' : ''}
+          available={draftAvailable}
+          onClose={() => setEnvelopeDraft(null)}
         />
 
         <SimulatedAccountFormModal
@@ -799,6 +893,10 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   section: { marginBottom: SECTION_GAP + spacing.sm },
   sectionActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  envelopeTrailing: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+  expandButton: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  envelopeDivider: { height: StyleSheet.hairlineWidth, marginLeft: 14 },
   cardGap: { marginBottom: spacing.md },
   subLabel: {
     ...typographyKit.eyebrow,

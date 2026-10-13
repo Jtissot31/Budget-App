@@ -27,7 +27,8 @@ export const interExtraBoldText = jakartaExtraBoldText;
 
 /** Light app canvas — single smooth diagonal warm-grey gradient */
 export const appBackgroundGradientLight = {
-  colors: ['#EFEFEF', '#E8E8E8', '#E0E0E0', '#D8D8D8'] as const,
+  // Cool grey canvas — dark enough that solid white cards clearly separate from it.
+  colors: ['#ECEDF1', '#E8E9EE', '#E3E4EA', '#DEDFE5'] as const,
   locations: [0, 0.38, 0.72, 1] as const,
   start: { x: 0, y: 0 },
   end: { x: 0.28, y: 1 },
@@ -56,7 +57,7 @@ export const CONTAINER_SURFACE = 'rgba(255, 255, 255, 0.055)';
 export const CONTAINER_BORDER = 'rgba(255, 255, 255, 0.1)';
 
 /** Light-theme container outline (Figma LIGHT.BORDER). */
-export const CONTAINER_BORDER_LIGHT = 'rgba(0, 0, 0, 0.09)';
+export const CONTAINER_BORDER_LIGHT = 'rgba(15, 15, 30, 0.10)';
 
 /**
  * Liquid spring presets for {@link ThemeSegmentedControl} / {@link SegmentedTabs} sliding pill.
@@ -100,9 +101,9 @@ export const segmentedTabBarDark = {
 /** Segmented tab bar — light theme (Budget Proto LIGHT) */
 export const segmentedTabBarLight = {
   track: 'rgba(0, 0, 0, 0.06)',
-  activePill: 'rgba(0, 0, 0, 0.09)',
+  activePill: '#FFFFFF',
   activeText: '#0A0A0F',
-  inactiveText: '#8E8E9A',
+  inactiveText: '#6B6B78',
 } as const;
 
 /** Dashboard dark palette — Budget Proto Figma (App.tsx DARK + semantics) */
@@ -195,56 +196,61 @@ export const darkColors = {
   segmentedTabInactiveText: segmentedTabBarDark.inactiveText,
 } as const;
 
+/**
+ * Light theme hierarchy (3 clear layers): cool-grey page → solid white cards → light-grey
+ * chips / wells / inputs on those cards. Deeper accents so colour reads on white.
+ */
 export const lightColors = {
-  background: '#F2F2F7',
+  background: '#E8E9EE',
   screenCanvas: 'transparent',
-  surface: 'rgba(255, 255, 255, 0.82)',
-  surfaceSolid: 'rgba(255, 255, 255, 0.95)',
+  surface: '#FFFFFF',
+  surfaceSolid: '#FFFFFF',
   /** Opaque dialog/modal card — confirm sheets must not use glass. */
   modalSurface: '#FFFFFF',
   /** Opaque secondary control on {@link lightColors.modalSurface}. */
   modalAction: '#F0F0F4',
   /** Standard card/container fill — Budget Proto LIGHT.CARD */
-  containerBackground: 'rgba(255, 255, 255, 0.82)',
+  containerBackground: '#FFFFFF',
   /** Standard card/container outline — Budget Proto LIGHT.BORDER */
   containerBorder: CONTAINER_BORDER_LIGHT,
-  cardBackground: 'rgba(255, 255, 255, 0.82)',
-  glassSolid: 'rgba(255, 255, 255, 0.95)',
-  surfaceElevated: 'rgba(255, 255, 255, 0.95)',
+  cardBackground: '#FFFFFF',
+  glassSolid: '#FFFFFF',
+  /** Chips, pills, icon wells on white cards — must read as a distinct grey. */
+  surfaceElevated: '#EEEFF3',
   /** Line-icon well — always filled; kit pale gray (`USER_PICKED_ICON_WELL_BG_LIGHT`). */
-  iconWell: '#F2F3F4',
-  input: 'rgba(255, 255, 255, 0.95)',
-  accentGreen: '#22C55E',
+  iconWell: '#EEEFF3',
+  input: '#F3F4F7',
+  accentGreen: '#16A34A',
   toggleTrackOff: '#D4D4DC',
   toggleTrackOn: 'rgba(34, 197, 94, 0.24)',
   toggleThumb: '#FFFFFF',
   toggleBorder: 'rgba(0, 0, 0, 0.08)',
   codeBg: '#E4E4EA',
-  borderSubtle: 'rgba(0, 0, 0, 0.06)',
+  borderSubtle: 'rgba(15, 15, 30, 0.08)',
   border: CONTAINER_BORDER_LIGHT,
-  borderStrong: 'rgba(0, 0, 0, 0.12)',
+  borderStrong: 'rgba(15, 15, 30, 0.18)',
   cardBorder: CONTAINER_BORDER_LIGHT,
   text: '#0A0A0F',
-  textSecondary: '#3C3C4A',
-  textMuted: '#8E8E9A',
-  textDisabled: '#8E8E9A',
-  primary: '#22C55E',
-  primaryAlt: '#22C55E',
-  success: '#22C55E',
-  successMuted: 'rgba(34, 197, 94, 0.12)',
-  danger: '#F87171',
-  dangerMuted: 'rgba(248, 113, 113, 0.12)',
-  warning: '#FBBF24',
-  warningMuted: 'rgba(251, 191, 36, 0.12)',
+  textSecondary: '#2E2E3A',
+  textMuted: '#6B6B78',
+  textDisabled: '#9A9AA6',
+  primary: '#16A34A',
+  primaryAlt: '#16A34A',
+  success: '#16A34A',
+  successMuted: 'rgba(22, 163, 74, 0.12)',
+  danger: '#DC2626',
+  dangerMuted: 'rgba(220, 38, 38, 0.10)',
+  warning: '#D97706',
+  warningMuted: 'rgba(217, 119, 6, 0.12)',
   /** Alert title stress words + matching warning glyph — truer orange than amber `warning`. */
   alertStress: '#F97316',
   purple: '#C084FC',
   purpleMuted: 'rgba(192, 132, 252, 0.12)',
   cyanMuted: 'rgba(246, 248, 250, 1)',
   blueMuted: 'rgba(96, 165, 250, 0.14)',
-  navPill: 'rgba(255, 255, 255, 0.82)',
+  navPill: '#FFFFFF',
   /** Tinted glass fill over light gradient — no blur */
-  glassBackground: 'rgba(255, 255, 255, 0.82)',
+  glassBackground: '#FFFFFF',
   glassBorder: CONTAINER_BORDER_LIGHT,
   /** @deprecated Use glassBorder */
   glassBorderTop: 'rgba(255, 255, 255, 0.06)',
@@ -407,7 +413,7 @@ export function destructiveTextActionStyle(isLight: boolean): TextStyle {
 }
 
 /**
- * Subtle delete trigger — muted outline or text-link row, danger tint without loud full-width red.
+ * Subtle delete trigger — soft danger-tinted pill, no outline, without loud full-width red.
  * Confirmation stays in ConfirmDeleteModal.
  */
 export function subtleDeleteButtonStyle(
@@ -421,12 +427,10 @@ export function subtleDeleteButtonStyle(
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: isLight ? 'rgba(207, 34, 46, 0.22)' : 'rgba(255, 85, 85, 0.22)',
-    backgroundColor: isLight ? 'rgba(207, 34, 46, 0.05)' : 'rgba(255, 85, 85, 0.07)',
+    height: 44,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 22,
+    backgroundColor: isLight ? 'rgba(207, 34, 46, 0.08)' : 'rgba(255, 85, 85, 0.12)',
   };
 }
 
@@ -1155,10 +1159,13 @@ export const detailCarouselPageMinHeight = 252;
  * Major form section eyebrows (Date, Méthode, Catégorie, Articles…).
  * Bolder than nested micro-labels — pair with `colors.text`.
  */
+/** Matches the app-wide `SectionLabel` eyebrow (11 px uppercase); callers tint it `textMuted`. */
 export function formSectionLabelStyle(): TextStyle {
   return {
     ...typographyKit.eyebrow,
-    ...jakartaBoldText,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.8,
   };
 }
 

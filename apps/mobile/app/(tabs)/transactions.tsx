@@ -288,7 +288,7 @@ export default function TransactionsScreen() {
             // + hauteur du FAB micro empilé au-dessus du + vert.
             {
               paddingBottom:
-                insets.bottom + FLOATING_NAV_CONTENT_PADDING + TRANSACTIONS_FAB_STACK_HEIGHT,
+                insets.bottom + FLOATING_NAV_CONTENT_PADDING + TRANSACTIONS_FAB_STACK_HEIGHT * 2,
             },
           ]}
           refreshControl={

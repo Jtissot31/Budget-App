@@ -1,9 +1,14 @@
 import { Platform } from 'react-native';
 
+/**
+ * Weight scale shifted one step heavier for readability (secondary text was too thin):
+ * regular → 500, medium (secondary copy) → 600, semibold (titles) → 700.
+ * Secondary text stays one step lighter than titles. Font files load in app/_layout.
+ */
 export const fontFamilies = {
-  regular: 'PlusJakartaSans_400Regular',
-  medium: 'PlusJakartaSans_500Medium',
-  semibold: 'PlusJakartaSans_600SemiBold',
+  regular: 'PlusJakartaSans_500Medium',
+  medium: 'PlusJakartaSans_600SemiBold',
+  semibold: 'PlusJakartaSans_700Bold',
   bold: 'PlusJakartaSans_700Bold',
   extrabold: 'PlusJakartaSans_800ExtraBold',
   /** @deprecated Use fontFamilies.regular */

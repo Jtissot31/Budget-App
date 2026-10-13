@@ -3,7 +3,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
 import {
   Dimensions,
-  InteractionManager,
   Keyboard,
   Platform,
   Pressable,
@@ -39,7 +38,7 @@ import {
 } from '@/components/AddArticleSheet';
 import { BudgetCategoryPicker } from '@/components/BudgetCategoryPicker';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
-import { SettingsSelectField } from '@/components/SettingsSelectField';
+import { ChipSelectField } from '@/components/ChipSelectField';
 import type { SettingsPickerOption } from '@/components/SettingsPickerSheet';
 import { GhostNumpad } from '@/components/GhostNumpad';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
@@ -306,7 +305,7 @@ export default function AddTransactionScreen() {
   }>();
   const insets = useSafeAreaInsets();
   const { colors, isLight } = useAppTheme();
-  const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.text }];
+  const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.textMuted }];
   const editId = firstRouteParam(params.editId);
   const routeMode = firstRouteParam(params.mode);
   const isEditMode = Boolean(editId) || routeMode === 'edit';
@@ -341,7 +340,7 @@ export default function AddTransactionScreen() {
   const accountManuallySelectedRef = useRef(Boolean(routeAccountId));
   /** Route category (voice dictation) waits for the picker list, then applies once. */
   const routeCategoryAppliedRef = useRef(false);
-  const [transferMode, setTransferMode] = useState<TransferMode>('accounts');
+  const [transferMode, setTransferMode] = useState<TransferMode>('person');
   const [transferReason, setTransferReason] = useState('');
   const [transferReasonSuggestions, setTransferReasonSuggestions] = useState<string[]>([]);
   const [transferEntryStep, setTransferEntryStep] = useState<TransferEntryStep>('reason');
@@ -1410,31 +1409,32 @@ export default function AddTransactionScreen() {
   useEffect(() => {
     if (editId) return;
 
-    let focusTimer: ReturnType<typeof setTimeout> | undefined;
-    const interaction = InteractionManager.runAfterInteractions(() => {
-      focusTimer = setTimeout(() => {
-        if (isTransfer) {
-          if (isAnyPersonTransfer) {
-            labelInputRef.current?.focus();
-            return;
-          }
-          if (isStandardTransfer) {
-            setTransferEntryStep('reason');
-            transferReasonInputRef.current?.focus();
-            return;
-          }
-        }
-        // Income: keep sheet scrolled to top so "Nouveau revenu" stays visible on open.
-        if (type === 'income') return;
-        labelInputRef.current?.focus();
-      }, 180);
-    });
+    // Open the keyboard on the first field (merchant / employer / contact) as soon as the
+    // sheet is up. Android drops focus() calls made during the screen's slide-in, so try once
+    // the transition has settled and retry if the input still isn't focused.
+    const focusFirstField = () => {
+      if (isStandardTransfer) {
+        setTransferEntryStep('reason');
+        transferReasonInputRef.current?.focus();
+        return;
+      }
+      labelInputRef.current?.focus();
+    };
+    const firstFieldFocused = () =>
+      isStandardTransfer
+        ? Boolean(transferReasonInputRef.current?.isFocused())
+        : Boolean(labelInputRef.current?.isFocused());
+
+    const focusTimer = setTimeout(focusFirstField, 380);
+    const retryTimer = setTimeout(() => {
+      if (!firstFieldFocused()) focusFirstField();
+    }, 750);
 
     return () => {
-      interaction.cancel();
-      if (focusTimer) clearTimeout(focusTimer);
+      clearTimeout(focusTimer);
+      clearTimeout(retryTimer);
     };
-  }, [editId, isAnyPersonTransfer, isStandardTransfer, isTransfer, transferMode, type]);
+  }, [editId, isStandardTransfer, transferMode, type]);
 
   const advanceToTransferAmountStep = useCallback(() => {
     Keyboard.dismiss();
@@ -2118,7 +2118,7 @@ export default function AddTransactionScreen() {
                       tapHaptic();
                       setCategoryManuallySelected(false);
                       if (t !== 'transfer') {
-                        setTransferMode('accounts');
+                        setTransferMode('person');
                         setTransferReason('');
                       }
                       if (t !== 'income') {
@@ -2195,10 +2195,10 @@ export default function AddTransactionScreen() {
                     ]}
                     placeholder={
                       type === 'income'
-                        ? 'Ex. Desjardins, Employeur Inc....'
+                        ? 'Ex. Employeur'
                         : isAnyPersonTransfer
-                          ? 'Ex. Marie, Jean, loyer à un ami...'
-                          : 'Ex. Starbucks, loyer, épicerie...'
+                          ? 'Nom du contact'
+                          : 'Ex. Starbucks'
                     }
                     placeholderTextColor={colors.textMuted}
                     value={label}
@@ -2385,10 +2385,10 @@ export default function AddTransactionScreen() {
                     ]}
                     placeholder={
                       isPersonTransferFrom
-                        ? 'Ex. remboursement, cadeau, partage de frais...'
+                        ? 'Ex. Remboursement'
                         : isStandardTransfer
-                          ? 'Motif (optionnel) — ex. épargne vacances, remboursement...'
-                          : 'Ex. remboursement repas, cadeau anniversaire, part du loyer...'
+                          ? 'Motif (optionnel)'
+                          : 'Ex. Part du loyer'
                     }
                     placeholderTextColor={colors.textMuted}
                     value={transferReason}
@@ -2452,7 +2452,7 @@ export default function AddTransactionScreen() {
                   <DashboardSectionLabel style={sectionLabelStyle}>Raison du revenu</DashboardSectionLabel>
                   <TextInput
                     style={[styles.input, themed.controlStrong, themed.text]}
-                    placeholder="Ex. travail, vente, don, prime..."
+                    placeholder="Ex. Salaire"
                     placeholderTextColor={colors.textMuted}
                     value={incomeReason}
                     onChangeText={setIncomeReason}
@@ -2541,7 +2541,7 @@ export default function AddTransactionScreen() {
 
               {type === 'expense' ? (
                 <View style={styles.section}>
-                  <SettingsSelectField
+                  <ChipSelectField
                     label="Méthode de paiement"
                     options={accountPickerOptions}
                     selectedId={accountId}
@@ -2568,6 +2568,7 @@ export default function AddTransactionScreen() {
                   }}
                 >
                   <BudgetCategoryPicker
+                    variant="chips"
                     categories={visibleCats}
                     searchText={categorySearchText}
                     selectedId={categoryId}
@@ -2583,7 +2584,7 @@ export default function AddTransactionScreen() {
 
               {type !== 'expense' && !isTransfer ? (
                 <View style={styles.section}>
-                  <SettingsSelectField
+                  <ChipSelectField
                     label="Compte de dépôt"
                     options={accountPickerOptions}
                     selectedId={accountId}
@@ -2616,6 +2617,7 @@ export default function AddTransactionScreen() {
                   onLayout={(e) => { categorySectionYRef.current = e.nativeEvent.layout.y; }}
                 >
                   <BudgetCategoryPicker
+                    variant="chips"
                     categories={visibleCats}
                     searchText={categorySearchText}
                     selectedId={categoryId}
@@ -2631,7 +2633,7 @@ export default function AddTransactionScreen() {
 
               {isPersonTransferFrom ? (
                 <View style={styles.section}>
-                  <SettingsSelectField
+                  <ChipSelectField
                     label="Compte de dépôt"
                     options={accountPickerOptions}
                     selectedId={accountId}
@@ -2655,6 +2657,7 @@ export default function AddTransactionScreen() {
                   onLayout={(e) => { categorySectionYRef.current = e.nativeEvent.layout.y; }}
                 >
                   <BudgetCategoryPicker
+                    variant="chips"
                     categories={visibleCats}
                     searchText={categorySearchText}
                     selectedId={categoryId}
@@ -2679,7 +2682,7 @@ export default function AddTransactionScreen() {
                   {!hasTransferEndpoints ? (
                     <Text style={[styles.sectionHint, themed.textMuted]}>Aucun compte ou objectif trouvé.</Text>
                   ) : (
-                    <SettingsSelectField
+                    <ChipSelectField
                       label="De"
                       options={transferSourcePickerOptions}
                       selectedId={accountId}
@@ -2705,7 +2708,7 @@ export default function AddTransactionScreen() {
                   ]}
                   onLayout={(e) => { sourceAccountSectionYRef.current = e.nativeEvent.layout.y; }}
                 >
-                  <SettingsSelectField
+                  <ChipSelectField
                     label="Compte source"
                     options={accountPickerOptions}
                     selectedId={accountId}
@@ -2730,7 +2733,7 @@ export default function AddTransactionScreen() {
                   ]}
                   onLayout={(e) => { destinationAccountSectionYRef.current = e.nativeEvent.layout.y; }}
                 >
-                  <SettingsSelectField
+                  <ChipSelectField
                     label="Vers"
                     options={transferDestinationPickerOptions}
                     selectedId={destinationAccountId}
@@ -3025,14 +3028,15 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: 2,
   },
+  // Same height / size as SettingsSelectField so text inputs and selects line up.
   input: {
-    minHeight: 50,
+    minHeight: 48,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    ...jakartaBoldText,
-    fontSize: typography.body,
+    paddingVertical: spacing.sm + 2,
+    ...jakartaMediumText,
+    fontSize: 15,
   },
   saveInline: { marginTop: spacing.md },
   saveFooter: {

@@ -91,6 +91,7 @@ export function EditableField({
   const commitSaveRef = useRef<(() => Promise<void>) | null>(null);
   const [editing, setEditing] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [displayPressed, setDisplayPressed] = useState(false);
   const [draft, setDraft] = useState(value);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [errorHint, setErrorHint] = useState<string | null>(null);
@@ -360,16 +361,24 @@ export function EditableField({
           accessibilityLabel={accessibilityLabel ?? `Modifier ${displayValue || placeholder || ''}`}
           disabled={disabled}
           onPress={startEditing}
-          style={({ pressed }) => [
-            styles.displayPressable,
+          onPressIn={() => setDisplayPressed(true)}
+          onPressOut={() => setDisplayPressed(false)}
+          // Static sizing only — Android does not reliably apply Pressable style functions,
+          // which used to drop the row layout and push the chevron onto its own line.
+          style={[
             (type === 'text' || multiline || type === 'select' || type === 'date' || align === 'right')
               && styles.displayPressableStretch,
             (type === 'select' || type === 'date' || align === 'right') && styles.displayPressableRight,
-            type === 'select' && styles.displayPressableSelect,
-            { backgroundColor: pressed || saveState === 'saved' ? affordanceBg : 'transparent' },
             disabled && styles.disabled,
           ]}
         >
+          <View
+            style={[
+              styles.displayPressable,
+              (type === 'select' || type === 'date' || align === 'right') && styles.displayRowRight,
+              { backgroundColor: displayPressed || saveState === 'saved' ? affordanceBg : 'transparent' },
+            ]}
+          >
           <Text
             style={[
               type === 'money' ? moneyAmountTypography() : null,
@@ -399,6 +408,7 @@ export function EditableField({
           ) : saveState === 'saved' ? (
             <AppIcon family="ionicons" name="checkmark" size={14} color={colors.accentGreen} style={styles.indicator} />
           ) : null}
+          </View>
         </Pressable>
       )}
       {errorHint ? (
@@ -451,9 +461,9 @@ const styles = StyleSheet.create({
     minWidth: 0,
     justifyContent: 'flex-end',
   },
-  displayPressableSelect: {
-    alignItems: 'flex-start',
-    width: '100%',
+  displayRowRight: {
+    alignSelf: 'stretch',
+    justifyContent: 'flex-end',
   },
   selectValueText: {
     flexGrow: 1,
@@ -484,7 +494,6 @@ const styles = StyleSheet.create({
   selectIndicator: {
     flexShrink: 0,
     width: 14,
-    marginTop: 3,
   },
   errorHint: {
     fontSize: 11,

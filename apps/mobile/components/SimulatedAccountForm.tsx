@@ -1,24 +1,14 @@
 /**
- * Create-account sheet for Portefeuille — mirrors account-detail edit fields.
- * Name + icon identity row matches add-budget-category / recurring payment forms.
+ * Create-account sheet for Portefeuille.
+ * Live preview row on top → bank (logo chips) → balance (hero) → optional details.
+ * The account type is chosen beforehand in AddAccountSheet.
  */
 import { type Dispatch, type SetStateAction, useEffect, useMemo, useState } from 'react';
-import {
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  DraggableSheetScrollView,
-  DraggableSheetSurface,
-} from '@/components/DraggableSheetSurface';
+import { ChipSelectField } from '@/components/ChipSelectField';
+import { DraggableSheetScrollView, DraggableSheetSurface } from '@/components/DraggableSheetSurface';
 import {
   FORM_SHEET_CONTENT_PADDING_TOP,
   FormSheetChromeHeader,
@@ -31,30 +21,28 @@ import {
 } from '@/lib/sheet/formSheetScroll';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { CASH_BANKNOTES_ICON } from '@/components/icons/CashBanknotesOutlineIcon';
-import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { IconPickerSheet } from '@/components/IconPickerSheet';
 import { LogoIconFrame } from '@/components/IconFrame';
-import { MdiIcon } from '@/components/MdiIcon';
+import { PressScale } from '@/components/kit/motion';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
-import { ThemeSegmentedControl } from '@/components/ThemeSegmentedControl';
+import type { SettingsPickerOption } from '@/components/SettingsPickerSheet';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { ghostCardShadow } from '@/constants/ghostUi';
 import {
   FORM_SECTION_LABEL_STYLE,
   jakartaBoldText,
+  jakartaMediumText,
   jakartaSemiboldText,
   radius,
   spacing,
   typography,
-  typographyKit,
 } from '@/constants/theme';
-import {
-  ACCOUNT_ICON_PICKER_OPTIONS,
-  accountBalanceIconForKind,
-} from '@/lib/accountBalancePresentation';
+import { accountBalanceIconForKind } from '@/lib/accountBalancePresentation';
+import { listBankInstitutions } from '@/lib/bankSync';
 import { insertSimulatedAccount } from '@/lib/db';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { formValidationError, type FormFeedback, type FormSaveResult } from '@/lib/formFeedback';
 import { parseFormattedNumber, sanitizeNumericInput } from '@/lib/formatNumber';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
@@ -69,6 +57,8 @@ export type AccountForm = {
   kind: AccountKind;
   balance: string;
   institution: string;
+  /** Last 4 digits of the card / account — tells similar accounts apart. */
+  last4: string;
   creditLimit: string;
   dueDay: string;
   interestRate: string;
@@ -85,74 +75,45 @@ export const ACCOUNT_KIND_OPTIONS: {
   description: string;
   icon: string;
 }[] = [
-  {
-    id: 'cash',
-    label: 'Espèces',
-    description: 'Argent cash — solde manuel',
-    icon: 'cash-outline',
-  },
-  {
-    id: 'checking',
-    label: 'Chèque',
-    description: 'Compte bancaire courant',
-    icon: 'wallet-outline',
-  },
-  {
-    id: 'savings',
-    label: 'Épargne',
-    description: 'Compte d’épargne',
-    icon: 'trending-up-outline',
-  },
-  {
-    id: 'credit',
-    label: 'Crédit',
-    description: 'Carte ou ligne de crédit',
-    icon: 'card-outline',
-  },
+  { id: 'cash', label: 'Espèces', description: 'Argent cash — solde manuel', icon: 'cash-outline' },
+  { id: 'checking', label: 'Chèque', description: 'Compte bancaire courant', icon: 'wallet-outline' },
+  { id: 'savings', label: 'Épargne', description: 'Compte d’épargne', icon: 'trending-up-outline' },
+  { id: 'credit', label: 'Crédit', description: 'Carte ou ligne de crédit', icon: 'card-outline' },
 ];
 
-const KIND_TABS: { id: AccountKind; label: string }[] = ACCOUNT_KIND_OPTIONS.map(
-  ({ id, label }) => ({ id, label }),
-);
+const KIND_LABEL: Record<AccountKind, string> = {
+  checking: 'Chèque',
+  savings: 'Épargne',
+  credit: 'Crédit',
+  cash: 'Espèces',
+};
+
+const OTHER_BANK_ID = '__other';
 
 function accountCreateFormTitle(kind: AccountKind) {
   if (kind === 'credit') return 'Nouvelle carte de crédit';
   if (kind === 'savings') return 'Nouveau compte épargne';
-  if (kind === 'cash') return 'Nouvel Argent Cash';
+  if (kind === 'cash') return 'Nouvel argent comptant';
   return 'Nouveau compte chèque';
 }
 
-function defaultNameForKind(kind: AccountKind) {
-  if (kind === 'credit') return 'Carte de crédit';
-  if (kind === 'savings') return 'Compte épargne';
+/** Name used when the user leaves « Nom » empty — « Chèque Desjardins », « Carte de crédit »… */
+function autoAccountName(kind: AccountKind, institution: string) {
+  const bank = institution.trim();
   if (kind === 'cash') return 'Espèces';
-  return 'Compte chèque';
+  if (kind === 'credit') return bank ? `Carte ${bank}` : 'Carte de crédit';
+  if (kind === 'savings') return bank ? `Épargne ${bank}` : 'Compte épargne';
+  return bank ? `Chèque ${bank}` : 'Compte chèque';
 }
 
-function identityGhostIcon(kind: AccountKind): string {
-  if (kind === 'credit') return 'card-outline';
-  if (kind === 'savings') return 'trending-up-outline';
-  if (kind === 'cash') return 'cash-outline';
-  return 'wallet-outline';
-}
-
-function namePlaceholder(kind: AccountKind) {
-  if (kind === 'credit') return 'Visa Desjardins';
-  if (kind === 'cash') return 'Argent Cash';
-  if (kind === 'savings') return 'CELI Tangerine';
-  return 'Tangerine chèque';
-}
-
-export function createNewAccountForm(
-  displayOrder = 0,
-  initialType: AccountKind = 'checking',
-): AccountForm {
+export function createNewAccountForm(displayOrder = 0, initialType: AccountKind = 'checking'): AccountForm {
   return {
     id: `sim-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: '',
     kind: initialType,
     balance: '',
     institution: '',
+    last4: '',
     creditLimit: '',
     dueDay: '',
     interestRate: '',
@@ -162,12 +123,8 @@ export function createNewAccountForm(
   };
 }
 
-function parseMoney(value: string) {
-  return parseFormattedNumber(value);
-}
-
 function parseOptionalMoney(value: string) {
-  const parsed = parseMoney(value);
+  const parsed = parseFormattedNumber(value);
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
@@ -177,28 +134,34 @@ function parseOptionalInt(value: string) {
 }
 
 export async function saveSimulatedAccountForm(form: AccountForm): Promise<FormSaveResult> {
-  const parsedBalance = parseMoney(form.balance.trim() || '0');
-  const name = form.name.trim() || defaultNameForKind(form.kind);
+  const parsedBalance = parseFormattedNumber(form.balance.trim() || '0');
   if (Number.isNaN(parsedBalance)) {
     return formValidationError('Solde invalide', 'Entre un montant valide.');
   }
+  const dueDay = form.kind === 'credit' ? parseOptionalInt(form.dueDay) : undefined;
+  if (dueDay != null && (dueDay < 1 || dueDay > 31)) {
+    return formValidationError('Jour d’échéance invalide', 'Entre un jour entre 1 et 31.');
+  }
+  const last4 = form.last4.replace(/\D/g, '');
+  if (last4 && last4.length !== 4) {
+    return formValidationError('4 derniers chiffres', 'Entre exactement 4 chiffres, ou laisse vide.');
+  }
 
+  const name = form.name.trim() || autoAccountName(form.kind, form.institution);
   const logoSource = form.institution.trim() || name;
-  const manualIcon = form.icon?.trim() || null;
   const account: SimulatedAccount = {
     id: form.id,
     name,
     kind: form.kind,
     balance: form.kind === 'credit' ? -Math.abs(parsedBalance) : parsedBalance,
     institution: form.kind === 'cash' ? undefined : form.institution.trim() || undefined,
+    last4: form.kind === 'cash' ? undefined : last4 || undefined,
     creditLimit: form.kind === 'credit' ? parseOptionalMoney(form.creditLimit) : undefined,
-    dueDay: form.kind === 'credit' ? parseOptionalInt(form.dueDay) : undefined,
+    dueDay,
     interestRate:
-      form.kind === 'savings' || form.kind === 'credit'
-        ? parseOptionalMoney(form.interestRate)
-        : undefined,
+      form.kind === 'savings' || form.kind === 'credit' ? parseOptionalMoney(form.interestRate) : undefined,
     logoUrl: form.kind === 'cash' ? undefined : getStableAccountLogoUrl(logoSource) ?? undefined,
-    icon: manualIcon,
+    icon: form.icon?.trim() || null,
     hidden: false,
     displayOrder: form.displayOrder,
     createdAt: form.createdAt,
@@ -216,7 +179,6 @@ export function SimulatedAccountFormModal({
   onDismiss,
   onSave,
   feedback,
-  lockedType = false,
 }: {
   form: AccountForm | null;
   setForm: Dispatch<SetStateAction<AccountForm | null>>;
@@ -224,86 +186,75 @@ export function SimulatedAccountFormModal({
   onDismiss: () => void;
   onSave: () => void | Promise<void>;
   feedback?: FormFeedback | null;
-  /** When true, hide the type segmented control — type was chosen in a prior step. */
+  /** Kept for call-site compatibility — the type is always chosen beforehand now. */
   lockedType?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const sheetHeight = useFormSheetHeight(0.92);
   const keyboardInset = useFormSheetKeyboardInset();
-  const { colors, isLight, ghost } = useAppTheme();
-  const [showIconPicker, setShowIconPicker] = useState(false);
-  const [fullIconPickerVisible, setFullIconPickerVisible] = useState(false);
-  const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.text }];
+  const { colors, isLight } = useAppTheme();
+  const [iconPickerVisible, setIconPickerVisible] = useState(false);
+  const [otherBank, setOtherBank] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
-    setShowIconPicker(false);
-    setFullIconPickerVisible(false);
+    setIconPickerVisible(false);
+    setOtherBank(false);
+    setMoreOpen(false);
   }, [form?.id]);
 
-  const themed = useMemo(
-    () => ({
-      modalBackdrop: { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' },
-      sheet: {
-        backgroundColor: colors.background,
-        borderColor: colors.containerBorder,
-        borderWidth: StyleSheet.hairlineWidth,
-      },
-      handle: { backgroundColor: colors.borderStrong },
-      closeButton: {
-        backgroundColor: colors.surfaceElevated,
-        borderColor: colors.border,
-        borderWidth: StyleSheet.hairlineWidth,
-      },
-      control: {
-        backgroundColor: ghost.obsidianSoft,
-        borderColor: colors.borderStrong,
-        borderWidth: StyleSheet.hairlineWidth,
-      },
-      text: { color: colors.text },
-      textSecondary: { color: colors.textSecondary },
-      textMuted: { color: colors.textMuted },
-    }),
-    [colors, ghost, isLight],
+  const banks = useMemo(() => listBankInstitutions().filter((bank) => bank.popular), []);
+  const bankOptions = useMemo<SettingsPickerOption<string>[]>(
+    () => [
+      ...banks.map((bank) => ({ id: bank.id, label: bank.name, logoAsset: bank.logoAsset, logoUrl: bank.logoUrl })),
+      { id: OTHER_BANK_ID, label: 'Autre', icon: 'ellipsis-horizontal' },
+    ],
+    [banks],
   );
 
   const kind = form?.kind ?? 'checking';
-  const trimmedName = form?.name.trim() ?? '';
-  const trimmedInstitution = form?.institution.trim() ?? '';
+  const institution = form?.institution.trim() ?? '';
+  const matchedBank = banks.find((bank) => bank.name.toLowerCase() === institution.toLowerCase()) ?? null;
+  const selectedBankId = matchedBank ? matchedBank.id : otherBank || institution ? OTHER_BANK_ID : '';
+
   const manualIcon = form?.icon?.trim() || null;
-  const logoSource = (trimmedInstitution || trimmedName).trim();
+  const displayName = form?.name.trim() || autoAccountName(kind, institution);
+  const logoSource = institution || form?.name.trim() || '';
   const previewLogoAsset = useMemo(() => {
     if (manualIcon) return null;
     if (kind === 'cash') return CASH_BANKNOTES_ICON;
-    if (!logoSource) return null;
-    return getAccountLogoAsset(logoSource);
+    return logoSource ? getAccountLogoAsset(logoSource) : null;
   }, [kind, logoSource, manualIcon]);
-  const previewLogo = useMemo(() => {
-    if (manualIcon || previewLogoAsset) return null;
-    if (kind === 'cash') return null;
-    if (!logoSource) return null;
+  const previewLogoUrl = useMemo(() => {
+    if (manualIcon || previewLogoAsset || kind === 'cash' || !logoSource) return null;
     return getStableAccountLogoUrl(logoSource) ?? getAccountLogoUrl(logoSource);
   }, [kind, logoSource, manualIcon, previewLogoAsset]);
-  const previewIcon = manualIcon || accountBalanceIconForKind(kind);
-  const hasIdentityContent = Boolean(
-    manualIcon || previewLogoAsset || previewLogo || trimmedName || trimmedInstitution,
-  );
 
   if (!form) return null;
 
-  const setManualIcon = (icon: string | null) => {
-    setForm((prev) => (prev ? { ...prev, icon } : prev));
-  };
+  const update = (patch: Partial<AccountForm>) => setForm((prev) => (prev ? { ...prev, ...patch } : prev));
+  const balanceValue = parseFormattedNumber(form.balance || '0');
+  const last4 = form.last4.replace(/\D/g, '');
+  const previewMeta = [KIND_LABEL[kind], last4.length === 4 ? `··${last4}` : null].filter(Boolean).join(' ');
+  const hasExtras = kind === 'credit' || kind === 'savings';
+
+  const inputSurface = { backgroundColor: colors.input, borderColor: colors.border };
+  const sectionLabel = [FORM_SECTION_LABEL_STYLE, { color: colors.textMuted }];
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onDismiss}>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={[styles.modalBackdrop, themed.modalBackdrop]}>
+        <View style={[styles.backdrop, { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} />
           <FormSheetModalBody>
             <DraggableSheetSurface
               onClose={onDismiss}
               sheetHeight={sheetHeight}
-              style={[styles.modalSheet, ghostCardShadow, themed.sheet]}
+              style={[
+                styles.sheet,
+                ghostCardShadow,
+                { backgroundColor: colors.background, borderColor: colors.containerBorder },
+              ]}
             >
               <FormSheetChromeHeader
                 title={accountCreateFormTitle(kind)}
@@ -311,274 +262,210 @@ export function SimulatedAccountFormModal({
                 titleColor={colors.text}
                 closeIconColor={colors.textMuted}
                 handleColor={colors.borderStrong}
-                closeButtonStyle={themed.closeButton}
-                headerStyle={styles.modalHeaderPad}
+                closeButtonStyle={{ backgroundColor: colors.surfaceElevated }}
+                headerStyle={styles.headerPad}
               />
 
               <DraggableSheetScrollView
                 style={formSheetScrollViewStyle()}
+                keyboardShouldPersistTaps="handled"
                 contentContainerStyle={[
-                  styles.modalContent,
+                  styles.content,
                   formSheetScrollContentStyle,
                   { paddingBottom: formSheetScrollPaddingBottom(insets.bottom, keyboardInset) },
                 ]}
               >
-                {lockedType ? null : (
-                  <ThemeSegmentedControl
-                    size="sm"
-                    tabs={KIND_TABS}
-                    active={kind}
-                    onChange={(next) => {
+                {/* Live preview — exactly what the Wallet row will show. */}
+                <View style={[styles.preview, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
+                  <PressScale
+                    accessibilityRole="button"
+                    accessibilityLabel="Changer l’icône du compte"
+                    onPress={() => {
                       tapHaptic();
-                      setForm((prev) => (prev ? { ...prev, kind: next } : prev));
+                      setIconPickerVisible(true);
                     }}
-                  />
-                )}
-
-                <View style={styles.section}>
-                  <DashboardSectionLabel style={sectionLabelStyle}>
-                    Nom du compte
-                  </DashboardSectionLabel>
-                  <View style={styles.identityRow}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Changer l'icône du compte"
-                      onPress={() => {
-                        tapHaptic();
-                        setShowIconPicker((open) => !open);
-                      }}
-                      style={({ pressed }) => [styles.iconAffordance, pressed && styles.pressed]}
-                    >
-                      {previewLogoAsset || previewLogo ? (
-                        <LogoIconFrame
-                          asset={previewLogoAsset}
-                          uri={previewLogo}
-                          size={28}
-                        />
-                      ) : hasIdentityContent ? (
-                        <UserPickedIconWell icon={previewIcon} size={28} iconSize={16} />
-                      ) : (
-                        <View style={styles.iconGhostSlot} accessibilityElementsHidden>
-                          <AppIcon
-                            family="ionicons"
-                            name={identityGhostIcon(kind)}
-                            size={20}
-                            color={colors.textMuted}
-                          />
-                        </View>
-                      )}
-                    </Pressable>
-                    <TextInput
-                      value={form.name}
-                      onChangeText={(name) => setForm((prev) => (prev ? { ...prev, name } : prev))}
-                      placeholder={namePlaceholder(kind)}
-                      placeholderTextColor={colors.textMuted}
-                      style={[
-                        styles.nameInput,
-                        {
-                          color: colors.text,
-                          borderBottomColor: colors.border,
-                          borderBottomWidth: StyleSheet.hairlineWidth,
-                        },
-                      ]}
-                      returnKeyType="next"
-                      accessibilityLabel="Nom du compte"
-                    />
+                    scaleTo={0.9}
+                    style={styles.previewIcon}
+                  >
+                    {previewLogoAsset || previewLogoUrl ? (
+                      <LogoIconFrame asset={previewLogoAsset} uri={previewLogoUrl} size={32} />
+                    ) : (
+                      <UserPickedIconWell icon={manualIcon || accountBalanceIconForKind(kind)} size={32} iconSize={16} />
+                    )}
+                    <View style={[styles.editBadge, { backgroundColor: colors.text, borderColor: colors.containerBackground }]}>
+                      <AppIcon family="ionicons" name="pencil" size={9} color={colors.background} />
+                    </View>
+                  </PressScale>
+                  <View style={styles.previewCopy}>
+                    <Text style={[styles.previewName, { color: colors.text }]} numberOfLines={1}>
+                      {displayName}
+                    </Text>
+                    <Text style={[styles.previewMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                      {previewMeta}
+                    </Text>
                   </View>
-                  <Text style={[styles.fieldHint, themed.textMuted]}>
-                    {manualIcon
-                      ? 'Icône manuelle · toucher pour changer'
-                      : previewLogo
-                        ? 'Logo auto · toucher pour choisir une icône'
-                        : 'Icône auto · toucher pour choisir'}
+                  <Text style={[styles.previewBalance, { color: kind === 'credit' && balanceValue > 0 ? colors.danger : colors.text }]}>
+                    {kind === 'credit' && balanceValue > 0 ? '−' : ''}
+                    {formatDisplayMoneyAbsolute(Number.isNaN(balanceValue) ? 0 : balanceValue)}
                   </Text>
                 </View>
+                {manualIcon ? (
+                  <Pressable accessibilityRole="button" onPress={() => update({ icon: null })} hitSlop={8}>
+                    <Text style={[styles.link, { color: colors.textMuted }]}>Revenir au logo automatique</Text>
+                  </Pressable>
+                ) : null}
 
-                {showIconPicker ? (
+                {/* Bank — logo chips, « Autre » reveals a text field. */}
+                {kind !== 'cash' ? (
                   <View style={styles.section}>
-                    <DashboardSectionLabel style={sectionLabelStyle}>
-                      Logo / icône
-                    </DashboardSectionLabel>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.iconOptionRow}
-                      keyboardShouldPersistTaps="handled"
-                    >
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Utiliser le logo automatique"
-                        onPress={() => {
-                          tapHaptic();
-                          setManualIcon(null);
-                          setShowIconPicker(false);
-                        }}
-                        style={[
-                          styles.iconOption,
-                          {
-                            borderColor: manualIcon == null ? colors.primary : colors.border,
-                            backgroundColor: colors.surfaceElevated,
-                          },
-                        ]}
-                      >
-                        <AppIcon
-                          family="ionicons"
-                          name="sparkles-outline"
-                          size={18}
-                          color={manualIcon == null ? colors.primary : colors.textMuted}
-                        />
-                      </Pressable>
-                      {ACCOUNT_ICON_PICKER_OPTIONS.map((option) => {
-                        const selected = manualIcon === option.icon;
-                        return (
-                          <Pressable
-                            key={option.id}
-                            accessibilityRole="button"
-                            accessibilityLabel={option.label}
-                            onPress={() => {
-                              tapHaptic();
-                              setManualIcon(option.icon);
-                              setShowIconPicker(false);
-                            }}
-                            style={[
-                              styles.iconOption,
-                              {
-                                borderColor: selected ? colors.primary : colors.border,
-                                backgroundColor: colors.surfaceElevated,
-                              },
-                            ]}
-                          >
-                            <MdiIcon
-                              name={option.icon}
-                              size={18}
-                              color={selected ? colors.primary : colors.textSecondary}
-                            />
-                          </Pressable>
-                        );
-                      })}
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Voir toutes les icônes"
-                        onPress={() => {
-                          tapHaptic();
-                          setFullIconPickerVisible(true);
-                        }}
-                        style={[
-                          styles.iconOption,
-                          {
-                            borderColor: colors.border,
-                            backgroundColor: colors.surfaceElevated,
-                          },
-                        ]}
-                      >
-                        <AppIcon
-                          family="ionicons"
-                          name="grid-outline"
-                          size={18}
-                          color={colors.textMuted}
-                        />
-                      </Pressable>
-                    </ScrollView>
+                    <ChipSelectField
+                      label={kind === 'credit' ? 'Émetteur' : 'Banque'}
+                      reorderSelected={false}
+                      options={bankOptions}
+                      selectedId={selectedBankId}
+                      onSelect={(id) => {
+                        if (id === OTHER_BANK_ID) {
+                          setOtherBank(true);
+                          if (matchedBank) update({ institution: '' });
+                          return;
+                        }
+                        setOtherBank(false);
+                        update({ institution: banks.find((bank) => bank.id === id)?.name ?? '' });
+                      }}
+                    />
+                    {selectedBankId === OTHER_BANK_ID ? (
+                      <TextInput
+                        value={form.institution}
+                        onChangeText={(value) => update({ institution: value })}
+                        placeholder="Nom de l’institution"
+                        placeholderTextColor={colors.textMuted}
+                        autoFocus={!form.institution}
+                        style={[styles.input, inputSurface, { color: colors.text }]}
+                      />
+                    ) : null}
                   </View>
                 ) : null}
 
-                {kind !== 'cash' ? (
-                  <AccountInput
-                    label="Institution"
-                    value={form.institution}
-                    onChangeText={(institution) =>
-                      setForm((prev) => (prev ? { ...prev, institution } : prev))
-                    }
-                    placeholder="Desjardins, Tangerine, BMO…"
-                  />
-                ) : null}
-                <AccountInput
-                  label={kind === 'credit' ? 'Solde dû actuel' : 'Solde actuel'}
-                  value={form.balance}
-                  onChangeText={(balance) => setForm((prev) => (prev ? { ...prev, balance } : prev))}
-                  placeholder={kind === 'credit' ? '580.42' : kind === 'cash' ? '120.00' : '3240.50'}
-                  keyboardType="decimal-pad"
-                  suffix="$"
-                />
+                {/* Balance — the key number, so it gets the hero treatment. */}
+                <View style={styles.section}>
+                  <Text style={sectionLabel}>{kind === 'credit' ? 'Solde dû' : 'Solde actuel'}</Text>
+                  <View style={[styles.amountShell, inputSurface]}>
+                    <NumericAmountInput
+                      value={form.balance}
+                      onChangeText={(balance) => update({ balance })}
+                      placeholder="0"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="decimal-pad"
+                      style={[styles.amountInput, { color: colors.text }]}
+                      accessibilityLabel={kind === 'credit' ? 'Solde dû' : 'Solde actuel'}
+                    />
+                    <Text style={[styles.amountSuffix, { color: colors.textMuted }]}>$</Text>
+                  </View>
+                </View>
 
                 {kind === 'credit' ? (
-                  <>
-                    <AccountInput
-                      label="Limite de crédit"
+                  <View style={styles.pair}>
+                    <LabeledInput
+                      label="Limite"
                       value={form.creditLimit}
-                      onChangeText={(creditLimit) =>
-                        setForm((prev) => (prev ? { ...prev, creditLimit } : prev))
-                      }
-                      placeholder="5000"
+                      onChangeText={(creditLimit) => update({ creditLimit })}
+                      placeholder="5 000"
                       keyboardType="decimal-pad"
+                      suffix="$"
                     />
-                    <AccountInput
-                      label="Jour d’échéance"
+                    <LabeledInput
+                      label="Échéance (jour)"
                       value={form.dueDay}
-                      onChangeText={(dueDay) =>
-                        setForm((prev) => (prev ? { ...prev, dueDay } : prev))
-                      }
+                      onChangeText={(dueDay) => update({ dueDay: dueDay.replace(/\D/g, '') })}
                       placeholder="15"
                       keyboardType="number-pad"
                       maxLength={2}
                     />
-                    <AccountInput
-                      label="Taux d’intérêt (%)"
-                      value={form.interestRate}
-                      onChangeText={(interestRate) =>
-                        setForm((prev) => (prev ? { ...prev, interestRate } : prev))
-                      }
-                      placeholder="19.99"
-                      keyboardType="decimal-pad"
+                  </View>
+                ) : null}
+
+                {kind !== 'cash' ? (
+                  <View style={styles.pair}>
+                    <LabeledInput
+                      label="Nom (optionnel)"
+                      value={form.name}
+                      onChangeText={(name) => update({ name })}
+                      placeholder={autoAccountName(kind, institution)}
                     />
-                  </>
-                ) : null}
-
-                {kind === 'savings' ? (
-                  <AccountInput
-                    label="Taux d’intérêt (%)"
-                    value={form.interestRate}
-                    onChangeText={(interestRate) =>
-                      setForm((prev) => (prev ? { ...prev, interestRate } : prev))
-                    }
-                    placeholder="3.25"
-                    keyboardType="decimal-pad"
+                    <LabeledInput
+                      label="4 derniers chiffres"
+                      value={form.last4}
+                      onChangeText={(value) => update({ last4: value.replace(/\D/g, '').slice(0, 4) })}
+                      placeholder="1234"
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      narrow
+                    />
+                  </View>
+                ) : (
+                  <LabeledInput
+                    label="Nom (optionnel)"
+                    value={form.name}
+                    onChangeText={(name) => update({ name })}
+                    placeholder="Espèces"
                   />
-                ) : null}
+                )}
 
-                {kind === 'cash' ? (
-                  <Text style={[styles.fieldHint, themed.textMuted]}>
-                    Solde manuel — pas de synchronisation bancaire.
+                {/* Rarely needed details stay folded away. */}
+                {hasExtras ? (
+                  <View style={styles.section}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: moreOpen }}
+                      onPress={() => {
+                        tapHaptic();
+                        setMoreOpen((open) => !open);
+                      }}
+                      style={styles.moreRow}
+                    >
+                      <Text style={[styles.moreText, { color: colors.textSecondary }]}>Plus d’options</Text>
+                      <AppIcon
+                        family="ionicons"
+                        name={moreOpen ? 'chevron-up' : 'chevron-down'}
+                        size={16}
+                        color={colors.textMuted}
+                      />
+                    </Pressable>
+                    {moreOpen ? (
+                      <LabeledInput
+                        label="Taux d’intérêt"
+                        value={form.interestRate}
+                        onChangeText={(interestRate) => update({ interestRate })}
+                        placeholder={kind === 'credit' ? '19,99' : '3,25'}
+                        keyboardType="decimal-pad"
+                        suffix="%"
+                      />
+                    ) : null}
+                  </View>
+                ) : (
+                  <Text style={[styles.hint, { color: colors.textMuted }]}>
+                    Solde mis à jour à la main — pas de synchronisation bancaire.
                   </Text>
-                ) : null}
+                )}
 
                 {feedback ? (
-                  <ThemedFormMessage
-                    variant={feedback.variant}
-                    title={feedback.title}
-                    message={feedback.message}
-                  />
+                  <ThemedFormMessage variant={feedback.variant} title={feedback.title} message={feedback.message} />
                 ) : null}
 
-                <PrimarySaveButton
-                  label="Enregistrer"
-                  onPress={() => void onSave()}
-                  loading={saving}
-                />
+                <PrimarySaveButton label="Ajouter le compte" onPress={() => void onSave()} loading={saving} />
               </DraggableSheetScrollView>
             </DraggableSheetSurface>
           </FormSheetModalBody>
         </View>
 
         <IconPickerSheet
-          visible={fullIconPickerVisible}
+          visible={iconPickerVisible}
           selectedIcon={manualIcon}
           title="Choisir une icône"
-          onClose={() => setFullIconPickerVisible(false)}
+          onClose={() => setIconPickerVisible(false)}
           onSelect={(icon: MdiIconName) => {
-            setManualIcon(icon);
-            setShowIconPicker(false);
-            setFullIconPickerVisible(false);
+            update({ icon });
+            setIconPickerVisible(false);
           }}
         />
       </GestureHandlerRootView>
@@ -586,144 +473,108 @@ export function SimulatedAccountFormModal({
   );
 }
 
-function AccountInput(
-  props: React.ComponentProps<typeof TextInput> & { label: string; suffix?: string },
-) {
-  const { label, suffix, keyboardType, ...inputProps } = props;
-  const { colors, ghost } = useAppTheme();
-  const control = {
-    backgroundColor: ghost.obsidianSoft,
-    borderColor: colors.borderStrong,
-    borderWidth: StyleSheet.hairlineWidth,
-  };
+function LabeledInput({
+  label,
+  suffix,
+  keyboardType,
+  narrow = false,
+  ...inputProps
+}: React.ComponentProps<typeof TextInput> & { label: string; suffix?: string; narrow?: boolean }) {
+  const { colors } = useAppTheme();
   const InputComponent = keyboardType === 'decimal-pad' ? NumericAmountInput : TextInput;
-
   return (
-    <View style={styles.inputGroup}>
-      <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>
-      {suffix ? (
-        <View style={[styles.inputShell, control]}>
-          <InputComponent
-            {...inputProps}
-            keyboardType={keyboardType}
-            style={[styles.inputWithSuffix, { color: colors.text }]}
-            placeholderTextColor={colors.textMuted}
-          />
-          <Text style={[styles.inputSuffix, { color: colors.textSecondary }]}>{suffix}</Text>
-        </View>
-      ) : (
+    <View style={[styles.section, narrow ? styles.narrow : styles.grow]}>
+      <Text style={[FORM_SECTION_LABEL_STYLE, { color: colors.textMuted }]} numberOfLines={1}>
+        {label}
+      </Text>
+      <View style={[styles.inputShell, { backgroundColor: colors.input, borderColor: colors.border }]}>
         <InputComponent
           {...inputProps}
           keyboardType={keyboardType}
-          style={[styles.input, control, { color: colors.text }]}
           placeholderTextColor={colors.textMuted}
+          style={[styles.inputInner, { color: colors.text }]}
         />
-      )}
+        {suffix ? <Text style={[styles.suffix, { color: colors.textMuted }]}>{suffix}</Text> : null}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  modalBackdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalKeyboard: {
-    width: '100%',
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
+  backdrop: { flex: 1, justifyContent: 'flex-end' },
+  sheet: {
     borderTopLeftRadius: radius.xxl,
     borderTopRightRadius: radius.xxl,
+    borderWidth: StyleSheet.hairlineWidth,
     paddingTop: FORM_SHEET_CONTENT_PADDING_TOP,
   },
-  modalHeaderPad: {
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  modalContent: {
-    paddingHorizontal: spacing.lg,
-    gap: spacing.md,
-  },
-  section: {
-    gap: spacing.sm,
-  },
-  identityRow: {
+  headerPad: { paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+  content: { paddingHorizontal: spacing.lg, gap: spacing.md + 2 },
+  section: { gap: spacing.sm },
+  pair: { flexDirection: 'row', gap: spacing.sm },
+  grow: { flex: 1, minWidth: 0 },
+  narrow: { width: 132 },
+
+  preview: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 48,
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
   },
-  iconAffordance: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  iconGhostSlot: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    opacity: 0.42,
-  },
-  nameInput: {
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: 0,
-    fontSize: typography.body,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    ...jakartaSemiboldText,
-  },
-  fieldHint: {
-    ...typographyKit.metaMedium,
-    lineHeight: 16,
-    opacity: 0.85,
-  },
-  iconOptionRow: {
-    gap: spacing.sm,
-    paddingVertical: 2,
-  },
-  iconOption: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
+  previewIcon: { width: 32, height: 32 },
+  editBadge: {
+    position: 'absolute',
+    right: -3,
+    bottom: -3,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pressed: {
-    opacity: 0.78,
-  },
-  inputGroup: { gap: spacing.sm },
-  label: {
-    ...jakartaBoldText,
-    fontSize: 12,
-    letterSpacing: -0.1,
-  },
+  previewCopy: { flex: 1, minWidth: 0, gap: 2 },
+  previewName: { ...jakartaSemiboldText, fontSize: 14 },
+  previewMeta: { ...jakartaMediumText, fontSize: 12 },
+  previewBalance: { ...jakartaSemiboldText, fontSize: 14 },
+  link: { ...jakartaMediumText, fontSize: 12.5, marginTop: -spacing.sm, marginLeft: 2 },
+
   input: {
-    borderRadius: radius.md,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 10,
+    minHeight: 48,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    ...jakartaMediumText,
     fontSize: 15,
   },
   inputShell: {
-    borderRadius: radius.md,
-    paddingHorizontal: 14,
+    minHeight: 48,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  inputWithSuffix: {
-    flex: 1,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 10,
-    fontSize: 15,
+  inputInner: { flex: 1, minWidth: 0, paddingVertical: 10, ...jakartaMediumText, fontSize: 15 },
+  suffix: { ...jakartaMediumText, fontSize: 14 },
+
+  amountShell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 48,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
   },
-  inputSuffix: {
-    ...typographyKit.metaSemibold,
-    fontSize: 14,
-  },
+  amountInput: { flex: 1, minWidth: 0, ...jakartaSemiboldText, fontSize: 20, letterSpacing: -0.3, paddingVertical: 6 },
+  amountSuffix: { ...jakartaSemiboldText, fontSize: 16 },
+
+  moreRow: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 4 },
+  moreText: { ...jakartaSemiboldText, fontSize: 14 },
+  hint: { ...jakartaMediumText, fontSize: 12.5, lineHeight: 17 },
 });

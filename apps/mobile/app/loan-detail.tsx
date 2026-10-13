@@ -1,42 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChildSupportBreakdownChart } from '@/components/ChildSupportBreakdownChart';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
-import { DetailSectionsList } from '@/components/DetailSectionRows';
+import type { EditableFieldHandle } from '@/components/EditableField';
 import {
   FixedScreenHeader,
   fixedHeaderScrollStyle,
   fixedHeaderScreenStyle,
 } from '@/components/FixedScreenHeader';
-import { LineOfCreditCharts } from '@/components/LineOfCreditCharts';
-import { LineOfCreditUtilizationChart } from '@/components/LineOfCreditUtilizationChart';
-import { LoanPaymentDonutChart, MortgageDetailCharts } from '@/components/MortgageCharts';
-import { OnyxContainer } from '@/components/OnyxContainer';
+import { LoanDetailBody } from '@/components/loans/LoanDetailBody';
 import { OverflowMenuButton } from '@/components/OverflowMenuButton';
-import { GlassContainer } from '@/components/GlassContainer';
-import { LoanProgressChart } from '@/components/LoanProgressChart';
 import { PageTransition } from '@/components/PageTransition';
-import { ONYX_CONTAINER } from '@/constants/planFinanceKit';
-import {
-  detailProgressBarStyle,
-  FLOATING_NAV_CONTENT_PADDING,
-  jakartaBoldText,
-  jakartaMediumText,
-  moneyAmountTypography,
-  radius,
-  spacing,
-  typography,
-} from '@/constants/theme';
-import { nativeTextColumnFlex } from '@/lib/textLayout';
+import { FLOATING_NAV_CONTENT_PADDING, spacing, typography } from '@/constants/theme';
 import {
   deleteLoan,
   getLoanById,
@@ -44,25 +20,17 @@ import {
   getSimulatedAccounts,
   getTransactions,
   getWealthAssetById,
+  upsertLoan,
 } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
-import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { parseFormattedNumber } from '@/lib/formatNumber';
 import { buildLineOfCreditBalanceHistory } from '@/lib/buildLineOfCreditBalanceHistory';
 import { tapHaptic, successHaptic } from '@/lib/haptics';
-import {
-  buildLoanDetailSections,
-  computeLineOfCreditUtilization,
-  loanDetailFootnote,
-} from '@/lib/loanDetailSections';
-import {
-  computeLoanRepaymentProgress,
-  formatLoanDisplayTitle,
-  loanProgressHeaderLabel,
-} from '@/lib/loanPresentation';
+import { buildLoanDetailSections, loanDetailFootnote } from '@/lib/loanDetailSections';
+import { formatLoanDisplayTitle } from '@/lib/loanPresentation';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
 import type { Loan, RecurringPayment, SimulatedAccount, Transaction, WealthAsset } from '@/types';
-import { Image } from 'expo-image';
 
 export default function LoanDetailScreen() {
   const router = useRouter();
@@ -70,7 +38,8 @@ export default function LoanDetailScreen() {
   const loanId = typeof params.loanId === 'string' ? params.loanId.trim() : '';
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
-  const { colors, isLight } = useAppTheme();
+  const balanceEditRef = useRef<EditableFieldHandle>(null);
+  const { colors } = useAppTheme();
   const [loan, setLoan] = useState<Loan | null>(null);
   const [linkedAsset, setLinkedAsset] = useState<WealthAsset | null>(null);
   const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
@@ -125,32 +94,16 @@ export default function LoanDetailScreen() {
   }, [loan?.recurringPaymentId, recurringPayments]);
 
   const detailSections = useMemo(
-    () => (loan ? buildLoanDetailSections(loan, paymentAccount, recurringPayment) : []),
+    () =>
+      loan
+        ? buildLoanDetailSections(loan, paymentAccount, recurringPayment).filter((section) => section.rows.length > 0)
+        : [],
     [loan, paymentAccount, recurringPayment],
   );
-
   const detailFootnote = useMemo(() => (loan ? loanDetailFootnote(loan) : null), [loan]);
-
-  const visibleDetailSections = useMemo(
-    () => detailSections.filter((section) => section.rows.length > 0),
-    [detailSections],
-  );
-
-  const loanType = loan?.type ?? 'personal_loan';
-  const isMortgage = loanType === 'mortgage';
-  const isPersonalLoan = loanType === 'personal_loan';
-  const isLineOfCredit = loanType === 'line_of_credit';
-  const isFriendDebt = loanType === 'friend_debt';
-  const isChildSupport = loanType === 'child_support';
-
-  const repaymentProgress = loan
-    ? computeLoanRepaymentProgress(loan)
-    : { paidAmount: 0, progressPct: 0 };
-  const utilizationProgress = loan
-    ? computeLineOfCreditUtilization(loan)
-    : { usedAmount: 0, utilPct: 0 };
-
   const displayTitle = loan ? formatLoanDisplayTitle(loan) : '';
+  const isLineOfCredit = loan?.type === 'line_of_credit';
+
   const lineOfCreditBalanceHistory = useMemo(() => {
     if (!loan || !isLineOfCredit) return null;
     return buildLineOfCreditBalanceHistory({
@@ -164,104 +117,32 @@ export default function LoanDetailScreen() {
       recurringPaymentName: recurringPayment?.name ?? null,
     });
   }, [displayTitle, isLineOfCredit, loan, paymentAccount, recurringPayment?.name, transactions]);
-  const trackColor = isLight ? '#E8EDF3' : '#08090B';
 
-  const navigateToEdit = () => {
-    if (!loan) return;
+  /** Inline edits from « Mettre à jour » — persisted immediately. */
+  const saveField = useCallback(
+    async (field: 'balanceRemaining' | 'monthlyPayment' | 'interestRate', raw: string) => {
+      if (!loan) return;
+      const parsed = parseFormattedNumber(raw.replace('%', '').trim());
+      if (!Number.isFinite(parsed) || parsed < 0) throw new Error('invalid');
+      const next = { ...loan, [field]: parsed };
+      setLoan(next);
+      await upsertLoan(next);
+      successHaptic();
+      dataEvents.emit();
+    },
+    [loan],
+  );
+
+  const startBalanceUpdate = () => {
     tapHaptic();
-    router.replace({ pathname: '/loan-detail', params: { loanId: loan.id } });
+    scrollRef.current?.scrollToEnd({ animated: true });
+    setTimeout(() => balanceEditRef.current?.startEditing(), 350);
   };
 
   const confirmDelete = () => {
     tapHaptic();
     setConfirmDeleteVisible(true);
   };
-
-  const showLocUtilizationChart =
-    loan != null && loan.principal > 0 && isLineOfCredit && !isChildSupport;
-  const showRepaymentProgressCard =
-    loan != null && loan.principal > 0 && !isChildSupport && !isLineOfCredit;
-  const progressPct = repaymentProgress.progressPct;
-  const progressFillColor = colors.primary;
-  const progressBar = detailProgressBarStyle();
-
-  const locUtilizationChartBlock = showLocUtilizationChart ? (
-    <View style={styles.utilizationChartSection}>
-      <LineOfCreditUtilizationChart
-        currentUsed={utilizationProgress.usedAmount}
-        balanceHistory={lineOfCreditBalanceHistory}
-      />
-    </View>
-  ) : null;
-
-  const progressCard = showRepaymentProgressCard ? (
-    <GlassContainer
-      style={styles.progressCardShell}
-      innerStyle={styles.progressCardInner}
-      padding={spacing.md}
-      borderRadius={radius.lg}
-    >
-      <View style={styles.progressHeader}>
-        <Text
-          style={[styles.progressLabel, { color: colors.textMuted }]}
-          numberOfLines={1}
-          ellipsizeMode="tail"
-        >
-          {loanProgressHeaderLabel(false)}
-        </Text>
-        <Text
-          style={[styles.progressPct, { color: progressFillColor }]}
-          numberOfLines={1}
-        >
-          {progressPct.toFixed(0)} %
-        </Text>
-      </View>
-      <View style={[progressBar.track, { backgroundColor: trackColor }]}>
-        <View
-          style={[
-            progressBar.fill,
-            {
-              width: `${Math.max(progressPct, 3)}%`,
-              backgroundColor: progressFillColor,
-            },
-          ]}
-        />
-      </View>
-      <View style={styles.progressFooter}>
-        <Text style={[styles.progressFootnote, { color: colors.textMuted }]}>
-          {`${isMortgage || isPersonalLoan || isChildSupport ? 'Remboursé' : 'Payé'} · ${formatDisplayMoneyAbsolute(repaymentProgress.paidAmount)}`}
-        </Text>
-        <Text style={[styles.progressFootnote, { color: colors.textMuted }]}>
-          Total · {formatDisplayMoneyAbsolute(loan!.principal)}
-        </Text>
-      </View>
-      {loan ? (
-        <View style={styles.progressChartSection}>
-          <LoanProgressChart
-            loan={loan}
-            loanTitle={displayTitle}
-            transactions={transactions}
-            paymentAccount={paymentAccount}
-            recurringPaymentName={recurringPayment?.name ?? null}
-          />
-        </View>
-      ) : null}
-    </GlassContainer>
-  ) : isFriendDebt && loan && loan.balanceRemaining > 0 ? (
-    <GlassContainer
-      style={styles.progressCardShell}
-      innerStyle={styles.progressCardInner}
-      padding={spacing.md}
-      borderRadius={radius.lg}
-    >
-      <View style={styles.progressHeader}>
-        <Text style={[styles.progressLabel, { color: colors.textMuted }]}>Solde</Text>
-        <Text style={[styles.progressPctMoney, { color: colors.danger }]}>
-          {formatDisplayMoneyAbsolute(loan.balanceRemaining)}
-        </Text>
-      </View>
-    </GlassContainer>
-  ) : null;
 
   return (
     <PageTransition>
@@ -276,8 +157,8 @@ export default function LoanDetailScreen() {
                 items={[
                   {
                     key: 'edit',
-                    label: 'Modifier',
-                    onPress: navigateToEdit,
+                    label: 'Mettre à jour le solde',
+                    onPress: startBalanceUpdate,
                   },
                   {
                     key: 'delete',
@@ -296,10 +177,8 @@ export default function LoanDetailScreen() {
           ref={scrollRef}
           style={fixedHeaderScrollStyle}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.content,
-            { paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING },
-          ]}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING }]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -313,42 +192,19 @@ export default function LoanDetailScreen() {
           }
         >
           {loan ? (
-            <>
-              {isMortgage ? <MortgageDetailCharts loan={loan} /> : null}
-              {isPersonalLoan ? <LoanPaymentDonutChart loan={loan} /> : null}
-              {isLineOfCredit && loan.principal > 0 ? (
-                <LineOfCreditCharts
-                  balance={loan.balanceRemaining}
-                  creditLimit={loan.principal}
-                  balanceHistory={lineOfCreditBalanceHistory}
-                />
-              ) : null}
-              {isChildSupport ? <ChildSupportBreakdownChart loan={loan} /> : null}
-
-              {locUtilizationChartBlock}
-              {progressCard}
-
-              {visibleDetailSections.length > 0 || detailFootnote ? (
-                <OnyxContainer style={[styles.detailsCard, { padding: ONYX_CONTAINER.padding.card }]}>
-                  <DetailSectionsList
-                    sections={visibleDetailSections}
-                    colors={colors}
-                    footnote={detailFootnote}
-                  />
-                </OnyxContainer>
-              ) : null}
-
-              {linkedAsset?.photoUri?.trim() ? (
-                <View style={styles.bannerWrap}>
-                  <Image
-                    source={{ uri: linkedAsset.photoUri.trim() }}
-                    style={styles.bannerImage}
-                    contentFit="cover"
-                    accessibilityLabel="Photo de la propriété"
-                  />
-                </View>
-              ) : null}
-            </>
+            <LoanDetailBody
+              loan={loan}
+              displayTitle={displayTitle}
+              transactions={transactions}
+              paymentAccount={paymentAccount}
+              recurringPaymentName={recurringPayment?.name ?? null}
+              detailSections={detailSections}
+              detailFootnote={detailFootnote}
+              lineOfCreditBalanceHistory={lineOfCreditBalanceHistory}
+              photoUri={linkedAsset?.photoUri?.trim() || null}
+              balanceEditRef={balanceEditRef}
+              onSaveField={saveField}
+            />
           ) : (
             <Text style={[styles.empty, { color: colors.textMuted }]}>
               {loanId ? 'Dette introuvable.' : 'Aucune dette sélectionnée.'}
@@ -376,77 +232,11 @@ export default function LoanDetailScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
-  content: {
-    paddingHorizontal: spacing.lg,
-    gap: spacing.xl,
-  },
-  bannerWrap: {
-    borderRadius: radius.xl,
-    overflow: 'hidden',
-    height: 168,
-  },
-  bannerImage: {
-    width: '100%',
-    height: '100%',
-  },
-  progressCardShell: {
-    borderRadius: radius.lg,
-  },
-  progressCardInner: {
-    gap: spacing.sm,
-  },
-  utilizationChartSection: {
-    width: '100%',
-  },
-  progressChartSection: {
-    marginTop: spacing.sm,
-    width: '100%',
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  progressLabel: {
-    ...jakartaBoldText,
-    ...(Platform.OS === 'web'
-      ? { flex: 1, flexShrink: 1, minWidth: 0 }
-      : nativeTextColumnFlex),
-    fontSize: typography.micro,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
-  progressPct: {
-    ...jakartaBoldText,
-    flexShrink: 0,
-    minWidth: 44,
-    textAlign: 'right',
-    fontSize: typography.meta,
-  },
-  progressPctMoney: {
-    ...moneyAmountTypography({ tier: 'row' }),
-    flexShrink: 0,
-    minWidth: 44,
-    textAlign: 'right',
-  },
-  progressFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  progressFootnote: {
-    ...jakartaMediumText,
-    fontSize: typography.meta,
-  },
-  detailsCard: {
-    gap: spacing.sm,
-  },
+  content: { paddingHorizontal: spacing.lg },
   empty: {
     fontSize: typography.caption,
     lineHeight: 20,
     textAlign: 'center',
     paddingVertical: spacing.lg,
   },
-  pressed: { opacity: 0.78 },
 });

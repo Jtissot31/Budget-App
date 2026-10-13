@@ -13,6 +13,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withDelay,
+  withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
@@ -46,6 +47,35 @@ export function PressScale({ style, scaleTo = 0.97, children, onPressIn, onPress
       <Animated.View style={[style, animated]}>{children}</Animated.View>
     </Pressable>
   );
+}
+
+/**
+ * Spring press feedback for components that must keep their own (static) Pressable style.
+ * Spread the handlers on the Pressable and put `animatedStyle` on an inner `Animated.View`.
+ */
+export function usePressScale(scaleTo = 0.95) {
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return {
+    animatedStyle,
+    onPressIn: () => scale.set(withSpring(scaleTo, SPRING)),
+    onPressOut: () => scale.set(withSpring(1, SPRING)),
+  };
+}
+
+/** Bouncy pop (1 → `peak` → 1) every time `active` turns true — tab icons, selections. */
+export function usePopOnActive(active: boolean, peak = 1.18) {
+  const scale = useSharedValue(1);
+  useEffect(() => {
+    if (!active) return;
+    scale.set(
+      withSequence(
+        withTiming(peak, { duration: 120, easing: Easing.out(Easing.quad) }),
+        withSpring(1, { damping: 9, stiffness: 260, mass: 0.6 }),
+      ),
+    );
+  }, [active, peak, scale]);
+  return useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 }
 
 /* ───────────────────────── Reveal ───────────────────────── */
@@ -106,6 +136,29 @@ export function AnimatedBar({
       <Animated.View style={[{ height: '100%', borderRadius: height / 2, backgroundColor: color }, animated]} />
     </View>
   );
+}
+
+/**
+ * Drop-in animated replacement for a static `<View style={{ width: 'N%' }} />` fill:
+ * keeps the caller's styling, grows the width from 0 on mount and eases on change.
+ */
+export function AnimatedFill({
+  progress,
+  style,
+  delay = 0,
+}: {
+  /** 0..1 */
+  progress: number;
+  style?: StyleProp<ViewStyle>;
+  delay?: number;
+}) {
+  const clamped = Math.max(0, Math.min(1, progress));
+  const fill = useSharedValue(0);
+  useEffect(() => {
+    fill.value = withDelay(delay, withTiming(clamped, { duration: 700, easing: Easing.out(Easing.cubic) }));
+  }, [clamped, delay, fill]);
+  const animated = useAnimatedStyle(() => ({ width: `${fill.value * 100}%` }));
+  return <Animated.View style={[style, animated]} />;
 }
 
 /* ───────────────────────── useCountUp ───────────────────────── */

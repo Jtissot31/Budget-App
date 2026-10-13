@@ -77,7 +77,9 @@ import {
   nativeTextColumnFlex,
 } from '@/lib/textLayout';
 
+import { BUDGET_OVER } from '@/lib/budgetTone';
 import { useAppTheme } from '@/lib/themeContext';
+import { FitText } from '@/components/kit/FitText';
 
 
 type Props = {
@@ -381,10 +383,10 @@ export function BudgetCategoryDetailSheet({
             amount={`${over ? '−' : ''}${formatDisplayMoneyAbsolute(Math.abs(left))}`}
             amountValue={left}
             formatAmount={(value) => `${value < 0 ? '−' : ''}${formatDisplayMoneyAbsolute(Math.abs(value))}`}
-            amountColor={over ? colors.danger : colors.text}
-            badge={showStatusTag && statusText ? { label: statusText, color: over ? colors.danger : colors.textMuted } : undefined}
+            amountColor={colors.text}
+            badge={showStatusTag && statusText ? { label: statusText, color: colors.textSecondary } : undefined}
             aside={
-              <RingGauge progress={ratio} color={over ? colors.danger : colors.text} size={72} stroke={7}>
+              <RingGauge progress={ratio} color={over ? BUDGET_OVER : colors.text} size={72} stroke={7}>
                 <Text style={[styles.ringPct, { color: colors.text }]}>{Math.round(ratio * 100)}%</Text>
               </RingGauge>
             }
@@ -396,7 +398,7 @@ export function BudgetCategoryDetailSheet({
             ]}
           >
             <View style={styles.limitInline}>
-              <Text style={[styles.limitLabel, { color: colors.textMuted }]} numberOfLines={1}>Limite mensuelle</Text>
+              <FitText style={[styles.limitLabel, { color: colors.textMuted }]}>Limite mensuelle</FitText>
               <EditableField
                 editHandleRef={limitEditRef}
                 type="money"

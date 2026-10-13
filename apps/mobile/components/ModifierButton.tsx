@@ -1,10 +1,10 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { jakartaExtraBoldText, typography } from '@/constants/theme';
+import { typographyKit } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
 export const MODIFIER_ICON_NAME = 'create-outline' as const;
-export const MODIFIER_ICON_SIZE = 18;
+export const MODIFIER_ICON_SIZE = 14;
 
 type Props = {
   onPress: () => void;
@@ -15,7 +15,10 @@ type Props = {
   style?: StyleProp<ViewStyle>;
 };
 
-/** Edit control — `create-outline` + « Modifier », matching loan/mortgage detail header. */
+/**
+ * Edit control — same filled pill as `PillButton` (« Modifier »).
+ * Fill lives on an inner View: Android ignores Pressable style-function fills.
+ */
 export function ModifierButton({
   onPress,
   accessibilityLabel,
@@ -33,38 +36,32 @@ export function ModifierButton({
       hitSlop={hitSlop}
       disabled={disabled || loading}
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.button,
-        pressed && styles.pressed,
-        (disabled || loading) && styles.disabled,
-        style,
-      ]}
+      style={({ pressed }) => [pressed && styles.pressed, (disabled || loading) && styles.disabled, style]}
     >
-      {loading ? (
-        <ActivityIndicator size="small" color={colors.text} />
-      ) : (
-        <>
-          <AppIcon family="ionicons" name={MODIFIER_ICON_NAME} size={MODIFIER_ICON_SIZE} color={colors.text} />
-          <Text style={[styles.label, { color: colors.text }]}>Modifier</Text>
-        </>
-      )}
+      <View style={[styles.pill, { backgroundColor: colors.surfaceElevated }]}>
+        {loading ? (
+          <ActivityIndicator size="small" color={colors.text} />
+        ) : (
+          <>
+            <AppIcon family="ionicons" name={MODIFIER_ICON_NAME} size={MODIFIER_ICON_SIZE} color={colors.text} />
+            <Text style={[styles.label, { color: colors.text }]}>Modifier</Text>
+          </>
+        )}
+      </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  button: {
-    minWidth: 78,
-    minHeight: 38,
+  pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 5,
+    gap: 4,
+    height: 28,
+    paddingHorizontal: 11,
+    borderRadius: 14,
   },
-  label: {
-    ...jakartaExtraBoldText,
-    fontSize: typography.meta,
-  },
-  pressed: { opacity: 0.78 },
+  label: { ...typographyKit.metaSemibold, fontSize: 12 },
+  pressed: { opacity: 0.75 },
   disabled: { opacity: 0.45 },
 });

@@ -38,15 +38,16 @@ export function PageTransition({ children, style, animate = true }: PageTransiti
     };
   }, []);
 
+  const content =
+    Platform.OS === 'web' ? (
+      <View style={{ flex: 1, marginHorizontal: PAGE_PADDING_HORIZONTAL, minWidth: 0 }}>{children}</View>
+    ) : (
+      children
+    );
+
   const shell = (
     <View style={[{ flex: 1, backgroundColor: colors.background }, style]} collapsable={false}>
-      {Platform.OS === 'web' ? (
-        <View style={{ flex: 1, marginHorizontal: PAGE_PADDING_HORIZONTAL, minWidth: 0 }}>
-          {children}
-        </View>
-      ) : (
-        children
-      )}
+      {content}
     </View>
   );
 
@@ -58,14 +59,18 @@ export function PageTransition({ children, style, animate = true }: PageTransiti
     return shell;
   }
 
+  // The opaque background is there from the first frame — only the content fades in.
+  // Fading the whole page let the previous screen show through for a split second.
   return (
-    <MotiView
-      from={{ opacity: 0, translateY: MOTION.pageEnterTranslateY }}
-      animate={{ opacity: 1, translateY: 0 }}
-      transition={pageEnterTransition}
-      style={{ flex: 1 }}
-    >
-      {shell}
-    </MotiView>
+    <View style={[{ flex: 1, backgroundColor: colors.background }, style]} collapsable={false}>
+      <MotiView
+        from={{ opacity: 0, translateY: MOTION.pageEnterTranslateY }}
+        animate={{ opacity: 1, translateY: 0 }}
+        transition={pageEnterTransition}
+        style={{ flex: 1 }}
+      >
+        {content}
+      </MotiView>
+    </View>
   );
 }

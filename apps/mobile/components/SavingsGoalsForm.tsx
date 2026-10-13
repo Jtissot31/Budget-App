@@ -214,7 +214,7 @@ export function SavingsGoalFormModal({
     enteredWeekly >= 0 &&
     enteredWeekly < suggestedWeekly * 0.995;
   const sectionLabelStyle = useMemo(
-    () => [FORM_SECTION_LABEL_STYLE, { color: themeColors.text }],
+    () => [FORM_SECTION_LABEL_STYLE, { color: themeColors.textMuted }],
     [themeColors.text],
   );
   const themed = useMemo(

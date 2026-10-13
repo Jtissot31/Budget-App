@@ -4,6 +4,8 @@
  */
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Animated from 'react-native-reanimated';
+import { usePressScale } from '@/components/kit/motion';
 import { AppIcon } from '@/components/icons/AppIcon';
 import {
   jakartaMediumText,
@@ -92,6 +94,7 @@ export function ProtoToolbarIconButton({
   active = false,
 }: ToolbarButtonProps) {
   const { colors } = useAppTheme();
+  const press = usePressScale(0.88);
 
   return (
     <Pressable
@@ -99,12 +102,14 @@ export function ProtoToolbarIconButton({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected: active }}
       onPress={onPress}
-      style={({ pressed }) => [pressed && styles.pressed]}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
     >
-      {/* Surface on a plain View: Android Pressable style functions are not reliably applied. */}
-      <View
+      {/* Surface on an inner view: Android Pressable style functions are not reliably applied. */}
+      <Animated.View
         style={[
           styles.toolbarButton,
+          press.animatedStyle,
           {
             backgroundColor: active ? 'rgba(34,197,94,0.16)' : colors.surfaceElevated,
             borderColor: 'transparent',
@@ -117,7 +122,7 @@ export function ProtoToolbarIconButton({
           size={20}
           color={active ? colors.primary : colors.textMuted}
         />
-      </View>
+      </Animated.View>
     </Pressable>
   );
 }

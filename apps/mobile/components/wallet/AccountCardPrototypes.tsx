@@ -13,6 +13,7 @@ import {
   type AccessibilityRole,
   type AccessibilityState,
 } from 'react-native';
+import { AnimatedFill } from '@/components/kit/motion';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { RemoteLogoImage } from '@/components/IconFrame';
 import { SummaryCard, type SummaryStat } from '@/components/kit';
@@ -42,6 +43,7 @@ import {
   userPickedIconWellStyle,
 } from '@/lib/userPickedIcon';
 import type { AccountKind, SimulatedAccount } from '@/types';
+import { FitText } from '@/components/kit/FitText';
 
 /** Compact tiles need a larger fill than the default 68% merchant inset. */
 const INSTITUTION_LOGO_INSET_RATIO = 0.9;
@@ -90,6 +92,8 @@ export type AccountLineTileProps = AccountPatrimoineTileProps;
 
 /** Even padding for logos inside the white app-icon tile. */
 const TILE_LOGO_INSET_RATIO = 0.82;
+/** Wide card wordmarks on their white plate — larger, still clear of the rounded edge. */
+const TILE_CARD_NETWORK_LOGO_INSET_RATIO = 0.94;
 
 function kindIcon(kind: AccountKind): string {
   if (kind === 'credit') return 'card-outline';
@@ -156,6 +160,12 @@ export function InstitutionMark({
   const preferAsset = asset != null && !assetFailed;
   const uri = !preferAsset && !remoteFailed ? urls[sourceIndex] : null;
   const showLogo = preferAsset || Boolean(uri);
+  // Card-network marks (bundled Visa asset, or a visa/mastercard/amex logo URL) read best on white.
+  const isCardNetworkLogo =
+    account.kind !== 'cash' &&
+    (preferAsset
+      ? CARD_NETWORK_LOGO_URI_RE.test(`${account.institution ?? ''} ${account.name}`)
+      : uri != null && CARD_NETWORK_LOGO_URI_RE.test(uri));
   const glyphColor = tinted
     ? accountBalanceIconTone(account.kind, colors)
     : colors.textMuted;
@@ -169,7 +179,8 @@ export function InstitutionMark({
         showLogo ? logoIconWellStyle(size, isLight) : userPickedIconWellStyle(size, isLight),
         transparentWell && styles.transparentWell,
         tile && showLogo && {
-          backgroundColor: 'transparent',
+          backgroundColor: isCardNetworkLogo ? '#FFFFFF' : 'transparent',
+          borderRadius: Math.round(size * 0.28),
           borderWidth: 0,
         },
         tile && !showLogo && { backgroundColor: colors.surfaceElevated, borderRadius: Math.round(size * 0.28), borderWidth: 0 },
@@ -181,7 +192,13 @@ export function InstitutionMark({
           asset={asset}
           size={size}
           contentFit="contain"
-          insetRatio={tile ? TILE_LOGO_INSET_RATIO : CARD_NETWORK_LOGO_INSET_RATIO}
+          insetRatio={
+            tile
+              ? isCardNetworkLogo
+                ? TILE_CARD_NETWORK_LOGO_INSET_RATIO
+                : TILE_LOGO_INSET_RATIO
+              : CARD_NETWORK_LOGO_INSET_RATIO
+          }
           onError={() => setAssetFailed(true)}
         />
       ) : uri ? (
@@ -189,7 +206,9 @@ export function InstitutionMark({
           uri={uri}
           size={size}
           contentFit="contain"
-          insetRatio={tile ? TILE_LOGO_INSET_RATIO : insetRatio}
+          insetRatio={
+            tile ? (isCardNetworkLogo ? TILE_CARD_NETWORK_LOGO_INSET_RATIO : TILE_LOGO_INSET_RATIO) : insetRatio
+          }
           onError={() => {
             if (sourceIndex < urls.length - 1) {
               setSourceIndex((i) => i + 1);
@@ -215,9 +234,31 @@ function UtilizationTrack({ percent, tone }: { percent: number; tone: string }) 
   const { colors } = useAppTheme();
   return (
     <View style={[styles.track, { backgroundColor: colors.borderSubtle }]}>
-      <View style={[styles.trackFill, { width: `${Math.min(percent, 100)}%`, backgroundColor: tone }]} />
+      <AnimatedFill progress={percent / 100} style={[styles.trackFill, { backgroundColor: tone }]} />
     </View>
   );
+}
+
+/** Keeping card usage under ~30 % of the limit is the usual healthy target. */
+const CREDIT_HEALTHY_PCT = 30;
+
+const SHORT_MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+
+/** Next statement due date from the card's due day — « 15 oct. · dans 2 j ». */
+function nextDueDate(dueDay: number | undefined): { label: string; days: number } | null {
+  if (typeof dueDay !== 'number' || dueDay < 1 || dueDay > 31) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const clampDay = (y: number, m: number) => Math.min(dueDay, new Date(y, m + 1, 0).getDate());
+  let due = new Date(today.getFullYear(), today.getMonth(), clampDay(today.getFullYear(), today.getMonth()));
+  if (due < today) {
+    const y = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
+    const m = (today.getMonth() + 1) % 12;
+    due = new Date(y, m, clampDay(y, m));
+  }
+  const days = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+  const when = days === 0 ? 'auj.' : days === 1 ? 'demain' : `dans ${days} j`;
+  return { label: `${due.getDate()} ${SHORT_MONTHS[due.getMonth()]} · ${when}`, days };
 }
 
 function creditMeta(account: SimulatedAccount): {
@@ -287,25 +328,23 @@ export function AccountLineTile({
         <InstitutionMark account={account} size={36} transparentWell />
       )}
       <View style={styles.rowCopy}>
-        <Text
+        <FitText
           style={[typographyKit.rowTitle, styles.rowTitleTight, { color: colors.text }]}
-          numberOfLines={1}
         >
           {title}
-        </Text>
-        <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+        </FitText>
+        <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
           {meta}
-        </Text>
+        </FitText>
       </View>
-      <Text
+      <FitText
         style={[
           moneyAmountTypography({ tier: 'row' }),
           { color: accountBalanceValueColor(account, colors.text), flexShrink: 0 },
         ]}
-        numberOfLines={1}
       >
         {hideBalance ? '••••' : formatSignedBalance(account.balance)}
-      </Text>
+      </FitText>
     </OnyxContainer>
   );
 
@@ -357,9 +396,9 @@ export function AccountMonumentPrototype({ account, onPress }: AccountCardProtot
       style={styles.cardPad}
     >
       <View style={styles.monumentTop}>
-        <Text style={[typographyKit.eyebrow, styles.eyebrowFlex, { color: colors.textMuted }]} numberOfLines={1}>
+        <FitText style={[typographyKit.eyebrow, styles.eyebrowFlex, { color: colors.textMuted }]}>
           {accountKindTypeLabel(account.kind).toUpperCase()}
-        </Text>
+        </FitText>
         <InstitutionMark account={account} size={ICON_WELL_SIZE} />
       </View>
 
@@ -367,30 +406,27 @@ export function AccountMonumentPrototype({ account, onPress }: AccountCardProtot
         <Text style={[typographyKit.micro, { color: colors.textMuted }]}>
           {owed ? 'Solde dû' : 'Solde disponible'}
         </Text>
-        <Text
+        <FitText
           style={[
             moneyAmountTypography({ tier: 'hero' }),
             { color: accountBalanceValueColor(account, colors.text) },
           ]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
         >
           {formatDisplayMoneyAbsolute(Math.abs(account.balance))}
-        </Text>
+        </FitText>
       </View>
 
-      <Text style={[typographyKit.metaMedium, { color: colors.textSecondary }]} numberOfLines={1}>
+      <FitText style={[typographyKit.metaMedium, { color: colors.textSecondary }]}>
         {institution ? `${title} · ${institution}` : title}
-      </Text>
+      </FitText>
 
       {isCredit && utilization != null ? (
         <View style={styles.trackBlock}>
           <UtilizationTrack percent={utilization} tone={tone} />
-          <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+          <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
             {Math.round(utilization)} % de la limite
             {remaining != null ? ` · ${formatDisplayMoneyAbsolute(remaining)} de marge` : ''}
-          </Text>
+          </FitText>
         </View>
       ) : null}
     </PrototypeShell>
@@ -425,40 +461,36 @@ export function AccountPatrimoineTile({
   const body = (
     <OnyxContainer style={styles.patrimoineCard}>
       <View style={styles.patrimoineHeader}>
-        <Text
+        <FitText
           style={[typographyKit.microUpper, { color: colors.textMuted, flex: 1, minWidth: 0 }]}
-          numberOfLines={1}
         >
           {typeLabel}
-        </Text>
+        </FitText>
         {headerAccessory ?? (
           <InstitutionMark account={account} size={ICON_WELL_SIZE} transparentWell />
         )}
       </View>
 
-      <Text style={[typographyKit.listPrimary, { color: colors.text }]} numberOfLines={1}>
+      <FitText style={[typographyKit.listPrimary, { color: colors.text }]}>
         {title}
-      </Text>
+      </FitText>
 
       <View style={styles.patrimoineValueRow}>
         <View style={styles.patrimoineCaptionSlot} accessibilityElementsHidden={!showOwedCaption}>
           {showOwedCaption ? (
-            <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+            <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
               Solde dû
-            </Text>
+            </FitText>
           ) : null}
         </View>
-        <Text
+        <FitText
           style={[
             moneyAmountTypography({ tier: 'card', textAlign: 'right' }),
             { color: accountBalanceValueColor(account, colors.text) },
           ]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.65}
         >
           {hideBalance ? '••••' : formatSignedBalance(account.balance)}
-        </Text>
+        </FitText>
       </View>
     </OnyxContainer>
   );
@@ -512,12 +544,11 @@ export function AccountDetailHeroCard({ account }: { account: SimulatedAccount }
   return (
     <OnyxContainer style={styles.cardPad}>
       <View style={styles.monumentTop}>
-        <Text
+        <FitText
           style={[typographyKit.eyebrow, styles.eyebrowFlex, { color: colors.textMuted }]}
-          numberOfLines={1}
         >
           {accountKindTypeLabel(account.kind)}
-        </Text>
+        </FitText>
         <InstitutionMark account={account} size={ICON_WELL_SIZE} transparentWell />
       </View>
 
@@ -525,36 +556,30 @@ export function AccountDetailHeroCard({ account }: { account: SimulatedAccount }
         <Text style={[typographyKit.micro, { color: colors.textMuted }]}>
           {accountDetailBalanceCaption(account)}
         </Text>
-        <Text
+        <FitText
           style={[
             moneyAmountTypography({ tier: 'hero' }),
             { color: accountBalanceValueColor(account, colors.text) },
           ]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
         >
           {formatSignedBalance(account.balance)}
-        </Text>
+        </FitText>
         {showCreditMeta ? (
           <View style={styles.creditMetaStack}>
             {remaining != null ? (
               <View style={styles.creditAvailableBlock}>
                 <Text style={[typographyKit.microUpper, { color: colors.textMuted }]}>Disponible</Text>
-                <Text
+                <FitText
                   style={[moneyAmountTypography({ tier: 'card' }), { color: colors.text }]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.75}
                 >
                   {formatDisplayMoneyAbsolute(remaining)}
-                </Text>
+                </FitText>
               </View>
             ) : null}
             {creditLimit != null ? (
-              <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+              <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
                 Limite · {formatDisplayMoneyAbsolute(creditLimit)}
-              </Text>
+              </FitText>
             ) : null}
           </View>
         ) : null}
@@ -584,15 +609,22 @@ export function AccountDetailSummaryCard({
   const { remaining, utilization } = creditMeta(account);
   const creditLimit =
     typeof account.creditLimit === 'number' && account.creditLimit > 0 ? account.creditLimit : undefined;
-  const creditStats: SummaryStat[] =
-    account.kind === 'credit'
-      ? [
-          ...(remaining != null ? [{ label: 'Disponible', value: formatDisplayMoneyAbsolute(remaining) }] : []),
-          ...(creditLimit != null ? [{ label: 'Limite', value: formatDisplayMoneyAbsolute(creditLimit) }] : []),
-        ]
-      : [];
-  const tone =
-    utilization == null ? colors.accentGreen : utilization >= 90 ? colors.danger : utilization >= 70 ? colors.warning : colors.accentGreen;
+  const isCredit = account.kind === 'credit';
+  const due = isCredit ? nextDueDate(account.dueDay) : null;
+  const creditStats: SummaryStat[] = isCredit
+    ? [
+        ...(remaining != null ? [{ label: 'Disponible', value: formatDisplayMoneyAbsolute(remaining) }] : []),
+        ...(creditLimit != null ? [{ label: 'Limite', value: formatDisplayMoneyAbsolute(creditLimit) }] : []),
+        ...(due ? [{ label: 'Échéance', value: due.label }] : []),
+      ]
+    : [];
+  // Calm palette: green under the healthy 30 % mark, amber above — never alarm red.
+  const tone = utilization == null || utilization < CREDIT_HEALTHY_PCT ? colors.accentGreen : '#F59E0B';
+  const owed = isCredit ? Math.abs(Math.min(0, account.balance)) : 0;
+  const monthlyInterest =
+    isCredit && typeof account.interestRate === 'number' && account.interestRate > 0 && owed > 0
+      ? (owed * account.interestRate) / 100 / 12
+      : null;
 
   return (
     <SummaryCard
@@ -606,8 +638,26 @@ export function AccountDetailSummaryCard({
       footer={footer}
     >
       {utilization != null ? (
-        <View style={[styles.track, { backgroundColor: colors.borderSubtle }]}>
-          <View style={[styles.trackFill, { width: `${Math.min(utilization, 100)}%`, backgroundColor: tone }]} />
+        <View style={styles.creditBlock}>
+          <View style={styles.creditTrackWrap}>
+            <View style={[styles.creditTrack, { backgroundColor: colors.borderSubtle }]}>
+              <AnimatedFill progress={Math.min(1, utilization / 100)} style={[styles.trackFill, { backgroundColor: tone }]} />
+            </View>
+            {/* Healthy-usage marker at 30 % of the limit */}
+            <View style={[styles.creditMarker, { left: `${CREDIT_HEALTHY_PCT}%`, backgroundColor: colors.text }]} />
+          </View>
+          <View style={styles.creditLegend}>
+            <Text style={[styles.creditLegendText, { color: colors.text }]}>Utilisé {Math.round(utilization)} %</Text>
+            <Text style={[styles.creditLegendText, { color: colors.textMuted }]}>Idéal sous {CREDIT_HEALTHY_PCT} %</Text>
+          </View>
+          {monthlyInterest != null ? (
+            <View style={[styles.creditInterest, { backgroundColor: colors.surfaceElevated }]}>
+              <AppIcon family="ionicons" name="information-circle-outline" size={14} color={colors.textMuted} />
+              <Text style={[styles.creditInterestText, { color: colors.textSecondary }]} numberOfLines={2}>
+                ≈ {formatDisplayMoneyAbsolute(monthlyInterest)} d’intérêts / mois si non remboursé
+              </Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
       {children}
@@ -637,32 +687,29 @@ export function AccountSplitPrototype({ account, onPress }: AccountCardPrototype
       <View style={styles.splitLeft}>
         <InstitutionMark account={account} size={36} />
         <View style={styles.rowCopy}>
-          <Text style={[typographyKit.rowTitle, styles.rowTitleTight, { color: colors.text }]} numberOfLines={1}>
+          <FitText style={[typographyKit.rowTitle, styles.rowTitleTight, { color: colors.text }]}>
             {title}
-          </Text>
-          <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+          </FitText>
+          <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
             {meta}
-          </Text>
+          </FitText>
         </View>
       </View>
 
       <View style={[styles.splitRule, { backgroundColor: colors.borderSubtle }]} />
 
       <View style={styles.splitRight}>
-        <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+        <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
           {owed ? 'Dû' : 'Solde'}
-        </Text>
-        <Text
+        </FitText>
+        <FitText
           style={[
             moneyAmountTypography({ tier: 'card', textAlign: 'right' }),
             { color: accountBalanceValueColor(account, colors.text) },
           ]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
         >
           {formatDisplayMoneyAbsolute(Math.abs(account.balance))}
-        </Text>
+        </FitText>
       </View>
     </PrototypeShell>
   );
@@ -693,12 +740,12 @@ export function AccountQuietRailPrototype({ account, onPress }: AccountCardProto
       <View style={styles.railHeader}>
         <InstitutionMark account={account} size={34} tinted />
         <View style={styles.rowCopy}>
-          <Text style={[typographyKit.rowTitle, styles.rowTitleTight, { color: colors.text }]} numberOfLines={1}>
+          <FitText style={[typographyKit.rowTitle, styles.rowTitleTight, { color: colors.text }]}>
             {title}
-          </Text>
-          <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+          </FitText>
+          <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
             {[accountKindTypeLabel(account.kind), institution].filter(Boolean).join(' · ')}
-          </Text>
+          </FitText>
         </View>
       </View>
 
@@ -706,27 +753,24 @@ export function AccountQuietRailPrototype({ account, onPress }: AccountCardProto
         <Text style={[typographyKit.micro, { color: colors.textMuted }]}>
           {owed ? 'Dû' : 'Disponible'}
         </Text>
-        <Text
+        <FitText
           style={[
             moneyAmountTypography({ tier: 'stat' }),
             { color: accountBalanceValueColor(account, colors.text), flexShrink: 1 },
           ]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
         >
           {formatDisplayMoneyAbsolute(Math.abs(account.balance))}
-        </Text>
+        </FitText>
       </View>
 
       {isCredit && utilization != null ? (
         <View style={styles.trackBlock}>
           <UtilizationTrack percent={utilization} tone={tone} />
-          <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+          <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
             {remaining != null
               ? `${formatDisplayMoneyAbsolute(remaining)} de marge restante`
               : `${Math.round(utilization)} % de la limite`}
-          </Text>
+          </FitText>
         </View>
       ) : null}
     </PrototypeShell>
@@ -756,6 +800,14 @@ const styles = StyleSheet.create({
   creditAvailableBlock: { gap: 2 },
   trackBlock: { gap: 6 },
   track: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  creditBlock: { gap: 8 },
+  creditTrackWrap: { height: 14, justifyContent: 'center' },
+  creditTrack: { height: 8, borderRadius: 4, overflow: 'hidden' },
+  creditMarker: { position: 'absolute', top: 0, bottom: 0, width: 2, borderRadius: 1, marginLeft: -1, opacity: 0.55 },
+  creditLegend: { flexDirection: 'row', justifyContent: 'space-between' },
+  creditLegendText: { ...typographyKit.metaMedium, fontSize: 12 },
+  creditInterest: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8 },
+  creditInterestText: { ...typographyKit.metaMedium, fontSize: 12.5, flexShrink: 1 },
   trackFill: { height: '100%', borderRadius: 2 },
 
   linePress: { width: '100%' },
