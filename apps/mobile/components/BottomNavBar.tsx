@@ -159,7 +159,7 @@ export function AppBottomTabBar({ state, navigation }: BottomTabBarProps) {
       {showVoice ? (
         <AddTransactionFab
           style={styles.addFab}
-          bottomOffset={hostHeight + FAB_RIGHT_GAP_BOTTOM}
+          bottomOffset={hostHeight + FAB_RIGHT_GAP_BOTTOM + TRANSACTIONS_FAB_SIZE + TRANSACTIONS_FAB_STACK_GAP}
           rightOffset={FAB_RIGHT}
         />
       ) : null}
@@ -212,19 +212,19 @@ const styles = StyleSheet.create({
     fontSize: 9,
     letterSpacing: -0.2,
   },
+  // « + » sits one FAB + gap above the voice button.
   addFab: {
     position: 'absolute',
     right: FAB_RIGHT,
     bottom: '100%',
-    marginBottom: FAB_RIGHT_GAP_BOTTOM,
+    marginBottom: FAB_RIGHT_GAP_BOTTOM + TRANSACTIONS_FAB_SIZE + TRANSACTIONS_FAB_STACK_GAP,
     zIndex: 2,
   },
-  // Voice sits one FAB + gap above the « + ».
   voiceFab: {
     position: 'absolute',
     right: FAB_RIGHT,
     bottom: '100%',
-    marginBottom: FAB_RIGHT_GAP_BOTTOM + TRANSACTIONS_FAB_SIZE + TRANSACTIONS_FAB_STACK_GAP,
+    marginBottom: FAB_RIGHT_GAP_BOTTOM,
     zIndex: 2,
   },
 });
