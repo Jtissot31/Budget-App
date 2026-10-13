@@ -17,6 +17,7 @@ import { startOfMonth } from '@/lib/budgetMonth';
 import {
   buildCopilotInsights,
   copilotHeadline,
+  type CopilotInput,
   type CopilotInsight,
   type CopilotTone,
 } from '@/lib/copilotInsights';
@@ -30,10 +31,17 @@ import { analyzeSubscriptions } from '@/lib/subscriptionAnalysis';
 import { useAppTheme } from '@/lib/themeContext';
 
 const UPCOMING_DAYS = 14;
-const WARN_TONE = '#E0B354';
+export const WARN_TONE = '#E0B354';
+
+export type CopilotData = { insights: CopilotInsight[]; input: CopilotInput };
 
 export function useCopilotInsights(): CopilotInsight[] | null {
-  const [insights, setInsights] = useState<CopilotInsight[] | null>(null);
+  return useCopilotData()?.insights ?? null;
+}
+
+/** Tips plus the numbers they were computed from (charts on the Copilote hub). */
+export function useCopilotData(): CopilotData | null {
+  const [data, setData] = useState<CopilotData | null>(null);
 
   const load = useCallback(async () => {
     await ensureDbReady();
@@ -66,19 +74,18 @@ export function useCopilotInsights(): CopilotInsight[] | null {
       .filter((a) => !a.hidden && (a.kind === 'checking' || a.kind === 'savings' || a.kind === 'cash'))
       .reduce((sum, a) => sum + a.balance, 0);
 
-    setInsights(
-      buildCopilotInsights({
-        now,
-        liquidCash,
-        upcoming,
-        categories: mapBudgetCategoriesToUi(monthCats),
-        monthlyIncome: dashboard?.monthlyIncome ?? 0,
-        monthlyExpenses: dashboard?.monthlyExpenses ?? 0,
-        subscriptionsMonthly: subs.monthlyTotal,
-        subscriptionsCount: subs.count,
-        goals: goals.map((g) => ({ id: g.id, name: g.name, saved: g.currentAmount ?? 0, target: g.targetAmount ?? 0 })),
-      }),
-    );
+    const input: CopilotInput = {
+      now,
+      liquidCash,
+      upcoming,
+      categories: mapBudgetCategoriesToUi(monthCats),
+      monthlyIncome: dashboard?.monthlyIncome ?? 0,
+      monthlyExpenses: dashboard?.monthlyExpenses ?? 0,
+      subscriptionsMonthly: subs.monthlyTotal,
+      subscriptionsCount: subs.count,
+      goals: goals.map((g) => ({ id: g.id, name: g.name, saved: g.currentAmount ?? 0, target: g.targetAmount ?? 0 })),
+    };
+    setData({ insights: buildCopilotInsights(input), input });
   }, []);
 
   useEffect(() => {
@@ -87,7 +94,7 @@ export function useCopilotInsights(): CopilotInsight[] | null {
   }, [load]);
   useRefreshOnFocus(load, { minIntervalMs: 5_000 });
 
-  return insights;
+  return data;
 }
 
 export function toneColor(tone: CopilotTone, colors: { danger: string; accentGreen: string; textMuted: string }): string {
