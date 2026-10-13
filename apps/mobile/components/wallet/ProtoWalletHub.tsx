@@ -529,10 +529,13 @@ export function ProtoWalletHub() {
               title="Comptes"
               trailing={
                 listedAccounts.length > 0 ? (
-                  <TextAction
-                    label={managingAccounts ? 'Terminé' : 'Modifier'}
-                    onPress={toggleManagingAccounts}
-                  />
+                  <View style={styles.headerActions}>
+                    {!managingAccounts ? <TextAction label="Ajouter" onPress={openAddAccount} /> : null}
+                    <TextAction
+                      label={managingAccounts ? 'Terminé' : 'Modifier'}
+                      onPress={toggleManagingAccounts}
+                    />
+                  </View>
                 ) : undefined
               }
             />
@@ -590,7 +593,8 @@ export function ProtoWalletHub() {
                     </ListCard>
                   </>
                 ) : null}
-                <ListCard>{addAccountRow}</ListCard>
+                {/* Empty state only — with accounts, « Ajouter » lives in the section header. */}
+                {listedAccounts.length === 0 ? <ListCard>{addAccountRow}</ListCard> : null}
               </>
             )}
           </Reveal>
@@ -800,6 +804,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   section: { marginBottom: SECTION_GAP + spacing.sm },
   sectionActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   cardGap: { marginBottom: spacing.md },
   subLabel: {
     ...typographyKit.eyebrow,

@@ -1,7 +1,13 @@
 import { GlassFab } from '@/components/GlassFab';
 import { VoiceCommandIcon } from '@/components/icons/VoiceCommandIcon';
+import { AddTransactionFab } from '@/components/tabbar/AddTransactionFab';
 import { useShouldHideTabFabs } from '@/components/tabbar/floatingTabBarShared';
-import { SHOW_TRANSACTIONS_TAB_FABS, transactionsFabGlyphColor } from '@/constants/fabStyles';
+import {
+  SHOW_TRANSACTIONS_TAB_FABS,
+  TRANSACTIONS_FAB_SIZE,
+  TRANSACTIONS_FAB_STACK_GAP,
+  transactionsFabGlyphColor,
+} from '@/constants/fabStyles';
 import { jakartaBoldText } from '@/constants/theme';
 import { uiEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
@@ -10,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { usePathname } from 'expo-router';
+import { useState } from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -109,6 +116,8 @@ export function AppBottomTabBar({ state, navigation }: BottomTabBarProps) {
   const pathname = usePathname();
   const { colors } = useAppTheme();
   const hideTabFabs = useShouldHideTabFabs(pathname);
+  /** Tab bar height = distance from the screen bottom to the FABs' baseline. */
+  const [hostHeight, setHostHeight] = useState(0);
   const activeRouteName = state.routes[state.index]?.name ?? '';
   const currentTab = ROUTE_TO_TAB_KEY[activeRouteName] ?? '';
   const showVoice =
@@ -141,7 +150,19 @@ export function AppBottomTabBar({ state, navigation }: BottomTabBarProps) {
   };
 
   return (
-    <View pointerEvents="box-none" collapsable={false} style={styles.host}>
+    <View
+      pointerEvents="box-none"
+      collapsable={false}
+      style={styles.host}
+      onLayout={(event) => setHostHeight(event.nativeEvent.layout.height)}
+    >
+      {showVoice ? (
+        <AddTransactionFab
+          style={styles.addFab}
+          bottomOffset={hostHeight + FAB_RIGHT_GAP_BOTTOM}
+          rightOffset={FAB_RIGHT}
+        />
+      ) : null}
       {showVoice ? (
         <GlassFab
           onPress={onVoicePress}
@@ -155,6 +176,9 @@ export function AppBottomTabBar({ state, navigation }: BottomTabBarProps) {
     </View>
   );
 }
+
+const FAB_RIGHT = 20;
+const FAB_RIGHT_GAP_BOTTOM = 12;
 
 const styles = StyleSheet.create({
   host: {
@@ -188,11 +212,19 @@ const styles = StyleSheet.create({
     fontSize: 9,
     letterSpacing: -0.2,
   },
+  addFab: {
+    position: 'absolute',
+    right: FAB_RIGHT,
+    bottom: '100%',
+    marginBottom: FAB_RIGHT_GAP_BOTTOM,
+    zIndex: 2,
+  },
+  // Voice sits one FAB + gap above the « + ».
   voiceFab: {
     position: 'absolute',
-    right: 20,
+    right: FAB_RIGHT,
     bottom: '100%',
-    marginBottom: 12,
+    marginBottom: FAB_RIGHT_GAP_BOTTOM + TRANSACTIONS_FAB_SIZE + TRANSACTIONS_FAB_STACK_GAP,
     zIndex: 2,
   },
 });
