@@ -27,13 +27,13 @@ import {
 } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
 import {
-  ACCOUNT_KIND_OPTIONS,
   createNewAccountForm,
   saveSimulatedAccountForm,
   SimulatedAccountFormModal,
   type AccountForm,
 } from '@/components/SimulatedAccountForm';
-import { SettingsPickerSheet, type SettingsPickerOption } from '@/components/SettingsPickerSheet';
+import { showToast } from '@/components/kit/Toast';
+import { AddAccountSheet } from '@/components/wallet/AddAccountSheet';
 import {
   createNewGoalForm,
   SavingsGoalFormModal,
@@ -88,10 +88,6 @@ import type {
   SimulatedAccount,
   Transaction,
 } from '@/types';
-
-const ACCOUNT_TYPE_PICKER_OPTIONS: SettingsPickerOption<AccountKind>[] = ACCOUNT_KIND_OPTIONS.map(
-  ({ id, label, description, icon }) => ({ id, label, description, icon }),
-);
 
 const ACCOUNT_DRAG_ACTIVATION_MS = 220;
 const MASK = '••••';
@@ -219,6 +215,17 @@ export function ProtoWalletHub() {
     },
     [accounts.length],
   );
+
+  /** Plaid bank sync entry point — not wired to a backend yet. */
+  const handleConnectBank = useCallback(() => {
+    setTimeout(() => {
+      showToast({
+        title: 'Connexion bancaire bientôt disponible',
+        subtitle: 'La synchronisation Plaid arrive prochainement.',
+        icon: 'link',
+      });
+    }, 280);
+  }, []);
 
   const closeAccountForm = useCallback(() => {
     setAccountForm(null);
@@ -431,7 +438,7 @@ export function ProtoWalletHub() {
     <ListRow
       leading={<IconWell icon="add" color={colors.text} />}
       title="Ajouter un compte"
-      subtitle="Chèque, épargne, carte de crédit…"
+      subtitle="Connecter ma banque ou ajouter à la main"
       isLast
       onPress={openAddAccount}
     />
@@ -716,13 +723,11 @@ export function ProtoWalletHub() {
           onCancel={() => setConfirmDeleteGoalsVisible(false)}
         />
 
-        <SettingsPickerSheet
+        <AddAccountSheet
           visible={accountTypePickerVisible}
-          title="Type de compte"
-          options={ACCOUNT_TYPE_PICKER_OPTIONS}
-          selectedId={'' as AccountKind}
           onClose={() => setAccountTypePickerVisible(false)}
-          onSelect={handleSelectAccountType}
+          onSelectKind={handleSelectAccountType}
+          onConnectBank={handleConnectBank}
         />
 
         <SimulatedAccountFormModal
