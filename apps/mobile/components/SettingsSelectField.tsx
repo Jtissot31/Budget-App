@@ -75,7 +75,7 @@ export function SettingsSelectField({
 
   return (
     <View style={[styles.field, style]}>
-      <Text style={[styles.label, { color: colors.text }, labelStyle]}>{label}</Text>
+      <Text style={[styles.label, { color: colors.textMuted }, labelStyle]}>{label}</Text>
       {disabled ? (
         <Text style={[styles.emptyHint, { color: colors.textMuted }]}>
           {emptyHint ?? 'Aucune option disponible.'}

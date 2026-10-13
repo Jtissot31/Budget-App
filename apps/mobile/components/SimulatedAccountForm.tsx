@@ -233,7 +233,7 @@ export function SimulatedAccountFormModal({
   const { colors, isLight, ghost } = useAppTheme();
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [fullIconPickerVisible, setFullIconPickerVisible] = useState(false);
-  const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.text }];
+  const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.textMuted }];
 
   useEffect(() => {
     setShowIconPicker(false);

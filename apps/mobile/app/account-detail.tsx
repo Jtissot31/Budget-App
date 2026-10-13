@@ -368,7 +368,7 @@ export default function AccountDetailScreen() {
   const hasIdentityContent = Boolean(
     manualIcon || previewLogoAsset || previewLogo || name.trim() || institution.trim(),
   );
-  const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.text }];
+  const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.textMuted }];
   const formThemed = usePortfolioFormTheme();
 
   const resetForm = () => {

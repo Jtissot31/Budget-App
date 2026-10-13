@@ -1153,10 +1153,13 @@ export const detailCarouselPageMinHeight = 252;
  * Major form section eyebrows (Date, Méthode, Catégorie, Articles…).
  * Bolder than nested micro-labels — pair with `colors.text`.
  */
+/** Matches the app-wide `SectionLabel` eyebrow (11 px uppercase); callers tint it `textMuted`. */
 export function formSectionLabelStyle(): TextStyle {
   return {
     ...typographyKit.eyebrow,
-    ...jakartaBoldText,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.8,
   };
 }
 

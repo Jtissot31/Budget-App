@@ -305,7 +305,7 @@ export default function AddTransactionScreen() {
   }>();
   const insets = useSafeAreaInsets();
   const { colors, isLight } = useAppTheme();
-  const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.text }];
+  const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.textMuted }];
   const editId = firstRouteParam(params.editId);
   const routeMode = firstRouteParam(params.mode);
   const isEditMode = Boolean(editId) || routeMode === 'edit';
@@ -2195,10 +2195,10 @@ export default function AddTransactionScreen() {
                     ]}
                     placeholder={
                       type === 'income'
-                        ? 'Ex. Desjardins, Employeur Inc....'
+                        ? 'Ex. Employeur'
                         : isAnyPersonTransfer
-                          ? 'Ex. Marie, Jean, loyer à un ami...'
-                          : 'Ex. Starbucks, loyer, épicerie...'
+                          ? 'Nom du contact'
+                          : 'Ex. Starbucks'
                     }
                     placeholderTextColor={colors.textMuted}
                     value={label}
@@ -2385,10 +2385,10 @@ export default function AddTransactionScreen() {
                     ]}
                     placeholder={
                       isPersonTransferFrom
-                        ? 'Ex. remboursement, cadeau, partage de frais...'
+                        ? 'Ex. Remboursement'
                         : isStandardTransfer
-                          ? 'Motif (optionnel) — ex. épargne vacances, remboursement...'
-                          : 'Ex. remboursement repas, cadeau anniversaire, part du loyer...'
+                          ? 'Motif (optionnel)'
+                          : 'Ex. Part du loyer'
                     }
                     placeholderTextColor={colors.textMuted}
                     value={transferReason}
@@ -2452,7 +2452,7 @@ export default function AddTransactionScreen() {
                   <DashboardSectionLabel style={sectionLabelStyle}>Raison du revenu</DashboardSectionLabel>
                   <TextInput
                     style={[styles.input, themed.controlStrong, themed.text]}
-                    placeholder="Ex. travail, vente, don, prime..."
+                    placeholder="Ex. Salaire"
                     placeholderTextColor={colors.textMuted}
                     value={incomeReason}
                     onChangeText={setIncomeReason}

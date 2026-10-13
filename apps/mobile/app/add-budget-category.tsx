@@ -190,7 +190,7 @@ export default function AddBudgetCategoryScreen() {
     [],
   );
   const { colors, isLight } = useAppTheme();
-  const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.text }];
+  const sectionLabelStyle = [FORM_SECTION_LABEL_STYLE, { color: colors.textMuted }];
 
   const [name, setName] = useState(() => capitalizeCategoryName(prefill?.name?.trim() ?? ''));
   const [limit, setLimit] = useState(() =>
