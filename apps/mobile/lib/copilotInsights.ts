@@ -32,7 +32,7 @@ export type CopilotInput = {
   monthlyExpenses: number;
   subscriptionsMonthly: number;
   subscriptionsCount: number;
-  goals: readonly { id: string; name: string; saved: number; target: number }[];
+  goals: readonly { id: string; name: string; saved: number; target: number; icon?: string | null }[];
 };
 
 const TONE_ORDER: Record<CopilotTone, number> = { risk: 0, warn: 1, info: 2, good: 3 };

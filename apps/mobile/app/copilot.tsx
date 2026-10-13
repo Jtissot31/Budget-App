@@ -11,7 +11,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CopilotInsightRow, useCopilotData, WARN_TONE } from '@/components/copilot/CopilotCard';
 import { FixedScreenHeader, fixedHeaderScreenStyle, fixedHeaderScrollStyle } from '@/components/FixedScreenHeader';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { AnimatedBar, ListCard, PressScale, Reveal, RingGauge, SECTION_GAP, SectionLabel } from '@/components/kit';
+import { AnimatedBar, GoalTile, ListCard, PressScale, Reveal, RingGauge, SECTION_GAP, SectionLabel } from '@/components/kit';
+import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { usePopOnActive } from '@/components/kit/motion';
 import { PageTransition } from '@/components/PageTransition';
 import {
@@ -85,10 +86,12 @@ export default function CopilotScreen() {
       .reduce((s, row) => s + Math.abs(row.amount), 0);
     const savingsRate =
       input.monthlyIncome > 0 ? (input.monthlyIncome - input.monthlyExpenses) / input.monthlyIncome : null;
-    const goal = [...input.goals]
+    // Same as Accueil: the two goals closest to the finish line.
+    const goals = [...input.goals]
       .filter((g) => g.target > 0 && g.saved < g.target)
-      .sort((a, b) => b.saved / b.target - a.saved / a.target)[0] ?? null;
-    return { monthPct, limit, spent, billsSoon, savingsRate, goal };
+      .sort((a, b) => b.saved / b.target - a.saved / a.target)
+      .slice(0, 2);
+    return { monthPct, limit, spent, billsSoon, savingsRate, goals };
   }, [input]);
 
   const groups = useMemo(
@@ -208,40 +211,23 @@ export default function CopilotScreen() {
             </View>
           ) : null}
 
-          {/* 3. Closest goal */}
-          {stats?.goal ? (
+          {/* 3. Goals — same GoalTile as Accueil / Wallet */}
+          {stats && stats.goals.length > 0 ? (
             <Reveal index={5} style={styles.section}>
-              <PressScale
-                accessibilityRole="button"
-                onPress={() => go({ pathname: '/goal-detail', params: { goalId: stats.goal!.id } })}
-                scaleTo={0.98}
-                style={[styles.goal, tileSurface]}
-              >
-                <View style={styles.goalHead}>
-                  <View style={[styles.goalIcon, { backgroundColor: `${colors.accentGreen}24` }]}>
-                    <AppIcon family="ionicons" name="flag" size={16} color={colors.accentGreen} />
+              <SectionLabel title="Objectifs" actionLabel="Tout voir" onAction={() => router.navigate('/accounts')} />
+              <View style={styles.goalGrid}>
+                {stats.goals.map((goal) => (
+                  <View key={goal.id} style={styles.goalCell}>
+                    <GoalTile
+                      name={goal.name}
+                      icon={<UserPickedIconWell icon={goal.icon ?? 'flag-outline'} size={32} />}
+                      saved={goal.saved}
+                      target={goal.target}
+                      onPress={() => go({ pathname: '/goal-detail', params: { goalId: goal.id } })}
+                    />
                   </View>
-                  <View style={styles.goalCopy}>
-                    <Text style={[styles.goalLabel, { color: colors.textMuted }]}>Objectif le plus proche</Text>
-                    <Text style={[styles.goalName, { color: colors.text }]} numberOfLines={1}>
-                      {stats.goal.name}
-                    </Text>
-                  </View>
-                  <Text style={[styles.goalPct, { color: colors.accentGreen }]}>
-                    {Math.round((stats.goal.saved / stats.goal.target) * 100)} %
-                  </Text>
-                </View>
-                <AnimatedBar
-                  progress={stats.goal.saved / stats.goal.target}
-                  color={colors.accentGreen}
-                  trackColor={colors.borderSubtle}
-                  height={8}
-                  delay={200}
-                />
-                <Text style={[styles.goalMeta, { color: colors.textMuted }]}>
-                  {money(stats.goal.saved)} sur {money(stats.goal.target)} · encore {money(stats.goal.target - stats.goal.saved)}
-                </Text>
-              </PressScale>
+                ))}
+              </View>
             </Reveal>
           ) : null}
 
@@ -331,14 +317,8 @@ const styles = StyleSheet.create({
   ringText: { ...jakartaBoldText, fontSize: 13 },
   ringCaption: { marginTop: 2 },
 
-  goal: { borderRadius: 20, borderWidth: 1, padding: 16, gap: 12 },
-  goalHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  goalIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  goalCopy: { flex: 1, minWidth: 0, gap: 1 },
-  goalLabel: { ...jakartaMediumText, fontSize: 12 },
-  goalName: { ...jakartaSemiboldText, fontSize: 15 },
-  goalPct: { ...jakartaBoldText, fontSize: 18 },
-  goalMeta: { ...jakartaMediumText, fontSize: 12.5 },
+  goalGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
+  goalCell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10 },
 
   empty: { ...jakartaMediumText, fontSize: 14, textAlign: 'center', paddingVertical: spacing.xl },
 });

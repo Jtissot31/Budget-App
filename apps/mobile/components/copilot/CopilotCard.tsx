@@ -83,7 +83,13 @@ export function useCopilotData(): CopilotData | null {
       monthlyExpenses: dashboard?.monthlyExpenses ?? 0,
       subscriptionsMonthly: subs.monthlyTotal,
       subscriptionsCount: subs.count,
-      goals: goals.map((g) => ({ id: g.id, name: g.name, saved: g.currentAmount ?? 0, target: g.targetAmount ?? 0 })),
+      goals: goals.map((g) => ({
+        id: g.id,
+        name: g.name,
+        saved: g.currentAmount ?? 0,
+        target: g.targetAmount ?? 0,
+        icon: g.icon ?? null,
+      })),
     };
     setData({ insights: buildCopilotInsights(input), input });
   }, []);
