@@ -150,6 +150,8 @@ export function ProtoHomeHub() {
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
   const [trendTransactions, setTrendTransactions] = useState<Transaction[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  /** False until the first load finishes — the wins card waits so it never flashes an empty state. */
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   const [goalForm, setGoalForm] = useState<GoalForm | null>(null);
   const [savingGoal, setSavingGoal] = useState(false);
@@ -180,6 +182,7 @@ export function ProtoHomeHub() {
     setBudgetCategories(mapBudgetCategoriesToUi(monthCats));
     setRecurringPayments(nextPayments);
     setTrendTransactions(trendTx);
+    setHasLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -392,9 +395,11 @@ export function ProtoHomeHub() {
             }
           />
 
-          <Reveal index={0} style={styles.section}>
-            <WinsCard wins={homeWins} />
-          </Reveal>
+          {hasLoaded ? (
+            <Reveal index={0} style={styles.section}>
+              <WinsCard wins={homeWins} />
+            </Reveal>
+          ) : null}
 
           <Reveal index={0} style={styles.section}>
             <SummaryCard
