@@ -129,25 +129,22 @@ export function AccountEnvelopesPanel({
             {show(unassigned)}
           </Text>
         </View>
-      ) : (
-        <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-          Sépare ce solde en enveloppes : factures, loisirs, épargne…
-        </Text>
-      )}
+      ) : null}
 
-      <Pressable
+      {/* One clear, full-width button — no explanatory paragraph. */}
+      <PressScale
         accessibilityRole="button"
         accessibilityLabel="Nouvelle enveloppe"
         onPress={() => {
           tapHaptic();
           onAdd();
         }}
-        hitSlop={6}
-        style={styles.addRow}
+        scaleTo={0.97}
+        style={[styles.addButton, { backgroundColor: colors.surfaceElevated }]}
       >
-        <AppIcon family="ionicons" name="add" size={16} color={colors.accentGreen} />
-        <Text style={[styles.addText, { color: colors.accentGreen }]}>Nouvelle enveloppe</Text>
-      </Pressable>
+        <AppIcon family="ionicons" name="add" size={18} color={colors.text} />
+        <Text style={[styles.addText, { color: colors.text }]}>Nouvelle enveloppe</Text>
+      </PressScale>
     </Reveal>
   );
 }
@@ -396,9 +393,16 @@ const styles = StyleSheet.create({
   envTrack: { height: 3, borderRadius: 1.5, overflow: 'hidden' },
   envFill: { height: '100%', borderRadius: 1.5 },
   envAmount: { ...jakartaSemiboldText, fontSize: 14 },
-  emptyText: { ...jakartaMediumText, fontSize: 13, lineHeight: 18, paddingVertical: 4 },
-  addRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 8, alignSelf: 'flex-start' },
-  addText: { ...jakartaSemiboldText, fontSize: 13.5 },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 42,
+    borderRadius: 21,
+    marginTop: 6,
+  },
+  addText: { ...jakartaSemiboldText, fontSize: 14 },
 
   /* Sheet */
   backdrop: { flex: 1, justifyContent: 'flex-end' },
