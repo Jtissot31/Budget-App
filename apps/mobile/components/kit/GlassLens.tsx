@@ -1,35 +1,33 @@
 /**
- * GlassLens — real « liquid glass » that works the same on Android (incl. Expo Go) and iOS.
+ * GlassLens — « liquid glass » that works the same on Android (incl. Expo Go) and iOS.
  *
  * Live blur views are unreliable on Android and cannot see behind a Modal window, so the
- * glass refracts a *screenshot* instead: `captureBackdrop()` grabs the screen once (half
- * resolution) when an overlay opens; each lens then shows the part of that image directly
- * beneath it, magnified like a lens, lightly frosted (`Image.blurRadius`, native everywhere)
- * and tinted to stay on-theme. Depth comes from an edge vignette, a faint glint and a soft
- * shadow — no white outline. Without a snapshot it falls back to a dark glass fill.
+ * glass refracts a *screenshot* instead: `captureBackdrop()` grabs the screen once when an
+ * overlay opens; each lens then shows the part of that image directly beneath it, magnified
+ * (lens) or heavily blurred (frosted), with a light theme tint. No outline, no fake glint.
+ * Without a snapshot it falls back to a plain dark / light glass fill.
  */
 import type { ReactNode } from 'react';
-import { Dimensions, Image, PixelRatio, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Dimensions, Image, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { captureScreen } from 'react-native-view-shot';
 import { useAppTheme } from '@/lib/themeContext';
 
+/** Snapshot laid out in screen coordinates (`width` = screen width, `height` keeps the image ratio). */
 export type GlassBackdrop = { uri: string; width: number; height: number };
 
-/** Screenshot of the current screen in window coordinates, or null if capture fails. */
+function imageSize(uri: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => Image.getSize(uri, (width, height) => resolve({ width, height }), reject));
+}
+
+/** Screenshot of the current screen, or null if capture fails. */
 export async function captureBackdrop(): Promise<GlassBackdrop | null> {
   try {
-    const { width, height } = Dimensions.get('window');
-    // Half the physical resolution is plenty: the lens frosts and magnifies anyway.
-    const scale = PixelRatio.get() / 2;
-    const uri = await captureScreen({
-      format: 'jpg',
-      quality: 0.7,
-      result: 'tmpfile',
-      width: Math.round(width * scale),
-      height: Math.round(height * scale),
-    });
-    return { uri, width, height };
+    // Capture at the device's native size: forcing window dimensions squashes the image on
+    // edge-to-edge Android (status + nav bars) and every lens then samples the wrong spot.
+    const uri = await captureScreen({ format: 'jpg', quality: 0.6, result: 'tmpfile' });
+    const pixels = await imageSize(uri);
+    const screenWidth = Dimensions.get('screen').width;
+    return { uri, width: screenWidth, height: screenWidth * (pixels.height / pixels.width) };
   } catch {
     return null;
   }
@@ -37,14 +35,16 @@ export async function captureBackdrop(): Promise<GlassBackdrop | null> {
 
 type Props = {
   backdrop: GlassBackdrop | null;
-  /** Lens centre in window coordinates (where the glass sits on screen). */
+  /** Lens centre in screen coordinates (measureInWindow inside a status-bar-translucent Modal). */
   center: { x: number; y: number } | null;
   width: number;
   height: number;
   radius: number;
-  /** 1 = flat frosted glass, > 1 = lens. */
+  /** > 1 = lens; 1 = flat. */
   magnification?: number;
   blur?: number;
+  /** Extra theme tint on top (0..1) — raise it for text legibility. */
+  tintStrength?: number;
   children?: ReactNode;
   style?: StyleProp<ViewStyle>;
 };
@@ -55,24 +55,26 @@ export function GlassLens({
   width,
   height,
   radius,
-  magnification = 1.25,
-  blur = 2,
+  magnification = 1.2,
+  blur = 1,
+  tintStrength = 0.12,
   children,
   style,
 }: Props) {
   const { isLight } = useAppTheme();
-  const tint = isLight ? 'rgba(255,255,255,0.28)' : 'rgba(12,12,16,0.38)';
-  const fallback = isLight ? 'rgba(255,255,255,0.86)' : 'rgba(30,30,36,0.92)';
-  const edge = isLight ? 'rgba(0,0,0,0.10)' : 'rgba(0,0,0,0.42)';
+  const tint = isLight ? `rgba(255,255,255,${tintStrength + 0.2})` : `rgba(28,28,32,${tintStrength})`;
+  const fallback = isLight ? 'rgba(255,255,255,0.9)' : 'rgba(38,38,44,0.95)';
 
   return (
     <View style={[styles.shadow, { width, height, borderRadius: radius }, style]}>
-      <View style={[StyleSheet.absoluteFill, styles.clip, { borderRadius: radius, backgroundColor: fallback }]} pointerEvents="none">
+      <View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, styles.clip, { borderRadius: radius, backgroundColor: backdrop ? 'transparent' : fallback }]}
+      >
         {backdrop && center ? (
           <Image
             source={{ uri: backdrop.uri }}
             blurRadius={blur}
-            // Fades in while the bubbles are still springing — no visible pop.
             fadeDuration={200}
             style={{
               position: 'absolute',
@@ -84,29 +86,6 @@ export function GlassLens({
           />
         ) : null}
         <View style={[StyleSheet.absoluteFill, { backgroundColor: tint }]} />
-        {/* Edge vignette (top/bottom + left/right) — the lens « thickness ». */}
-        <LinearGradient colors={[edge, 'rgba(0,0,0,0)', 'rgba(0,0,0,0)', edge]} locations={[0, 0.3, 0.7, 1]} style={StyleSheet.absoluteFill} />
-        <LinearGradient
-          colors={[edge, 'rgba(0,0,0,0)', 'rgba(0,0,0,0)', edge]}
-          locations={[0, 0.3, 0.7, 1]}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-        />
-        {/* Faint glint where light hits the curved top — no outline. */}
-        <View
-          style={[
-            styles.glint,
-            {
-              width: width * 0.46,
-              height: Math.max(4, height * 0.16),
-              left: width * 0.16,
-              top: height * 0.1,
-              borderRadius: height,
-              backgroundColor: isLight ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.10)',
-            },
-          ]}
-        />
       </View>
       {children}
     </View>
@@ -118,12 +97,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.4,
+    shadowRadius: 18,
+    elevation: 10,
     backgroundColor: 'rgba(0,0,0,0.01)',
   },
   clip: { overflow: 'hidden' },
-  glint: { position: 'absolute', transform: [{ rotate: '-12deg' }] },
 });

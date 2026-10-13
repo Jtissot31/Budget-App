@@ -206,8 +206,9 @@ function ActionBubble({
               width={labelWidth}
               height={LABEL_HEIGHT}
               radius={LABEL_HEIGHT / 2}
-              magnification={1.08}
-              blur={6}
+              magnification={1}
+              blur={14}
+              tintStrength={0.45}
               style={StyleSheet.absoluteFill}
             />
           ) : null}
@@ -229,8 +230,8 @@ function ActionBubble({
             width={ACTION_SIZE}
             height={ACTION_SIZE}
             radius={ACTION_SIZE / 2}
-            magnification={1.3}
-            blur={1.5}
+            magnification={1.2}
+            blur={1}
           >
             <AppIcon family="ionicons" name={action.icon} size={22} color={glyphColor} />
           </GlassLens>
@@ -242,7 +243,8 @@ function ActionBubble({
 
 const styles = StyleSheet.create({
   hidden: { opacity: 0 },
-  backdrop: { backgroundColor: 'rgba(0, 0, 0, 0.55)' },
+  // Light dim so the content behind stays visible through the glass.
+  backdrop: { backgroundColor: 'rgba(0, 0, 0, 0.35)' },
   stack: { position: 'absolute', alignItems: 'flex-end', gap: ACTION_GAP },
   mainSlot: { width: TRANSACTIONS_FAB_SIZE, height: TRANSACTIONS_FAB_SIZE },
   actionRow: {
