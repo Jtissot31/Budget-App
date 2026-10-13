@@ -73,8 +73,18 @@ export function AccountEnvelopesPanel({
   if (envelopes.length === 0) {
     return (
       <Reveal style={[styles.panel, { borderTopColor: colors.borderSubtle }]}>
-        <Text style={[styles.emptyLine, { color: colors.textMuted }]}>Réserve une partie du solde pour un usage précis.</Text>
+        <Text style={[styles.emptyLine, { color: colors.textMuted }]}>Sépare ce solde en enveloppes</Text>
         <View style={styles.suggestions}>
+          <PressScale
+            accessibilityRole="button"
+            accessibilityLabel="Créer une enveloppe"
+            onPress={() => add()}
+            scaleTo={0.94}
+            style={[styles.suggestion, { backgroundColor: colors.text }]}
+          >
+            <AppIcon family="ionicons" name="add" size={15} color={colors.background} />
+            <Text style={[styles.suggestionText, { color: colors.background }]}>Nouvelle</Text>
+          </PressScale>
           {EMPTY_SUGGESTIONS.map((preset) => (
             <PressScale
               key={preset.name}
@@ -89,22 +99,26 @@ export function AccountEnvelopesPanel({
             </PressScale>
           ))}
         </View>
-        <PressScale
-          accessibilityRole="button"
-          accessibilityLabel="Créer une enveloppe"
-          onPress={() => add()}
-          scaleTo={0.97}
-          style={[styles.primaryButton, { backgroundColor: colors.text }]}
-        >
-          <AppIcon family="ionicons" name="add" size={18} color={colors.background} />
-          <Text style={[styles.primaryText, { color: colors.background }]}>Créer une enveloppe</Text>
-        </PressScale>
       </Reveal>
     );
   }
 
   return (
     <Reveal style={[styles.panel, { borderTopColor: colors.borderSubtle }]}>
+      <View style={styles.panelHead}>
+        <Text style={[styles.panelTitle, { color: colors.textMuted }]}>ENVELOPPES</Text>
+        <PressScale
+          accessibilityRole="button"
+          accessibilityLabel="Nouvelle enveloppe"
+          onPress={() => add()}
+          scaleTo={0.92}
+          hitSlop={8}
+          style={[styles.addPill, { backgroundColor: colors.surfaceElevated }]}
+        >
+          <AppIcon family="ionicons" name="add" size={14} color={colors.text} />
+          <Text style={[styles.addPillText, { color: colors.text }]}>Ajouter</Text>
+        </PressScale>
+      </View>
       <View style={[styles.splitBar, { backgroundColor: colors.borderSubtle }]}>
         {envelopes.map((envelope) =>
           envelope.amount > 0 ? (
@@ -117,6 +131,7 @@ export function AccountEnvelopesPanel({
       {envelopes.map((envelope) => {
         const accent = accentForKey(envelope.id);
         return (
+          // Emoji · name · amount — proportions live in the split bar above.
           <PressScale
             key={envelope.id}
             accessibilityRole="button"
@@ -128,49 +143,27 @@ export function AccountEnvelopesPanel({
             scaleTo={0.98}
             style={styles.envRow}
           >
-            <View style={[styles.envIcon, { backgroundColor: `${accent}24` }]}>
-              <EnvelopeGlyph icon={envelope.icon} size={14} color={accent} />
+            <View style={[styles.envDot, { backgroundColor: accent }]} />
+            <View style={styles.envIcon}>
+              <EnvelopeGlyph icon={envelope.icon} size={15} color={accent} />
             </View>
-            <View style={styles.envCopy}>
-              <Text style={[styles.envName, { color: colors.text }]} numberOfLines={1}>
-                {envelope.name}
-              </Text>
-              {!hideBalances && balance > 0 ? (
-                <View style={[styles.envTrack, { backgroundColor: colors.borderSubtle }]}>
-                  <AnimatedFill progress={envelope.amount / Math.max(balance, 1)} style={[styles.envFill, { backgroundColor: accent }]} />
-                </View>
-              ) : null}
-            </View>
+            <Text style={[styles.envName, styles.envCopy, { color: colors.text }]} numberOfLines={1}>
+              {envelope.name}
+            </Text>
             <Text style={[styles.envAmount, { color: colors.text }]}>{show(envelope.amount)}</Text>
           </PressScale>
         );
       })}
 
       <View style={styles.envRow}>
-        <View style={[styles.envIcon, { backgroundColor: colors.surfaceElevated }]}>
-          <AppIcon
-            family="ionicons"
-            name={unassigned < 0 ? 'alert' : 'ellipsis-horizontal'}
-            size={14}
-            color={unassigned < 0 ? colors.danger : colors.textMuted}
-          />
-        </View>
+        <View style={[styles.envDot, { backgroundColor: unassigned < 0 ? colors.danger : colors.borderStrong }]} />
+        <View style={styles.envIcon} />
         <Text style={[styles.envName, styles.envCopy, { color: unassigned < 0 ? colors.danger : colors.textMuted }]}>
           {unassigned < 0 ? 'Dépassement du solde' : 'Non attribué'}
         </Text>
         <Text style={[styles.envAmount, { color: unassigned < 0 ? colors.danger : colors.textMuted }]}>{show(unassigned)}</Text>
       </View>
 
-      <PressScale
-        accessibilityRole="button"
-        accessibilityLabel="Nouvelle enveloppe"
-        onPress={() => add()}
-        scaleTo={0.97}
-        style={[styles.secondaryButton, { backgroundColor: colors.surfaceElevated }]}
-      >
-        <AppIcon family="ionicons" name="add" size={18} color={colors.text} />
-        <Text style={[styles.secondaryText, { color: colors.text }]}>Nouvelle enveloppe</Text>
-      </PressScale>
     </Reveal>
   );
 }
@@ -418,8 +411,13 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     gap: 2,
   },
-  emptyLine: { ...jakartaMediumText, fontSize: 13, lineHeight: 18, marginBottom: 8 },
-  suggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
+  emptyLine: { ...jakartaMediumText, fontSize: 12, marginBottom: 8 },
+  suggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  panelHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  panelTitle: { ...jakartaSemiboldText, fontSize: 11, letterSpacing: 0.8 },
+  addPill: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 26, paddingHorizontal: 10, borderRadius: 13 },
+  addPillText: { ...jakartaSemiboldText, fontSize: 12 },
+  envDot: { width: 3, height: 16, borderRadius: 1.5 },
   suggestion: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 32, paddingHorizontal: 11, borderRadius: 16 },
   suggestionEmoji: { fontSize: 14 },
   suggestionText: { ...jakartaSemiboldText, fontSize: 13 },
@@ -428,8 +426,8 @@ const styles = StyleSheet.create({
   secondaryButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 42, borderRadius: 21, marginTop: 6 },
   secondaryText: { ...jakartaSemiboldText, fontSize: 14 },
   splitBar: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', gap: 2, marginBottom: 8 },
-  envRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 40 },
-  envIcon: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  envRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34 },
+  envIcon: { width: 20, alignItems: 'center', justifyContent: 'center' },
   envCopy: { flex: 1, minWidth: 0, gap: 4 },
   envName: { ...jakartaMediumText, fontSize: 14 },
   envTrack: { height: 3, borderRadius: 1.5, overflow: 'hidden' },
