@@ -92,6 +92,8 @@ export type AccountLineTileProps = AccountPatrimoineTileProps;
 
 /** Even padding for logos inside the white app-icon tile. */
 const TILE_LOGO_INSET_RATIO = 0.82;
+/** Wide card wordmarks on their white plate — larger, still clear of the rounded edge. */
+const TILE_CARD_NETWORK_LOGO_INSET_RATIO = 0.94;
 
 function kindIcon(kind: AccountKind): string {
   if (kind === 'credit') return 'card-outline';
@@ -190,7 +192,13 @@ export function InstitutionMark({
           asset={asset}
           size={size}
           contentFit="contain"
-          insetRatio={tile ? TILE_LOGO_INSET_RATIO : CARD_NETWORK_LOGO_INSET_RATIO}
+          insetRatio={
+            tile
+              ? isCardNetworkLogo
+                ? TILE_CARD_NETWORK_LOGO_INSET_RATIO
+                : TILE_LOGO_INSET_RATIO
+              : CARD_NETWORK_LOGO_INSET_RATIO
+          }
           onError={() => setAssetFailed(true)}
         />
       ) : uri ? (
@@ -198,7 +206,9 @@ export function InstitutionMark({
           uri={uri}
           size={size}
           contentFit="contain"
-          insetRatio={tile ? TILE_LOGO_INSET_RATIO : insetRatio}
+          insetRatio={
+            tile ? (isCardNetworkLogo ? TILE_CARD_NETWORK_LOGO_INSET_RATIO : TILE_LOGO_INSET_RATIO) : insetRatio
+          }
           onError={() => {
             if (sourceIndex < urls.length - 1) {
               setSourceIndex((i) => i + 1);
