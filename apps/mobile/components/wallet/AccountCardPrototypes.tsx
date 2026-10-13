@@ -239,6 +239,28 @@ function UtilizationTrack({ percent, tone }: { percent: number; tone: string }) 
   );
 }
 
+/** Keeping card usage under ~30 % of the limit is the usual healthy target. */
+const CREDIT_HEALTHY_PCT = 30;
+
+const SHORT_MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+
+/** Next statement due date from the card's due day — « 15 oct. · dans 2 j ». */
+function nextDueDate(dueDay: number | undefined): { label: string; days: number } | null {
+  if (typeof dueDay !== 'number' || dueDay < 1 || dueDay > 31) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const clampDay = (y: number, m: number) => Math.min(dueDay, new Date(y, m + 1, 0).getDate());
+  let due = new Date(today.getFullYear(), today.getMonth(), clampDay(today.getFullYear(), today.getMonth()));
+  if (due < today) {
+    const y = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
+    const m = (today.getMonth() + 1) % 12;
+    due = new Date(y, m, clampDay(y, m));
+  }
+  const days = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+  const when = days === 0 ? 'auj.' : days === 1 ? 'demain' : `dans ${days} j`;
+  return { label: `${due.getDate()} ${SHORT_MONTHS[due.getMonth()]} · ${when}`, days };
+}
+
 function creditMeta(account: SimulatedAccount): {
   utilization: number | undefined;
   used: number;
@@ -587,15 +609,22 @@ export function AccountDetailSummaryCard({
   const { remaining, utilization } = creditMeta(account);
   const creditLimit =
     typeof account.creditLimit === 'number' && account.creditLimit > 0 ? account.creditLimit : undefined;
-  const creditStats: SummaryStat[] =
-    account.kind === 'credit'
-      ? [
-          ...(remaining != null ? [{ label: 'Disponible', value: formatDisplayMoneyAbsolute(remaining) }] : []),
-          ...(creditLimit != null ? [{ label: 'Limite', value: formatDisplayMoneyAbsolute(creditLimit) }] : []),
-        ]
-      : [];
-  const tone =
-    utilization == null ? colors.accentGreen : utilization >= 90 ? colors.danger : utilization >= 70 ? colors.warning : colors.accentGreen;
+  const isCredit = account.kind === 'credit';
+  const due = isCredit ? nextDueDate(account.dueDay) : null;
+  const creditStats: SummaryStat[] = isCredit
+    ? [
+        ...(remaining != null ? [{ label: 'Disponible', value: formatDisplayMoneyAbsolute(remaining) }] : []),
+        ...(creditLimit != null ? [{ label: 'Limite', value: formatDisplayMoneyAbsolute(creditLimit) }] : []),
+        ...(due ? [{ label: 'Échéance', value: due.label }] : []),
+      ]
+    : [];
+  // Calm palette: green under the healthy 30 % mark, amber above — never alarm red.
+  const tone = utilization == null || utilization < CREDIT_HEALTHY_PCT ? colors.accentGreen : '#F59E0B';
+  const owed = isCredit ? Math.abs(Math.min(0, account.balance)) : 0;
+  const monthlyInterest =
+    isCredit && typeof account.interestRate === 'number' && account.interestRate > 0 && owed > 0
+      ? (owed * account.interestRate) / 100 / 12
+      : null;
 
   return (
     <SummaryCard
@@ -609,8 +638,26 @@ export function AccountDetailSummaryCard({
       footer={footer}
     >
       {utilization != null ? (
-        <View style={[styles.track, { backgroundColor: colors.borderSubtle }]}>
-          <AnimatedFill progress={utilization / 100} style={[styles.trackFill, { backgroundColor: tone }]} />
+        <View style={styles.creditBlock}>
+          <View style={styles.creditTrackWrap}>
+            <View style={[styles.creditTrack, { backgroundColor: colors.borderSubtle }]}>
+              <AnimatedFill progress={Math.min(1, utilization / 100)} style={[styles.trackFill, { backgroundColor: tone }]} />
+            </View>
+            {/* Healthy-usage marker at 30 % of the limit */}
+            <View style={[styles.creditMarker, { left: `${CREDIT_HEALTHY_PCT}%`, backgroundColor: colors.text }]} />
+          </View>
+          <View style={styles.creditLegend}>
+            <Text style={[styles.creditLegendText, { color: colors.text }]}>Utilisé {Math.round(utilization)} %</Text>
+            <Text style={[styles.creditLegendText, { color: colors.textMuted }]}>Idéal sous {CREDIT_HEALTHY_PCT} %</Text>
+          </View>
+          {monthlyInterest != null ? (
+            <View style={[styles.creditInterest, { backgroundColor: colors.surfaceElevated }]}>
+              <AppIcon family="ionicons" name="information-circle-outline" size={14} color={colors.textMuted} />
+              <Text style={[styles.creditInterestText, { color: colors.textSecondary }]} numberOfLines={2}>
+                ≈ {formatDisplayMoneyAbsolute(monthlyInterest)} d’intérêts / mois si non remboursé
+              </Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
       {children}
@@ -753,6 +800,14 @@ const styles = StyleSheet.create({
   creditAvailableBlock: { gap: 2 },
   trackBlock: { gap: 6 },
   track: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  creditBlock: { gap: 8 },
+  creditTrackWrap: { height: 14, justifyContent: 'center' },
+  creditTrack: { height: 8, borderRadius: 4, overflow: 'hidden' },
+  creditMarker: { position: 'absolute', top: 0, bottom: 0, width: 2, borderRadius: 1, marginLeft: -1, opacity: 0.55 },
+  creditLegend: { flexDirection: 'row', justifyContent: 'space-between' },
+  creditLegendText: { ...typographyKit.metaMedium, fontSize: 12 },
+  creditInterest: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8 },
+  creditInterestText: { ...typographyKit.metaMedium, fontSize: 12.5, flexShrink: 1 },
   trackFill: { height: '100%', borderRadius: 2 },
 
   linePress: { width: '100%' },
