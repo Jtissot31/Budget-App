@@ -172,6 +172,8 @@ type ListRowProps = {
   /** Right column, primary line (money uses transaction-row amount face). */
   value?: string;
   valueColor?: string;
+  /** Quieter value (15 px semibold) for balance lists where the amount shouldn't dominate. */
+  compactValue?: boolean;
   /** Right column, small muted second line. */
   valueSub?: string;
   valueSubColor?: string;
@@ -193,6 +195,7 @@ export function ListRow({
   leading,
   value,
   valueColor,
+  compactValue = false,
   valueSub,
   valueSubColor,
   progress,
@@ -237,7 +240,9 @@ export function ListRow({
                   align="right"
                   minScale={0.8}
                   style={[
-                    transactionRowAmountTypography({ fontSize: 16.5, lineHeight: 22 }),
+                    compactValue
+                      ? [jakartaSemiboldText, { fontSize: 15, lineHeight: 20 }]
+                      : transactionRowAmountTypography({ fontSize: 16.5, lineHeight: 22 }),
                     { color: valueColor ?? colors.text, letterSpacing: -0.3 },
                   ]}
                 >

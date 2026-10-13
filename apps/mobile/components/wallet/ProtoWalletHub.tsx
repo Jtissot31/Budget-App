@@ -47,8 +47,8 @@ import {
   FLOATING_NAV_CONTENT_PADDING,
   PAGE_PADDING_HORIZONTAL,
   spacing,
+  jakartaSemiboldText,
   subtleDeleteButtonStyle,
-  transactionRowAmountTypography,
   typographyKit,
 } from '@/constants/theme';
 import { getEnvelopesByAccount, type AccountEnvelope } from '@/lib/accountEnvelopes';
@@ -426,6 +426,7 @@ export function ProtoWalletHub() {
         }
         value={money(account.balance)}
         valueColor={account.balance < 0 && !hideBalances ? colors.danger : colors.text}
+        compactValue
         trailing={
           managingAccounts && listedAccounts.length > 1 ? (
             <View style={styles.dragHandle}>
@@ -436,7 +437,8 @@ export function ProtoWalletHub() {
             <View style={styles.envelopeTrailing}>
               <Text
                 style={[
-                  transactionRowAmountTypography({ fontSize: 16.5, lineHeight: 22 }),
+                  jakartaSemiboldText,
+                  { fontSize: 15, lineHeight: 20 },
                   { color: account.balance < 0 && !hideBalances ? colors.danger : colors.text, letterSpacing: -0.3 },
                 ]}
                 numberOfLines={1}
