@@ -18,6 +18,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { LiquidGlass } from '@/components/kit/LiquidGlass';
 import { usePressScale } from '@/components/kit/motion';
 import { TRANSACTIONS_FAB_SIZE, transactionsSolidFabStyle } from '@/constants/fabStyles';
 import { jakartaSemiboldText } from '@/constants/theme';
@@ -179,8 +180,10 @@ function ActionBubble({
 
   return (
     <Animated.View style={[styles.actionRow, animated]}>
-      <Animated.View style={[styles.label, { backgroundColor: labelBackground }, labelAnimated]}>
-        <Text style={[styles.labelText, { color: labelColor }]}>{action.label}</Text>
+      <Animated.View style={labelAnimated}>
+        <LiquidGlass radius={16} style={styles.label}>
+          <Text style={[styles.labelText, { color: labelColor }]}>{action.label}</Text>
+        </LiquidGlass>
       </Animated.View>
       <Pressable
         accessibilityRole="button"
@@ -190,10 +193,10 @@ function ActionBubble({
         onPressOut={press.onPressOut}
         hitSlop={6}
       >
-        <Animated.View
-          style={[styles.action, { backgroundColor: bubbleBackground, borderColor: bubbleBorder }, press.animatedStyle]}
-        >
-          <AppIcon family="ionicons" name={action.icon} size={22} color={labelColor} />
+        <Animated.View style={press.animatedStyle}>
+          <LiquidGlass radius={ACTION_SIZE / 2} style={styles.action}>
+            <AppIcon family="ionicons" name={action.icon} size={22} color={labelColor} />
+          </LiquidGlass>
         </Animated.View>
       </Pressable>
     </Animated.View>
@@ -217,14 +220,7 @@ const styles = StyleSheet.create({
   action: {
     width: ACTION_SIZE,
     height: ACTION_SIZE,
-    borderRadius: ACTION_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
   },
 });

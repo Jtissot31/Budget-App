@@ -6,11 +6,11 @@ import { useAppTheme } from '@/lib/themeContext';
 
 export type TransferMode = 'accounts' | 'person' | 'person_from';
 
-/** Sending to someone is the most common transfer, so it leads (and is the form default). */
+/** Short, equal-weight labels so all three segments get the same room. */
 const TRANSFER_MODE_TABS: { id: TransferMode; label: string; icon: 'arrow-up' | 'arrow-down' | 'swap-horizontal' }[] = [
+  { id: 'accounts', label: 'Interne', icon: 'swap-horizontal' },
   { id: 'person', label: 'Envoyer', icon: 'arrow-up' },
   { id: 'person_from', label: 'Recevoir', icon: 'arrow-down' },
-  { id: 'accounts', label: 'Mes comptes', icon: 'swap-horizontal' },
 ];
 
 const CAPTIONS: Record<TransferMode, string> = {
