@@ -590,7 +590,7 @@ export function ProtoWalletHub() {
                       Liquidités <Text style={{ color: colors.accentGreen }}>{formatCompactCurrency(liquidCash)}</Text>
                     </Text>
                     <Text style={[styles.balanceLabel, { color: colors.textMuted }]}>
-                      Dettes de carte <Text style={{ color: colors.danger }}>{formatCompactCurrency(creditUsed)}</Text>
+                      Dettes <Text style={{ color: colors.danger }}>{formatCompactCurrency(creditUsed)}</Text>
                     </Text>
                   </View>
                   <View style={styles.balanceBar}>
