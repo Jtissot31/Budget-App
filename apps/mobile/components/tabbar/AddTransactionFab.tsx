@@ -26,10 +26,11 @@ import { useAppTheme } from '@/lib/themeContext';
 
 type TxType = 'expense' | 'income' | 'transfer';
 
-const ACTIONS: { type: TxType; label: string; icon: string; color: string }[] = [
-  { type: 'transfer', label: 'Transfert', icon: 'swap-horizontal', color: '#3B82F6' },
-  { type: 'income', label: 'Revenu', icon: 'arrow-down', color: '#22C55E' },
-  { type: 'expense', label: 'Dépense', icon: 'arrow-up', color: '#EF4444' },
+/** Monochrome bubbles (card surface + text-colour glyph) — the green « + » stays the only accent. */
+const ACTIONS: { type: TxType; label: string; icon: string }[] = [
+  { type: 'transfer', label: 'Transfert', icon: 'swap-horizontal' },
+  { type: 'income', label: 'Revenu', icon: 'arrow-down' },
+  { type: 'expense', label: 'Dépense', icon: 'arrow-up' },
 ];
 
 const ACTION_SIZE = 50;
@@ -109,7 +110,9 @@ export function AddTransactionFab({ style, bottomOffset, rightOffset }: Props) {
               order={ACTIONS.length - 1 - index}
               progress={progress}
               labelColor={colors.text}
-              labelBackground={colors.surface}
+              labelBackground={isLight ? '#FFFFFF' : colors.surface}
+              bubbleBackground={isLight ? '#FFFFFF' : colors.surface}
+              bubbleBorder={colors.containerBorder}
               onPress={() => choose(action.type)}
             />
           ))}
@@ -136,6 +139,8 @@ function ActionBubble({
   progress,
   labelColor,
   labelBackground,
+  bubbleBackground,
+  bubbleBorder,
   onPress,
 }: {
   action: (typeof ACTIONS)[number];
@@ -143,6 +148,8 @@ function ActionBubble({
   progress: SharedValue<number>;
   labelColor: string;
   labelBackground: string;
+  bubbleBackground: string;
+  bubbleBorder: string;
   onPress: () => void;
 }) {
   const press = usePressScale(0.9);
@@ -183,8 +190,10 @@ function ActionBubble({
         onPressOut={press.onPressOut}
         hitSlop={6}
       >
-        <Animated.View style={[styles.action, { backgroundColor: action.color, shadowColor: action.color }, press.animatedStyle]}>
-          <AppIcon family="ionicons" name={action.icon} size={22} color="#FFFFFF" />
+        <Animated.View
+          style={[styles.action, { backgroundColor: bubbleBackground, borderColor: bubbleBorder }, press.animatedStyle]}
+        >
+          <AppIcon family="ionicons" name={action.icon} size={22} color={labelColor} />
         </Animated.View>
       </Pressable>
     </Animated.View>
@@ -211,8 +220,10 @@ const styles = StyleSheet.create({
     borderRadius: ACTION_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 8,
   },
