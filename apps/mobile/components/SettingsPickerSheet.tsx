@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import {
@@ -11,20 +11,13 @@ import { FormSheetModalBody, formSheetScrollViewStyle, useFormSheetHeight } from
 import { RemoteLogoImage } from '@/components/IconFrame';
 import { accentForKey } from '@/components/kit/charts';
 import { PressScale, Reveal } from '@/components/kit/motion';
-import { ProtoSearchField } from '@/components/proto/ProtoSearchToolbar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  jakartaBoldText,
-  jakartaMediumText,
-  jakartaSemiboldText,
-  spacing,
-  typography,
-} from '@/constants/theme';
+import { jakartaBoldText, jakartaMediumText, jakartaSemiboldText, spacing, typography } from '@/constants/theme';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
 /** Leading logo / glyph tile — must match `RemoteLogoImage` size for centered contain. */
-export const PICKER_LEADING_TILE_SIZE = 40;
+export const PICKER_LEADING_TILE_SIZE = 32;
 /** Closed `SettingsSelectField` trigger — matches budget category well. */
 export const FIELD_LEADING_TILE_SIZE = 32;
 /** Compact picker tiles need a larger logo fill than the default 68% well inset. */
@@ -33,7 +26,7 @@ const PICKER_LOGO_INSET_RATIO = 0.9;
 const PICKER_CARD_NETWORK_LOGO_INSET_RATIO = 0.96;
 /** Show the search field once a list is long enough that scanning gets slow. */
 const SEARCH_THRESHOLD = 8;
-/** Let the selection state register visually before the sheet slides away. */
+/** Let the check register visually before the sheet slides away. */
 const CLOSE_AFTER_SELECT_MS = 140;
 
 const CARD_NETWORK_LOGO_URI_RE = /visa|mastercard|amex|americanexpress|discover/i;
@@ -103,13 +96,12 @@ export function PickerLeadingTile({
   wellBackground: string;
   /** @deprecated Wells are borderless now; kept so existing callers still type-check. */
   defaultBorder?: string;
-  /** Tile edge length — sheet rows use 40, closed field uses 32. */
   size?: number;
 }) {
   const uri = logoUrl?.trim() || null;
   const [logoFailed, setLogoFailed] = useState(false);
   const [assetFailed, setAssetFailed] = useState(false);
-  const glyphSize = Math.round(size * 0.48);
+  const glyphSize = Math.round(size * 0.55);
 
   useEffect(() => {
     setLogoFailed(false);
@@ -156,11 +148,10 @@ export function PickerLeadingTile({
 }
 
 /**
- * Bottom-sheet picker.
- * - Category options (all carry `budgetCategoryIcon`) → colour-coded icon grid,
- *   with the « Suggestion » option pinned as a one-tap shortcut.
- * - Everything else (accounts, settings) → one grouped list with a check on the selection.
- * Long lists get an accent-insensitive search field.
+ * Minimal bottom-sheet picker: plain rows on the sheet (no cards, borders or dividers),
+ * a small leading glyph or logo, and a single check on the selection.
+ * Categories get their accent colour on the glyph and the « Suggestion » pinned on top;
+ * long lists get a quiet, accent-insensitive search pill.
  */
 export function SettingsPickerSheet<T extends string>({
   visible,
@@ -190,7 +181,7 @@ export function SettingsPickerSheet<T extends string>({
     [],
   );
 
-  const isCategoryGrid = options.length > 0 && options.every((option) => option.budgetCategoryIcon);
+  const isCategoryList = options.length > 0 && options.every((option) => option.budgetCategoryIcon);
   const showSearch = options.length > SEARCH_THRESHOLD;
   const activeId = pendingId ?? selectedId;
 
@@ -203,12 +194,9 @@ export function SettingsPickerSheet<T extends string>({
     );
   }, [options, query]);
 
-  // Category suggestion (flagged by BudgetCategoryPicker) is pinned above the grid when not searching.
-  const suggestion = isCategoryGrid && !query ? (filtered.find((o) => o.description === 'Suggestion') ?? null) : null;
-  const gridOptions = suggestion ? filtered.filter((o) => o.id !== suggestion.id) : filtered;
-
-  const backdropColor = isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)';
-  const groupSurface = { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder };
+  // Category suggestion (flagged by BudgetCategoryPicker) is pinned on top when not searching.
+  const suggestion = isCategoryList && !query ? (filtered.find((o) => o.description === 'Suggestion') ?? null) : null;
+  const rest = suggestion ? filtered.filter((o) => o.id !== suggestion.id) : filtered;
 
   const handleSelect = (id: T) => {
     if (pendingId) return;
@@ -218,190 +206,128 @@ export function SettingsPickerSheet<T extends string>({
     closeTimer.current = setTimeout(onClose, CLOSE_AFTER_SELECT_MS);
   };
 
+  const renderRow = (option: SettingsPickerOption<T>) => {
+    const selected = option.id === activeId;
+    // Category hint text is redundant once it has its own « Suggestion » header.
+    const description = isCategoryList ? undefined : option.description;
+    return (
+      <PressScale
+        key={option.id}
+        accessibilityRole="button"
+        accessibilityState={{ selected }}
+        accessibilityLabel={description ? `${option.label}, ${description}` : option.label}
+        onPress={() => handleSelect(option.id)}
+        scaleTo={0.98}
+        style={styles.row}
+      >
+        <View style={styles.leading}>
+          {option.budgetCategoryIcon ? (
+            <BudgetCategoryIcon
+              icon={option.budgetCategoryIcon.icon}
+              name={option.budgetCategoryIcon.name ?? option.label}
+              id={option.id}
+              tint={accentForKey(option.id)}
+              bare
+              wellSize={PICKER_LEADING_TILE_SIZE}
+              glyphSize={20}
+            />
+          ) : (
+            <PickerLeadingTile
+              icon={option.icon}
+              logoUrl={option.logoUrl}
+              logoAsset={option.logoAsset}
+              label={option.label}
+              iconColor={colors.textSecondary}
+              wellBackground="transparent"
+            />
+          )}
+        </View>
+        <View style={styles.rowCopy}>
+          <Text
+            style={[selected ? styles.rowLabelSelected : styles.rowLabel, { color: colors.text }]}
+            numberOfLines={1}
+          >
+            {option.label}
+          </Text>
+          {description ? (
+            <Text style={[styles.rowDescription, { color: colors.textMuted }]} numberOfLines={1}>
+              {description}
+            </Text>
+          ) : null}
+        </View>
+        <View style={styles.mark}>
+          {selected ? <AppIcon family="ionicons" name="checkmark" size={20} color={colors.text} /> : null}
+        </View>
+      </PressScale>
+    );
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={[styles.backdrop, { backgroundColor: backdropColor }]}>
+        <View style={[styles.backdrop, { backgroundColor: isLight ? 'rgba(25, 22, 18, 0.30)' : 'rgba(0, 0, 0, 0.62)' }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Fermer" />
           <FormSheetModalBody>
             <DraggableSheetSurface
               onClose={onClose}
               sheetHeight={sheetHeight}
-              style={[styles.sheet, { backgroundColor: colors.background, borderColor: colors.containerBorder }]}
+              style={[styles.sheet, { backgroundColor: colors.background }]}
             >
               <View style={[styles.handle, { backgroundColor: colors.borderStrong }]} />
               <View style={styles.header}>
                 <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
-                <PressScale
-                  accessibilityRole="button"
-                  accessibilityLabel="Fermer"
-                  onPress={onClose}
-                  hitSlop={12}
-                  scaleTo={0.88}
-                  style={[styles.closeButton, { backgroundColor: colors.surfaceElevated }]}
-                >
-                  <AppIcon family="ionicons" name="close" size={18} color={colors.text} />
-                </PressScale>
+                <Pressable accessibilityRole="button" accessibilityLabel="Fermer" onPress={onClose} hitSlop={14}>
+                  <AppIcon family="ionicons" name="close" size={22} color={colors.textMuted} />
+                </Pressable>
               </View>
 
               {showSearch ? (
-                <View style={styles.search}>
-                  <ProtoSearchField
+                <View style={[styles.search, { backgroundColor: colors.surfaceElevated }]}>
+                  <AppIcon family="ionicons" name="search" size={16} color={colors.textMuted} />
+                  <TextInput
                     value={query}
                     onChangeText={setQuery}
                     placeholder="Rechercher"
+                    placeholderTextColor={colors.textMuted}
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    returnKeyType="search"
                     accessibilityLabel={`Rechercher dans ${title.toLowerCase()}`}
+                    style={[styles.searchInput, { color: colors.text }]}
                   />
+                  {query ? (
+                    <Pressable accessibilityLabel="Effacer" hitSlop={10} onPress={() => setQuery('')}>
+                      <AppIcon family="ionicons" name="close-circle" size={16} color={colors.textMuted} />
+                    </Pressable>
+                  ) : null}
                 </View>
               ) : null}
 
               <DraggableSheetScrollView
                 style={[styles.list, formSheetScrollViewStyle()]}
                 keyboardShouldPersistTaps="handled"
-                contentContainerStyle={[
-                  styles.listContent,
-                  { paddingBottom: Math.max(insets.bottom, spacing.md) + 48 },
-                ]}
+                contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, spacing.md) + 40 }}
               >
-                {filtered.length === 0 ? (
-                  <Text style={[styles.empty, { color: colors.textMuted }]}>Aucun résultat pour « {query.trim()} »</Text>
-                ) : isCategoryGrid ? (
-                  <>
-                    {suggestion ? (
-                      <Reveal index={0}>
-                        <Text style={[styles.groupLabel, { color: colors.textMuted }]}>Suggestion</Text>
-                        <PressScale
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: suggestion.id === activeId }}
-                          accessibilityLabel={`${suggestion.label}, suggestion`}
-                          onPress={() => handleSelect(suggestion.id)}
-                          scaleTo={0.97}
-                          style={[
-                            styles.suggestion,
-                            groupSurface,
-                            suggestion.id === activeId && { borderColor: accentForKey(suggestion.id) },
-                          ]}
-                        >
-                          <BudgetCategoryIcon
-                            icon={suggestion.budgetCategoryIcon?.icon}
-                            name={suggestion.budgetCategoryIcon?.name ?? suggestion.label}
-                            id={suggestion.id}
-                            tint={accentForKey(suggestion.id)}
-                            wellSize={40}
-                            glyphSize={19}
-                          />
-                          <View style={styles.rowCopy}>
-                            <Text style={[styles.rowLabel, { color: colors.text }]} numberOfLines={1}>
-                              {suggestion.label}
-                            </Text>
-                            <Text style={[styles.rowDescription, { color: colors.textMuted }]} numberOfLines={1}>
-                              Suggérée pour cette transaction
-                            </Text>
-                          </View>
-                          <SelectionMark selected={suggestion.id === activeId} color={colors.accentGreen} />
-                        </PressScale>
-                        <Text style={[styles.groupLabel, styles.groupLabelSpaced, { color: colors.textMuted }]}>
-                          Toutes les catégories
-                        </Text>
-                      </Reveal>
-                    ) : null}
-
-                    <View style={styles.grid}>
-                      {gridOptions.map((option, index) => {
-                        const selected = option.id === activeId;
-                        const accent = accentForKey(option.id);
-                        return (
-                          <Reveal key={option.id} index={index + 1} style={styles.gridCell}>
-                            <PressScale
-                              accessibilityRole="button"
-                              accessibilityState={{ selected }}
-                              accessibilityLabel={option.label}
-                              onPress={() => handleSelect(option.id)}
-                              scaleTo={0.94}
-                              style={[
-                                styles.tile,
-                                groupSurface,
-                                selected && { borderColor: accent, backgroundColor: `${accent}1F` },
-                              ]}
-                            >
-                              <BudgetCategoryIcon
-                                icon={option.budgetCategoryIcon?.icon}
-                                name={option.budgetCategoryIcon?.name ?? option.label}
-                                id={option.id}
-                                tint={accent}
-                                wellSize={44}
-                                glyphSize={21}
-                              />
-                              <Text style={[styles.tileLabel, { color: colors.text }]} numberOfLines={2}>
-                                {option.label}
-                              </Text>
-                              {selected ? (
-                                <View style={[styles.tileCheck, { backgroundColor: accent }]}>
-                                  <AppIcon family="ionicons" name="checkmark" size={12} color="#FFFFFF" />
-                                </View>
-                              ) : null}
-                            </PressScale>
-                          </Reveal>
-                        );
-                      })}
-                    </View>
-                  </>
-                ) : (
-                  <Reveal style={[styles.group, groupSurface]}>
-                    {filtered.map((option, index) => {
-                      const selected = option.id === activeId;
-                      const isLast = index === filtered.length - 1;
-                      return (
-                        <PressScale
-                          key={option.id}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected }}
-                          accessibilityLabel={option.description ? `${option.label}, ${option.description}` : option.label}
-                          onPress={() => handleSelect(option.id)}
-                          scaleTo={0.98}
-                          style={[styles.row, selected && { backgroundColor: colors.surfaceElevated }]}
-                        >
-                          {option.budgetCategoryIcon ? (
-                            <BudgetCategoryIcon
-                              icon={option.budgetCategoryIcon.icon}
-                              name={option.budgetCategoryIcon.name ?? option.label}
-                              id={option.id}
-                              tint={accentForKey(option.id)}
-                              wellSize={PICKER_LEADING_TILE_SIZE}
-                              glyphSize={19}
-                            />
-                          ) : (
-                            <PickerLeadingTile
-                              icon={option.icon}
-                              logoUrl={option.logoUrl}
-                              logoAsset={option.logoAsset}
-                              label={option.label}
-                              iconColor={colors.text}
-                              wellBackground={colors.surfaceElevated}
-                            />
-                          )}
-                          <View style={styles.rowCopy}>
-                            <Text style={[styles.rowLabel, { color: colors.text }]} numberOfLines={1}>
-                              {option.label}
-                            </Text>
-                            {option.description ? (
-                              <Text style={[styles.rowDescription, { color: colors.textMuted }]} numberOfLines={1}>
-                                {option.description}
-                              </Text>
-                            ) : null}
-                          </View>
-                          <SelectionMark selected={selected} color={colors.accentGreen} />
-                          {!isLast ? (
-                            <View
-                              pointerEvents="none"
-                              style={[styles.divider, { backgroundColor: colors.borderSubtle }]}
-                            />
-                          ) : null}
-                        </PressScale>
-                      );
-                    })}
-                  </Reveal>
-                )}
+                <Reveal>
+                  {filtered.length === 0 ? (
+                    <Text style={[styles.empty, { color: colors.textMuted }]}>
+                      Aucun résultat pour « {query.trim()} »
+                    </Text>
+                  ) : (
+                    <>
+                      {suggestion ? (
+                        <>
+                          <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>Suggestion</Text>
+                          {renderRow(suggestion)}
+                          <Text style={[styles.sectionLabel, styles.sectionLabelSpaced, { color: colors.textMuted }]}>
+                            Toutes les catégories
+                          </Text>
+                        </>
+                      ) : null}
+                      {rest.map(renderRow)}
+                    </>
+                  )}
+                </Reveal>
               </DraggableSheetScrollView>
             </DraggableSheetSurface>
           </FormSheetModalBody>
@@ -411,104 +337,55 @@ export function SettingsPickerSheet<T extends string>({
   );
 }
 
-/** Check for the selected row; an equal-width spacer otherwise so labels never shift. */
-function SelectionMark({ selected, color }: { selected: boolean; color: string }) {
-  return (
-    <View style={styles.mark}>
-      {selected ? <AppIcon family="ionicons" name="checkmark-circle" size={22} color={color} /> : null}
-    </View>
-  );
-}
-
-const ROW_PAD_H = 14;
+const PAD_H = spacing.lg;
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: 1 },
-  handle: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
-  },
+  sheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28 },
+  handle: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, marginTop: spacing.sm, marginBottom: spacing.md },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: PAD_H,
     paddingBottom: spacing.md,
     gap: spacing.md,
   },
-  title: { ...jakartaBoldText, fontSize: 22, letterSpacing: -0.3, flexShrink: 1 },
-  closeButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  search: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
-  list: { flex: 1, minHeight: 0 },
-  listContent: { paddingHorizontal: spacing.lg, paddingTop: 2 },
-  empty: { ...jakartaMediumText, fontSize: typography.meta, textAlign: 'center', paddingVertical: spacing.xl },
-  groupLabel: { ...jakartaSemiboldText, fontSize: 12, letterSpacing: 0.2, marginBottom: spacing.sm, marginLeft: 2 },
-  groupLabelSpaced: { marginTop: spacing.lg },
-
-  /* Category grid */
-  suggestion: {
+  title: { ...jakartaBoldText, fontSize: 20, letterSpacing: -0.3, flexShrink: 1 },
+  search: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: ROW_PAD_H,
-    paddingVertical: 12,
-    borderRadius: 18,
-    borderWidth: 1,
-  },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
-  gridCell: { width: '33.333%', paddingHorizontal: 5, paddingBottom: 10 },
-  tile: {
-    alignItems: 'center',
     gap: 8,
-    minHeight: 104,
-    paddingTop: 16,
-    paddingBottom: 12,
-    paddingHorizontal: 8,
-    borderRadius: 18,
-    borderWidth: 1,
+    height: 40,
+    marginHorizontal: PAD_H,
+    marginBottom: spacing.sm,
+    paddingHorizontal: 12,
+    borderRadius: 12,
   },
-  tileLabel: { ...jakartaSemiboldText, fontSize: 12.5, lineHeight: 16, textAlign: 'center' },
-  tileCheck: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
+  searchInput: { flex: 1, ...jakartaMediumText, fontSize: typography.body, paddingVertical: 0 },
+  list: { flex: 1, minHeight: 0 },
+  empty: { ...jakartaMediumText, fontSize: typography.meta, textAlign: 'center', paddingVertical: spacing.xl },
+  sectionLabel: {
+    ...jakartaMediumText,
+    fontSize: 12,
+    paddingHorizontal: PAD_H,
+    marginTop: spacing.xs,
+    marginBottom: 2,
   },
-
-  /* Grouped list */
-  group: { borderRadius: 20, borderWidth: 1, overflow: 'hidden' },
+  sectionLabelSpaced: { marginTop: spacing.lg },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    minHeight: 64,
-    paddingHorizontal: ROW_PAD_H,
-    paddingVertical: 12,
+    gap: 14,
+    minHeight: 54,
+    paddingHorizontal: PAD_H,
+    paddingVertical: 10,
   },
-  rowCopy: { flex: 1, minWidth: 0, gap: 2 },
-  rowLabel: { ...jakartaSemiboldText, fontSize: typography.body, flexShrink: 1 },
-  rowDescription: { ...jakartaMediumText, fontSize: typography.micro, lineHeight: typography.micro + 4 },
-  mark: { width: 22, alignItems: 'center' },
-  divider: {
-    position: 'absolute',
-    left: ROW_PAD_H + PICKER_LEADING_TILE_SIZE + 12,
-    right: 0,
-    bottom: 0,
-    height: StyleSheet.hairlineWidth,
-  },
-  iconWell: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    flexShrink: 0,
-  },
+  leading: { width: PICKER_LEADING_TILE_SIZE, alignItems: 'center', justifyContent: 'center' },
+  rowCopy: { flex: 1, minWidth: 0, gap: 1 },
+  rowLabel: { ...jakartaMediumText, fontSize: typography.body },
+  rowLabelSelected: { ...jakartaBoldText, fontSize: typography.body },
+  rowDescription: { ...jakartaMediumText, fontSize: 12.5 },
+  mark: { width: 22, alignItems: 'flex-end' },
+  iconWell: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 },
 });

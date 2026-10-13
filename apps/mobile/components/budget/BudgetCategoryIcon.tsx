@@ -22,6 +22,8 @@ type Props = {
   variant?: 'category' | 'add';
   /** Category colour: glyph in that colour on a soft tinted rounded well. */
   tint?: string | null;
+  /** Glyph only (tinted when `tint` is set) — no background well. */
+  bare?: boolean;
 };
 
 export function BudgetCategoryIcon({
@@ -33,6 +35,7 @@ export function BudgetCategoryIcon({
   style,
   variant = 'category',
   tint,
+  bare = false,
 }: Props) {
   const { isLight } = useAppTheme();
   const glyphColor = tint ?? (isLight ? 'rgba(17,17,17,0.82)' : BUDGET_CATEGORY_ICON_GLYPH_COLOR);
@@ -58,7 +61,7 @@ export function BudgetCategoryIcon({
           width: wellSize,
           height: wellSize,
         },
-        tint ? { backgroundColor: tintBackground(tint), borderRadius: Math.round(wellSize * 0.3) } : null,
+        tint && !bare ? { backgroundColor: tintBackground(tint), borderRadius: Math.round(wellSize * 0.3) } : null,
         style,
       ]}
     >

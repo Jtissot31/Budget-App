@@ -23,7 +23,7 @@ import { useAppTheme } from '@/lib/themeContext';
 
 /** Compact leading glyph in the closed field — same size for every category. */
 const FIELD_CATEGORY_ICON_WELL = FIELD_LEADING_TILE_SIZE;
-const FIELD_CATEGORY_ICON_GLYPH = 16;
+const FIELD_CATEGORY_ICON_GLYPH = 19;
 
 type Props = {
   label: string;
@@ -98,6 +98,7 @@ export function SettingsSelectField({
                 name={selectedBudgetIcon.name ?? selectedLabel}
                 id={selectedOption?.id}
                 tint={selectedOption ? accentForKey(selectedOption.id) : null}
+                bare
                 wellSize={FIELD_CATEGORY_ICON_WELL}
                 glyphSize={FIELD_CATEGORY_ICON_GLYPH}
               />
@@ -107,14 +108,10 @@ export function SettingsSelectField({
                 logoUrl={selectedLogoUrl}
                 logoAsset={selectedLogoAsset}
                 label={selectedLabel}
-                iconColor={colors.text}
-                wellBackground={colors.surfaceElevated}
+                iconColor={colors.textSecondary}
+                wellBackground="transparent"
                 size={FIELD_LEADING_TILE_SIZE}
               />
-            ) : !selectedOption ? (
-              <View style={[styles.placeholderWell, { backgroundColor: colors.surfaceElevated }]}>
-                <AppIcon family="ionicons" name="add" size={16} color={colors.textMuted} />
-              </View>
             ) : null}
             <Text
               style={[
@@ -127,7 +124,7 @@ export function SettingsSelectField({
               {selectedLabel || placeholder}
             </Text>
           </View>
-          <AppIcon family="ionicons" name="chevron-expand" size={16} color={colors.textMuted} />
+          <AppIcon family="ionicons" name="chevron-down" size={16} color={colors.textMuted} />
         </PressScale>
       )}
 
@@ -155,7 +152,7 @@ const styles = StyleSheet.create({
   inputButton: {
     minHeight: 56,
     borderRadius: 16,
-    paddingLeft: spacing.sm + 4,
+    paddingLeft: spacing.md,
     paddingRight: spacing.md,
     paddingVertical: spacing.sm + 2,
     flexDirection: 'row',
@@ -169,13 +166,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm + 4,
-  },
-  placeholderWell: {
-    width: FIELD_LEADING_TILE_SIZE,
-    height: FIELD_LEADING_TILE_SIZE,
-    borderRadius: Math.round(FIELD_LEADING_TILE_SIZE * 0.3),
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   inputText: {
     flex: 1,
