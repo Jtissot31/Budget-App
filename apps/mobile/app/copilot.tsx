@@ -25,6 +25,18 @@ import {
   spacing,
 } from '@/constants/theme';
 import { copilotHealthScore, type CopilotInsight } from '@/lib/copilotInsights';
+import { getCategoryBudgets, getDashboard, getRecurringPayments, getSavingsGoals } from '@/lib/db';
+import { dataEvents } from '@/lib/events';
+import { formatNumberInputFromValue } from '@/lib/formatNumber';
+import { isFormSaveSuccess, type FormFeedback } from '@/lib/formFeedback';
+import { suggestNextGoal } from '@/lib/goalSuggestion';
+import {
+  createNewGoalFormFromSuggestion,
+  SavingsGoalFormModal,
+  saveSavingsGoalForm,
+  type GoalForm,
+} from '@/components/SavingsGoalsForm';
+import type { CategoryBudget, DashboardSummary, RecurringPayment, SavingsGoal } from '@/types';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
@@ -54,7 +66,7 @@ function scoreCopy(score: number): { label: string; body: string } {
 export default function CopilotScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { colors } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
   const data = useCopilotData();
   const insights = data?.insights ?? null;
   const input = data?.input ?? null;
@@ -98,6 +110,63 @@ export default function CopilotScreen() {
       ),
     [insights],
   );
+
+  const suggestion = useMemo(
+    () =>
+      input
+        ? suggestNextGoal({
+            monthlyIncome: input.monthlyIncome,
+            monthlyExpenses: input.monthlyExpenses,
+            subscriptionsMonthly: input.subscriptionsMonthly,
+            goals: input.goals,
+          })
+        : null,
+    [input],
+  );
+
+  // Goal form (same sheet as Accueil / Wallet), prefilled from the suggestion.
+  const [goalForm, setGoalForm] = useState<GoalForm | null>(null);
+  const [goalDeps, setGoalDeps] = useState<{
+    goals: SavingsGoal[];
+    dashboard: DashboardSummary | null;
+    categoryBudgets: CategoryBudget[];
+    recurringPayments: RecurringPayment[];
+  } | null>(null);
+  const [savingGoal, setSavingGoal] = useState(false);
+  const [goalFeedback, setGoalFeedback] = useState<FormFeedback | null>(null);
+
+  const openSuggestedGoal = async () => {
+    if (!suggestion) return;
+    tapHaptic();
+    const [goals, dashboard, categoryBudgets, recurringPayments] = await Promise.all([
+      getSavingsGoals(),
+      getDashboard(),
+      getCategoryBudgets(),
+      getRecurringPayments(),
+    ]);
+    setGoalDeps({ goals, dashboard, categoryBudgets, recurringPayments });
+    setGoalFeedback(null);
+    setGoalForm({
+      ...createNewGoalFormFromSuggestion({ name: suggestion.name, icon: suggestion.icon }),
+      targetAmount: formatNumberInputFromValue(suggestion.targetAmount),
+    });
+  };
+
+  const saveGoal = async () => {
+    if (!goalForm) return;
+    setSavingGoal(true);
+    try {
+      const result = await saveSavingsGoalForm(goalForm, isLight);
+      if (isFormSaveSuccess(result)) {
+        setGoalForm(null);
+        dataEvents.emit();
+        return;
+      }
+      setGoalFeedback(result);
+    } finally {
+      setSavingGoal(false);
+    }
+  };
 
   const go = (href: Parameters<typeof router.push>[0]) => {
     tapHaptic();
@@ -214,10 +283,40 @@ export default function CopilotScreen() {
             </View>
           ) : null}
 
-          {/* 3. Goals — same GoalTile as Accueil / Wallet */}
-          {stats && stats.goals.length > 0 ? (
+          {/* 3. Goals — same GoalTile as Accueil / Wallet, plus the Copilote's next-goal suggestion */}
+          {stats && (stats.goals.length > 0 || suggestion) ? (
             <Reveal index={5} style={styles.section}>
               <SectionLabel title="Objectifs" actionLabel="Tout voir" onAction={() => router.navigate('/accounts')} />
+              {suggestion ? (
+                <View style={[styles.suggestion, tileSurface]}>
+                  <View style={styles.suggestionTag}>
+                    <AppIcon family="ionicons" name="sparkles" size={12} color={colors.accentGreen} />
+                    <Text style={[styles.suggestionTagText, { color: colors.accentGreen }]}>Suggestion du Copilote</Text>
+                  </View>
+                  <View style={styles.suggestionHead}>
+                    <UserPickedIconWell icon={suggestion.icon} size={36} />
+                    <View style={styles.suggestionCopy}>
+                      <Text style={[styles.suggestionName, { color: colors.text }]} numberOfLines={1}>
+                        {suggestion.name}
+                      </Text>
+                      <Text style={[styles.suggestionMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                        {money(suggestion.targetAmount)} · {money(suggestion.monthly)} / mois · {suggestion.months} mois
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.suggestionReason, { color: colors.textSecondary }]}>{suggestion.reason}</Text>
+                  <PressScale
+                    accessibilityRole="button"
+                    accessibilityLabel={`Créer l’objectif ${suggestion.name}`}
+                    onPress={() => void openSuggestedGoal()}
+                    scaleTo={0.97}
+                    style={[styles.suggestionButton, { backgroundColor: colors.text }]}
+                  >
+                    <AppIcon family="ionicons" name="add" size={16} color={colors.background} />
+                    <Text style={[styles.suggestionButtonText, { color: colors.background }]}>Créer cet objectif</Text>
+                  </PressScale>
+                </View>
+              ) : null}
               <View style={styles.goalGrid}>
                 {stats.goals.map((goal) => (
                   <View key={goal.id} style={styles.goalCell}>
@@ -256,6 +355,21 @@ export default function CopilotScreen() {
             </Reveal>
           ))}
         </ScrollView>
+
+        {goalDeps ? (
+          <SavingsGoalFormModal
+            form={goalForm}
+            setForm={setGoalForm}
+            goals={goalDeps.goals}
+            dashboard={goalDeps.dashboard}
+            categoryBudgets={goalDeps.categoryBudgets}
+            recurringPayments={goalDeps.recurringPayments}
+            saving={savingGoal}
+            onDismiss={() => setGoalForm(null)}
+            onSave={() => void saveGoal()}
+            feedback={goalFeedback}
+          />
+        ) : null}
       </View>
     </PageTransition>
   );
@@ -319,6 +433,23 @@ const styles = StyleSheet.create({
   ringText: { ...jakartaBoldText, fontSize: 12, letterSpacing: -0.3 },
   ringCaption: { marginTop: 2 },
 
+  suggestion: { borderRadius: 20, borderWidth: 1, padding: 14, gap: 10, marginBottom: 10 },
+  suggestionTag: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  suggestionTagText: { ...jakartaSemiboldText, fontSize: 12 },
+  suggestionHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  suggestionCopy: { flex: 1, minWidth: 0, gap: 2 },
+  suggestionName: { ...jakartaSemiboldText, fontSize: 15 },
+  suggestionMeta: { ...jakartaMediumText, fontSize: 12.5 },
+  suggestionReason: { ...jakartaMediumText, fontSize: 13, lineHeight: 18 },
+  suggestionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 40,
+    borderRadius: 20,
+  },
+  suggestionButtonText: { ...jakartaSemiboldText, fontSize: 13.5 },
   goalGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
   goalCell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10 },
 
