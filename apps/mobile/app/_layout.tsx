@@ -152,7 +152,10 @@ function RootLayoutContent() {
               // iOS interactive pop (full-width). Android uses SwipeBackHost.
               gestureEnabled: true,
               fullScreenGestureEnabled: true,
-              contentStyle: { backgroundColor: 'transparent' },
+              // Opaque from the first frame: a transparent scene let the screen below
+              // (often the last tab, e.g. Wallet) flash through while a detail page opened.
+              // Sheets/modals keep their own transparent contentStyle.
+              contentStyle: { backgroundColor: colors.background },
             }}
           >
             <Stack.Screen
@@ -208,6 +211,26 @@ function RootLayoutContent() {
             <Stack.Screen name="patrimoine" options={{ headerShown: false }} />
             <Stack.Screen name="plans" options={{ headerShown: false }} />
             <Stack.Screen name="scan" options={{ headerShown: false, presentation: 'modal' }} />
+            <Stack.Screen
+              name="budget-category"
+              options={{
+                headerShown: false,
+                presentation: 'transparentModal',
+                // The sheet animates itself — no scene transition, nothing flashes behind it.
+                animation: 'none',
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
+            <Stack.Screen
+              name="payment-detail"
+              options={{
+                headerShown: false,
+                presentation: 'transparentModal',
+                // The sheet animates itself — no scene transition, nothing flashes behind it.
+                animation: 'none',
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
             <Stack.Screen name="alert-center" options={{ headerShown: false }} />
             <Stack.Screen name="alert-detail" options={{ headerShown: false }} />
             <Stack.Screen name="alert-types" options={{ headerShown: false }} />

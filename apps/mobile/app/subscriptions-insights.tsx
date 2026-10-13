@@ -7,7 +7,18 @@ import {
   fixedHeaderScrollStyle,
   fixedHeaderScreenStyle,
 } from '@/components/FixedScreenHeader';
-import { EmptyRow, IconWell, ListCard, ListRow, SECTION_GAP, SectionLabel, SummaryCard } from '@/components/kit';
+import {
+  EmptyRow,
+  IconWell,
+  ListCard,
+  ListRow,
+  SECTION_GAP,
+  SectionLabel,
+  SplitBar,
+  SUBTLE_ACCENTS,
+  SummaryCard,
+  type SplitSegment,
+} from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
 import {
   PaymentDetailSheet,
@@ -91,6 +102,28 @@ export default function SubscriptionsInsightsScreen() {
     [loanRecurringIds, payments],
   );
 
+  /** Biggest services as a share of the monthly total, the rest grouped. */
+  const shareSegments = useMemo<SplitSegment[]>(() => {
+    const sorted = [...analysis.items].sort((a, b) => b.monthlyEquivalent - a.monthlyEquivalent);
+    const top = sorted.slice(0, 4).map((item, index) => ({
+      key: item.payment.id,
+      label: item.payment.name,
+      value: item.monthlyEquivalent,
+      color: SUBTLE_ACCENTS[index % SUBTLE_ACCENTS.length]!,
+    }));
+    const rest = sorted.slice(4).reduce((sum, item) => sum + item.monthlyEquivalent, 0);
+    return rest > 0 ? [...top, { key: 'rest', label: 'Autres', value: rest, color: colors.borderStrong }] : top;
+  }, [analysis.items, colors.borderStrong]);
+
+  const nextCharge = useMemo(
+    () =>
+      analysis.items
+        .map((item) => item.payment)
+        .filter((payment) => payment.nextDate)
+        .sort((a, b) => (a.nextDate ?? '').localeCompare(b.nextDate ?? ''))[0] ?? null,
+    [analysis.items],
+  );
+
   const openPayment = useCallback(
     (payment: RecurringPayment) => {
       tapHaptic();
@@ -136,17 +169,25 @@ export default function SubscriptionsInsightsScreen() {
         >
           <View style={styles.section}>
             <SummaryCard
-              label="Coût mensuel estimé"
+              label="Par mois"
               amount={formatDisplayMoneyAbsolute(analysis.monthlyTotal)}
+              amountValue={analysis.monthlyTotal}
+              formatAmount={formatDisplayMoneyAbsolute}
+              badge={{ label: `${analysis.count} service${analysis.count > 1 ? 's' : ''}`, color: colors.textMuted }}
               stats={[
-                { label: 'Abonnements', value: String(analysis.count) },
                 { label: 'Par année', value: formatDisplayMoneyAbsolute(analysis.yearlyTotal) },
+                {
+                  label: 'Prochain',
+                  value: nextCharge ? `${nextCharge.name} · ${formatNextDate(nextCharge.nextDate) ?? ''}` : '—',
+                },
               ]}
-            />
+            >
+              {shareSegments.length > 0 ? <SplitBar segments={shareSegments} /> : null}
+            </SummaryCard>
           </View>
 
           <View style={styles.section}>
-            <SectionLabel title="Abonnements" />
+            <SectionLabel title="Du plus cher au moins cher" />
             <ListCard>
               {analysis.items.length === 0 ? (
                 <EmptyRow label="Aucun abonnement détecté — ajoute-en depuis l’Agenda" />

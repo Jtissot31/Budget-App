@@ -407,7 +407,7 @@ export function destructiveTextActionStyle(isLight: boolean): TextStyle {
 }
 
 /**
- * Subtle delete trigger — muted outline or text-link row, danger tint without loud full-width red.
+ * Subtle delete trigger — soft danger-tinted pill, no outline, without loud full-width red.
  * Confirmation stays in ConfirmDeleteModal.
  */
 export function subtleDeleteButtonStyle(
@@ -421,12 +421,10 @@ export function subtleDeleteButtonStyle(
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: isLight ? 'rgba(207, 34, 46, 0.22)' : 'rgba(255, 85, 85, 0.22)',
-    backgroundColor: isLight ? 'rgba(207, 34, 46, 0.05)' : 'rgba(255, 85, 85, 0.07)',
+    height: 44,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 22,
+    backgroundColor: isLight ? 'rgba(207, 34, 46, 0.08)' : 'rgba(255, 85, 85, 0.12)',
   };
 }
 

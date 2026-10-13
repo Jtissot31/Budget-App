@@ -11,7 +11,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { MODIFIER_ICON_NAME, MODIFIER_ICON_SIZE } from '@/components/ModifierButton';
+import { MODIFIER_ICON_NAME } from '@/components/ModifierButton';
 import {
   destructiveTextActionStyle,
   FLOATING_NAV_CONTENT_PADDING,
@@ -66,9 +66,11 @@ export function OverflowMenuButton({
         accessibilityLabel={accessibilityLabel}
         hitSlop={12}
         onPress={open}
-        style={({ pressed }) => [styles.trigger, pressed && styles.pressed, style]}
+        style={({ pressed }) => [pressed && styles.pressed, style]}
       >
-        <AppIcon family="ionicons" name="ellipsis-horizontal" size={20} color={colors.text} />
+        <View style={[styles.trigger, { backgroundColor: colors.surfaceElevated }]}>
+          <AppIcon family="ionicons" name="ellipsis-horizontal" size={18} color={colors.text} />
+        </View>
       </Pressable>
 
       <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
@@ -93,7 +95,7 @@ export function OverflowMenuButton({
               const iconName =
                 item.icon ?? (item.key === 'edit' ? MODIFIER_ICON_NAME : undefined);
               const iconColor = item.destructive
-                ? destructiveTextActionStyle(isLight).color
+                ? String(destructiveTextActionStyle(isLight).color)
                 : colors.text;
 
               return (
@@ -102,31 +104,37 @@ export function OverflowMenuButton({
                   accessibilityRole="button"
                   accessibilityLabel={item.label}
                   onPress={() => onItemPress(item)}
-                  style={({ pressed }) => [
-                    styles.menuRow,
-                    index < items.length - 1 && {
-                      borderBottomColor: colors.border,
-                      borderBottomWidth: StyleSheet.hairlineWidth,
-                    },
-                    pressed && styles.pressed,
-                  ]}
+                  style={({ pressed }) => [pressed && styles.pressed]}
                 >
-                  {iconName ? (
-                    <AppIcon family="ionicons"
-                      name={iconName}
-                      size={item.key === 'edit' ? MODIFIER_ICON_SIZE : 18}
-                      color={iconColor}
-                    />
-                  ) : null}
-                  <Text
+                  <View
                     style={[
-                      styles.menuLabel,
-                      { color: colors.text },
-                      item.destructive && destructiveTextActionStyle(isLight),
+                      styles.menuRow,
+                      index < items.length - 1 && {
+                        borderBottomColor: colors.border,
+                        borderBottomWidth: StyleSheet.hairlineWidth,
+                      },
                     ]}
                   >
-                    {item.label}
-                  </Text>
+                    {iconName ? (
+                      <View
+                        style={[
+                          styles.menuIcon,
+                          { backgroundColor: item.destructive ? colors.dangerMuted : colors.modalAction },
+                        ]}
+                      >
+                        <AppIcon family="ionicons" name={iconName} size={17} color={iconColor} />
+                      </View>
+                    ) : null}
+                    <Text
+                      style={[
+                        styles.menuLabel,
+                        { color: colors.text },
+                        item.destructive && destructiveTextActionStyle(isLight),
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </View>
                 </Pressable>
               );
             })}
@@ -134,13 +142,11 @@ export function OverflowMenuButton({
               accessibilityRole="button"
               accessibilityLabel="Annuler"
               onPress={close}
-              style={({ pressed }) => [
-                styles.cancelRow,
-                { backgroundColor: colors.modalAction },
-                pressed && styles.pressed,
-              ]}
+              style={({ pressed }) => [pressed && styles.pressed]}
             >
-              <Text style={[styles.cancelLabel, { color: colors.textMuted }]}>Annuler</Text>
+              <View style={[styles.cancelRow, { backgroundColor: colors.modalAction }]}>
+                <Text style={[styles.cancelLabel, { color: colors.text }]}>Annuler</Text>
+              </View>
             </Pressable>
           </View>
         </View>
@@ -151,11 +157,13 @@ export function OverflowMenuButton({
 
 const styles = StyleSheet.create({
   trigger: {
-    minWidth: 38,
-    minHeight: 38,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  menuIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
@@ -168,11 +176,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   menuRow: {
-    minHeight: 52,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
     paddingHorizontal: spacing.lg,
   },
   menuLabel: {
@@ -180,11 +187,11 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
   },
   cancelRow: {
-    minHeight: 52,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: spacing.xs,
-    borderRadius: radius.lg,
+    margin: spacing.sm,
+    borderRadius: 24,
   },
   cancelLabel: {
     ...jakartaBoldText,

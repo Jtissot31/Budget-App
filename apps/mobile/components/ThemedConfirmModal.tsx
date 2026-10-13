@@ -114,19 +114,22 @@ export function ThemedConfirmModal({
             accessibilityRole="button"
             accessibilityLabel={confirmLabel}
             onPress={onConfirm}
-            style={({ pressed }) => [
-              styles.confirmBtn,
-              {
-                backgroundColor: confirmButton.backgroundColor,
-                borderColor: confirmButton.borderColor,
-                borderWidth: confirmButton.borderWidth ?? 0,
-              },
-              pressed && styles.pressed,
-            ]}
+            style={({ pressed }) => [styles.confirmHit, pressed && styles.pressed]}
           >
-            <Text style={[styles.confirmText, { color: confirmButton.textColor }]}>
-              {confirmLabel}
-            </Text>
+            <View
+              style={[
+                styles.confirmBtn,
+                {
+                  backgroundColor: confirmButton.backgroundColor,
+                  borderColor: confirmButton.borderColor,
+                  borderWidth: confirmButton.borderWidth ?? 0,
+                },
+              ]}
+            >
+              <Text style={[styles.confirmText, { color: confirmButton.textColor }]}>
+                {confirmLabel}
+              </Text>
+            </View>
           </Pressable>
           {cancelLabel && onCancel ? (
             <Pressable
@@ -179,12 +182,12 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption + 6,
     textAlign: 'center',
   },
+  confirmHit: { alignSelf: 'stretch', marginTop: spacing.sm },
   confirmBtn: {
-    alignSelf: 'stretch',
-    borderRadius: radius.md,
-    paddingVertical: 14,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
-    marginTop: spacing.sm,
+    justifyContent: 'center',
   },
   confirmText: {
     ...jakartaBoldText,

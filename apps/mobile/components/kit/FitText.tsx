@@ -3,7 +3,8 @@
  *
  * Works on native and web (RN-web ignores `adjustsFontSizeToFit`): a hidden copy is
  * laid out at the base size to read its natural width, then the visible copy is
- * scaled by `available / natural`, floored at `minScale` (ellipsis beyond that).
+ * scaled by `available / natural`, floored at `minScale`; past that it wraps to a
+ * second line instead of being cut.
  *
  * `useScreenScale` gives a gentle size multiplier from the window width so hero
  * numbers and titles look balanced on small and large phones alike.
@@ -31,8 +32,8 @@ export function useScreenScale(): number {
 type Props = {
   children: ReactNode;
   style?: StyleProp<TextStyle>;
-  /** Base font size before fitting (required so line-height scales too). */
-  fontSize: number;
+  /** Base font size before fitting. Defaults to the `style` font size (14 if none). */
+  fontSize?: number;
   lineHeight?: number;
   /** Smallest allowed scale; past it the text ellipsizes. */
   minScale?: number;
@@ -50,24 +51,43 @@ export function FitText({
   lineHeight,
   minScale = 0.6,
   responsive = false,
-  align = 'left',
+  align,
   containerStyle,
   accessibilityLabel,
 }: Props) {
   const screen = useScreenScale();
-  const base = responsive ? fontSize * screen : fontSize;
-  const baseLine = lineHeight != null ? (responsive ? lineHeight * screen : lineHeight) : undefined;
+  const flat = StyleSheet.flatten(style) ?? {};
+  const fontSizeBase = fontSize ?? (typeof flat.fontSize === 'number' ? flat.fontSize : 14);
+  const lineHeightBase = lineHeight ?? (typeof flat.lineHeight === 'number' ? flat.lineHeight : undefined);
+  const base = responsive ? fontSizeBase * screen : fontSizeBase;
+  const baseLine =
+    lineHeightBase != null ? (responsive ? lineHeightBase * screen : lineHeightBase) : undefined;
+  // Layout props belong on the wrapper so a FitText behaves like the Text it replaced in rows.
+  const layout: ViewStyle = {};
+  const textStyle: TextStyle = { ...(flat as TextStyle) };
+  for (const key of LAYOUT_KEYS) {
+    if (textStyle[key] !== undefined) {
+      (layout as Record<string, unknown>)[key] = textStyle[key];
+      delete textStyle[key];
+    }
+  }
   const [available, setAvailable] = useState(0);
   const [natural, setNatural] = useState(0);
 
-  const scale =
-    available > 0 && natural > 0 ? Math.max(minScale, Math.min(1, available / natural)) : 1;
+  const ratio = available > 0 && natural > 0 ? available / natural : 1;
+  const plain = typeof children === 'string' || typeof children === 'number' ? String(children) : '';
+  const multiWord = /\S\s+\S/.test(plain);
+  // Still too long at the smallest size: several words wrap onto a second line;
+  // a single word keeps shrinking (never split mid-word, never cut with « … »).
+  const wraps = ratio < minScale && multiWord;
+  const floor = ratio < minScale && !multiWord ? HARD_MIN_SCALE : minScale;
+  const scale = Math.max(floor, Math.min(1, ratio));
   const size = Math.floor(base * scale * 10) / 10;
   const line = baseLine != null ? Math.ceil(baseLine * scale) : undefined;
 
   return (
     <View
-      style={[styles.box, containerStyle]}
+      style={[styles.box, layout, containerStyle]}
       onLayout={(e) => {
         const w = Math.floor(e.nativeEvent.layout.width);
         setAvailable((prev) => (prev === w ? prev : w));
@@ -76,7 +96,7 @@ export function FitText({
       {/* Measuring copy — natural width at base size, never visible. */}
       <View style={styles.measure} pointerEvents="none" aria-hidden>
         <Text
-          style={[style, { fontSize: base, lineHeight: baseLine }, styles.noWrap]}
+          style={[textStyle, { fontSize: base, lineHeight: baseLine }, styles.noWrap]}
           onLayout={(e) => {
             const w = Math.ceil(e.nativeEvent.layout.width) + 1;
             setNatural((prev) => (prev === w ? prev : w));
@@ -87,8 +107,8 @@ export function FitText({
         </Text>
       </View>
       <Text
-        style={[style, { fontSize: size, lineHeight: line, textAlign: align }]}
-        numberOfLines={1}
+        style={[textStyle, { fontSize: size, lineHeight: line, textAlign: align ?? flat.textAlign ?? 'left' }]}
+        numberOfLines={wraps ? 2 : 1}
         ellipsizeMode="tail"
         accessibilityLabel={accessibilityLabel}
       >
@@ -98,15 +118,42 @@ export function FitText({
   );
 }
 
+/** Last-resort scale for a single word that does not fit at `minScale`. */
+const HARD_MIN_SCALE = 0.45;
+
+/** Flex / box keys moved from the text style onto the wrapper. */
+const LAYOUT_KEYS = [
+  'flex',
+  'flexGrow',
+  'flexShrink',
+  'flexBasis',
+  'alignSelf',
+  'width',
+  'minWidth',
+  'maxWidth',
+  'margin',
+  'marginTop',
+  'marginBottom',
+  'marginLeft',
+  'marginRight',
+  'marginHorizontal',
+  'marginVertical',
+  'position',
+  'top',
+  'left',
+  'right',
+  'bottom',
+] as const;
+
 const styles = StyleSheet.create({
-  box: { minWidth: 0, alignSelf: 'stretch' },
+  box: { minWidth: 0, flexShrink: 1, alignSelf: 'stretch' },
+  // In-flow but zero-height: gives the wrapper the text's natural width (so an
+  // intrinsically sized parent never collapses), while the row lets the copy
+  // overflow a narrower wrapper and still report its full width.
   measure: {
-    position: 'absolute',
+    height: 0,
+    overflow: 'hidden',
     opacity: 0,
-    left: 0,
-    top: 0,
-    // Let the measuring copy grow past the container.
-    width: 10000,
     flexDirection: 'row',
     alignItems: 'flex-start',
   },

@@ -81,6 +81,7 @@ import type {
   RecurringPaymentKind,
   SimulatedAccount,
 } from '@/types';
+import { FitText } from '@/components/kit/FitText';
 
 export type PaymentDetailPayload = {
   name: string;
@@ -859,18 +860,15 @@ export function PaymentDetailSheet({ detail, onClose, onDeleted }: Props) {
               <Text style={[detailSectionLabelStyle(), { color: colors.textMuted }]}>
                 {displayKind === 'income' ? 'PROJECTION REVENU' : 'IMPACT BUDGET'}
               </Text>
-              <Text
+              <FitText
                 style={[
                   styles.impactValue,
                   displayKind === 'income' && { color: colors.success },
                   !isRecurringActive && { color: colors.textMuted },
                 ]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.72}
               >
                 {impactSummary.primary}
-              </Text>
+              </FitText>
               <Text style={styles.impactHint}>{impactSummary.secondary}</Text>
               {isRecurringActive &&
               detailCategoryBudget &&

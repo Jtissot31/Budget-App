@@ -3,8 +3,9 @@
  *
  * 1. Patrimoine net (+ revenus / dépenses / épargne du mois)
  * 2. Budget du mois (une ligne, barre de progression)
- * 3. À venir — prochaines factures
- * 4. Objectifs d'épargne
+ * 3. Prochain paiement (vedette + carrousel)
+ * 4. Où va ton argent — top catégories du mois
+ * 5. Objectifs d'épargne
  *
  * Les comptes vivent dans Portefeuille (pas de doublon ici).
  */
@@ -12,10 +13,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { calendarBoxParts } from '@/components/DashboardDateBadge';
 import {
   AreaSparkline,
-  DateWell,
   EmptyRow,
   GoalTile,
   HeaderIconButton,
@@ -28,7 +27,9 @@ import {
   SectionLabel,
   SummaryCard,
 } from '@/components/kit';
+import { GoalsOverview, NextPayments, SpendingSnapshot } from '@/components/dashboard/HomeUpcoming';
 import { TodayCard } from '@/components/dashboard/TodayCard';
+import { CopilotCard } from '@/components/copilot/CopilotCard';
 import { PageTransition } from '@/components/PageTransition';
 import {
   createNewGoalForm,
@@ -38,6 +39,7 @@ import {
 } from '@/components/SavingsGoalsForm';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { FLOATING_NAV_CONTENT_PADDING, PAGE_PADDING_HORIZONTAL, spacing, typographyKit } from '@/constants/theme';
+import { useAlertCenter, useAlertCenterSources } from '@/hooks/useAlertCenter';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { getCategoriesForMonth, initializeCategories } from '@/lib/budgetCategories';
 import { mapBudgetCategoriesToUi, type BudgetCategoryUiModel } from '@/lib/budgetCategoryModel';
@@ -75,7 +77,6 @@ import type {
 
 const TREND_DAY_COUNT = 30;
 const UPCOMING_WINDOW_DAYS = 45;
-const UPCOMING_MAX_ROWS = 4;
 
 function timeOfDayGreeting(now: Date): string {
   const hour = now.getHours();
@@ -106,24 +107,6 @@ function formatSignedPct(pct: number): string {
     maximumFractionDigits: 1,
   });
   return `${sign}${body} %`;
-}
-
-/** Due today, tomorrow or the day after — worth highlighting. */
-function dueSoon(dateKey: string, now = new Date()): boolean {
-  const due = new Date(`${dateKey}T12:00:00`);
-  const today = new Date(now);
-  today.setHours(12, 0, 0, 0);
-  return Math.round((due.getTime() - today.getTime()) / 86_400_000) <= 2;
-}
-
-function relativeDueLabel(dateKey: string, now: Date): string {
-  const due = new Date(`${dateKey}T12:00:00`);
-  const today = new Date(now);
-  today.setHours(12, 0, 0, 0);
-  const days = Math.round((due.getTime() - today.getTime()) / 86_400_000);
-  if (days <= 0) return "Aujourd'hui";
-  if (days === 1) return 'Demain';
-  return `Dans ${days} jours`;
 }
 
 /** One upcoming money-out occurrence per recurring payment, soonest first. */
@@ -264,14 +247,36 @@ export function ProtoHomeHub() {
     [goals],
   );
 
+  /** The two goals closest to the finish line — the full list lives in Wallet. */
+  const homeGoals = useMemo(
+    () =>
+      [...goalProgressions]
+        .sort((a, b) => b.currentAmount / (b.targetAmount || 1) - a.currentAmount / (a.targetAmount || 1))
+        .slice(0, 2),
+    [goalProgressions],
+  );
+
   const upcoming = useMemo(
     () => upcomingPaymentRows(recurringPayments, new Date()),
     [recurringPayments],
   );
-  const upcomingTotal = useMemo(
-    () => upcoming.reduce((sum, row) => sum + row.bill.amount, 0),
-    [upcoming],
-  );
+  const goalTotals = useMemo(() => {
+    const all = buildGoalProgressions(goals);
+    return {
+      saved: all.reduce((sum, goal) => sum + Math.min(goal.currentAmount, goal.targetAmount), 0),
+      target: all.reduce((sum, goal) => sum + goal.targetAmount, 0),
+      count: all.length,
+      reached: all.filter((goal) => goal.completed).length,
+    };
+  }, [goals]);
+
+  const alertSources = useAlertCenterSources();
+  const { unreadCount: unreadAlerts } = useAlertCenter({
+    recurringPayments: alertSources.recurringPayments,
+    simulatedAccounts: alertSources.simulatedAccounts,
+    incomeTransactions: alertSources.incomeTransactions,
+    enabled: alertSources.ready,
+  });
 
   const name = firstName(displayName);
 
@@ -342,11 +347,23 @@ export function ProtoHomeHub() {
             subtitle={name ? `${greeting}, ${name}` : greeting}
             trailing={
               <>
-                <HeaderIconButton
-                  icon="notifications-outline"
-                  accessibilityLabel="Ouvrir les messages"
-                  onPress={() => go('/alert-center')}
-                />
+                <View>
+                  <HeaderIconButton
+                    icon="notifications-outline"
+                    accessibilityLabel={
+                      unreadAlerts > 0 ? `Ouvrir les messages, ${unreadAlerts} non lus` : 'Ouvrir les messages'
+                    }
+                    onPress={() => go('/alert-center')}
+                  />
+                  {unreadAlerts > 0 ? (
+                    <View
+                      pointerEvents="none"
+                      style={[styles.bellBadge, { backgroundColor: colors.danger, borderColor: colors.background }]}
+                    >
+                      <Text style={styles.bellBadgeText}>{unreadAlerts > 9 ? '9+' : unreadAlerts}</Text>
+                    </View>
+                  ) : null}
+                </View>
                 <HeaderIconButton
                   icon="settings-outline"
                   accessibilityLabel="Ouvrir les réglages"
@@ -401,6 +418,10 @@ export function ProtoHomeHub() {
           </Reveal>
 
           <Reveal index={1} style={styles.section}>
+            <CopilotCard limit={3} />
+          </Reveal>
+
+          <Reveal index={1} style={styles.section}>
             <TodayCard />
           </Reveal>
 
@@ -433,44 +454,55 @@ export function ProtoHomeHub() {
           </Reveal>
 
           <Reveal index={3} style={styles.section}>
-            <SectionLabel
-              title={upcoming.length > 0 ? `À venir · ${formatDisplayMoneyAbsolute(upcomingTotal)}` : 'À venir'}
-              actionLabel="Agenda"
-              onAction={() => router.navigate('/goals')}
-            />
-            <ListCard>
-              {upcoming.length === 0 ? (
+            <SectionLabel title="Prochain paiement" actionLabel="Agenda" onAction={() => router.navigate('/goals')} />
+            {upcoming.length === 0 ? (
+              <ListCard>
                 <EmptyRow label="Rien à payer d’ici 45 jours" />
-              ) : (
-                upcoming.slice(0, UPCOMING_MAX_ROWS).map(({ dateKey, bill }, index, rows) => {
-                  const { month, day } = calendarBoxParts(dateKey);
-                  return (
-                    <ListRow
-                      key={`${bill.sourceId ?? bill.name}:${dateKey}`}
-                      leading={<DateWell month={month} day={day} />}
-                      title={bill.name}
-                      subtitle={relativeDueLabel(dateKey, new Date())}
-                      subtitleColor={dueSoon(dateKey) ? '#F59E0B' : undefined}
-                      valueColor={dueSoon(dateKey) ? '#F59E0B' : undefined}
-                      value={`−${formatDisplayMoneyAbsolute(bill.amount)}`}
-                      isLast={index === rows.length - 1}
-                      onPress={() => router.navigate('/goals')}
-                    />
-                  );
-                })
-              )}
-            </ListCard>
+              </ListCard>
+            ) : (
+              <NextPayments
+                rows={upcoming}
+                onOpen={(row) =>
+                  row?.bill.sourceId
+                    ? router.push({ pathname: '/payment-detail', params: { id: row.bill.sourceId, date: row.dateKey } })
+                    : router.navigate('/goals')
+                }
+              />
+            )}
           </Reveal>
 
-          <Reveal index={4} style={styles.section}>
-            <SectionLabel title="Objectifs" actionLabel="Nouveau" onAction={openNewGoalForm} />
+          {budget.spent > 0 ? (
+            <Reveal index={4} style={styles.section}>
+              <SectionLabel
+                title="Où va ton argent"
+                actionLabel="Analyse"
+                onAction={() => go('/transactions-insights')}
+              />
+              <SpendingSnapshot
+                categories={budgetCategories}
+                onOpenCategory={(id) => router.push({ pathname: '/budget-category', params: { id } })}
+              />
+            </Reveal>
+          ) : null}
+
+          <Reveal index={5} style={styles.section}>
+            <SectionLabel
+              title="Objectifs"
+              actionLabel={goalProgressions.length > 0 ? 'Tout voir' : 'Nouveau'}
+              onAction={goalProgressions.length > 0 ? () => router.navigate('/accounts') : openNewGoalForm}
+            />
+            {goalTotals.count > 1 ? (
+              <View style={styles.goalSummary}>
+                <GoalsOverview {...goalTotals} />
+              </View>
+            ) : null}
             {goalProgressions.length === 0 ? (
               <ListCard>
                 <EmptyRow label="Aucun objectif en cours" actionLabel="Créer" onAction={openNewGoalForm} />
               </ListCard>
             ) : (
               <View style={styles.goalGrid}>
-                {goalProgressions.map((goal) => (
+                {homeGoals.map((goal) => (
                   <View key={goal.goalId} style={styles.goalCell}>
                     <GoalTile
                       name={goal.name}
@@ -508,5 +540,19 @@ const styles = StyleSheet.create({
   section: { marginBottom: SECTION_GAP + spacing.sm },
   goalGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
   goalCell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10 },
+  goalSummary: { marginBottom: 10 },
+  bellBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    borderWidth: 2,
+    paddingHorizontal: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellBadgeText: { color: '#FFFFFF', fontSize: 9.5, fontWeight: '700', lineHeight: 12 },
   ringText: { ...typographyKit.metaSemibold, fontSize: 11 },
 });

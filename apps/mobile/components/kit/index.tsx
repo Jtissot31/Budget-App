@@ -224,23 +224,25 @@ export function ListRow({
           value != null || valueSub != null ? (
             <View style={styles.valueCol}>
               {value != null ? (
-                <Text
+                <FitText
+                  align="right"
+                  minScale={0.8}
                   style={[
-                    transactionRowAmountTypography({ fontSize: 15, lineHeight: 20 }),
+                    transactionRowAmountTypography({ fontSize: 16.5, lineHeight: 22 }),
                     { color: valueColor ?? colors.text, letterSpacing: -0.3 },
                   ]}
-                  numberOfLines={1}
                 >
                   {value}
-                </Text>
+                </FitText>
               ) : null}
               {valueSub ? (
-                <Text
+                <FitText
+                  align="right"
+                  minScale={0.8}
                   style={[styles.rowSubtitle, jakartaMediumText, { color: valueSubColor ?? colors.textMuted }]}
-                  numberOfLines={1}
                 >
                   {valueSub}
-                </Text>
+                </FitText>
               ) : null}
             </View>
           ) : null
@@ -395,11 +397,11 @@ export function SummaryCard({
       <View style={styles.summaryTop}>
         <View style={styles.summaryHero}>
           <View style={styles.summaryLabelRow}>
-            <Text style={[styles.summaryLabel, { color: colors.textMuted }]} numberOfLines={1}>
+            <FitText style={[styles.summaryLabel, { color: colors.textMuted }]}>
               {label}
-            </Text>
+            </FitText>
             {badge && !aside ? (
-              <Text style={[styles.summaryBadge, { color: badge.color }]} numberOfLines={1}>
+              <Text style={[styles.summaryBadge, { color: badge.color }]}>
                 {badge.label}
               </Text>
             ) : null}
@@ -411,7 +413,7 @@ export function SummaryCard({
             color={amountColor ?? colors.text}
           />
           {badge && aside ? (
-            <Text style={[styles.summaryBadge, { color: badge.color }]} numberOfLines={1}>
+            <Text style={[styles.summaryBadge, { color: badge.color }]}>
               {badge.label}
             </Text>
           ) : null}
@@ -433,16 +435,16 @@ export function SummaryCard({
                 },
               ]}
             >
-              <Text style={[styles.statLabel, { color: colors.textMuted }]} numberOfLines={1}>
+              <FitText style={[styles.statLabel, { color: colors.textMuted }]}>
                 {stat.label}
-              </Text>
+              </FitText>
               <FitText
                 style={[
-                  transactionRowAmountTypography({ fontSize: 15, lineHeight: 20 }),
+                  transactionRowAmountTypography({ fontSize: 16, lineHeight: 21 }),
                   { color: stat.color ?? colors.text, letterSpacing: -0.3 },
                 ]}
-                fontSize={15}
-                lineHeight={20}
+                fontSize={16}
+                lineHeight={21}
                 minScale={0.6}
               >
                 {stat.value}
@@ -521,7 +523,7 @@ const styles = StyleSheet.create({
   copy: { flex: 1, minWidth: 0, justifyContent: 'center', marginRight: ROW_GAP },
   rowTitle: { letterSpacing: -0.2 },
   rowSubtitle: { fontSize: 12.5, lineHeight: 16, marginTop: 2 },
-  valueCol: { alignItems: 'flex-end', flexShrink: 0, maxWidth: '45%' },
+  valueCol: { alignItems: 'flex-end', flexShrink: 1, minWidth: 0, maxWidth: '50%' },
   chevron: { marginLeft: spacing.xs },
   progress: { marginRight: ROW_PAD_H, marginTop: -4, marginBottom: 12 },
   emptyRow: {
@@ -536,7 +538,7 @@ const styles = StyleSheet.create({
   summaryHero: { flex: 1, minWidth: 0, gap: 4 },
   summaryLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   summaryLabel: { ...typographyKit.metaMedium, fontSize: 12, letterSpacing: -0.1, flexShrink: 1 },
-  summaryBadge: { ...typographyKit.metaSemibold, fontSize: 12 },
+  summaryBadge: { ...typographyKit.metaSemibold, fontSize: 12.5, flexShrink: 0 },
   summaryFooter: { ...typographyKit.metaMedium, fontSize: 11.5, letterSpacing: -0.1 },
   statRow: {
     flexDirection: 'row',

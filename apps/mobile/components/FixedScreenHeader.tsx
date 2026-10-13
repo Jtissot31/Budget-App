@@ -15,7 +15,6 @@ import { type ReactNode } from 'react';
 import {
   Pressable,
   StyleSheet,
-  Text,
   View,
   type StyleProp,
   type ViewStyle,
@@ -25,6 +24,7 @@ import { AppIcon } from '@/components/icons/AppIcon';
 import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import { jakartaExtraBoldText, spacing, typography } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
+import { FitText } from '@/components/kit/FitText';
 
 /** Outer column shell — pair with `fixedHeaderScrollStyle` on the scroller. */
 export const fixedHeaderScreenStyle: ViewStyle = { flex: 1 };
@@ -69,18 +69,16 @@ export function FixedScreenHeader({
         accessibilityRole="button"
         accessibilityLabel={backAccessibilityLabel}
         hitSlop={12}
-        style={({ pressed }) => [
-          styles.backButton,
-          { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder },
-          pressed && styles.pressed,
-        ]}
+        style={({ pressed }) => [pressed && styles.pressed]}
         onPress={onBack}
       >
-        <AppIcon family="ionicons" name="chevron-back" size={22} color={colors.text} />
+        <View style={[styles.backButton, { backgroundColor: colors.surfaceElevated }]}>
+          <AppIcon family="ionicons" name="chevron-back" size={20} color={colors.text} />
+        </View>
       </Pressable>
-      <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+      <FitText style={[styles.title, { color: colors.text }]}>
         {title}
-      </Text>
+      </FitText>
       {trailing ?? <View style={styles.topBarSpacer} />}
     </View>
   );
@@ -100,7 +98,6 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },

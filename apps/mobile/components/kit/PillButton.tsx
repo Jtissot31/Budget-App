@@ -46,7 +46,7 @@ export function PillButton({ label, onPress, icon, tone = 'neutral', accessibili
     >
       <View style={[styles.pill, { backgroundColor: primary ? colors.text : colors.surfaceElevated }]}>
         {glyph ? <AppIcon family="ionicons" name={glyph} size={14} color={fg} /> : null}
-        <Text style={[styles.label, { color: fg }]} numberOfLines={1}>
+        <Text style={[styles.label, { color: fg }]}>
           {label}
         </Text>
       </View>

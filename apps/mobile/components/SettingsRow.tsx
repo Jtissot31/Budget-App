@@ -19,6 +19,7 @@ import {
   noMidWordClipTextProps,
   singleLineLabelStyle,
 } from '@/lib/textLayout';
+import { FitText } from '@/components/kit/FitText';
 
 type BaseProps = {
   label: string;
@@ -114,17 +115,15 @@ function RowCopy({
         </View>
       ) : null}
       <View style={styles.textBlock}>
-        <Text
+        <FitText
           style={[
             styles.label,
             singleLineLabelStyle,
             { color: destructive ? colors.danger : colors.text },
           ]}
-          numberOfLines={1}
-          ellipsizeMode="tail"
         >
           {label}
-        </Text>
+        </FitText>
         {hint ? (
           <Text
             style={[styles.hint, singleLineLabelStyle, { color: colors.textMuted }]}

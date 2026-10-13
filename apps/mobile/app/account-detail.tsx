@@ -123,6 +123,7 @@ import {
   transactionMatchesSearch,
 } from '@/lib/transactionListUtils';
 import type { AccountKind, Category, CategoryBudget, Loan, RecurringPayment, SavingsGoal, SimulatedAccount, Transaction } from '@/types';
+import { FitText } from '@/components/kit/FitText';
 
 function formatMoney(value: number) {
   return formatDisplayMoneyAbsolute(value);
@@ -824,9 +825,9 @@ export default function AccountDetailScreen() {
               >
                 <View style={[styles.modalHandle, formThemed.handle]} />
               <View style={styles.modalTitleRow}>
-                <Text style={[styles.formTitle, formThemed.text]} numberOfLines={1}>
+                <FitText style={[styles.formTitle, formThemed.text]}>
                   {accountEditFormTitle(kind)}
-                </Text>
+                </FitText>
                 <Pressable onPress={closeForm} hitSlop={12} style={[styles.closeBtn, formThemed.closeButton]}>
                   <AppIcon family="ionicons" name="close" size={19} color={colors.textMuted} />
                 </Pressable>

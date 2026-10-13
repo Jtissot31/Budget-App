@@ -63,6 +63,7 @@ import {
 } from '@/lib/budgetCategoryValidation';
 import { upsertCategory, upsertCategoryBudget } from '@/lib/db';
 import { formValidationError, type FormFeedback } from '@/lib/formFeedback';
+import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import {
   getPayEstimationSettings,
@@ -89,6 +90,7 @@ import {
 } from '@/lib/sheet/formSheetScroll';
 import { useDraggableSheetGesture } from '@/lib/sheet/useDraggableSheetGesture';
 import { useAppTheme } from '@/lib/themeContext';
+import { FitText } from '@/components/kit/FitText';
 
 type PeriodFrequency = Extract<SavingsGoalContributionFrequency, 'weekly' | 'biweekly'>;
 type LimitSource = 'manual' | 'auto';
@@ -906,6 +908,50 @@ export default function AddBudgetCategoryScreen() {
                         Calculé depuis la limite périodique · tu peux modifier
                       </Text>
                     ) : null}
+                    <View style={styles.quickRow}>
+                      {QUICK_LIMITS.map((amount) => {
+                        const active = parsedLimit === amount;
+                        return (
+                          <Pressable
+                            key={amount}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Limite ${amount} $`}
+                            onPress={() => {
+                              tapHaptic();
+                              handleMonthlyLimitChange(String(amount));
+                            }}
+                            style={({ pressed }) => [styles.quickHit, pressed && { opacity: 0.75 }]}
+                          >
+                            <View
+                              style={[
+                                styles.quickChip,
+                                { backgroundColor: active ? colors.text : colors.surfaceElevated },
+                              ]}
+                            >
+                              <Text style={[styles.quickChipText, { color: active ? colors.background : colors.text }]}>
+                                {amount} $
+                              </Text>
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    {parsedLimit != null && parsedLimit > 0 ? (
+                      <View style={[styles.pacePreview, { backgroundColor: colors.surfaceElevated }]}>
+                        {[
+                          { label: 'Par jour', value: parsedLimit / 30.4 },
+                          { label: 'Par semaine', value: (parsedLimit * 12) / 52 },
+                          { label: 'Par année', value: parsedLimit * 12 },
+                        ].map((item) => (
+                          <View key={item.label} style={styles.paceItem}>
+                            <FitText style={[styles.paceValue, { color: colors.text }]}>
+                              {formatDisplayMoneyAbsolute(item.value)}
+                            </FitText>
+                            <Text style={[styles.paceLabel, { color: colors.textMuted }]}>{item.label}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
                   </View>
 
                   <View ref={periodSectionRef} collapsable={false} style={styles.section}>
@@ -1002,7 +1048,18 @@ export default function AddBudgetCategoryScreen() {
   );
 }
 
+/** One-tap monthly limits — the field stays editable. */
+const QUICK_LIMITS = [100, 200, 300, 500, 800];
+
 const styles = StyleSheet.create({
+  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  quickHit: { borderRadius: 16 },
+  quickChip: { height: 32, paddingHorizontal: 12, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  quickChipText: { ...jakartaSemiboldText, fontSize: 13 },
+  pacePreview: { flexDirection: 'row', borderRadius: 14, paddingVertical: 10, paddingHorizontal: 12, marginTop: 10 },
+  paceItem: { flex: 1, gap: 2 },
+  paceValue: { ...jakartaSemiboldText, fontSize: 14 },
+  paceLabel: { ...jakartaMediumText, fontSize: 11 },
   screen: {
     flex: 1,
     backgroundColor: 'transparent',

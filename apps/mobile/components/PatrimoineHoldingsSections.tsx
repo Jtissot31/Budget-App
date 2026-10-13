@@ -4,7 +4,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useRouter } from 'expo-router';
-import { EmptyRow, IconWell, ListCard, ListRow, SectionLabel } from '@/components/kit';
+import {
+  EmptyRow,
+  IconWell,
+  ListCard,
+  ListRow,
+  SectionLabel,
+  SplitBar,
+  SUBTLE_ACCENTS,
+  SummaryCard,
+} from '@/components/kit';
 import { StockHoldingLogo } from '@/components/StockHoldingTile';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import {
@@ -59,7 +68,7 @@ function PatrimoineWealthIconWell({
   size?: number;
   style?: StyleProp<ViewStyle>;
 }) {
-  const { isLight } = useAppTheme();
+  const { isLight, colors } = useAppTheme();
   const lucideName = resolvePatrimoineWealthLucideIcon(asset);
   const LucideGlyph = lucideName ? getSelectedLucideIcon(lucideName) : null;
 
@@ -67,12 +76,12 @@ function PatrimoineWealthIconWell({
     const glyphSize = userPickedIconGlyphSize(size);
     return (
       <View style={[userPickedIconWellStyle(size, isLight), styles.iconWellWrap, style]}>
-        <LucideGlyph color={WELL_GLYPH_WHITE} size={glyphSize} strokeWidth={2} />
+        <LucideGlyph color={isLight ? colors.text : WELL_GLYPH_WHITE} size={glyphSize} strokeWidth={2} />
       </View>
     );
   }
 
-  return <UserPickedIconWell icon={resolveWealthAssetIcon(asset)} size={size} wellGlyphWhite style={style} />;
+  return <UserPickedIconWell icon={resolveWealthAssetIcon(asset)} size={size} wellGlyphWhite={!isLight} style={style} />;
 }
 
 export function PatrimoineHoldingsSections({
@@ -116,6 +125,13 @@ export function PatrimoineHoldingsSections({
     [orderedWealth, loansById],
   );
 
+  const assetsTotal = portfolioTotal + wealthTotal;
+  /** Weighted day change of the stock portfolio, in dollars. */
+  const stocksDayChange = holdings.reduce((sum, holding) => {
+    const value = mockStockHoldingTotalValue(holding);
+    return sum + value - value / (1 + holding.dayChangePercent / 100);
+  }, 0);
+
   const visibleStocks = stocksExpanded ? holdings : holdings.slice(0, MAX_VISIBLE_ITEMS);
   const hiddenStockCount = Math.max(holdings.length - MAX_VISIBLE_ITEMS, 0);
   const visibleWealth = wealthExpanded ? orderedWealth : orderedWealth.slice(0, MAX_VISIBLE_ITEMS);
@@ -129,6 +145,37 @@ export function PatrimoineHoldingsSections({
 
   return (
     <View style={styles.root}>
+      <SummaryCard
+        label="Patrimoine net"
+        amount={formatCompactCurrency(assetsTotal)}
+        amountValue={assetsTotal}
+        formatAmount={formatCompactCurrency}
+        badge={
+          portfolioTotal > 0
+            ? {
+                label: `${stocksDayChange >= 0 ? '+' : '−'}${formatCompactCurrency(Math.abs(stocksDayChange))} auj.`,
+                color: stocksDayChange >= 0 ? colors.accentGreen : colors.danger,
+              }
+            : undefined
+        }
+        stats={[
+          { label: 'Actions', value: formatCompactCurrency(portfolioTotal) },
+          { label: 'Biens (nets)', value: formatCompactCurrency(wealthTotal) },
+          {
+            label: 'Part actions',
+            value: assetsTotal > 0 ? `${Math.round((portfolioTotal / assetsTotal) * 100)} %` : '—',
+          },
+        ]}
+      >
+        <SplitBar
+          showLegend={false}
+          segments={[
+            { key: 'stocks', label: 'Actions', value: portfolioTotal, color: SUBTLE_ACCENTS[0]! },
+            { key: 'wealth', label: 'Biens', value: wealthTotal, color: SUBTLE_ACCENTS[2]! },
+          ]}
+        />
+      </SummaryCard>
+
       <View>
         <SectionLabel title="Actions" trailing={totalLabel(portfolioTotal)} />
         <ListCard>

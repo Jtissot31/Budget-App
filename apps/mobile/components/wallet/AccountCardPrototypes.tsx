@@ -42,6 +42,7 @@ import {
   userPickedIconWellStyle,
 } from '@/lib/userPickedIcon';
 import type { AccountKind, SimulatedAccount } from '@/types';
+import { FitText } from '@/components/kit/FitText';
 
 /** Compact tiles need a larger fill than the default 68% merchant inset. */
 const INSTITUTION_LOGO_INSET_RATIO = 0.9;
@@ -287,25 +288,23 @@ export function AccountLineTile({
         <InstitutionMark account={account} size={36} transparentWell />
       )}
       <View style={styles.rowCopy}>
-        <Text
+        <FitText
           style={[typographyKit.rowTitle, styles.rowTitleTight, { color: colors.text }]}
-          numberOfLines={1}
         >
           {title}
-        </Text>
-        <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+        </FitText>
+        <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
           {meta}
-        </Text>
+        </FitText>
       </View>
-      <Text
+      <FitText
         style={[
           moneyAmountTypography({ tier: 'row' }),
           { color: accountBalanceValueColor(account, colors.text), flexShrink: 0 },
         ]}
-        numberOfLines={1}
       >
         {hideBalance ? '••••' : formatSignedBalance(account.balance)}
-      </Text>
+      </FitText>
     </OnyxContainer>
   );
 
@@ -357,9 +356,9 @@ export function AccountMonumentPrototype({ account, onPress }: AccountCardProtot
       style={styles.cardPad}
     >
       <View style={styles.monumentTop}>
-        <Text style={[typographyKit.eyebrow, styles.eyebrowFlex, { color: colors.textMuted }]} numberOfLines={1}>
+        <FitText style={[typographyKit.eyebrow, styles.eyebrowFlex, { color: colors.textMuted }]}>
           {accountKindTypeLabel(account.kind).toUpperCase()}
-        </Text>
+        </FitText>
         <InstitutionMark account={account} size={ICON_WELL_SIZE} />
       </View>
 
@@ -367,30 +366,27 @@ export function AccountMonumentPrototype({ account, onPress }: AccountCardProtot
         <Text style={[typographyKit.micro, { color: colors.textMuted }]}>
           {owed ? 'Solde dû' : 'Solde disponible'}
         </Text>
-        <Text
+        <FitText
           style={[
             moneyAmountTypography({ tier: 'hero' }),
             { color: accountBalanceValueColor(account, colors.text) },
           ]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
         >
           {formatDisplayMoneyAbsolute(Math.abs(account.balance))}
-        </Text>
+        </FitText>
       </View>
 
-      <Text style={[typographyKit.metaMedium, { color: colors.textSecondary }]} numberOfLines={1}>
+      <FitText style={[typographyKit.metaMedium, { color: colors.textSecondary }]}>
         {institution ? `${title} · ${institution}` : title}
-      </Text>
+      </FitText>
 
       {isCredit && utilization != null ? (
         <View style={styles.trackBlock}>
           <UtilizationTrack percent={utilization} tone={tone} />
-          <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+          <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
             {Math.round(utilization)} % de la limite
             {remaining != null ? ` · ${formatDisplayMoneyAbsolute(remaining)} de marge` : ''}
-          </Text>
+          </FitText>
         </View>
       ) : null}
     </PrototypeShell>
@@ -425,40 +421,36 @@ export function AccountPatrimoineTile({
   const body = (
     <OnyxContainer style={styles.patrimoineCard}>
       <View style={styles.patrimoineHeader}>
-        <Text
+        <FitText
           style={[typographyKit.microUpper, { color: colors.textMuted, flex: 1, minWidth: 0 }]}
-          numberOfLines={1}
         >
           {typeLabel}
-        </Text>
+        </FitText>
         {headerAccessory ?? (
           <InstitutionMark account={account} size={ICON_WELL_SIZE} transparentWell />
         )}
       </View>
 
-      <Text style={[typographyKit.listPrimary, { color: colors.text }]} numberOfLines={1}>
+      <FitText style={[typographyKit.listPrimary, { color: colors.text }]}>
         {title}
-      </Text>
+      </FitText>
 
       <View style={styles.patrimoineValueRow}>
         <View style={styles.patrimoineCaptionSlot} accessibilityElementsHidden={!showOwedCaption}>
           {showOwedCaption ? (
-            <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+            <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
               Solde dû
-            </Text>
+            </FitText>
           ) : null}
         </View>
-        <Text
+        <FitText
           style={[
             moneyAmountTypography({ tier: 'card', textAlign: 'right' }),
             { color: accountBalanceValueColor(account, colors.text) },
           ]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.65}
         >
           {hideBalance ? '••••' : formatSignedBalance(account.balance)}
-        </Text>
+        </FitText>
       </View>
     </OnyxContainer>
   );
@@ -512,12 +504,11 @@ export function AccountDetailHeroCard({ account }: { account: SimulatedAccount }
   return (
     <OnyxContainer style={styles.cardPad}>
       <View style={styles.monumentTop}>
-        <Text
+        <FitText
           style={[typographyKit.eyebrow, styles.eyebrowFlex, { color: colors.textMuted }]}
-          numberOfLines={1}
         >
           {accountKindTypeLabel(account.kind)}
-        </Text>
+        </FitText>
         <InstitutionMark account={account} size={ICON_WELL_SIZE} transparentWell />
       </View>
 
@@ -525,36 +516,30 @@ export function AccountDetailHeroCard({ account }: { account: SimulatedAccount }
         <Text style={[typographyKit.micro, { color: colors.textMuted }]}>
           {accountDetailBalanceCaption(account)}
         </Text>
-        <Text
+        <FitText
           style={[
             moneyAmountTypography({ tier: 'hero' }),
             { color: accountBalanceValueColor(account, colors.text) },
           ]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
         >
           {formatSignedBalance(account.balance)}
-        </Text>
+        </FitText>
         {showCreditMeta ? (
           <View style={styles.creditMetaStack}>
             {remaining != null ? (
               <View style={styles.creditAvailableBlock}>
                 <Text style={[typographyKit.microUpper, { color: colors.textMuted }]}>Disponible</Text>
-                <Text
+                <FitText
                   style={[moneyAmountTypography({ tier: 'card' }), { color: colors.text }]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.75}
                 >
                   {formatDisplayMoneyAbsolute(remaining)}
-                </Text>
+                </FitText>
               </View>
             ) : null}
             {creditLimit != null ? (
-              <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+              <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
                 Limite · {formatDisplayMoneyAbsolute(creditLimit)}
-              </Text>
+              </FitText>
             ) : null}
           </View>
         ) : null}
@@ -637,32 +622,29 @@ export function AccountSplitPrototype({ account, onPress }: AccountCardPrototype
       <View style={styles.splitLeft}>
         <InstitutionMark account={account} size={36} />
         <View style={styles.rowCopy}>
-          <Text style={[typographyKit.rowTitle, styles.rowTitleTight, { color: colors.text }]} numberOfLines={1}>
+          <FitText style={[typographyKit.rowTitle, styles.rowTitleTight, { color: colors.text }]}>
             {title}
-          </Text>
-          <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+          </FitText>
+          <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
             {meta}
-          </Text>
+          </FitText>
         </View>
       </View>
 
       <View style={[styles.splitRule, { backgroundColor: colors.borderSubtle }]} />
 
       <View style={styles.splitRight}>
-        <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+        <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
           {owed ? 'Dû' : 'Solde'}
-        </Text>
-        <Text
+        </FitText>
+        <FitText
           style={[
             moneyAmountTypography({ tier: 'card', textAlign: 'right' }),
             { color: accountBalanceValueColor(account, colors.text) },
           ]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
         >
           {formatDisplayMoneyAbsolute(Math.abs(account.balance))}
-        </Text>
+        </FitText>
       </View>
     </PrototypeShell>
   );
@@ -693,12 +675,12 @@ export function AccountQuietRailPrototype({ account, onPress }: AccountCardProto
       <View style={styles.railHeader}>
         <InstitutionMark account={account} size={34} tinted />
         <View style={styles.rowCopy}>
-          <Text style={[typographyKit.rowTitle, styles.rowTitleTight, { color: colors.text }]} numberOfLines={1}>
+          <FitText style={[typographyKit.rowTitle, styles.rowTitleTight, { color: colors.text }]}>
             {title}
-          </Text>
-          <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+          </FitText>
+          <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
             {[accountKindTypeLabel(account.kind), institution].filter(Boolean).join(' · ')}
-          </Text>
+          </FitText>
         </View>
       </View>
 
@@ -706,27 +688,24 @@ export function AccountQuietRailPrototype({ account, onPress }: AccountCardProto
         <Text style={[typographyKit.micro, { color: colors.textMuted }]}>
           {owed ? 'Dû' : 'Disponible'}
         </Text>
-        <Text
+        <FitText
           style={[
             moneyAmountTypography({ tier: 'stat' }),
             { color: accountBalanceValueColor(account, colors.text), flexShrink: 1 },
           ]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
         >
           {formatDisplayMoneyAbsolute(Math.abs(account.balance))}
-        </Text>
+        </FitText>
       </View>
 
       {isCredit && utilization != null ? (
         <View style={styles.trackBlock}>
           <UtilizationTrack percent={utilization} tone={tone} />
-          <Text style={[typographyKit.micro, { color: colors.textMuted }]} numberOfLines={1}>
+          <FitText style={[typographyKit.micro, { color: colors.textMuted }]}>
             {remaining != null
               ? `${formatDisplayMoneyAbsolute(remaining)} de marge restante`
               : `${Math.round(utilization)} % de la limite`}
-          </Text>
+          </FitText>
         </View>
       ) : null}
     </PrototypeShell>

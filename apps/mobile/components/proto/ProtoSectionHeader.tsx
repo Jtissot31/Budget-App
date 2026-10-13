@@ -2,10 +2,11 @@
  * Shared Budget Proto section chrome — eyebrow + trailing action(s).
  */
 import type { ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { typographyKit } from '@/constants/theme';
 import { PillButton } from '@/components/kit/PillButton';
 import { useAppTheme } from '@/lib/themeContext';
+import { FitText } from '@/components/kit/FitText';
 
 type Props = {
   title: string;
@@ -40,9 +41,9 @@ export function ProtoSectionHeader({
         pointerEvents="none" keeps the flex title from stealing header taps.
       */}
       <View style={styles.titleWrap} pointerEvents="none">
-        <Text style={[styles.title, { color: colors.textMuted }]} numberOfLines={1}>
+        <FitText style={[styles.title, { color: colors.textMuted }]}>
           {title}
-        </Text>
+        </FitText>
       </View>
       {trailing ? (
         <View

@@ -5,7 +5,7 @@
  * (e.g. after saving a transaction) for instant, rewarding feedback.
  */
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   Easing,
@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { typographyKit } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
+import { FitText } from '@/components/kit/FitText';
 
 export type ToastOptions = {
   title: string;
@@ -99,13 +100,13 @@ export function ToastHost() {
           <AppIcon family="ionicons" name={toast.icon ?? 'checkmark'} size={18} color={tone} />
         </View>
         <View style={styles.copy}>
-          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+          <FitText style={[styles.title, { color: colors.text }]}>
             {toast.title}
-          </Text>
+          </FitText>
           {toast.subtitle ? (
-            <Text style={[styles.subtitle, { color: colors.textMuted }]} numberOfLines={1}>
+            <FitText style={[styles.subtitle, { color: colors.textMuted }]}>
               {toast.subtitle}
-            </Text>
+            </FitText>
           ) : null}
         </View>
       </Animated.View>

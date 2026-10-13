@@ -593,6 +593,20 @@ export function ProtoWalletHub() {
             )}
           </View>
 
+          <View style={styles.section}>
+            <SectionLabel title="Patrimoine" />
+            <ListCard>
+              <ListRow
+                leading={<IconWell icon="home-outline" />}
+                title="Placements et biens"
+                subtitle="Actions, immobilier, véhicules"
+                chevron
+                isLast
+                onPress={() => router.push('/patrimoine')}
+              />
+            </ListCard>
+          </View>
+
           {loans.length > 0 ? (
             <View style={styles.section}>
               <SectionLabel title="Prêts" />
@@ -673,19 +687,6 @@ export function ProtoWalletHub() {
             ) : null}
           </View>
 
-          <View style={styles.section}>
-            <SectionLabel title="Patrimoine" />
-            <ListCard>
-              <ListRow
-                leading={<IconWell icon="home-outline" />}
-                title="Placements et biens"
-                subtitle="Actions, immobilier, véhicules"
-                chevron
-                isLast
-                onPress={() => router.push('/patrimoine')}
-              />
-            </ListCard>
-          </View>
         </ScrollView>
 
         <ConfirmDeleteModal
