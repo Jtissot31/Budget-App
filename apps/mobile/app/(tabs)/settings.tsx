@@ -87,6 +87,12 @@ import { useAppTheme } from '@/lib/themeContext';
 
 type PickerKind = 'currency' | 'language' | 'region' | 'pay_frequency' | null;
 
+const LANGUAGE_TABS: { id: DisplayLanguage; label: string }[] = [
+  { id: 'fr-CA', label: '🇨🇦 FR' },
+  { id: 'en-CA', label: '🇨🇦 EN' },
+  { id: 'en-US', label: '🇺🇸 US' },
+];
+
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -308,13 +314,22 @@ export default function SettingsScreen() {
               value={labelForOption(CURRENCY_OPTIONS, currency)}
               onPress={() => setActivePicker('currency')}
             />
-            <SettingsNavigationRow
-              label="Langue"
-              icon="language-outline"
-              value={labelForOption(LANGUAGE_OPTIONS, language)}
-              onPress={() => setActivePicker('language')}
-              isLast
-            />
+            {/* Three options → inline one-tap switch, same control as « Thème » (no picker sheet). */}
+            <SettingsCustomRow label="Langue" icon="language-outline" isLast>
+              <SegmentedTabs
+                tabs={LANGUAGE_TABS}
+                active={language}
+                onChange={(id) => {
+                  if (id === language) return;
+                  tapHaptic();
+                  setLanguage(id);
+                  void setDisplayLanguage(id);
+                }}
+                size="section"
+                variant="section"
+                showDivider={false}
+              />
+            </SettingsCustomRow>
           </SettingsSection>
 
           <SettingsSection title="Saisie">
