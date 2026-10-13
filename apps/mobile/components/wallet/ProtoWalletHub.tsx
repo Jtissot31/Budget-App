@@ -48,8 +48,16 @@ import {
   PAGE_PADDING_HORIZONTAL,
   spacing,
   subtleDeleteButtonStyle,
+  transactionRowAmountTypography,
   typographyKit,
 } from '@/constants/theme';
+import { getEnvelopesByAccount, type AccountEnvelope } from '@/lib/accountEnvelopes';
+import {
+  AccountEnvelopesPanel,
+  EnvelopeSheet,
+  newEnvelopeDraft,
+  type EnvelopeDraft,
+} from '@/components/wallet/AccountEnvelopes';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { accountBalanceDisplayName, accountKindTypeLabel } from '@/lib/accountBalancePresentation';
 import { ensureDbReady } from '@/lib/init';
@@ -136,6 +144,9 @@ export function ProtoWalletHub() {
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
   const [hideBalances, setHideBalances] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [envelopesByAccount, setEnvelopesByAccount] = useState<Record<string, AccountEnvelope[]>>({});
+  const [expandedAccountIds, setExpandedAccountIds] = useState<string[]>([]);
+  const [envelopeDraft, setEnvelopeDraft] = useState<EnvelopeDraft | null>(null);
 
   const [managingAccounts, setManagingAccounts] = useState(false);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
@@ -179,6 +190,7 @@ export function ProtoWalletHub() {
     setRecurringPayments(nextPayments);
     setLoans(nextLoans);
     setTrendTx(nextTrend);
+    setEnvelopesByAccount(await getEnvelopesByAccount());
   }, []);
 
   useEffect(() => {
@@ -389,15 +401,29 @@ export function ProtoWalletHub() {
 
   /* ── Rows ── */
 
+  const toggleAccountExpanded = (id: string) => {
+    tapHaptic();
+    setExpandedAccountIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
   const renderAccountRow = (account: SimulatedAccount, isLast: boolean, interactive = true) => {
     const selected = selectedAccountIds.includes(account.id);
     const title = accountBalanceDisplayName(account) || 'Compte';
-    return (
+    // Envelopes: liquid accounts only, outside « Modifier » mode.
+    const supportsEnvelopes = interactive && !managingAccounts && isLiquid(account.kind);
+    const envelopes = envelopesByAccount[account.id] ?? [];
+    const expanded = supportsEnvelopes && expandedAccountIds.includes(account.id);
+    const meta = accountMeta(account);
+    const row = (
       <ListRow
         key={account.id}
         leading={managingAccounts ? <SelectWell selected={selected} /> : <View style={styles.logoSlot}><InstitutionMark account={account} size={36} tile /></View>}
         title={title}
-        subtitle={accountMeta(account)}
+        subtitle={
+          supportsEnvelopes && envelopes.length > 0
+            ? `${meta} · ${envelopes.length} enveloppe${envelopes.length > 1 ? 's' : ''}`
+            : meta
+        }
         value={money(account.balance)}
         valueColor={account.balance < 0 && !hideBalances ? colors.danger : colors.text}
         trailing={
@@ -406,9 +432,36 @@ export function ProtoWalletHub() {
               <Text style={[styles.manageValue, { color: colors.textMuted }]}>{money(account.balance)}</Text>
               <AppIcon family="ionicons" name="reorder-two" size={20} color={colors.textMuted} />
             </View>
+          ) : supportsEnvelopes ? (
+            <View style={styles.envelopeTrailing}>
+              <Text
+                style={[
+                  transactionRowAmountTypography({ fontSize: 16.5, lineHeight: 22 }),
+                  { color: account.balance < 0 && !hideBalances ? colors.danger : colors.text, letterSpacing: -0.3 },
+                ]}
+                numberOfLines={1}
+              >
+                {money(account.balance)}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={expanded ? 'Masquer les enveloppes' : 'Afficher les enveloppes'}
+                accessibilityState={{ expanded }}
+                hitSlop={12}
+                onPress={() => toggleAccountExpanded(account.id)}
+                style={[styles.expandButton, { backgroundColor: expanded ? colors.surfaceElevated : 'transparent' }]}
+              >
+                <AppIcon
+                  family="ionicons"
+                  name={expanded ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={colors.textMuted}
+                />
+              </Pressable>
+            </View>
           ) : undefined
         }
-        isLast={isLast}
+        isLast={isLast && !expanded}
         onPress={
           interactive
             ? () => router.push({ pathname: '/account-detail', params: { accountId: account.id } })
@@ -416,7 +469,28 @@ export function ProtoWalletHub() {
         }
       />
     );
+    if (!expanded) return row;
+    return (
+      <View key={account.id}>
+        {row}
+        <AccountEnvelopesPanel
+          balance={account.balance}
+          envelopes={envelopes}
+          hideBalances={hideBalances}
+          onAdd={() => setEnvelopeDraft(newEnvelopeDraft(account.id, envelopes.length))}
+          onEdit={(envelope) => setEnvelopeDraft({ envelope, isNew: false })}
+        />
+        {!isLast ? <View style={[styles.envelopeDivider, { backgroundColor: colors.borderSubtle }]} /> : null}
+      </View>
+    );
   };
+
+  const draftAccount = envelopeDraft ? accounts.find((a) => a.id === envelopeDraft.envelope.accountId) ?? null : null;
+  const draftAvailable = (() => {
+    if (!envelopeDraft || !draftAccount) return 0;
+    const others = (envelopesByAccount[draftAccount.id] ?? []).filter((e) => e.id !== envelopeDraft.envelope.id);
+    return draftAccount.balance - others.reduce((sum, e) => sum + e.amount, 0);
+  })();
 
   const renderSortableAccount = useCallback<SortableGridRenderItem<SimulatedAccount>>(
     ({ item, index }) => (
@@ -734,6 +808,13 @@ export function ProtoWalletHub() {
           onConnectBank={handleConnectBank}
         />
 
+        <EnvelopeSheet
+          draft={envelopeDraft}
+          accountName={draftAccount ? accountBalanceDisplayName(draftAccount) || 'Compte' : ''}
+          available={draftAvailable}
+          onClose={() => setEnvelopeDraft(null)}
+        />
+
         <SimulatedAccountFormModal
           form={accountForm}
           setForm={setAccountForm}
@@ -811,6 +892,9 @@ const styles = StyleSheet.create({
   section: { marginBottom: SECTION_GAP + spacing.sm },
   sectionActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  envelopeTrailing: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+  expandButton: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  envelopeDivider: { height: StyleSheet.hairlineWidth, marginLeft: 14 },
   cardGap: { marginBottom: spacing.md },
   subLabel: {
     ...typographyKit.eyebrow,

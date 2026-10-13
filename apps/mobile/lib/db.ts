@@ -524,6 +524,23 @@ async function applyIncrementalMigrations(db: SQLite.SQLiteDatabase): Promise<vo
   await ensureWealthAssetColumns(db);
   await ensureMerchantOverrideColumns(db);
   await ensureContactsTable(db);
+  await ensureAccountEnvelopesTable(db);
+}
+
+/** Envelopes split an account's balance into named portions (Factures, Loisirs…). */
+async function ensureAccountEnvelopesTable(db: SQLite.SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS account_envelopes (
+      id TEXT PRIMARY KEY NOT NULL,
+      account_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      icon TEXT,
+      amount REAL NOT NULL DEFAULT 0,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_account_envelopes_account ON account_envelopes(account_id);
+  `);
 }
 
 function isLikelyMissingColumnError(error: unknown): boolean {
@@ -935,6 +952,7 @@ export async function deleteSimulatedAccount(id: string): Promise<void> {
 
   const db = await getDb();
   await db.runAsync('DELETE FROM simulated_accounts WHERE id = ?', [trimmed]);
+  await db.runAsync('DELETE FROM account_envelopes WHERE account_id = ?', [trimmed]);
   dataEvents.emit();
 }
 
