@@ -244,7 +244,7 @@ function ActionBubble({
 const styles = StyleSheet.create({
   hidden: { opacity: 0 },
   // Light dim so the content behind stays visible through the glass.
-  backdrop: { backgroundColor: 'rgba(0, 0, 0, 0.35)' },
+  backdrop: { backgroundColor: 'rgba(0, 0, 0, 0.5)' },
   stack: { position: 'absolute', alignItems: 'flex-end', gap: ACTION_GAP },
   mainSlot: { width: TRANSACTIONS_FAB_SIZE, height: TRANSACTIONS_FAB_SIZE },
   actionRow: {

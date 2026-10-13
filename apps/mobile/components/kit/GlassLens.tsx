@@ -63,10 +63,10 @@ export function GlassLens({
   style,
 }: Props) {
   const { isLight } = useAppTheme();
-  // Graphite glass in dark mode — clearly raised above the dimmed screen, still see-through.
-  const tint = isLight ? `rgba(255,255,255,${tintStrength + 0.35})` : `rgba(72,72,82,${Math.min(0.92, 0.42 + tintStrength)})`;
-  const sheen = isLight ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.12)';
-  const fallback = isLight ? 'rgba(255,255,255,0.9)' : 'rgba(38,38,44,0.95)';
+  // Near-black frosted glass in dark mode — matches the app's cards; content behind only hints through.
+  const tint = isLight ? `rgba(255,255,255,${tintStrength + 0.35})` : `rgba(22,22,26,${Math.min(0.94, 0.78 + tintStrength * 0.35)})`;
+  const sheen = isLight ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.05)';
+  const fallback = isLight ? 'rgba(255,255,255,0.9)' : 'rgba(22,22,26,0.96)';
 
   return (
     <View style={[styles.shadow, { width, height, borderRadius: radius }, style]}>
