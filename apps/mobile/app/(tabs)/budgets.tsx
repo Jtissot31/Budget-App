@@ -87,6 +87,8 @@ export default function BudgetScreen() {
   const scrollRef = useRef<ScrollView>(null);
 
   const [categories, setCategories] = useState<BudgetCategoryUiModel[]>([]);
+  /** False until the first month finishes loading — avoids flashing the empty state. */
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [detailCategoryId, setDetailCategoryId] = useState<string | null>(null);
   const [managingCategories, setManagingCategories] = useState(false);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
@@ -124,6 +126,7 @@ export default function BudgetScreen() {
 
     setDisplayMonth(month);
     setCategories(mapBudgetCategoriesToUi(budgets));
+    setHasLoaded(true);
   }, []);
 
   const navigateToMonth = useCallback(
@@ -312,7 +315,7 @@ export default function BudgetScreen() {
             }
           />
 
-          {listCategories.length > 0 ? (
+          {!hasLoaded ? null : listCategories.length > 0 ? (
             <>
               <View style={styles.section}>
                 <SummaryCard
@@ -327,7 +330,7 @@ export default function BudgetScreen() {
                       : { label: 'Tout est sous contrôle', color: colors.accentGreen }
                   }
                   aside={
-                    <RingGauge progress={usedRatio} color={summaryRingColor} size={76} stroke={8}>
+                    <RingGauge progress={usedRatio} color={summaryRingColor} size={92} stroke={8}>
                       <Text style={[styles.ringValue, { color: colors.text }]}>{usedPct}%</Text>
                       <Text style={[styles.ringCaption, { color: colors.textMuted }]}>utilisé</Text>
                     </RingGauge>
