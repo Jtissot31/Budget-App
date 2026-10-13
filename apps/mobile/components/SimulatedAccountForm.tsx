@@ -288,9 +288,9 @@ export function SimulatedAccountFormModal({
                     style={styles.previewIcon}
                   >
                     {previewLogoAsset || previewLogoUrl ? (
-                      <LogoIconFrame asset={previewLogoAsset} uri={previewLogoUrl} size={40} />
+                      <LogoIconFrame asset={previewLogoAsset} uri={previewLogoUrl} size={32} />
                     ) : (
-                      <UserPickedIconWell icon={manualIcon || accountBalanceIconForKind(kind)} size={40} iconSize={20} />
+                      <UserPickedIconWell icon={manualIcon || accountBalanceIconForKind(kind)} size={32} iconSize={16} />
                     )}
                     <View style={[styles.editBadge, { backgroundColor: colors.text, borderColor: colors.containerBackground }]}>
                       <AppIcon family="ionicons" name="pencil" size={9} color={colors.background} />
@@ -320,6 +320,7 @@ export function SimulatedAccountFormModal({
                   <View style={styles.section}>
                     <ChipSelectField
                       label={kind === 'credit' ? 'Émetteur' : 'Banque'}
+                      reorderSelected={false}
                       options={bankOptions}
                       selectedId={selectedBankId}
                       onSelect={(id) => {
@@ -508,7 +509,7 @@ const styles = StyleSheet.create({
     paddingTop: FORM_SHEET_CONTENT_PADDING_TOP,
   },
   headerPad: { paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
-  content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
+  content: { paddingHorizontal: spacing.lg, gap: spacing.md + 2 },
   section: { gap: spacing.sm },
   pair: { flexDirection: 'row', gap: spacing.sm },
   grow: { flex: 1, minWidth: 0 },
@@ -517,27 +518,28 @@ const styles = StyleSheet.create({
   preview: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 20,
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 16,
     borderWidth: 1,
   },
-  previewIcon: { width: 40, height: 40 },
+  previewIcon: { width: 32, height: 32 },
   editBadge: {
     position: 'absolute',
     right: -3,
     bottom: -3,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   previewCopy: { flex: 1, minWidth: 0, gap: 2 },
-  previewName: { ...jakartaSemiboldText, fontSize: typography.body },
-  previewMeta: { ...jakartaMediumText, fontSize: 12.5 },
-  previewBalance: { ...jakartaSemiboldText, fontSize: typography.body },
+  previewName: { ...jakartaSemiboldText, fontSize: 14 },
+  previewMeta: { ...jakartaMediumText, fontSize: 12 },
+  previewBalance: { ...jakartaSemiboldText, fontSize: 14 },
   link: { ...jakartaMediumText, fontSize: 12.5, marginTop: -spacing.sm, marginLeft: 2 },
 
   input: {
@@ -564,13 +566,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    minHeight: 64,
+    minHeight: 48,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
-  amountInput: { flex: 1, minWidth: 0, ...jakartaBoldText, fontSize: 28, letterSpacing: -0.5, paddingVertical: 8 },
-  amountSuffix: { ...jakartaBoldText, fontSize: 22 },
+  amountInput: { flex: 1, minWidth: 0, ...jakartaSemiboldText, fontSize: 20, letterSpacing: -0.3, paddingVertical: 6 },
+  amountSuffix: { ...jakartaSemiboldText, fontSize: 16 },
 
   moreRow: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 4 },
   moreText: { ...jakartaSemiboldText, fontSize: 14 },

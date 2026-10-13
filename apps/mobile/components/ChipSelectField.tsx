@@ -29,22 +29,34 @@ type Props = {
   /** Unused — accepted so `SettingsSelectField` call sites can swap without edits. */
   pickerTitle?: string;
   placeholder?: string;
+  /** Move the selected chip to the front (animated). Off = chips stay put, only the selection highlights. */
+  reorderSelected?: boolean;
 };
 
-export function ChipSelectField({ label, options, selectedId, onSelect, emptyHint, labelStyle, style }: Props) {
+export function ChipSelectField({
+  label,
+  options,
+  selectedId,
+  onSelect,
+  emptyHint,
+  labelStyle,
+  style,
+  reorderSelected = true,
+}: Props) {
   const { colors } = useAppTheme();
   const scrollRef = useRef<ScrollView>(null);
 
   // Selected option first; the rest keep their original order.
   const ordered = useMemo(() => {
+    if (!reorderSelected) return options;
     const selected = options.find((option) => option.id === selectedId);
     return selected ? [selected, ...options.filter((option) => option.id !== selectedId)] : options;
-  }, [options, selectedId]);
+  }, [options, reorderSelected, selectedId]);
 
   // Bring the row back to the start so the (now first) selected chip is in view.
   useEffect(() => {
-    scrollRef.current?.scrollTo({ x: 0, animated: true });
-  }, [selectedId]);
+    if (reorderSelected) scrollRef.current?.scrollTo({ x: 0, animated: true });
+  }, [reorderSelected, selectedId]);
 
   return (
     <View style={[styles.field, style]}>
@@ -63,7 +75,7 @@ export function ChipSelectField({ label, options, selectedId, onSelect, emptyHin
             const selected = option.id === selectedId;
             const fg = selected ? colors.background : colors.text;
             return (
-              <Animated.View key={option.id} layout={REORDER}>
+              <Animated.View key={option.id} layout={reorderSelected ? REORDER : undefined}>
                 <PressScale
                   accessibilityRole="radio"
                   accessibilityState={{ selected }}
