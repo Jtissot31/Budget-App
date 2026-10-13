@@ -193,6 +193,17 @@ export function buildCopilotInsights(input: CopilotInput): CopilotInsight[] {
 }
 
 /** One-line status for the Copilote header. */
+/** 0–100 from the tips: starts high, a little lower per point to watch, up with each win. */
+export function copilotHealthScore(insights: readonly CopilotInsight[]): number {
+  let score = 86;
+  for (const insight of insights) {
+    if (insight.tone === 'risk') score -= 14;
+    else if (insight.tone === 'warn') score -= 6;
+    else if (insight.tone === 'good') score += 5;
+  }
+  return Math.max(30, Math.min(100, Math.round(score)));
+}
+
 export function copilotHeadline(insights: readonly CopilotInsight[]): { title: string; tone: CopilotTone } {
   const risks = insights.filter((i) => i.tone === 'risk').length;
   const warns = insights.filter((i) => i.tone === 'warn').length;

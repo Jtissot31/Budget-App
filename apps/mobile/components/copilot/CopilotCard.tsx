@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { ListCard, PressScale, withAlpha } from '@/components/kit';
+import { ListCard, PressScale, RingGauge, withAlpha } from '@/components/kit';
 import { jakartaMediumText, jakartaSemiboldText, typographyKit } from '@/constants/theme';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { getCategoriesForMonth, initializeCategories } from '@/lib/budgetCategories';
@@ -16,6 +16,7 @@ import { mapBudgetCategoriesToUi } from '@/lib/budgetCategoryModel';
 import { startOfMonth } from '@/lib/budgetMonth';
 import {
   buildCopilotInsights,
+  copilotHealthScore,
   copilotHeadline,
   type CopilotInput,
   type CopilotInsight,
@@ -294,9 +295,15 @@ export function CopilotWidget({ gentle = false }: { gentle?: boolean }) {
     >
       <ListCard>
         <View style={styles.head}>
-          <View style={[styles.spark, { backgroundColor: colors.surfaceElevated }]}>
-            <AppIcon family="ionicons" name="sparkles" size={15} color={colors.text} />
-          </View>
+          {/* Health score ring — same score as the Copilote hub. */}
+          <RingGauge
+            progress={copilotHealthScore(insights) / 100}
+            color={toWatch > 0 ? WARN_TONE : colors.accentGreen}
+            size={44}
+            stroke={4}
+          >
+            <Text style={[styles.scoreText, jakartaSemiboldText, { color: colors.text }]}>{copilotHealthScore(insights)}</Text>
+          </RingGauge>
           {/* Title on its own line, status pill (full size) right under it — never squeezes « Copilote ». */}
           <View style={styles.headStack}>
             <Text style={[styles.headTitle, jakartaSemiboldText, { color: colors.text }]} numberOfLines={1}>
@@ -311,18 +318,31 @@ export function CopilotWidget({ gentle = false }: { gentle?: boolean }) {
           </View>
           <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
         </View>
-        {top.map((insight, index) => (
-          <CopilotInsightRow
-            key={insight.id}
-            insight={gentle && insight.tone === 'risk' ? { ...insight, tone: 'warn' } : insight}
-            compact
-            isLast={index === top.length - 1 && more <= 0}
-          />
-        ))}
+        {/* Two tip tiles side by side — icon first, short title, no paragraphs. */}
+        <View style={styles.tiles}>
+          {top.map((insight) => {
+            const shown = gentle && insight.tone === 'risk' ? { ...insight, tone: 'warn' as const } : insight;
+            const tone = toneColor(shown.tone, colors);
+            return (
+              <View key={insight.id} style={[styles.tipTile, { backgroundColor: withAlpha(toHex(tone), 0.08) }]}>
+                <View style={[styles.tipIcon, { backgroundColor: withAlpha(toHex(tone), 0.18) }]}>
+                  <AppIcon family="ionicons" name={shown.icon as never} size={16} color={tone} />
+                </View>
+                <Text style={[styles.tipTitle, jakartaSemiboldText, { color: colors.text }]} numberOfLines={3}>
+                  {shown.title}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
         {more > 0 ? (
-          <Text style={[styles.moreHint, jakartaMediumText, { color: colors.textMuted, borderTopColor: colors.containerBorder }]}>
-            + {more} autre{more > 1 ? 's' : ''} conseil{more > 1 ? 's' : ''}
-          </Text>
+          <View style={styles.moreRow}>
+            <View style={[styles.moreChip, { backgroundColor: colors.surfaceElevated }]}>
+              <Text style={[styles.moreChipText, jakartaSemiboldText, { color: colors.textMuted }]}>
+                +{more} conseil{more > 1 ? 's' : ''}
+              </Text>
+            </View>
+          </View>
         ) : null}
       </ListCard>
     </PressScale>
@@ -336,6 +356,14 @@ const styles = StyleSheet.create({
   status: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 28, paddingHorizontal: 11, borderRadius: 14, flexShrink: 0 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   headStack: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 6 },
+  scoreText: { fontSize: 13 },
+  tiles: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingBottom: 12 },
+  tipTile: { flex: 1, minWidth: 0, borderRadius: 16, padding: 12, gap: 10 },
+  tipIcon: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  tipTitle: { fontSize: 13, lineHeight: 17, letterSpacing: -0.1 },
+  moreRow: { flexDirection: 'row', paddingHorizontal: 12, paddingBottom: 12, marginTop: -4 },
+  moreChip: { height: 26, paddingHorizontal: 10, borderRadius: 13, justifyContent: 'center' },
+  moreChipText: { fontSize: 12 },
   statusStacked: { maxWidth: '100%' },
   statusText: { ...typographyKit.metaSemibold, fontSize: 12.5 },
   row: {

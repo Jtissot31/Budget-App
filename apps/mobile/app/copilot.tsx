@@ -23,7 +23,7 @@ import {
   PAGE_PADDING_HORIZONTAL,
   spacing,
 } from '@/constants/theme';
-import type { CopilotInsight } from '@/lib/copilotInsights';
+import { copilotHealthScore, type CopilotInsight } from '@/lib/copilotInsights';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
@@ -37,16 +37,6 @@ const GROUPS: { title: string; match: (insight: CopilotInsight) => boolean }[] =
 const CUSHION_DAYS = 14;
 const money = formatDisplayMoneyAbsolute;
 
-/** 0–100 from the tips: starts high, a little lower per point to watch, up with each win. */
-function healthScore(insights: readonly CopilotInsight[]): number {
-  let score = 86;
-  for (const insight of insights) {
-    if (insight.tone === 'risk') score -= 14;
-    else if (insight.tone === 'warn') score -= 6;
-    else if (insight.tone === 'good') score += 5;
-  }
-  return Math.max(30, Math.min(100, Math.round(score)));
-}
 
 function scoreCopy(score: number): { label: string; body: string } {
   if (score >= 80) return { label: 'Excellente forme', body: 'Tes finances tournent rond — continue comme ça.' };
@@ -66,7 +56,7 @@ export default function CopilotScreen() {
   useEffect(() => setShown(true), []);
   const pop = usePopOnActive(shown && data != null, 1.08);
 
-  const score = insights ? healthScore(insights) : 0;
+  const score = insights ? copilotHealthScore(insights) : 0;
   const scoreColor = score >= 60 ? colors.accentGreen : WARN_TONE;
   const copy = scoreCopy(score);
 
