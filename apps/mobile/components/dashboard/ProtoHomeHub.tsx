@@ -68,6 +68,7 @@ import { buildGoalProgressions } from '@/lib/savingsGamification';
 import { syncWithServer } from '@/lib/sync';
 import { useAppTheme } from '@/lib/themeContext';
 import { getUserDisplayName } from '@/lib/userDisplay';
+import { readScreenCache, refreshScreenCache, writeScreenCache } from '@/lib/screenCache';
 import type {
   AgendaBill,
   CategoryBudget,
@@ -136,52 +137,87 @@ function upcomingPaymentRows(
   return rows;
 }
 
+type HomeSnapshot = {
+  displayName: string;
+  accounts: SimulatedAccount[];
+  goals: SavingsGoal[];
+  dashboard: DashboardSummary | null;
+  categoryBudgets: CategoryBudget[];
+  recurringPayments: RecurringPayment[];
+  trendTransactions: Transaction[];
+  budgetCategories: BudgetCategoryUiModel[];
+};
+
+const HOME_CACHE_KEY = 'home';
+
+async function fetchHomeSnapshot(): Promise<HomeSnapshot> {
+  await ensureDbReady();
+  await initializeCategories();
+  const [name, accounts, goals, dashboard, categoryBudgets, recurringPayments, trendTransactions, monthCats] =
+    await Promise.all([
+      getUserDisplayName(),
+      getSimulatedAccounts(),
+      getSavingsGoals(),
+      getDashboard(),
+      getCategoryBudgets(),
+      getRecurringPayments(),
+      getTransactionsSince(trendSinceIso(TREND_DAY_COUNT)),
+      // Same source as the Budget tab so both screens show identical numbers.
+      getCategoriesForMonth(startOfMonth(new Date())),
+    ]);
+  return {
+    displayName: name,
+    accounts,
+    goals,
+    dashboard,
+    categoryBudgets,
+    recurringPayments,
+    trendTransactions,
+    budgetCategories: mapBudgetCategoriesToUi(monthCats),
+  };
+}
+
+/** Boot preload — Accueil then opens with real data instead of an empty first frame. */
+export function preloadHomeData(): Promise<unknown> {
+  return refreshScreenCache(HOME_CACHE_KEY, fetchHomeSnapshot);
+}
+
 export function ProtoHomeHub() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isLight } = useAppTheme();
   const greeting = timeOfDayGreeting(new Date());
+  // Start from the last snapshot (preloaded at boot) so the first frame is already right.
+  const [cached] = useState(() => readScreenCache<HomeSnapshot>(HOME_CACHE_KEY));
 
-  const [displayName, setDisplayName] = useState('');
-  const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
-  const [goals, setGoals] = useState<SavingsGoal[]>([]);
-  const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
-  const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudget[]>([]);
-  const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
-  const [trendTransactions, setTrendTransactions] = useState<Transaction[]>([]);
+  const [displayName, setDisplayName] = useState(cached?.displayName ?? '');
+  const [accounts, setAccounts] = useState<SimulatedAccount[]>(cached?.accounts ?? []);
+  const [goals, setGoals] = useState<SavingsGoal[]>(cached?.goals ?? []);
+  const [dashboard, setDashboard] = useState<DashboardSummary | null>(cached?.dashboard ?? null);
+  const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudget[]>(cached?.categoryBudgets ?? []);
+  const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>(cached?.recurringPayments ?? []);
+  const [trendTransactions, setTrendTransactions] = useState<Transaction[]>(cached?.trendTransactions ?? []);
   const [refreshing, setRefreshing] = useState(false);
-  /** False until the first load finishes — the wins card waits so it never flashes an empty state. */
-  const [hasLoaded, setHasLoaded] = useState(false);
+  /** False until real data exists — the wins card waits so it never flashes an empty state. */
+  const [hasLoaded, setHasLoaded] = useState(cached != null);
 
   const [goalForm, setGoalForm] = useState<GoalForm | null>(null);
   const [savingGoal, setSavingGoal] = useState(false);
   const [goalFormFeedback, setGoalFormFeedback] = useState<FormFeedback | null>(null);
 
-  const [budgetCategories, setBudgetCategories] = useState<BudgetCategoryUiModel[]>([]);
+  const [budgetCategories, setBudgetCategories] = useState<BudgetCategoryUiModel[]>(cached?.budgetCategories ?? []);
 
   const load = useCallback(async () => {
-    await ensureDbReady();
-    await initializeCategories();
-    const [name, nextAccounts, nextGoals, nextDashboard, nextBudgets, nextPayments, trendTx, monthCats] =
-      await Promise.all([
-        getUserDisplayName(),
-        getSimulatedAccounts(),
-        getSavingsGoals(),
-        getDashboard(),
-        getCategoryBudgets(),
-        getRecurringPayments(),
-        getTransactionsSince(trendSinceIso(TREND_DAY_COUNT)),
-        // Same source as the Budget tab so both screens show identical numbers.
-        getCategoriesForMonth(startOfMonth(new Date())),
-      ]);
-    setDisplayName(name);
-    setAccounts(nextAccounts);
-    setGoals(nextGoals);
-    setDashboard(nextDashboard);
-    setCategoryBudgets(nextBudgets);
-    setBudgetCategories(mapBudgetCategoriesToUi(monthCats));
-    setRecurringPayments(nextPayments);
-    setTrendTransactions(trendTx);
+    const snapshot = await refreshScreenCache(HOME_CACHE_KEY, fetchHomeSnapshot);
+    writeScreenCache(HOME_CACHE_KEY, snapshot);
+    setDisplayName(snapshot.displayName);
+    setAccounts(snapshot.accounts);
+    setGoals(snapshot.goals);
+    setDashboard(snapshot.dashboard);
+    setCategoryBudgets(snapshot.categoryBudgets);
+    setBudgetCategories(snapshot.budgetCategories);
+    setRecurringPayments(snapshot.recurringPayments);
+    setTrendTransactions(snapshot.trendTransactions);
     setHasLoaded(true);
   }, []);
 

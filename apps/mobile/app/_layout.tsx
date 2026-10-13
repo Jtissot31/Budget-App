@@ -31,6 +31,8 @@ import { configureSystemTypographyDefaults, configureTypographyDefaults } from '
 import { fontFamilies } from '@/constants/theme';
 import { cn } from '@/lib/utils';
 import { ToastHost } from '@/components/kit/Toast';
+import { preloadCopilotData } from '@/components/copilot/CopilotCard';
+import { preloadHomeData } from '@/components/dashboard/ProtoHomeHub';
 
 export const unstable_settings = {
   initialRouteName: '(tabs)',
@@ -89,6 +91,8 @@ function RootLayoutContent() {
       try {
         await ensureDbReady();
         console.log('[Boot] database ready');
+        // Warm Accueil + Copilote so they open with real content (no empty first frame).
+        void Promise.all([preloadHomeData(), preloadCopilotData()]).catch(() => undefined);
       } catch (error) {
         console.warn('[Boot] database init failed', error);
       }

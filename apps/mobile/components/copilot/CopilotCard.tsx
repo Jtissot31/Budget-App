@@ -28,6 +28,7 @@ import { ensureDbReady } from '@/lib/init';
 import { buildRecurringBillsByDate } from '@/lib/protoAgendaBills';
 import { buildLoanByRecurringPaymentId } from '@/lib/recurringPaymentPresentation';
 import { analyzeSubscriptions } from '@/lib/subscriptionAnalysis';
+import { readScreenCache, refreshScreenCache, writeScreenCache } from '@/lib/screenCache';
 import { useAppTheme } from '@/lib/themeContext';
 
 const UPCOMING_DAYS = 14;
@@ -39,11 +40,14 @@ export function useCopilotInsights(): CopilotInsight[] | null {
   return useCopilotData()?.insights ?? null;
 }
 
-/** Tips plus the numbers they were computed from (charts on the Copilote hub). */
-export function useCopilotData(): CopilotData | null {
-  const [data, setData] = useState<CopilotData | null>(null);
+const COPILOT_CACHE_KEY = 'copilot';
 
-  const load = useCallback(async () => {
+/** Boot preload — Accueil widget and Copilote hub open with their content already there. */
+export function preloadCopilotData(): Promise<unknown> {
+  return refreshScreenCache(COPILOT_CACHE_KEY, fetchCopilotData);
+}
+
+async function fetchCopilotData(): Promise<CopilotData> {
     await ensureDbReady();
     await initializeCategories();
     const now = new Date();
@@ -91,7 +95,18 @@ export function useCopilotData(): CopilotData | null {
         icon: g.icon ?? null,
       })),
     };
-    setData({ insights: buildCopilotInsights(input), input });
+    return { insights: buildCopilotInsights(input), input };
+}
+
+/** Tips plus the numbers they were computed from (charts on the Copilote hub). */
+export function useCopilotData(): CopilotData | null {
+  // Last snapshot first (preloaded at boot) — then refresh quietly in the background.
+  const [data, setData] = useState<CopilotData | null>(() => readScreenCache<CopilotData>(COPILOT_CACHE_KEY) ?? null);
+
+  const load = useCallback(async () => {
+    const next = await refreshScreenCache(COPILOT_CACHE_KEY, fetchCopilotData);
+    writeScreenCache(COPILOT_CACHE_KEY, next);
+    setData(next);
   }, []);
 
   useEffect(() => {
