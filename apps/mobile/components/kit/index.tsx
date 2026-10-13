@@ -360,6 +360,8 @@ type SummaryCardProps = {
   onPress?: () => void;
   accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
+  /** Page hero: same content without the card container (sits directly on the canvas). */
+  bare?: boolean;
 };
 
 function SummaryAmount({
@@ -390,6 +392,11 @@ function SummaryAmount({
 }
 
 /** Same shell as `SpendAndSaveCard`, with a larger hero amount and a chart slot. */
+/** Container-less stand-in for ProtoGlassCard (same props) — used by `SummaryCard bare`. */
+function BareShell({ children, style }: { children?: ReactNode; padding?: number; style?: StyleProp<ViewStyle> }) {
+  return <View style={[styles.bareShell, style]}>{children}</View>;
+}
+
 export function SummaryCard({
   label,
   amount,
@@ -404,10 +411,12 @@ export function SummaryCard({
   onPress,
   accessibilityLabel,
   style,
+  bare = false,
 }: SummaryCardProps) {
   const { colors } = useAppTheme();
+  const Shell = bare ? BareShell : ProtoGlassCard;
   const card = (
-    <ProtoGlassCard padding={16} style={[styles.summaryCard, style]}>
+    <Shell padding={16} style={[styles.summaryCard, style]}>
       <View style={styles.summaryTop}>
         <View style={styles.summaryHero}>
           <View style={styles.summaryLabelRow}>
@@ -472,7 +481,7 @@ export function SummaryCard({
           {footer}
         </Text>
       ) : null}
-    </ProtoGlassCard>
+    </Shell>
   );
   if (!onPress) return <Reveal>{card}</Reveal>;
   return (
@@ -548,6 +557,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   summaryCard: { gap: 12 },
+  bareShell: { paddingVertical: 4 },
   summaryTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   summaryHero: { flex: 1, minWidth: 0, gap: 4 },
   summaryLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },

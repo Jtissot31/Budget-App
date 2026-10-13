@@ -1,20 +1,23 @@
 /**
- * Accueil « Tes victoires » — a warm, rewarding opener: headline + up to 3 wins.
- * The badge pops in, wins slide in one by one, and a success haptic plays at most once a day.
+ * Accueil « Tes victoires » — one quiet line under the page title: the top wins, each a
+ * small green icon + short label. No badge, no headline, no container. A success haptic
+ * plays at most once a day when there is something to celebrate.
+ * With nothing to celebrate yet, a single « Noter une dépense » link instead.
  */
-import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import Animated from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { PressScale, Reveal, usePopOnActive } from '@/components/kit/motion';
-import { jakartaBoldText, jakartaMediumText, jakartaSemiboldText } from '@/constants/theme';
+import { Reveal } from '@/components/kit/motion';
+import { jakartaMediumText, jakartaSemiboldText } from '@/constants/theme';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import type { HomeWins } from '@/lib/homeWins';
 import { useAppTheme } from '@/lib/themeContext';
 
 const HAPTIC_DAY_KEY = 'home-wins-haptic-day';
+/** Two wins fit on one line on a phone; more would wrap or crowd. */
+const MAX_INLINE_WINS = 2;
 
 function todayKey(): string {
   const now = new Date();
@@ -24,12 +27,10 @@ function todayKey(): string {
 export function WinsCard({ wins }: { wins: HomeWins }) {
   const router = useRouter();
   const { colors } = useAppTheme();
-  const [shown, setShown] = useState(false);
-  const pop = usePopOnActive(shown, 1.22);
   const celebrate = wins.mood !== 'fresh';
+  const shown = wins.wins.slice(0, MAX_INLINE_WINS);
 
   useEffect(() => {
-    setShown(true);
     if (!celebrate) return;
     // One little « dopamine » buzz per day, not on every visit.
     void (async () => {
@@ -39,85 +40,47 @@ export function WinsCard({ wins }: { wins: HomeWins }) {
         await AsyncStorage.setItem(HAPTIC_DAY_KEY, key);
         setTimeout(successHaptic, 350);
       } catch {
-        // Storage unavailable — skip the haptic, never block the card.
+        // Storage unavailable — skip the haptic, never block the line.
       }
     })();
   }, [celebrate]);
 
-  const accent = colors.accentGreen;
+  if (shown.length === 0) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Noter une dépense"
+        hitSlop={8}
+        onPress={() => {
+          tapHaptic();
+          router.push({ pathname: '/add-transaction', params: { type: 'expense' } });
+        }}
+        style={styles.line}
+      >
+        <AppIcon family="ionicons" name="add-circle" size={15} color={colors.accentGreen} />
+        <Text style={[styles.text, { color: colors.textSecondary }]}>Note ta première dépense du jour</Text>
+      </Pressable>
+    );
+  }
 
-  // Part of the page, not a card: sits under the page title as an intro, so Accueil doesn't
-  // open with a stack of look-alike containers.
   return (
-    <View style={styles.intro}>
-
-      <View style={styles.head}>
-        <Animated.View style={[styles.badge, { backgroundColor: celebrate ? `${accent}26` : colors.surfaceElevated }, pop]}>
-          <AppIcon
-            family="ionicons"
-            name={wins.mood === 'great' ? 'trophy' : wins.mood === 'good' ? 'sparkles' : 'sunny'}
-            size={22}
-            color={celebrate ? accent : colors.text}
-          />
-        </Animated.View>
-        <View style={styles.headCopy}>
-          <Text style={[styles.headline, { color: colors.text }]} numberOfLines={1}>
-            {wins.headline}
+    <View style={styles.line} accessibilityLabel={shown.map((win) => win.label).join(', ')}>
+      {shown.map((win, index) => (
+        <Reveal key={win.id} index={index} style={styles.win}>
+          {index > 0 ? <Text style={[styles.dot, { color: colors.textMuted }]}>·</Text> : null}
+          <AppIcon family="ionicons" name={win.icon} size={14} color={colors.accentGreen} />
+          <Text style={[styles.text, { color: colors.textSecondary }]} numberOfLines={1}>
+            {win.label}
           </Text>
-          <Text style={[styles.subline, { color: colors.textMuted }]} numberOfLines={2}>
-            {wins.subline}
-          </Text>
-        </View>
-      </View>
-
-      {wins.wins.length > 0 ? (
-        <View style={styles.wins}>
-          {wins.wins.map((win, index) => (
-            <Reveal key={win.id} index={index + 1} style={[styles.win, { backgroundColor: colors.surfaceElevated }]}>
-              <AppIcon family="ionicons" name={win.icon} size={14} color={accent} />
-              <Text style={[styles.winText, { color: colors.text }]} numberOfLines={1}>
-                {win.label}
-              </Text>
-            </Reveal>
-          ))}
-        </View>
-      ) : (
-        <PressScale
-          accessibilityRole="button"
-          accessibilityLabel="Noter une dépense"
-          onPress={() => {
-            tapHaptic();
-            router.push({ pathname: '/add-transaction', params: { type: 'expense' } });
-          }}
-          scaleTo={0.96}
-          style={[styles.cta, { backgroundColor: colors.text }]}
-        >
-          <AppIcon family="ionicons" name="add" size={16} color={colors.background} />
-          <Text style={[styles.ctaText, { color: colors.background }]}>Noter une dépense</Text>
-        </PressScale>
-      )}
+        </Reveal>
+      ))}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  intro: { gap: 14, paddingTop: 2 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  badge: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  headCopy: { flex: 1, minWidth: 0, gap: 2 },
-  headline: { ...jakartaBoldText, fontSize: 18, letterSpacing: -0.3 },
-  subline: { ...jakartaMediumText, fontSize: 13, lineHeight: 18 },
-  wins: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  win: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 32, paddingHorizontal: 11, borderRadius: 16, maxWidth: '100%' },
-  winText: { ...jakartaSemiboldText, fontSize: 12.5, flexShrink: 1 },
-  cta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 6,
-    height: 36,
-    paddingHorizontal: 14,
-    borderRadius: 18,
-  },
-  ctaText: { ...jakartaSemiboldText, fontSize: 13.5 },
+  line: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: 8, rowGap: 4 },
+  win: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 },
+  dot: { ...jakartaSemiboldText, fontSize: 13, marginRight: 3 },
+  text: { ...jakartaMediumText, fontSize: 13, flexShrink: 1 },
 });

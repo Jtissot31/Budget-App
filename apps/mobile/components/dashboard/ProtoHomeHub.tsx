@@ -435,12 +435,14 @@ export function ProtoHomeHub() {
               appears at once — no empty values, no late pop-in. Later visits use the cache. */}
           {hasLoaded ? (
             <>
-              <Reveal index={0} style={styles.section}>
+              <Reveal index={0} style={styles.winsLine}>
                 <WinsCard wins={homeWins} />
               </Reveal>
 
             <Reveal index={0} style={styles.section}>
+              {/* Page hero — no container, so Accueil reads hero → sections, not card after card. */}
               <SummaryCard
+                bare
                 label="Patrimoine net"
                 amount={signedMoney(totalNetWorth)}
                 amountValue={totalNetWorth}
@@ -610,6 +612,7 @@ export function ProtoHomeHub() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   section: { marginBottom: SECTION_GAP + spacing.sm },
+  winsLine: { marginTop: -spacing.sm, marginBottom: SECTION_GAP },
   goalGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
   goalCell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10 },
   goalSummary: { marginBottom: 10 },
