@@ -1,6 +1,8 @@
 /**
  * Copilote — short, actionable tips computed from the user's data.
- * Self-loading so it can sit on Accueil and at the top of Messages.
+ * - `CopilotWidget`: compact Accueil card (top 2, one line each) → opens the Copilote hub.
+ * - `CopilotCard`: full card (Centre d'alertes).
+ * - `CopilotInsightRow`: one tip, shared by both and by the hub page.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -88,7 +90,7 @@ export function useCopilotInsights(): CopilotInsight[] | null {
   return insights;
 }
 
-function toneColor(tone: CopilotTone, colors: { danger: string; accentGreen: string; textMuted: string }): string {
+export function toneColor(tone: CopilotTone, colors: { danger: string; accentGreen: string; textMuted: string }): string {
   if (tone === 'risk') return colors.danger;
   if (tone === 'warn') return WARN_TONE;
   if (tone === 'good') return colors.accentGreen;
@@ -132,47 +134,14 @@ export function CopilotCard({ limit = 3 }: Props) {
         </View>
       </View>
 
-      {visible.map((insight, index) => {
-        const tone = toneColor(insight.tone, colors);
-        const isLast = index === visible.length - 1 && hidden <= 0 && !expanded;
-        return (
-          <PressScale
-            key={insight.id}
-            accessibilityRole="button"
-            accessibilityLabel={`${insight.title}. ${insight.detail}`}
-            scaleTo={0.985}
-            disabled={!insight.route}
-            onPress={() => {
-              if (!insight.route) return;
-              tapHaptic();
-              router.push(insight.route as never);
-            }}
-          >
-            <View
-              style={[
-                styles.row,
-                { borderTopColor: colors.containerBorder },
-                isLast && styles.rowLast,
-              ]}
-            >
-              <View style={[styles.icon, { backgroundColor: withAlpha(toHex(tone), 0.12) }]}>
-                <AppIcon family="ionicons" name={insight.icon as never} size={17} color={tone} />
-              </View>
-              <View style={styles.copy}>
-                <Text style={[styles.title, jakartaSemiboldText, { color: colors.text }]} numberOfLines={2}>
-                  {insight.title}
-                </Text>
-                <Text style={[styles.detail, jakartaMediumText, { color: colors.textMuted }]} numberOfLines={3}>
-                  {insight.detail}
-                </Text>
-              </View>
-              {insight.route ? (
-                <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
-              ) : null}
-            </View>
-          </PressScale>
-        );
-      })}
+      {visible.map((insight, index) => (
+        <CopilotInsightRow
+          key={insight.id}
+          insight={insight}
+          isLast={index === visible.length - 1 && hidden <= 0 && !expanded}
+          onPress={insight.route ? () => router.push(insight.route as never) : undefined}
+        />
+      ))}
 
       {hidden > 0 || expanded ? (
         <PressScale
@@ -200,6 +169,122 @@ export function CopilotCard({ limit = 3 }: Props) {
   );
 }
 
+/** One tip. `compact` = single line, no detail, not tappable (rows inside the Accueil widget). */
+export function CopilotInsightRow({
+  insight,
+  isLast = false,
+  compact = false,
+  borderTop = true,
+  onPress,
+}: {
+  insight: CopilotInsight;
+  isLast?: boolean;
+  compact?: boolean;
+  borderTop?: boolean;
+  onPress?: () => void;
+}) {
+  const { colors } = useAppTheme();
+  const tone = toneColor(insight.tone, colors);
+  const body = (
+    <View
+      style={[
+        styles.row,
+        compact && styles.rowCompact,
+        borderTop ? { borderTopColor: colors.containerBorder } : styles.noBorder,
+        isLast && styles.rowLast,
+      ]}
+    >
+      <View style={[compact ? styles.iconCompact : styles.icon, { backgroundColor: withAlpha(toHex(tone), 0.12) }]}>
+        <AppIcon family="ionicons" name={insight.icon as never} size={compact ? 14 : 17} color={tone} />
+      </View>
+      <View style={styles.copy}>
+        <Text
+          style={[compact ? styles.titleCompact : styles.title, jakartaSemiboldText, { color: colors.text }]}
+          numberOfLines={compact ? 1 : 2}
+        >
+          {insight.title}
+        </Text>
+        {!compact ? (
+          <Text style={[styles.detail, jakartaMediumText, { color: colors.textMuted }]} numberOfLines={3}>
+            {insight.detail}
+          </Text>
+        ) : null}
+      </View>
+      {!compact && onPress ? (
+        <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
+      ) : null}
+    </View>
+  );
+  if (compact || !onPress) return body;
+  return (
+    <PressScale
+      accessibilityRole="button"
+      accessibilityLabel={`${insight.title}. ${insight.detail}`}
+      scaleTo={0.985}
+      onPress={() => {
+        tapHaptic();
+        onPress();
+      }}
+    >
+      {body}
+    </PressScale>
+  );
+}
+
+const WIDGET_ROWS = 2;
+
+/** Accueil: header + the 2 most important tips, one line each. The whole card opens the hub. */
+export function CopilotWidget() {
+  const router = useRouter();
+  const { colors } = useAppTheme();
+  const insights = useCopilotInsights();
+  const headline = useMemo(() => (insights ? copilotHeadline(insights) : null), [insights]);
+  if (!insights || insights.length === 0 || !headline) return null;
+
+  const top = insights.slice(0, WIDGET_ROWS);
+  const more = insights.length - top.length;
+  const headTone = toneColor(headline.tone, colors);
+
+  return (
+    <PressScale
+      accessibilityRole="button"
+      accessibilityLabel={`Copilote, ${headline.title}. Ouvrir tous les conseils`}
+      scaleTo={0.985}
+      onPress={() => {
+        tapHaptic();
+        router.push('/copilot' as never);
+      }}
+    >
+      <ListCard>
+        <View style={styles.head}>
+          <View style={[styles.spark, { backgroundColor: colors.surfaceElevated }]}>
+            <AppIcon family="ionicons" name="sparkles" size={15} color={colors.text} />
+          </View>
+          <Text style={[styles.headTitle, jakartaSemiboldText, { color: colors.text }]}>Copilote</Text>
+          <View style={[styles.status, { backgroundColor: withAlpha(toHex(headTone), 0.14) }]}>
+            <View style={[styles.statusDot, { backgroundColor: headTone }]} />
+            <Text style={[styles.statusText, { color: headTone }]}>{headline.title}</Text>
+          </View>
+          <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
+        </View>
+        {top.map((insight, index) => (
+          <CopilotInsightRow
+            key={insight.id}
+            insight={insight}
+            compact
+            isLast={index === top.length - 1 && more <= 0}
+          />
+        ))}
+        {more > 0 ? (
+          <Text style={[styles.moreHint, jakartaMediumText, { color: colors.textMuted, borderTopColor: colors.containerBorder }]}>
+            + {more} autre{more > 1 ? 's' : ''} conseil{more > 1 ? 's' : ''}
+          </Text>
+        ) : null}
+      </ListCard>
+    </PressScale>
+  );
+}
+
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingTop: 14, paddingBottom: 12 },
   spark: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
@@ -216,6 +301,17 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   rowLast: { paddingBottom: 14 },
+  rowCompact: { paddingVertical: 10, gap: 10 },
+  noBorder: { borderTopWidth: 0 },
+  iconCompact: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  titleCompact: { fontSize: 13.5, lineHeight: 18, letterSpacing: -0.1 },
+  moreHint: {
+    fontSize: 12.5,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
   icon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   copy: { flexShrink: 1, flexGrow: 1, minWidth: 0, gap: 2 },
   title: { fontSize: 14, lineHeight: 18, letterSpacing: -0.15 },

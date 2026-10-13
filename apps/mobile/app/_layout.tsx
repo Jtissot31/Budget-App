@@ -203,6 +203,7 @@ function RootLayoutContent() {
             <Stack.Screen name="savings-goals" options={{ headerShown: false }} />
             <Stack.Screen name="transactions-insights" options={{ headerShown: false }} />
             <Stack.Screen name="subscriptions-insights" options={{ headerShown: false }} />
+            <Stack.Screen name="copilot" options={{ headerShown: false }} />
             <Stack.Screen name="documents-library" options={{ headerShown: false }} />
             <Stack.Screen name="paycheck-allocation" options={{ headerShown: false }} />
             <Stack.Screen name="lucide-icons" options={{ headerShown: false }} />

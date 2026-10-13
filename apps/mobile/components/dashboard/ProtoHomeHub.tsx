@@ -29,7 +29,7 @@ import {
 } from '@/components/kit';
 import { GoalsOverview, NextPayments, SpendingSnapshot } from '@/components/dashboard/HomeUpcoming';
 import { TodayCard } from '@/components/dashboard/TodayCard';
-import { CopilotCard } from '@/components/copilot/CopilotCard';
+import { CopilotWidget } from '@/components/copilot/CopilotCard';
 import { PageTransition } from '@/components/PageTransition';
 import {
   createNewGoalForm,
@@ -418,7 +418,7 @@ export function ProtoHomeHub() {
           </Reveal>
 
           <Reveal index={1} style={styles.section}>
-            <CopilotCard limit={3} />
+            <CopilotWidget />
           </Reveal>
 
           <Reveal index={1} style={styles.section}>
