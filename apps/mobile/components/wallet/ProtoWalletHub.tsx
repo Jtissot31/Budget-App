@@ -486,7 +486,13 @@ export function ProtoWalletHub() {
               }
               stats={[
                 { label: 'Disponible', value: money(availableNow) },
-                { label: 'Épargne', value: money(savingsTotal) },
+                {
+                  label: 'Épargne',
+                  // Compact from 1 000 $ so the stat stays short (11 250,50 $ → 11,25K$).
+                  value: hideBalances
+                    ? MASK
+                    : formatDisplayMoneyAbsolute(savingsTotal, { compactKThreshold: 1_000, compactKDecimals: 2 }),
+                },
                 creditLimitTotal > 0
                   ? {
                       label: 'Crédit utilisé',
@@ -507,14 +513,14 @@ export function ProtoWalletHub() {
                 <View style={styles.balanceBlock}>
                   <View style={styles.balanceLabels}>
                     <Text style={[styles.balanceLabel, { color: colors.textMuted }]}>
-                      Liquidités <Text style={{ color: colors.text }}>{formatCompactCurrency(liquidCash)}</Text>
+                      Liquidités <Text style={{ color: colors.accentGreen }}>{formatCompactCurrency(liquidCash)}</Text>
                     </Text>
                     <Text style={[styles.balanceLabel, { color: colors.textMuted }]}>
                       Dettes de carte <Text style={{ color: colors.danger }}>{formatCompactCurrency(creditUsed)}</Text>
                     </Text>
                   </View>
                   <View style={styles.balanceBar}>
-                    <View style={{ flex: Math.max(liquidCash, 0.0001), backgroundColor: colors.text, borderRadius: 4 }} />
+                    <View style={{ flex: Math.max(liquidCash, 0.0001), backgroundColor: colors.accentGreen, borderRadius: 4 }} />
                     {creditUsed > 0 ? (
                       <View style={{ flex: creditUsed, backgroundColor: colors.danger, borderRadius: 4, marginLeft: 3 }} />
                     ) : null}
