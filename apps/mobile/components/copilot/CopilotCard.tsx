@@ -233,8 +233,11 @@ export function CopilotInsightRow({
 
 const WIDGET_ROWS = 2;
 
-/** Accueil: header + the 2 most important tips, one line each. The whole card opens the hub. */
-export function CopilotWidget() {
+/**
+ * Accueil: header + the 2 most important tips, one line each. The whole card opens the hub.
+ * `gentle` softens the status for Accueil (« 2 points à regarder », amber — never red « urgent »).
+ */
+export function CopilotWidget({ gentle = false }: { gentle?: boolean }) {
   const router = useRouter();
   const { colors } = useAppTheme();
   const insights = useCopilotInsights();
@@ -243,12 +246,18 @@ export function CopilotWidget() {
 
   const top = insights.slice(0, WIDGET_ROWS);
   const more = insights.length - top.length;
-  const headTone = toneColor(headline.tone, colors);
+  const toWatch = insights.filter((i) => i.tone === 'risk' || i.tone === 'warn').length;
+  const status = gentle
+    ? toWatch > 0
+      ? { title: `${toWatch} point${toWatch > 1 ? 's' : ''} à regarder`, color: WARN_TONE }
+      : { title: 'Tout roule', color: colors.accentGreen }
+    : { title: headline.title, color: toneColor(headline.tone, colors) };
+  const headTone = status.color;
 
   return (
     <PressScale
       accessibilityRole="button"
-      accessibilityLabel={`Copilote, ${headline.title}. Ouvrir tous les conseils`}
+      accessibilityLabel={`Copilote, ${status.title}. Ouvrir tous les conseils`}
       scaleTo={0.985}
       onPress={() => {
         tapHaptic();
@@ -263,14 +272,14 @@ export function CopilotWidget() {
           <Text style={[styles.headTitle, jakartaSemiboldText, { color: colors.text }]}>Copilote</Text>
           <View style={[styles.status, { backgroundColor: withAlpha(toHex(headTone), 0.14) }]}>
             <View style={[styles.statusDot, { backgroundColor: headTone }]} />
-            <Text style={[styles.statusText, { color: headTone }]}>{headline.title}</Text>
+            <Text style={[styles.statusText, { color: headTone }]}>{status.title}</Text>
           </View>
           <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
         </View>
         {top.map((insight, index) => (
           <CopilotInsightRow
             key={insight.id}
-            insight={insight}
+            insight={gentle && insight.tone === 'risk' ? { ...insight, tone: 'warn' } : insight}
             compact
             isLast={index === top.length - 1 && more <= 0}
           />

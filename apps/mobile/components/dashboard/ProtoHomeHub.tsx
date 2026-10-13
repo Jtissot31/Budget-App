@@ -29,6 +29,7 @@ import {
 } from '@/components/kit';
 import { GoalsOverview, NextPayments, SpendingSnapshot } from '@/components/dashboard/HomeUpcoming';
 import { TodayCard } from '@/components/dashboard/TodayCard';
+import { WinsCard } from '@/components/dashboard/WinsCard';
 import { CopilotWidget } from '@/components/copilot/CopilotCard';
 import { PageTransition } from '@/components/PageTransition';
 import {
@@ -59,7 +60,9 @@ import { formatNumberDisplay } from '@/lib/formatNumber';
 import type { FormFeedback } from '@/lib/formFeedback';
 import { isFormSaveSuccess } from '@/lib/formFeedback';
 import { tapHaptic } from '@/lib/haptics';
+import { buildHomeWins } from '@/lib/homeWins';
 import { ensureDbReady } from '@/lib/init';
+import { computeLoggingStreak } from '@/lib/loggingStreak';
 import { buildRecurringBillsByDate } from '@/lib/protoAgendaBills';
 import { buildGoalProgressions } from '@/lib/savingsGamification';
 import { syncWithServer } from '@/lib/sync';
@@ -316,16 +319,32 @@ export function ProtoHomeHub() {
     }
   }, [closeGoalForm, goalForm, isLight, load]);
 
-  const trendColor = (netWorthPct ?? 0) >= 0 ? colors.accentGreen : colors.danger;
+  // Accueil is encouraging, not alarming: dips are shown in neutral grey, never red.
+  const trendColor = (netWorthPct ?? 0) >= 0 ? colors.accentGreen : colors.textMuted;
   const budgetRatio = budget.limit > 0 ? budget.spent / budget.limit : 0;
-  // Same thresholds as the Budget tab ring: green ≤ 102 %, orange ≤ 110 %, red beyond.
   const budgetPct = Math.round(budgetRatio * 100);
-  const budgetColor = budgetPct <= 102 ? colors.accentGreen : budgetPct <= 110 ? '#F59E0B' : colors.danger;
+  const budgetColor = budgetPct <= 102 ? colors.accentGreen : '#F59E0B';
 
+  const budgetedCount = budgetCategories.filter((b) => b.limit > 0).length;
   const budgetSubtitle =
     budget.over > 0
-      ? `${budget.over} catégorie${budget.over > 1 ? 's' : ''} en dépassement`
+      ? `${budgetedCount - budget.over} catégorie${budgetedCount - budget.over > 1 ? 's' : ''} sur ${budgetedCount} dans le budget`
       : `${formatDisplayMoneyAbsolute(budget.spent)} sur ${formatDisplayMoneyAbsolute(budget.limit)}`;
+
+  const homeWins = useMemo(() => {
+    const streak = computeLoggingStreak(trendTransactions);
+    return buildHomeWins({
+      firstName: firstName(displayName),
+      now: new Date(),
+      streakDays: streak.days,
+      loggedToday: streak.loggedToday,
+      categories: budgetCategories,
+      monthlyIncome,
+      monthlyExpenses,
+      netWorthUp: (netWorthPct ?? 0) > 0,
+      goals: goalProgressions.map((g) => ({ name: g.name, saved: g.currentAmount, target: g.targetAmount })),
+    });
+  }, [budgetCategories, displayName, goalProgressions, monthlyExpenses, monthlyIncome, netWorthPct, trendTransactions]);
 
   return (
     <PageTransition>
@@ -358,9 +377,9 @@ export function ProtoHomeHub() {
                   {unreadAlerts > 0 ? (
                     <View
                       pointerEvents="none"
-                      style={[styles.bellBadge, { backgroundColor: colors.danger, borderColor: colors.background }]}
+                      style={[styles.bellBadge, { backgroundColor: colors.text, borderColor: colors.background }]}
                     >
-                      <Text style={styles.bellBadgeText}>{unreadAlerts > 9 ? '9+' : unreadAlerts}</Text>
+                      <Text style={[styles.bellBadgeText, { color: colors.background }]}>{unreadAlerts > 9 ? '9+' : unreadAlerts}</Text>
                     </View>
                   ) : null}
                 </View>
@@ -372,6 +391,10 @@ export function ProtoHomeHub() {
               </>
             }
           />
+
+          <Reveal index={0} style={styles.section}>
+            <WinsCard wins={homeWins} />
+          </Reveal>
 
           <Reveal index={0} style={styles.section}>
             <SummaryCard
@@ -405,7 +428,7 @@ export function ProtoHomeHub() {
                       ? colors.textMuted
                       : savingsRate >= 0
                         ? colors.accentGreen
-                        : colors.danger,
+                        : colors.textMuted,
                 },
               ]}
               onPress={() => router.navigate('/accounts')}
@@ -418,7 +441,7 @@ export function ProtoHomeHub() {
           </Reveal>
 
           <Reveal index={1} style={styles.section}>
-            <CopilotWidget />
+            <CopilotWidget gentle />
           </Reveal>
 
           <Reveal index={1} style={styles.section}>
@@ -437,7 +460,11 @@ export function ProtoHomeHub() {
                       </Text>
                     </RingGauge>
                   }
-                  title={budget.remaining < 0 ? 'Budget dépassé' : `${signedMoney(budget.remaining)} restants`}
+                  title={
+                    budget.remaining < 0
+                      ? `${formatDisplayMoneyAbsolute(-budget.remaining)} au-delà du plan`
+                      : `${signedMoney(budget.remaining)} restants`
+                  }
                   subtitle={budgetSubtitle}
                   isLast
                   chevron
