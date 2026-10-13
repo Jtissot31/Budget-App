@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
+import { accentForKey } from '@/components/kit/charts';
+import { PressScale } from '@/components/kit/motion';
 import {
   FIELD_LEADING_TILE_SIZE,
   PickerLeadingTile,
@@ -12,7 +14,6 @@ import {
   containerSurfaceStyle,
   FORM_SECTION_LABEL_STYLE,
   jakartaMediumText,
-  radius,
   spacing,
   typography,
   typographyKit,
@@ -21,8 +22,8 @@ import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 
 /** Compact leading glyph in the closed field — same size for every category. */
-const FIELD_CATEGORY_ICON_WELL = 28;
-const FIELD_CATEGORY_ICON_GLYPH = 18;
+const FIELD_CATEGORY_ICON_WELL = FIELD_LEADING_TILE_SIZE;
+const FIELD_CATEGORY_ICON_GLYPH = 16;
 
 type Props = {
   label: string;
@@ -80,23 +81,23 @@ export function SettingsSelectField({
           {emptyHint ?? 'Aucune option disponible.'}
         </Text>
       ) : (
-        <Pressable
+        <PressScale
           accessibilityRole="button"
-          accessibilityLabel={`Choisir ${label.toLowerCase()}`}
+          accessibilityLabel={selectedLabel ? `${label} : ${selectedLabel}. Modifier` : `Choisir ${label.toLowerCase()}`}
           onPress={() => {
             tapHaptic();
             setPickerOpen(true);
           }}
-          style={({ pressed }) => [pressed && styles.pressed]}
+          scaleTo={0.98}
+          style={[styles.inputButton, sheetSurface]}
         >
-          {/* Layout + surface on a plain View: Android Pressable does not reliably apply them. */}
-          <View style={[styles.inputButton, sheetSurface]}>
           <View style={styles.valueRow}>
             {selectedBudgetIcon ? (
               <BudgetCategoryIcon
                 icon={selectedBudgetIcon.icon}
                 name={selectedBudgetIcon.name ?? selectedLabel}
                 id={selectedOption?.id}
+                tint={selectedOption ? accentForKey(selectedOption.id) : null}
                 wellSize={FIELD_CATEGORY_ICON_WELL}
                 glyphSize={FIELD_CATEGORY_ICON_GLYPH}
               />
@@ -106,11 +107,14 @@ export function SettingsSelectField({
                 logoUrl={selectedLogoUrl}
                 logoAsset={selectedLogoAsset}
                 label={selectedLabel}
-                iconColor={colors.textSecondary}
-                wellBackground={colors.input}
-                defaultBorder={colors.border}
+                iconColor={colors.text}
+                wellBackground={colors.surfaceElevated}
                 size={FIELD_LEADING_TILE_SIZE}
               />
+            ) : !selectedOption ? (
+              <View style={[styles.placeholderWell, { backgroundColor: colors.surfaceElevated }]}>
+                <AppIcon family="ionicons" name="add" size={16} color={colors.textMuted} />
+              </View>
             ) : null}
             <Text
               style={[
@@ -123,9 +127,8 @@ export function SettingsSelectField({
               {selectedLabel || placeholder}
             </Text>
           </View>
-          <AppIcon family="ionicons" name="chevron-down" size={16} color={colors.textMuted} />
-          </View>
-        </Pressable>
+          <AppIcon family="ionicons" name="chevron-expand" size={16} color={colors.textMuted} />
+        </PressScale>
       )}
 
       <SettingsPickerSheet
@@ -150,10 +153,10 @@ const styles = StyleSheet.create({
     ...FORM_SECTION_LABEL_STYLE,
   },
   inputButton: {
-    minHeight: 50,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
+    minHeight: 56,
+    borderRadius: 16,
+    paddingLeft: spacing.sm + 4,
+    paddingRight: spacing.md,
     paddingVertical: spacing.sm + 2,
     flexDirection: 'row',
     alignItems: 'center',
@@ -165,7 +168,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.sm + 4,
+  },
+  placeholderWell: {
+    width: FIELD_LEADING_TILE_SIZE,
+    height: FIELD_LEADING_TILE_SIZE,
+    borderRadius: Math.round(FIELD_LEADING_TILE_SIZE * 0.3),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   inputText: {
     flex: 1,
@@ -177,8 +187,5 @@ const styles = StyleSheet.create({
     ...jakartaMediumText,
     fontSize: typography.meta,
     lineHeight: 18,
-  },
-  pressed: {
-    opacity: 0.72,
   },
 });
