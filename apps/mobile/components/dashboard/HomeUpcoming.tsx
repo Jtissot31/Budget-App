@@ -70,8 +70,10 @@ export function NextPayments({
   const [next, ...rest] = rows;
   if (!next) return null;
   const nextDays = daysUntil(next.dateKey);
+  // « Soon » is a highlight, not a warning: neutral emphasis (thicker light outline), no amber.
   const soon = nextDays <= 2;
-  const accent = soon ? AMBER : colors.text;
+  const accent = colors.text;
+  const highlight = withAlpha(colors.text, 0.55);
 
   return (
     <View>
@@ -80,8 +82,8 @@ export function NextPayments({
         accessibilityLabel={`Prochain paiement : ${next.bill.name}, ${formatDisplayMoneyAbsolute(next.bill.amount)}, ${countdownLabel(nextDays)}`}
         onPress={() => open(() => onOpen(next))}
       >
-        <ListCard padding={16}>
-          <View style={[styles.hero, soon && { borderColor: withAlpha(AMBER, 0.4) }]}>
+        <ListCard padding={16} style={soon ? [styles.soonOutline, { borderColor: highlight }] : undefined}>
+          <View style={styles.hero}>
             <View style={styles.heroTop}>
               <PayIcon bill={next.bill} />
               <View style={styles.heroCopy}>
@@ -107,7 +109,7 @@ export function NextPayments({
               >
                 {`−${formatDisplayMoneyAbsolute(next.bill.amount)}`}
               </FitText>
-              <View style={[styles.countdown, { backgroundColor: soon ? withAlpha(AMBER, 0.16) : colors.surfaceElevated }]}>
+              <View style={[styles.countdown, { backgroundColor: colors.surfaceElevated }]}>
                 <AppIcon family="ionicons" name="time-outline" size={14} color={accent} />
                 <Text style={[styles.countdownText, { color: accent }]}>
                   {countdownLabel(nextDays)}
@@ -141,14 +143,15 @@ export function NextPayments({
                   styles.card,
                   {
                     backgroundColor: colors.containerBackground,
-                    borderColor: cardSoon ? withAlpha(AMBER, 0.45) : colors.containerBorder,
+                    borderColor: cardSoon ? highlight : colors.containerBorder,
                   },
+                  cardSoon && styles.soonOutline,
                 ]}
               >
                 <View style={styles.cardTop}>
                   <PayIcon bill={bill} />
                   <Text
-                    style={[styles.cardWhen, { color: cardSoon ? AMBER : colors.textMuted }]}
+                    style={[styles.cardWhen, { color: cardSoon ? colors.text : colors.textMuted }]}
                   >
                     {countdownLabel(days)}
                   </Text>
@@ -320,6 +323,7 @@ export function GoalsOverview({
 }
 
 const styles = StyleSheet.create({
+  soonOutline: { borderWidth: 1.5 },
   hero: { gap: 16 },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   heroCopy: { flexShrink: 1, flexGrow: 1, minWidth: 0 },

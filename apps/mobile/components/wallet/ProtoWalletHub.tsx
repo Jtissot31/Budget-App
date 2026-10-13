@@ -554,7 +554,7 @@ export function ProtoWalletHub() {
                 netWorthPct != null && !hideBalances
                   ? {
                       label: `${netWorthPct >= 0 ? '+' : '−'}${Math.abs(netWorthPct).toFixed(1).replace('.', ',')} % · 30 j`,
-                      color: netWorthPct >= 0 ? colors.accentGreen : colors.danger,
+                      color: netWorthPct >= 0 ? colors.accentGreen : colors.textMuted,
                     }
                   : undefined
               }
@@ -571,7 +571,7 @@ export function ProtoWalletHub() {
                   ? {
                       label: 'Crédit utilisé',
                       value: `${Math.round(creditUtilization * 100)} %`,
-                      color: creditUtilization >= 0.7 ? colors.danger : undefined,
+                      color: creditUtilization >= 0.7 ? '#F59E0B' : undefined,
                     }
                   : { label: 'Crédit', value: money(creditTotal) },
               ]}
@@ -579,7 +579,7 @@ export function ProtoWalletHub() {
               {!hideBalances && netWorthSeries.length > 1 ? (
                 <AreaSparkline
                   data={netWorthSeries}
-                  color={(netWorthPct ?? 0) >= 0 ? colors.accentGreen : colors.danger}
+                  color={(netWorthPct ?? 0) >= 0 ? colors.accentGreen : colors.textMuted}
                   height={48}
                 />
               ) : null}

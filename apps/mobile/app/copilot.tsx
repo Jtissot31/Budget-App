@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Animated from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CopilotInsightRow, useCopilotData, WARN_TONE } from '@/components/copilot/CopilotCard';
 import { FixedScreenHeader, fixedHeaderScreenStyle, fixedHeaderScrollStyle } from '@/components/FixedScreenHeader';
@@ -35,6 +36,12 @@ const GROUPS: { title: string; match: (insight: CopilotInsight) => boolean }[] =
 ];
 
 const CUSHION_DAYS = 14;
+
+/** #RRGGBB + alpha → #RRGGBBAA (gradient stops). */
+function withAlphaHex(hex: string, alpha: number): string {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex;
+  return `${hex}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
+}
 const money = formatDisplayMoneyAbsolute;
 
 
@@ -114,7 +121,13 @@ export default function CopilotScreen() {
           {/* 1. Health score */}
           {insights ? (
             <Reveal style={[styles.hero, tileSurface]}>
-              <View pointerEvents="none" style={[styles.heroGlow, { backgroundColor: scoreColor }]} />
+              <LinearGradient
+                pointerEvents="none"
+                colors={[withAlphaHex(scoreColor, 0.2), withAlphaHex(scoreColor, 0)]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0.85, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
               <Animated.View style={pop}>
                 <RingGauge progress={score / 100} color={scoreColor} size={104} stroke={10}>
                   <Text style={[styles.scoreValue, { color: colors.text }]}>{score}</Text>
@@ -172,7 +185,7 @@ export default function CopilotScreen() {
                     <RingGauge
                       progress={Math.max(0, stats.savingsRate ?? 0)}
                       color={(stats.savingsRate ?? 0) > 0 ? colors.accentGreen : colors.textMuted}
-                      size={58}
+                      size={68}
                       stroke={6}
                     >
                       <Text style={[styles.ringText, { color: colors.text }]}>
@@ -285,7 +298,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     marginBottom: spacing.md,
   },
-  heroGlow: { position: 'absolute', top: -70, left: -50, width: 200, height: 200, borderRadius: 100, opacity: 0.1 },
   scoreValue: { ...jakartaBoldText, fontSize: 30, letterSpacing: -1, lineHeight: 34 },
   scoreCaption: { ...jakartaMediumText, fontSize: 11 },
   heroCopy: { flex: 1, minWidth: 0, gap: 4 },
@@ -304,7 +316,7 @@ const styles = StyleSheet.create({
   miniBar: { gap: 4 },
   miniLabel: { ...jakartaMediumText, fontSize: 11 },
   ringRow: { alignItems: 'flex-start', gap: 8 },
-  ringText: { ...jakartaBoldText, fontSize: 13 },
+  ringText: { ...jakartaBoldText, fontSize: 12, letterSpacing: -0.3 },
   ringCaption: { marginTop: 2 },
 
   goalGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },

@@ -495,9 +495,9 @@ export function ProtoHomeHub() {
               {budget.limit > 0 ? (
                 <ListRow
                   leading={
-                    <RingGauge progress={budgetRatio} color={budgetColor} size={40} stroke={5}>
+                    <RingGauge progress={budgetRatio} color={budgetColor} size={48} stroke={4}>
                       <Text style={[styles.ringText, { color: colors.text }]}>
-                        {Math.min(999, Math.round(budgetRatio * 100))}
+                        {`${Math.min(999, Math.round(budgetRatio * 100))}%`}
                       </Text>
                     </RingGauge>
                   }
