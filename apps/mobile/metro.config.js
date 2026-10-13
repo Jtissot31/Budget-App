@@ -49,19 +49,11 @@ config.resolver.blockList = [
   // Agent scratch: `.agent-tmp/` and `.agent-tmp-*.tsx` are unused copies of files
   // that already live under `components/`, so keep the duplicates out of the graph.
   new RegExp(`^${projectRootPattern}${ANY_SEPARATOR}\\.agent-tmp`),
-  // Screenshot / UI-dump artifacts sit directly at the app root (223 `.png`, 21
-  // `.xml`), and both are asset extensions, so Metro maps every one. Root-level
-  // only — real assets live in `assets/`, which stays watched.
+  // Reference screenshots / UI dumps sit directly at the app root and are asset
+  // extensions, so Metro would map every one. Root-level only — real assets live
+  // in `assets/`, which stays watched.
   new RegExp(
     `^${projectRootPattern}${ANY_SEPARATOR}[^\\\\/]+\\.(?:png|jpe?g|gif|webp|xml|html|log|apk)$`
-  ),
-  // Skia ships large native trees (cpp/libs/android). On Windows without Watchman
-  // those directories inflate the crawler and can leave JS subpaths (Image,
-  // imageFilters) missing from Metro's file map → UnableToResolveError / 500.
-  new RegExp(
-    `^${toPathPattern(
-      path.resolve(__dirname, 'node_modules', '@shopify', 'react-native-skia')
-    )}${ANY_SEPARATOR}(?:android|apple|cpp|libs|dist)(?:${ANY_SEPARATOR}|$)`
   ),
 ];
 

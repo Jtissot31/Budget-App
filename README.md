@@ -46,7 +46,7 @@ The bottom navigation bar has five tabs, plus settings:
 
 | Tab | Description |
 |-----|-------------|
-| **Accueil** (Home) | Today card, account balances, upcoming payments, budget summary, paycheck allocation widget, AI insights |
+| **Accueil** (Home) | Today card, account balances, upcoming payments, budget summary, AI insights |
 | **Activité** (Activity) | Transaction list with search, filters and month selector; insights by merchant and category; voice entry |
 | **Budget** | Monthly budget by category with a donut chart, per-category detail sheets, overrun alerts and insights |
 | **Agenda** | Calendar of upcoming bills, recurring payments and paychecks, with a projected cash balance |
@@ -77,9 +77,13 @@ BudgetTracker/
 ├── apps/mobile/                 ← Expo app (main app)
 │   ├── app/                     ← Screens (expo-router, file-based routing)
 │   │   └── (tabs)/              ← Bottom tab screens
-│   ├── components/              ← UI components (kit/, budget/, wallet/, dashboard/, ...)
+│   ├── components/              ← UI components, grouped by feature (budget/, wallet/, dashboard/, ...)
+│   │   └── kit/                 ← Shared design-system kit: cards, rows, charts, motion
 │   ├── constants/               ← Theme tokens, fonts
+│   ├── hooks/                   ← Shared React hooks
 │   ├── lib/                     ← Business logic, SQLite (db.ts), seed data, AI (lib/ai), plans (lib/plans)
+│   ├── scripts/                 ← Dev scripts (Expo start wrapper, icon catalog generators)
+│   ├── src/icons/               ← MDI icon sources (input for scripts/generate-mdi-catalog.mjs)
 │   ├── modules/samsung-liquid-glass/  ← Local native module (nav bar glass effect)
 │   ├── app.json / app.config.js ← Expo config
 │   └── eas.json                 ← EAS build profiles
@@ -91,9 +95,9 @@ BudgetTracker/
 
 - Expo SDK 57, React Native 0.86, React 19, TypeScript
 - expo-router (navigation), expo-sqlite (local database)
-- NativeWind / Tailwind + react-native-reusables (UI primitives)
+- NativeWind / Tailwind for styling
 - react-native-reanimated, Moti, gesture-handler (animations and gestures)
-- react-native-svg and Skia (charts)
+- react-native-svg (charts)
 - Lucide and Material Design icons, Plus Jakarta Sans / Inter / DM Mono fonts
 
 ---
@@ -154,4 +158,5 @@ The API listens on `https://localhost:7080` and `http://localhost:5080`. It curr
 - **The web preview can hide Android layout bugs.** For example, `Pressable` style functions and `flex: 1` text can render differently on a device, so always check UI changes on a real Android phone.
 - **Native module:** `samsung-liquid-glass` is a local module. Its native effect only works in a dev client or native build, not in Expo Go.
 - **Design reference:** the Transactions screens are the reference style for the rest of the app. Design reference screenshots (`ref-ui-*.png`, `verify-s25-*.png`) in `apps/mobile` are kept on purpose.
+- **Animations:** use the shared helpers in `components/kit/motion.tsx`: `PressScale` / `usePressScale` for press feedback, `AnimatedFill` / `AnimatedBar` for progress bars, `Reveal` for staggered entrances, `useCountUp` for amounts and `usePopOnActive` for selection pops.
 - **Tests:** unit tests live next to the code as `lib/**/*.test.ts`.
