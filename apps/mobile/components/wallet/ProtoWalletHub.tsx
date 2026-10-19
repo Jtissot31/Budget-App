@@ -40,6 +40,7 @@ import {
   type GoalForm,
 } from '@/components/SavingsGoalsForm';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
+import { GoalWideCard, LoanWideCard } from '@/components/dashboard/HomeUpcoming';
 import { InstitutionMark } from '@/components/wallet/AccountCardPrototypes';
 import {
   destructiveIconColor,
@@ -369,16 +370,7 @@ export function ProtoWalletHub() {
   const liquidCash = liquidAccounts.reduce((sum, a) => sum + a.balance, 0);
   const creditTotal = creditAccounts.reduce((sum, a) => sum + a.balance, 0);
   const netWorth = liquidCash + creditTotal;
-  const availableNow = liquidAccounts
-    .filter((a) => a.kind === 'checking' || a.kind === 'cash')
-    .reduce((sum, a) => sum + a.balance, 0);
-  const savingsTotal = liquidAccounts.filter((a) => a.kind === 'savings').reduce((sum, a) => sum + a.balance, 0);
   const creditUsed = creditAccounts.reduce((sum, a) => sum + Math.max(0, -a.balance), 0);
-  const creditLimitTotal = creditAccounts.reduce(
-    (sum, a) => sum + (typeof a.creditLimit === 'number' && a.creditLimit > 0 ? a.creditLimit : 0),
-    0,
-  );
-  const creditUtilization = creditLimitTotal > 0 ? creditUsed / creditLimitTotal : 0;
   const netWorthSeries = useMemo(
     () =>
       listedAccounts.length === 0
@@ -560,24 +552,9 @@ export function ProtoWalletHub() {
                     }
                   : undefined
               }
-              stats={[
-                { label: 'Disponible', value: money(availableNow) },
-                {
-                  label: 'Épargne',
-                  // Compact from 1 000 $ so the stat stays short (11 250,50 $ → 11,25K$).
-                  value: hideBalances
-                    ? MASK
-                    : formatDisplayMoneyAbsolute(savingsTotal, { compactKThreshold: 1_000, compactKDecimals: 2 }),
-                },
-                creditLimitTotal > 0
-                  ? {
-                      label: 'Crédit utilisé',
-                      value: `${Math.round(creditUtilization * 100)} %`,
-                      color: creditUtilization >= 0.7 ? '#F59E0B' : undefined,
-                    }
-                  : { label: 'Crédit', value: money(creditTotal) },
-              ]}
+              bare
             >
+              {/* Hierarchy: one big number, its trend, then a single quiet line — details live in the lists below. */}
               {!hideBalances && netWorthSeries.length > 1 ? (
                 <AreaSparkline
                   data={netWorthSeries}
@@ -586,22 +563,10 @@ export function ProtoWalletHub() {
                 />
               ) : null}
               {!hideBalances && (liquidCash > 0 || creditUsed > 0) ? (
-                <View style={styles.balanceBlock}>
-                  <View style={styles.balanceLabels}>
-                    <Text style={[styles.balanceLabel, { color: colors.textMuted }]}>
-                      Liquidités <Text style={{ color: colors.accentGreen }}>{formatCompactCurrency(liquidCash)}</Text>
-                    </Text>
-                    <Text style={[styles.balanceLabel, { color: colors.textMuted }]}>
-                      Dettes <Text style={{ color: colors.danger }}>{formatCompactCurrency(creditUsed)}</Text>
-                    </Text>
-                  </View>
-                  <View style={styles.balanceBar}>
-                    <View style={{ flex: Math.max(liquidCash, 0.0001), backgroundColor: colors.accentGreen, borderRadius: 4 }} />
-                    {creditUsed > 0 ? (
-                      <View style={{ flex: creditUsed, backgroundColor: colors.danger, borderRadius: 4, marginLeft: 3 }} />
-                    ) : null}
-                  </View>
-                </View>
+                <Text style={[styles.balanceLabel, styles.balanceLine, { color: colors.textMuted }]}>
+                  {`Actifs ${formatCompactCurrency(liquidCash)}`}
+                  {creditUsed > 0 ? `  ·  Dettes ${formatCompactCurrency(creditUsed)}` : ''}
+                </Text>
               ) : null}
             </SummaryCard>
           </Reveal>
@@ -698,25 +663,32 @@ export function ProtoWalletHub() {
           {loans.length > 0 ? (
             <Reveal index={3} style={styles.section}>
               <SectionLabel title="Prêts" />
-              <ListCard>
-                {loans.map((loan, index) => {
-                  const row = formatWalletLoanGoalRow(loan, hideBalances);
-                  return (
-                    <ListRow
-                      key={loan.id}
-                      leading={<UserPickedIconWell icon={resolveLoanIcon(loan)} size={40} />}
-                      title={formatLoanObligationName(loan)}
-                      subtitle={row.remainingLabel}
-                      value={`${formatNumberDisplay(Math.round(row.pct * 100))} %`}
-                      valueSub="remboursé"
-                      valueColor={row.done ? colors.accentGreen : colors.text}
-                      progress={row.pct}
-                      isLast={index === loans.length - 1}
-                      onPress={() => router.push({ pathname: '/loan-detail', params: { loanId: loan.id } })}
-                    />
-                  );
-                })}
-              </ListCard>
+              {loans.length === 1 && loans[0] ? (
+                // One loan → full-width landscape card instead of a list row.
+                <LoanWideCard
+                  name={formatLoanObligationName(loans[0])}
+                  icon={<UserPickedIconWell icon={resolveLoanIcon(loans[0])} size={32} />}
+                  principal={loans[0].principal}
+                  remaining={loans[0].balanceRemaining}
+                  hidden={hideBalances}
+                  onPress={() => router.push({ pathname: '/loan-detail', params: { loanId: loans[0]!.id } })}
+                />
+              ) : (
+                <View style={styles.loanGrid}>
+                  {loans.map((loan) => (
+                    <View key={loan.id} style={styles.loanCell}>
+                      <LoanWideCard
+                        name={formatLoanObligationName(loan)}
+                        icon={<UserPickedIconWell icon={resolveLoanIcon(loan)} size={32} />}
+                        principal={loan.principal}
+                        remaining={loan.balanceRemaining}
+                        hidden={hideBalances}
+                        onPress={() => router.push({ pathname: '/loan-detail', params: { loanId: loan.id } })}
+                      />
+                    </View>
+                  ))}
+                </View>
+              )}
             </Reveal>
           ) : null}
 
@@ -742,6 +714,16 @@ export function ProtoWalletHub() {
                   onPress={openNewGoalForm}
                 />
               </ListCard>
+            ) : goals.length === 1 && goals[0] && !managingGoals ? (
+              // One goal → full-width landscape card instead of a half-empty grid.
+              <GoalWideCard
+                name={goals[0].name}
+                icon={<UserPickedIconWell icon={resolveSavingsGoalDisplayIcon(goals[0])} size={32} />}
+                saved={goals[0].currentAmount ?? 0}
+                target={goals[0].targetAmount ?? 0}
+                hidden={hideBalances}
+                onPress={() => router.push({ pathname: '/goal-detail', params: { goalId: goals[0]!.id } })}
+              />
             ) : (
               <View style={styles.goalGrid}>
                 {goals.map((goal) => (
@@ -908,11 +890,11 @@ const styles = StyleSheet.create({
   hint: { ...typographyKit.metaMedium, fontSize: 11, marginTop: spacing.sm, paddingHorizontal: 2 },
   goalGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
   goalCell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10 },
+  loanGrid: { flexDirection: 'column', gap: spacing.md },
+  loanCell: { width: '100%' },
   logoSlot: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  balanceBlock: { gap: 8 },
-  balanceLabels: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   balanceLabel: { ...typographyKit.metaMedium, fontSize: 12 },
-  balanceBar: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden' },
+  balanceLine: { fontSize: 13, marginTop: 4 },
   dragHandle: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   manageValue: { ...typographyKit.metaSemibold, fontSize: 13 },
   deleteButton: { marginTop: spacing.md },

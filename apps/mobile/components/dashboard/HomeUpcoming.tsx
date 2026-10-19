@@ -8,7 +8,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { PayIcon } from '@/components/agenda/ProtoAgendaScreen';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import { AppIcon } from '@/components/icons/AppIcon';
-import { AnimatedBar, FitText, ListCard, PressScale, SUBTLE_ACCENTS, withAlpha } from '@/components/kit';
+import { AnimatedBar, FitText, ListCard, PressScale, RingGauge, withAlpha } from '@/components/kit';
 import {
   jakartaMediumText,
   jakartaSemiboldText,
@@ -23,9 +23,14 @@ import { useAppTheme } from '@/lib/themeContext';
 import type { AgendaBill } from '@/types';
 
 const AMBER = '#F59E0B';
-const CAROUSEL_MAX = 5;
+const CAROUSEL_MAX = 3;
+/** Low-balance warnings cover the next payment and anything due up to this many days after it. */
+const WARN_WINDOW_DAYS = 3;
 const CARD_WIDTH = 136;
 const TOP_CATEGORIES = 4;
+/** Monochrome steps for « Où va ton argent » — biggest category brightest, no bright hues. */
+const MONO_TONES_DARK = ['#D4D4D8', '#A1A1AA', '#71717A', '#52525B'];
+const MONO_TONES_LIGHT = ['#27272A', '#52525B', '#A1A1AA', '#D4D4D8'];
 
 export type UpcomingRow = { dateKey: string; bill: AgendaBill };
 
@@ -61,19 +66,22 @@ function open(action: () => void) {
 export function NextPayments({
   rows,
   onOpen,
+  shortfallFor,
 }: {
   rows: readonly UpcomingRow[];
   /** Opens that payment in Agenda; no row → the Agenda itself. */
   onOpen: (row?: UpcomingRow) => void;
+  /** Amount missing in the paying account for that row (0 = covered). */
+  shortfallFor?: (row: UpcomingRow) => number;
 }) {
   const { colors } = useAppTheme();
   const [next, ...rest] = rows;
   if (!next) return null;
   const nextDays = daysUntil(next.dateKey);
-  // « Soon » is a highlight, not a warning: neutral emphasis (thicker light outline), no amber.
-  const soon = nextDays <= 2;
+  const nextShortfall = shortfallFor?.(next) ?? 0;
   const accent = colors.text;
-  const highlight = withAlpha(colors.text, 0.55);
+  // Featured payment (and any other due the same day) gets a soft dark fill — no outline.
+  const featuredFill = colors.surfaceElevated;
 
   return (
     <View>
@@ -82,7 +90,7 @@ export function NextPayments({
         accessibilityLabel={`Prochain paiement : ${next.bill.name}, ${formatDisplayMoneyAbsolute(next.bill.amount)}, ${countdownLabel(nextDays)}`}
         onPress={() => open(() => onOpen(next))}
       >
-        <ListCard padding={16} style={soon ? [styles.soonOutline, { borderColor: highlight }] : undefined}>
+        <ListCard padding={16} style={{ backgroundColor: featuredFill, borderColor: featuredFill }}>
           <View style={styles.hero}>
             <View style={styles.heroTop}>
               <PayIcon bill={next.bill} />
@@ -109,13 +117,21 @@ export function NextPayments({
               >
                 {`−${formatDisplayMoneyAbsolute(next.bill.amount)}`}
               </FitText>
-              <View style={[styles.countdown, { backgroundColor: colors.surfaceElevated }]}>
+              <View style={[styles.countdown, { backgroundColor: colors.background }]}>
                 <AppIcon family="ionicons" name="time-outline" size={14} color={accent} />
                 <Text style={[styles.countdownText, { color: accent }]}>
                   {countdownLabel(nextDays)}
                 </Text>
               </View>
             </View>
+            {nextShortfall > 0 ? (
+              <View style={[styles.warning, { backgroundColor: withAlpha(AMBER, 0.12) }]}>
+                <AppIcon family="ionicons" name="alert-circle-outline" size={15} color={AMBER} />
+                <Text style={[styles.warningText, { color: AMBER }]} numberOfLines={1}>
+                  {`Solde insuffisant · il manque ${formatDisplayMoneyAbsolute(nextShortfall)}`}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </ListCard>
       </PressScale>
@@ -131,30 +147,36 @@ export function NextPayments({
         >
           {rest.slice(0, CAROUSEL_MAX).map(({ dateKey, bill }) => {
             const days = daysUntil(dateKey);
-            const cardSoon = days <= 2;
+            const sameDay = dateKey === next.dateKey;
+            // Warn only for what's actually due soon: within 3 days of the featured payment.
+            const nearNext = days - nextDays <= WARN_WINDOW_DAYS;
+            const short = nearNext && (shortfallFor?.({ dateKey, bill }) ?? 0) > 0;
             return (
               <PressScale
                 key={`${bill.sourceId ?? bill.name}:${dateKey}`}
                 accessibilityRole="button"
-                accessibilityLabel={`${bill.name}, ${formatDisplayMoneyAbsolute(bill.amount)}, ${countdownLabel(days)}`}
+                accessibilityLabel={`${bill.name}, ${formatDisplayMoneyAbsolute(bill.amount)}, ${countdownLabel(days)}${short ? ', solde insuffisant' : ''}`}
                 scaleTo={0.95}
                 onPress={() => open(() => onOpen({ dateKey, bill }))}
                 style={[
                   styles.card,
                   {
-                    backgroundColor: colors.containerBackground,
-                    borderColor: cardSoon ? highlight : colors.containerBorder,
+                    backgroundColor: sameDay ? featuredFill : colors.containerBackground,
+                    borderColor: sameDay ? featuredFill : colors.containerBorder,
                   },
-                  cardSoon && styles.soonOutline,
                 ]}
               >
                 <View style={styles.cardTop}>
                   <PayIcon bill={bill} />
-                  <Text
-                    style={[styles.cardWhen, { color: cardSoon ? colors.text : colors.textMuted }]}
-                  >
-                    {countdownLabel(days)}
-                  </Text>
+                  {/* Shortfall = a small warning glyph by the date, so every card keeps the same height. */}
+                  <View style={styles.cardWhenRow}>
+                    {short ? <AppIcon family="ionicons" name="warning" size={13} color={AMBER} /> : null}
+                    <Text
+                      style={[styles.cardWhen, { color: short ? AMBER : sameDay ? colors.text : colors.textMuted }]}
+                    >
+                      {countdownLabel(days)}
+                    </Text>
+                  </View>
                 </View>
                 <FitText
                   style={[styles.cardName, jakartaSemiboldText, { color: colors.text }]}
@@ -203,14 +225,15 @@ export function SpendingSnapshot({
   /** Opens that category's budget detail. */
   onOpenCategory: (categoryId: string) => void;
 }) {
-  const { colors } = useAppTheme();
+  const { colors, isLight } = useAppTheme();
   const spending = categories.filter((c) => c.spent > 0).sort((a, b) => b.spent - a.spent);
   const total = spending.reduce((sum, c) => sum + c.spent, 0);
   if (total <= 0) return null;
   const top = spending.slice(0, TOP_CATEGORIES);
   const otherSpent = total - top.reduce((sum, c) => sum + c.spent, 0);
+  const tones = isLight ? MONO_TONES_LIGHT : MONO_TONES_DARK;
   const segments = [
-    ...top.map((c, i) => ({ key: c.id, share: c.spent / total, color: SUBTLE_ACCENTS[i % SUBTLE_ACCENTS.length]! })),
+    ...top.map((c, i) => ({ key: c.id, share: c.spent / total, color: tones[i % tones.length]! })),
     ...(otherSpent > 0 ? [{ key: 'other', share: otherSpent / total, color: colors.borderStrong }] : []),
   ];
 
@@ -223,7 +246,7 @@ export function SpendingSnapshot({
         </View>
         {top.map((c, i) => {
           const share = c.spent / total;
-          const color = SUBTLE_ACCENTS[i % SUBTLE_ACCENTS.length]!;
+          const color = tones[i % tones.length]!;
           return (
             <PressScale
               key={c.id}
@@ -266,6 +289,122 @@ export function SpendingSnapshot({
 }
 
 /* ───────────────────────── Objectifs ───────────────────────── */
+
+/** Single goal → one full-width landscape card: ring on the left, numbers on the right. */
+export function GoalWideCard({
+  name,
+  icon,
+  saved,
+  target,
+  hidden = false,
+  onPress,
+}: {
+  name: string;
+  icon: React.ReactNode;
+  saved: number;
+  target: number;
+  /** Wallet « hide balances » mode — amounts masked, ring/percent stay. */
+  hidden?: boolean;
+  onPress: () => void;
+}) {
+  const { colors } = useAppTheme();
+  const progress = target > 0 ? Math.min(1, saved / target) : 0;
+  const left = Math.max(0, target - saved);
+  const show = (value: number) => (hidden ? '••••' : formatDisplayMoneyAbsolute(value));
+  return (
+    <PressScale
+      accessibilityRole="button"
+      accessibilityLabel={`${name}, ${Math.round(progress * 100)} %`}
+      scaleTo={0.97}
+      onPress={() => open(onPress)}
+      style={[styles.goalWide, { backgroundColor: colors.containerBackground }]}
+    >
+      <RingGauge progress={progress} color={colors.accentGreen} size={72} stroke={6}>
+        <View style={[styles.goalWideIcon, { backgroundColor: colors.surfaceElevated }]}>{icon}</View>
+      </RingGauge>
+      <View style={styles.goalWideBody}>
+        <View style={styles.catLine}>
+          <FitText style={[styles.goalWideName, jakartaSemiboldText, { color: colors.text }]}>{name}</FitText>
+          <Text style={[styles.goalWidePct, jakartaSemiboldText, { color: colors.accentGreen }]}>
+            {`${Math.round(progress * 100)} %`}
+          </Text>
+        </View>
+        <FitText
+          style={[moneyAmountTypography({ tier: 'stat', fontSize: 22 }), { color: colors.text }]}
+          fontSize={22}
+          lineHeight={28}
+          minScale={0.6}
+        >
+          {`${show(saved)} `}
+          <Text style={[styles.sub, jakartaMediumText, { color: colors.textMuted }]}>
+            {`sur ${show(target)}`}
+          </Text>
+        </FitText>
+        <Text style={[styles.sub, jakartaMediumText, { color: colors.textMuted }]}>
+          {left > 0 ? `Encore ${show(left)}` : 'Objectif atteint'}
+        </Text>
+      </View>
+    </PressScale>
+  );
+}
+
+/** Loan card → one full-width landscape card: ring on the left showing repayment %, numbers on the right. */
+export function LoanWideCard({
+  name,
+  icon,
+  principal,
+  remaining,
+  hidden = false,
+  onPress,
+}: {
+  name: string;
+  icon: React.ReactNode;
+  principal: number;
+  remaining: number;
+  /** Wallet « hide balances » mode — amounts masked, ring/percent stay. */
+  hidden?: boolean;
+  onPress: () => void;
+}) {
+  const { colors } = useAppTheme();
+  const progress = principal > 0 ? Math.min(1, Math.max(0, principal - remaining) / principal) : 0;
+  const done = principal > 0 && remaining <= 0.005;
+  const show = (value: number) => (hidden ? '••••' : formatDisplayMoneyAbsolute(value));
+  return (
+    <PressScale
+      accessibilityRole="button"
+      accessibilityLabel={`${name}, ${Math.round(progress * 100)} % remboursé`}
+      scaleTo={0.97}
+      onPress={() => open(onPress)}
+      style={[styles.goalWide, { backgroundColor: colors.containerBackground }]}
+    >
+      <RingGauge progress={progress} color={colors.accentGreen} size={72} stroke={6}>
+        <View style={[styles.goalWideIcon, { backgroundColor: colors.surfaceElevated }]}>{icon}</View>
+      </RingGauge>
+      <View style={styles.goalWideBody}>
+        <View style={styles.catLine}>
+          <FitText style={[styles.goalWideName, jakartaSemiboldText, { color: colors.text }]}>{name}</FitText>
+          <Text style={[styles.goalWidePct, jakartaSemiboldText, { color: colors.accentGreen }]}>
+            {`${Math.round(progress * 100)} %`}
+          </Text>
+        </View>
+        <FitText
+          style={[moneyAmountTypography({ tier: 'stat', fontSize: 22 }), { color: colors.text }]}
+          fontSize={22}
+          lineHeight={28}
+          minScale={0.6}
+        >
+          {`${show(remaining)} `}
+          <Text style={[styles.sub, jakartaMediumText, { color: colors.textMuted }]}>
+            {`sur ${show(principal)}`}
+          </Text>
+        </FitText>
+        <Text style={[styles.sub, jakartaMediumText, { color: colors.textMuted }]}>
+          {done ? 'Remboursé !' : `${show(remaining)} restant`}
+        </Text>
+      </View>
+    </PressScale>
+  );
+}
 
 export function GoalsOverview({
   saved,
@@ -323,7 +462,11 @@ export function GoalsOverview({
 }
 
 const styles = StyleSheet.create({
-  soonOutline: { borderWidth: 1.5 },
+  goalWide: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: 18, padding: 16 },
+  goalWideIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  goalWideBody: { flex: 1, minWidth: 0, gap: 2 },
+  goalWideName: { fontSize: 15, flexShrink: 1 },
+  goalWidePct: { fontSize: 13, flexShrink: 0 },
   hero: { gap: 16 },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   heroCopy: { flexShrink: 1, flexGrow: 1, minWidth: 0 },
@@ -340,6 +483,9 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   countdownText: { ...typographyKit.metaSemibold, fontSize: 12.5 },
+  warning: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 32, paddingHorizontal: 10, borderRadius: 10 },
+  warningText: { ...typographyKit.metaSemibold, fontSize: 12.5, flexShrink: 1 },
+  cardWhenRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   headRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   headCopy: { flexShrink: 1, flexGrow: 1, minWidth: 0 },
   headPills: { alignItems: 'flex-end', gap: 6, flexShrink: 0 },
@@ -384,6 +530,6 @@ const styles = StyleSheet.create({
   catName: { fontSize: 14, flexShrink: 1, flexGrow: 1 },
   catAmount: { flexShrink: 0 },
   catBar: { flexGrow: 1, flexShrink: 1 },
-  catPct: { ...typographyKit.metaSemibold, fontSize: 11, width: 34, textAlign: 'right' },
+  catPct: { ...typographyKit.metaSemibold, fontSize: 11, minWidth: 38, textAlign: 'right' },
   goalBar: { marginTop: 14 },
 });
