@@ -1,6 +1,7 @@
 import { GlassFab } from '@/components/GlassFab';
 import { VoiceCommandIcon } from '@/components/icons/VoiceCommandIcon';
 import { AddTransactionFab } from '@/components/tabbar/AddTransactionFab';
+import { FabAutoHide } from '@/components/tabbar/FabAutoHide';
 import { useShouldHideTabFabs } from '@/components/tabbar/floatingTabBarShared';
 import {
   SHOW_TRANSACTIONS_TAB_FABS,
@@ -8,16 +9,16 @@ import {
   TRANSACTIONS_FAB_STACK_GAP,
   transactionsFabGlyphColor,
 } from '@/constants/fabStyles';
-import { jakartaBoldText } from '@/constants/theme';
 import { uiEvents } from '@/lib/events';
+import { resetFabScroll } from '@/lib/fabScrollVisibility';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { usePathname } from 'expo-router';
-import { useState } from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type TabItem = {
@@ -32,7 +33,7 @@ const TABS: TabItem[] = [
   { key: 'Activity', label: 'ACTIVITÉ', icon: 'receipt-outline', activeIcon: 'receipt' },
   { key: 'Budget', label: 'BUDGET', icon: 'pie-chart-outline', activeIcon: 'pie-chart' },
   { key: 'Agenda', label: 'AGENDA', icon: 'calendar-outline', activeIcon: 'calendar' },
-  { key: 'Balance', label: 'WALLET', icon: 'wallet-outline', activeIcon: 'wallet' },
+  { key: 'Balance', label: 'COMPTES', icon: 'wallet-outline', activeIcon: 'wallet' },
 ];
 
 /** Expo-router screen names for the five existing tab destinations. */
@@ -70,7 +71,8 @@ export function BottomNavBar({ currentTab, onTabPress }: BottomNavBarProps) {
         styles.container,
         solidFill && { backgroundColor: isLight ? '#FFFFFF' : '#09090B' },
         { borderTopColor: isLight ? 'rgba(0, 0, 0, 0.08)' : '#27272A' },
-        { paddingBottom: Math.max(insets.bottom, 12) },
+        // Breathing room above Android's system nav bar (insets alone put the labels right on it).
+        { paddingBottom: Math.max(insets.bottom, 4) + 10 },
       ]}
     >
       {Platform.OS === 'ios' ? (
@@ -92,12 +94,9 @@ export function BottomNavBar({ currentTab, onTabPress }: BottomNavBarProps) {
             >
               <Ionicons
                 name={isActive ? tab.activeIcon : tab.icon}
-                size={21}
+                size={28}
                 color={isActive ? activeColor : inactiveColor}
               />
-              <Text style={[styles.tabLabel, { color: isActive ? activeColor : inactiveColor }]}>
-                {tab.label}
-              </Text>
             </TouchableOpacity>
           );
         })}
@@ -112,7 +111,7 @@ export function BottomNavBar({ currentTab, onTabPress }: BottomNavBarProps) {
  * iOS blurs the content behind the same row.
  * Voice dictation stays a separate control, only on Activity, drawn above the row.
  */
-export function AppBottomTabBar({ state, navigation }: BottomTabBarProps) {
+export function AppBottomTabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
   const pathname = usePathname();
   const { colors } = useAppTheme();
   const hideTabFabs = useShouldHideTabFabs(pathname);
@@ -123,13 +122,18 @@ export function AppBottomTabBar({ state, navigation }: BottomTabBarProps) {
   const showVoice =
     SHOW_TRANSACTIONS_TAB_FABS && activeRouteName === 'transactions' && !hideTabFabs;
 
+  useEffect(() => {
+    resetFabScroll();
+  }, [activeRouteName]);
+
   const onTabPress = (tabKey: string) => {
     const routeName = TAB_KEY_TO_ROUTE[tabKey];
     if (!routeName) return;
     const route = state.routes.find((item) => item.name === routeName);
     if (!route) return;
 
-    const event = navigation.emit({
+    // SDK 58 tab bars get `emitter` + `navigateToTab` instead of `navigation`.
+    const event = emitter.emit({
       type: 'tabPress',
       target: route.key,
       canPreventDefault: true,
@@ -137,11 +141,7 @@ export function AppBottomTabBar({ state, navigation }: BottomTabBarProps) {
     if (event.defaultPrevented) return;
     if (state.routes[state.index]?.key === route.key) return;
 
-    if (route.name === 'transactions') {
-      navigation.navigate('transactions');
-      return;
-    }
-    navigation.navigate(route.name, route.params);
+    navigateToTab(route.key);
   };
 
   const onVoicePress = () => {
@@ -157,20 +157,20 @@ export function AppBottomTabBar({ state, navigation }: BottomTabBarProps) {
       onLayout={(event) => setHostHeight(event.nativeEvent.layout.height)}
     >
       {showVoice ? (
-        <AddTransactionFab
-          style={styles.addFab}
-          bottomOffset={hostHeight + FAB_RIGHT_GAP_BOTTOM + TRANSACTIONS_FAB_SIZE + TRANSACTIONS_FAB_STACK_GAP}
-          rightOffset={FAB_RIGHT}
-        />
-      ) : null}
-      {showVoice ? (
-        <GlassFab
-          onPress={onVoicePress}
-          accessibilityLabel="Commande vocale"
-          style={styles.voiceFab}
-        >
-          <VoiceCommandIcon size={22} color={transactionsFabGlyphColor(colors)} />
-        </GlassFab>
+        <FabAutoHide>
+          <AddTransactionFab
+            style={styles.addFab}
+            bottomOffset={hostHeight + FAB_RIGHT_GAP_BOTTOM + TRANSACTIONS_FAB_SIZE + TRANSACTIONS_FAB_STACK_GAP}
+            rightOffset={FAB_RIGHT}
+          />
+          <GlassFab
+            onPress={onVoicePress}
+            accessibilityLabel="Commande vocale"
+            style={styles.voiceFab}
+          >
+            <VoiceCommandIcon size={22} color={transactionsFabGlyphColor(colors)} />
+          </GlassFab>
+        </FabAutoHide>
       ) : null}
       <BottomNavBar currentTab={currentTab} onTabPress={onTabPress} />
     </View>
@@ -204,13 +204,8 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
     paddingVertical: 2,
-  },
-  tabLabel: {
-    ...jakartaBoldText,
-    fontSize: 9,
-    letterSpacing: -0.2,
+    minHeight: 52,
   },
   // « + » sits one FAB + gap above the voice button.
   addFab: {

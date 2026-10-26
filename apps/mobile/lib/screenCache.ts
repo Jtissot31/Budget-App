@@ -16,16 +16,33 @@ export function writeScreenCache<T>(key: string, value: T): void {
   store.set(key, value);
 }
 
-/** Runs `fetcher` once at a time per key and stores the result. */
+/** Keys asked to refresh again while a fetch was already running. */
+const rerunRequested = new Set<string>();
+
+/**
+ * Runs `fetcher` once at a time per key and stores the result.
+ *
+ * A request that arrives while a fetch is running joins it — but that fetch may have read the
+ * data before the change that triggered the request, so one more run is queued and everyone
+ * waiting gets the final result (otherwise the screen keeps showing the stale snapshot).
+ */
 export function refreshScreenCache<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
   const inFlight = pending.get(key) as Promise<T> | undefined;
-  if (inFlight) return inFlight;
-  const run = fetcher()
-    .then((value) => {
-      store.set(key, value);
-      return value;
-    })
-    .finally(() => pending.delete(key));
+  if (inFlight) {
+    rerunRequested.add(key);
+    return inFlight;
+  }
+  const run = (async () => {
+    let value = await fetcher();
+    while (rerunRequested.delete(key)) {
+      value = await fetcher();
+    }
+    store.set(key, value);
+    return value;
+  })().finally(() => pending.delete(key));
   pending.set(key, run);
   return run;
 }
+
+/** Current month's budget categories (UI model) — written by Accueil's boot preload and by Budget. */
+export const BUDGET_SCREEN_CACHE_KEY = 'budgets:current-month';

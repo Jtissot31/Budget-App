@@ -61,6 +61,7 @@ import { UNIFORM_ACTION_BUTTON_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useSavingsGoals } from '@/hooks/useSavingsGoals';
 import { useAppTheme } from '@/lib/themeContext';
+import { reportFabScroll } from '@/lib/fabScrollVisibility';
 import type { SimulatedAccount, Transaction } from '@/types';
 
 type ProtoDayGroupProps = {
@@ -282,6 +283,8 @@ export default function TransactionsScreen() {
           // Web leaves this off. On device it clips rows inside overflow:hidden day cards.
           removeClippedSubviews={false}
           ListHeaderComponent={listHeader}
+          onScroll={reportFabScroll}
+          scrollEventThrottle={32}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={[
             styles.listWithHeader,
@@ -426,9 +429,9 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   dateLabel: {
-    ...typographyKit.eyebrow,
-    fontSize: 11,
-    letterSpacing: 0.8,
+    ...typographyKit.metaMedium,
+    fontSize: 13.5,
+    lineHeight: 18,
     marginBottom: 8,
     paddingHorizontal: 2,
   },

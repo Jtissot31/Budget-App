@@ -31,8 +31,11 @@ import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { OnyxContainer } from '@/components/OnyxContainer';
 import { ProtoSectionHeader } from '@/components/proto/ProtoSectionHeader';
 import { AccountDetailSummaryCard } from '@/components/wallet/AccountCardPrototypes';
-import { AnimatedBar, AreaSparkline, EmptyRow, IconWell, ListCard, ListRow, SectionLabel } from '@/components/kit';
+import { AnimatedBar, AreaSparkline, EmptyRow, IconWell, ListCard, ListRow, PressScale, SectionLabel } from '@/components/kit';
 import { IconPickerSheet } from '@/components/IconPickerSheet';
+import { EnvelopeTransferSheet } from '@/components/wallet/EnvelopeTransferSheet';
+import { EnvelopeEmoji } from '@/components/wallet/AccountEnvelopes';
+import { getEnvelopesByAccount, type AccountEnvelope } from '@/lib/accountEnvelopes';
 import { MdiIcon } from '@/components/MdiIcon';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
 import {
@@ -83,6 +86,10 @@ import {
 } from '@/constants/theme';
 import { nativeTextColumnFlex } from '@/lib/textLayout';
 import {
+  buildLoanByRecurringPaymentId,
+  resolveRecurringPaymentDisplayIconById,
+} from '@/lib/recurringPaymentPresentation';
+import {
   deleteSimulatedAccount,
   getCategoryBudgets,
   getLoans,
@@ -108,10 +115,6 @@ import {
 import type { MdiIconName } from '@/lib/mdiIconCatalog';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';import { useAppTheme } from '@/lib/themeContext';
 import { parseIsoDay } from '@/lib/estimatedPaycheck';
-import {
-  buildLoanByRecurringPaymentId,
-  resolveRecurringPaymentDisplayIconById,
-} from '@/lib/recurringPaymentPresentation';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { parseFormattedNumber, sanitizeNumericInput } from '@/lib/formatNumber';
 import { UNIFORM_SECTION_HEADER_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
@@ -134,15 +137,6 @@ function accountEditFormTitle(kind: AccountKind) {
   if (kind === 'savings') return 'Modifier le compte épargne';
   if (kind === 'cash') return 'Modifier Argent Cash';
   return 'Modifier le compte chèque';
-}
-
-const SUBSCRIPTION_CATEGORY_PATTERN = /abonnement|subscription|loisir|divertissement|streaming/;
-
-function recurringPaymentTypeLabel(payment: RecurringPayment) {
-  if ((payment.kind ?? 'payment') === 'income') return 'Revenu récurrent';
-  if (payment.categoryId === 'cat-fun') return 'Abonnement';
-  if (SUBSCRIPTION_CATEGORY_PATTERN.test((payment.categoryName ?? '').trim().toLowerCase())) return 'Abonnement';
-  return 'Facture';
 }
 
 function addDays(date: Date, days: number) {
@@ -183,18 +177,7 @@ function nextRecurringOccurrence(payment: RecurringPayment, from: Date) {
   return occurrence;
 }
 
-function formatRecurringNextDate(date: Date) {
-  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
-}
-
-function recurringPaymentDefinitionMeta(payment: RecurringPayment, from: Date) {
-  const parts = [recurringPaymentTypeLabel(payment)];
-  if (!payment.active) parts.push('Inactif');
-  parts.push(frequencyLabel(payment.frequency));
-  const next = payment.active ? nextRecurringOccurrence(payment, from) : null;
-  if (next) parts.push(formatRecurringNextDate(next));
-  return parts.join(' · ');
-}
+const SHORT_MONTHS_FR = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 
 export default function AccountDetailScreen() {
   const router = useRouter();
@@ -205,11 +188,14 @@ export default function AccountDetailScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const searchInputRef = useRef<TextInput>(null);
   const { colors, ghost, ghostCardShadow, isLight } = useAppTheme();
+  /** Widest « Entrées / Sorties » label, measured — a fixed width wrapped « Entrées » on big fonts. */
+  const [flowLabelWidth, setFlowLabelWidth] = useState(0);
   const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [envelopesByAccount, setEnvelopesByAccount] = useState<Record<string, AccountEnvelope[]>>({});
   const [search, setSearch] = useState('');
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [historyTypeFilter, setHistoryTypeFilter] = useState<HistoryTypeFilter>('all');
@@ -239,18 +225,21 @@ export default function AccountDetailScreen() {
   const [recurringFeedback, setRecurringFeedback] = useState<FormFeedback | null>(null);
 
   const load = useCallback(async () => {
-    const [nextAccounts, nextSavingsGoals, nextTransactions, nextRecurringPayments, nextLoans] = await Promise.all([
-      getSimulatedAccounts(),
-      getSavingsGoals(),
-      getTransactions(),
-      getRecurringPayments(),
-      getLoans(),
-    ]);
+    const [nextAccounts, nextSavingsGoals, nextTransactions, nextRecurringPayments, nextLoans, nextEnvelopes] =
+      await Promise.all([
+        getSimulatedAccounts(),
+        getSavingsGoals(),
+        getTransactions(),
+        getRecurringPayments(),
+        getLoans(),
+        getEnvelopesByAccount(),
+      ]);
     setAccounts(nextAccounts);
     setSavingsGoals(nextSavingsGoals);
     setTransactions(nextTransactions);
     setRecurringPayments(nextRecurringPayments);
     setLoans(nextLoans);
+    setEnvelopesByAccount(nextEnvelopes);
   }, []);
 
   useEffect(() => {
@@ -270,6 +259,9 @@ export default function AccountDetailScreen() {
   useEffect(() => dataEvents.subscribe(load), [load]);
 
   const account = useMemo(() => accounts.find((item) => item.id === accountId) ?? null, [accountId, accounts]);
+  const loanByRecurringPaymentId = useMemo(() => buildLoanByRecurringPaymentId(loans), [loans]);
+  const accountEnvelopes = useMemo(() => envelopesByAccount[accountId] ?? [], [accountId, envelopesByAccount]);
+  const [envelopeTransferOpen, setEnvelopeTransferOpen] = useState(false);
   const linkedSavingsGoal = useMemo(
     () => savingsGoals.find((goal) => goal.id === account?.linkedSavingsGoalId) ?? null,
     [account?.linkedSavingsGoalId, savingsGoals],
@@ -294,10 +286,6 @@ export default function AccountDetailScreen() {
     date.setHours(0, 0, 0, 0);
     return date;
   }, []);
-  const loanByRecurringPaymentId = useMemo(
-    () => buildLoanByRecurringPaymentId(loans),
-    [loans],
-  );
 
   const accountRecurringPayments = useMemo(() => {
     if (!account) return [];
@@ -350,6 +338,11 @@ export default function AccountDetailScreen() {
     });
     return { revenues, expenses };
   }, [account, accountTransactions]);
+  const headerChange = monthlyTransactionStats
+    ? { value: monthlyTransactionStats.revenues - monthlyTransactionStats.expenses, period: 'ce mois' }
+    : balanceChange != null
+      ? { value: balanceChange, period: '· 30 j' }
+      : null;
   const logoSourceName = institution.trim() || name.trim();
   const manualIcon = icon?.trim() || null;
   const previewLogoAsset = useMemo(() => {
@@ -563,10 +556,10 @@ export default function AccountDetailScreen() {
             <AccountDetailSummaryCard
               account={account}
               badge={
-                balanceChange != null && Math.abs(balanceChange) >= 0.01
+                headerChange != null && Math.abs(headerChange.value) >= 0.01
                   ? {
-                      label: `${balanceChange >= 0 ? '+' : '−'}${formatMoney(Math.abs(balanceChange))} · 30 j`,
-                      color: balanceChange >= 0 ? colors.accentGreen : colors.danger,
+                      label: `${headerChange.value >= 0 ? '+' : '−'}${formatMoney(Math.abs(headerChange.value))} ${headerChange.period}`,
+                      color: headerChange.value >= 0 ? colors.accentGreen : colors.danger,
                     }
                   : undefined
               }
@@ -588,7 +581,20 @@ export default function AccountDetailScreen() {
                     const max = Math.max(monthlyTransactionStats.revenues, monthlyTransactionStats.expenses, 1);
                     return (
                       <View key={row.key} style={styles.flowRow}>
-                        <Text style={[styles.flowLabel, { color: colors.textMuted }]}>{row.label}</Text>
+                        <Text
+                          numberOfLines={1}
+                          onLayout={(event) => {
+                            const width = Math.ceil(event.nativeEvent.layout.width);
+                            setFlowLabelWidth((prev) => (width > prev ? width : prev));
+                          }}
+                          style={[
+                            styles.flowLabel,
+                            { color: colors.textMuted },
+                            flowLabelWidth > 0 ? { minWidth: flowLabelWidth } : null,
+                          ]}
+                        >
+                          {row.label}
+                        </Text>
                         <View style={styles.flowTrackWrap}>
                           <AnimatedBar
                             progress={row.value / max}
@@ -604,10 +610,41 @@ export default function AccountDetailScreen() {
                       </View>
                     );
                   })}
-                  <Text style={[styles.flowCaption, { color: colors.textMuted }]}>Ce mois-ci</Text>
                 </View>
               ) : null}
             </AccountDetailSummaryCard>
+
+            {account.kind !== 'credit' && accountEnvelopes.length > 0 ? (
+              <View>
+                <SectionLabel title="Enveloppes" actionLabel="Virer" onAction={() => setEnvelopeTransferOpen(true)} />
+                <View>
+                  {accountEnvelopes.map((envelope, index) => (
+                    <PressScale
+                      key={envelope.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${envelope.name}, ${formatMoney(envelope.amount)}. Virer`}
+                      onPress={() => setEnvelopeTransferOpen(true)}
+                      scaleTo={0.98}
+                    >
+                      <View
+                        style={[
+                          styles.envelopeRow,
+                          index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.containerBorder },
+                        ]}
+                      >
+                        <View style={[styles.rowWell, { backgroundColor: colors.iconWell }]}>
+                          <EnvelopeEmoji icon={envelope.icon} size={40} glyphSize={20} />
+                        </View>
+                        <Text style={[styles.envelopeName, { color: colors.text }]} numberOfLines={1}>
+                          {envelope.name}
+                        </Text>
+                        <Text style={[styles.envelopeAmount, { color: colors.text }]}>{formatMoney(envelope.amount)}</Text>
+                      </View>
+                    </PressScale>
+                  ))}
+                </View>
+              </View>
+            ) : null}
 
             {account.kind === 'savings' && linkedSavingsGoal ? (
               <View>
@@ -639,7 +676,7 @@ export default function AccountDetailScreen() {
 
             <View>
               <SectionLabel
-                title="Prochains prélèvements"
+                title="À venir"
                 actionLabel={
                   accountRecurringPayments.length > 3
                     ? showRecurringPayments
@@ -654,29 +691,61 @@ export default function AccountDetailScreen() {
                   <EmptyRow label="Aucun paiement récurrent lié à ce compte" />
                 </ListCard>
               ) : (
-                <ListCard>
-                  {visibleRecurringPayments.map((payment, index) => (
-                    <ListRow
-                      key={payment.id}
-                      leading={
-                        <UserPickedIconWell
-                          icon={resolveRecurringPaymentDisplayIconById(payment, loanByRecurringPaymentId)}
-                          color={payment.color}
-                          size={40}
-                          wellGlyphWhite
-                          logoUrl={payment.logoUrl?.trim() || getMerchantLogoUrl(payment.name) || null}
-                        />
-                      }
-                      title={payment.name}
-                      subtitle={recurringPaymentDefinitionMeta(payment, today)}
-                      value={`${payment.kind === 'income' ? '+' : '−'}${formatMoney(Math.abs(payment.amount))}`}
-                      valueColor={payment.kind === 'income' ? colors.accentGreen : colors.text}
-                      isLast={index === visibleRecurringPayments.length - 1}
-                      accessibilityLabel={`Modifier ${payment.name}`}
-                      onPress={() => void openEditRecurringPayment(payment)}
-                    />
-                  ))}
-                </ListCard>
+                /* Calendrier : une seule carte, la date en grand à gauche (≠ cartes de l'historique). */
+                <View>
+                  {visibleRecurringPayments.map((payment, index) => {
+                    const next = payment.active ? nextRecurringOccurrence(payment, today) : null;
+                    return (
+                      <PressScale
+                        key={payment.id}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Modifier ${payment.name}`}
+                        onPress={() => void openEditRecurringPayment(payment)}
+                        scaleTo={0.98}
+                      >
+                        <View
+                          style={[
+                            styles.paymentRow,
+                            index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.containerBorder },
+                          ]}
+                        >
+                          <View style={styles.paymentDate}>
+                            <Text style={[styles.paymentDay, { color: next ? colors.text : colors.textMuted }]}>
+                              {next ? next.getDate() : '—'}
+                            </Text>
+                            <Text style={[styles.paymentMonth, { color: colors.textMuted }]}>
+                              {next ? SHORT_MONTHS_FR[next.getMonth()] : 'inactif'}
+                            </Text>
+                          </View>
+                          <UserPickedIconWell
+                            icon={resolveRecurringPaymentDisplayIconById(payment, loanByRecurringPaymentId)}
+                            color={payment.color}
+                            size={40}
+                            wellGlyphWhite
+                            logoUrl={payment.logoUrl?.trim() || getMerchantLogoUrl(payment.name) || null}
+                          />
+                          <View style={styles.paymentCopy}>
+                            <Text style={[styles.paymentName, { color: colors.text }]} numberOfLines={1}>
+                              {payment.name}
+                            </Text>
+                            <Text style={[styles.paymentMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                              {frequencyLabel(payment.frequency)}
+                            </Text>
+                          </View>
+                          <Text
+                            style={[
+                              styles.paymentAmount,
+                              { color: payment.kind === 'income' ? colors.accentGreen : colors.text },
+                            ]}
+                          >
+                            {payment.kind === 'income' ? '+' : '−'}
+                            {formatMoney(Math.abs(payment.amount))}
+                          </Text>
+                        </View>
+                      </PressScale>
+                    );
+                  })}
+                </View>
               )}
             </View>
 
@@ -793,6 +862,7 @@ export default function AccountDetailScreen() {
 
               {groupedAccountTransactions.length > 0 ? (
                 <TransactionDayGroups
+                  plain
                   transactions={filteredAccountTransactions}
                   accounts={accounts}
                 />
@@ -1104,6 +1174,15 @@ export default function AccountDetailScreen() {
         </GestureHandlerRootView>
       </Modal>
 
+      {account ? (
+        <EnvelopeTransferSheet
+          visible={envelopeTransferOpen}
+          accountId={account.id}
+          balance={account.balance}
+          onClose={() => setEnvelopeTransferOpen(false)}
+        />
+      ) : null}
+
       <RecurringPaymentFormModal
         visible={recurringForm != null}
         form={recurringForm}
@@ -1240,10 +1319,30 @@ function escapeRegExp(value: string) {
 const styles = StyleSheet.create({
   flowBars: { gap: 8 },
   flowRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  flowLabel: { ...typographyKit.metaMedium, fontSize: 12, width: 54 },
+  // No fixed width: both labels share the widest one's measured width, so bars stay aligned.
+  flowLabel: { ...typographyKit.metaMedium, fontSize: 12, flexShrink: 0 },
   flowTrackWrap: { flex: 1 },
   flowValue: { ...typographyKit.metaSemibold, fontSize: 13, minWidth: 82, textAlign: 'right' },
-  flowCaption: { ...typographyKit.metaMedium, fontSize: 11 },
+  /* Envelopes: one card, one row per envelope — name and allocated amount. */
+  envelopeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingVertical: 10 },
+  rowWell: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  envelopeName: { ...typographyKit.metaMedium, flex: 1, minWidth: 0, fontSize: 15 },
+  envelopeAmount: { ...typographyKit.metaSemibold, fontSize: 15, letterSpacing: -0.2 },
+  /* Upcoming debits: one card, calendar rows — big date, small logo, name, amount. */
+  paymentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 64,
+    paddingVertical: 10,
+  },
+  paymentDate: { width: 34, alignItems: 'center' },
+  paymentDay: { ...typographyKit.metaSemibold, fontSize: 20, lineHeight: 24, letterSpacing: -0.4 },
+  paymentMonth: { ...typographyKit.metaMedium, fontSize: 12, lineHeight: 15 },
+  paymentCopy: { flex: 1, minWidth: 0, gap: 2 },
+  paymentName: { ...typographyKit.metaSemibold, fontSize: 15 },
+  paymentMeta: { ...typographyKit.metaMedium, fontSize: 12.5 },
+  paymentAmount: { ...typographyKit.metaSemibold, fontSize: 15, letterSpacing: -0.2 },
   screen: { flex: 1, backgroundColor: 'transparent' },
   backButton: {
     width: 38,
@@ -1255,7 +1354,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    gap: spacing.lg,
+    gap: spacing.xxl,
   },
   flowCard: {
     flexDirection: 'row',

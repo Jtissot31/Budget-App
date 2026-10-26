@@ -1,6 +1,6 @@
 /**
  * Shared transaction history — the Transactions tab day groups, reusable anywhere.
- * Uppercase day eyebrow (AUJ. / HIER / MER. 1 OCT) + one glass card of ProtoTransactionRows.
+ * Day label (Aujourd'hui / Hier / Mercredi 1er octobre) + one glass card of ProtoTransactionRows.
  */
 import { memo, useCallback, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -22,6 +22,8 @@ type DayGroupProps = {
   savingsGoals?: readonly { id: string; name: string }[];
   horizontalGutter?: number;
   onPressTransaction?: (transactionId: string) => void;
+  /** Rows straight on the screen background (no card), aligned with the page gutter. */
+  plain?: boolean;
 };
 
 const EMPTY_ACCOUNTS: readonly SimulatedAccount[] = [];
@@ -33,6 +35,7 @@ export const TransactionDayGroup = memo(function TransactionDayGroup({
   savingsGoals,
   horizontalGutter = 0,
   onPressTransaction = openTransactionDetail,
+  plain = false,
 }: DayGroupProps) {
   const { colors } = useAppTheme();
   const cachedGoals = useSavingsGoals();
@@ -42,7 +45,7 @@ export const TransactionDayGroup = memo(function TransactionDayGroup({
   return (
     <View style={[styles.group, { paddingHorizontal: horizontalGutter }]}>
       <Text style={[styles.dateLabel, { color: colors.textMuted }]}>{sectionLabel}</Text>
-      <ProtoGlassCard style={styles.dayCard}>
+      <ProtoGlassCard style={[styles.dayCard, plain && styles.plainCard]}>
         {txs.map((tx, index) => (
           <ProtoTransactionRow
             key={tx.id}
@@ -65,6 +68,7 @@ type GroupsProps = {
   onPressTransaction?: (transactionId: string) => void;
   /** Cap the number of day groups rendered (embedded previews). */
   maxGroups?: number;
+  plain?: boolean;
 };
 
 /** Groups by local day (newest first) and renders one TransactionDayGroup per day. */
@@ -73,6 +77,7 @@ export function TransactionDayGroups({
   accounts = [],
   onPressTransaction,
   maxGroups,
+  plain,
 }: GroupsProps) {
   const savingsGoals = useSavingsGoals();
   const grouped = useMemo(() => {
@@ -94,6 +99,7 @@ export function TransactionDayGroups({
           accounts={accounts}
           savingsGoals={savingsGoals}
           onPressTransaction={handlePress}
+          plain={plain}
         />
       ))}
     </>
@@ -110,10 +116,18 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
   },
+  // Rows keep their 14px inset; pull them out so icons line up with the section titles.
+  plainCard: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderRadius: 0,
+    width: 'auto',
+    marginHorizontal: -14,
+  },
   dateLabel: {
-    ...typographyKit.eyebrow,
-    fontSize: 11,
-    letterSpacing: 0.8,
+    ...typographyKit.metaMedium,
+    fontSize: 13.5,
+    lineHeight: 18,
     marginBottom: 8,
     paddingHorizontal: 2,
   },

@@ -5,7 +5,7 @@
  * 2. Liste | Calendrier (segmented, même contrôle que Transactions)
  * 3. Paiements groupés par jour dans des cartes « verre »
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -64,6 +64,9 @@ import { frequencyLabel } from '@/lib/recurringPaymentsForm';
 import { formatListShortDate } from '@/lib/transactionListSectionFormat';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
+import { BUDGET_OVER } from '@/lib/budgetTone';
+import { reportFabScroll } from '@/lib/fabScrollVisibility';
+import { FabAutoHide } from '@/components/tabbar/FabAutoHide';
 import type { PaymentDetailPayload } from '@/components/PaymentDetailSheet';
 import type { AgendaBill, RecurringPayment, Transaction } from '@/types';
 
@@ -173,6 +176,19 @@ type Props = {
   /** Header add → create form (parent hosts RecurringPaymentFormModal). Falls back to uiEvents. */
   onAddRecurringPayment?: (variant: RecurringPaymentAddVariant) => void;
 };
+
+/**
+ * Swallows taps on a card so they never reach the background Pressable that resets the picked
+ * day (buttons inside the card still win — they sit deeper).
+ */
+function AbsorbTouches({ children }: { children: ReactNode }) {
+  // A button with no action: takes the native responder AND stops the web click from bubbling up.
+  return (
+    <Pressable accessible={false} focusable={false}>
+      {children}
+    </Pressable>
+  );
+}
 
 export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }: Props) {
   const insets = useSafeAreaInsets();
@@ -337,6 +353,13 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
     }
     return map;
   }, [timeline]);
+
+  const resetSelectedDay = useCallback(() => {
+    setSelectedDay((prev) => {
+      if (prev != null) tapHaptic();
+      return null;
+    });
+  }, []);
 
   const shiftMonth = useCallback(
     (delta: number) => {
@@ -529,37 +552,53 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
         <ScrollView
           style={styles.screen}
-          contentContainerStyle={{
-            paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING + AGENDA_FAB_SCROLL_CLEARANCE,
-            paddingHorizontal: PAGE_PADDING_HORIZONTAL,
-          }}
+          // Padding lives on the background Pressable, so the side gutters and the space below the
+          // content count as « background » too.
+          contentContainerStyle={{ flexGrow: 1 }}
           showsVerticalScrollIndicator={false}
+          onScroll={reportFabScroll}
+          scrollEventThrottle={32}
           keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
         >
+          {/* Tapping empty background (anywhere that isn't a card) drops the picked day. */}
+          <Pressable
+            accessible={false}
+            onPress={resetSelectedDay}
+            style={[
+              styles.backgroundTap,
+              {
+                paddingHorizontal: PAGE_PADDING_HORIZONTAL,
+                paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING + AGENDA_FAB_SCROLL_CLEARANCE,
+              },
+            ]}
+          >
           <PageHeader
             topInset={insets.top}
             title="Agenda"
             subtitle={monthLabel}
             trailing={
-              <>
-                <HeaderIconButton
-                  icon="chevron-back"
-                  accessibilityLabel="Mois précédent"
-                  onPress={() => shiftMonth(-1)}
-                />
-                <HeaderIconButton
-                  icon="chevron-forward"
-                  accessibilityLabel="Mois suivant"
-                  onPress={() => shiftMonth(1)}
-                />
-              </>
+              bodyMode === 'calendar' ? undefined : (
+                <>
+                  <HeaderIconButton
+                    icon="chevron-back"
+                    accessibilityLabel="Mois précédent"
+                    onPress={() => shiftMonth(-1)}
+                  />
+                  <HeaderIconButton
+                    icon="chevron-forward"
+                    accessibilityLabel="Mois suivant"
+                    onPress={() => shiftMonth(1)}
+                  />
+                </>
+              )
             }
           />
 
           <Reveal index={0} style={styles.section}>
+            <AbsorbTouches>
             <SummaryCard
               label={monthCash.unpaidCount > 0 ? 'Reste à payer' : 'Tout est payé'}
               amount={formatDisplayMoneyAbsolute(monthCash.unpaidOut)}
@@ -584,15 +623,23 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                 </RingGauge>
               }
               stats={[
-                { label: 'Sorties', value: `−${formatDisplayMoneyAbsolute(monthCash.committed)}` },
-                { label: 'Entrées', value: signedMoney(monthCash.inflows, { plus: true }), color: colors.accentGreen },
+                // Scheduled (recurring) amounts only — the month's actual spending lives in Budget.
+                { label: 'Prévu', value: `−${formatDisplayMoneyAbsolute(Math.round(monthCash.committed))}` },
+                { label: 'Revenus', value: signedMoney(monthCash.inflows, { plus: true }), color: colors.accentGreen },
                 {
                   label: 'Solde',
-                  value: signedMoney(monthCash.net, { plus: true }),
-                  color: monthCash.net < 0 ? colors.danger : colors.accentGreen,
+                  // No scheduled income: a red "−2 166$" balance only alarms, it tells nothing.
+                  value: monthCash.inflows > 0 ? signedMoney(monthCash.net, { plus: true }) : '—',
+                  color:
+                    monthCash.inflows <= 0
+                      ? colors.textMuted
+                      : monthCash.net < 0
+                        ? colors.danger
+                        : colors.accentGreen,
                 },
               ]}
             />
+            </AbsorbTouches>
           </Reveal>
 
           {nextItem && !selectedDateKey && !managingPayments ? (
@@ -603,7 +650,7 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
               onPress={() => openBill(nextItem.bill, nextItem.dateKey)}
               style={styles.section}
             >
-              <ListCard padding={16} style={styles.nextCard}>
+              <AbsorbTouches><ListCard padding={16} style={styles.nextCard}>
                 <View style={styles.nextTop}>
                   <Text style={[styles.nextEyebrow, { color: colors.textMuted }]}>Prochain paiement</Text>
                   <View style={[styles.countdown, { backgroundColor: colors.text }]}>
@@ -631,11 +678,12 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                 >
                   {`${(nextItem.bill.kind ?? 'payment') === 'income' ? '+' : '−'}${formatDisplayMoneyAbsolute(Math.abs(nextItem.bill.amount))}`}
                 </FitText>
-              </ListCard>
+              </ListCard></AbsorbTouches>
             </PressScale>
           ) : null}
 
           <View style={styles.modeRow}>
+            <AbsorbTouches>
             <SegmentedTabs
               tabs={AGENDA_BODY_TABS}
               active={bodyMode}
@@ -648,11 +696,31 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
               variant="section"
               showDivider={false}
             />
+            </AbsorbTouches>
           </View>
 
           {bodyMode === 'calendar' ? (
             <Reveal index={1} style={styles.section}>
-              <ListCard padding={12}>
+              <AbsorbTouches><ListCard padding={12}>
+                <View style={styles.calHeader}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Mois précédent"
+                    onPress={() => shiftMonth(-1)}
+                    style={styles.calNav}
+                  >
+                    <AppIcon family="ionicons" name="chevron-back" size={20} color={colors.text} />
+                  </Pressable>
+                  <Text style={[styles.calMonth, { color: colors.text }]}>{monthLabel}</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Mois suivant"
+                    onPress={() => shiftMonth(1)}
+                    style={styles.calNav}
+                  >
+                    <AppIcon family="ionicons" name="chevron-forward" size={20} color={colors.text} />
+                  </Pressable>
+                </View>
                 <View
                   onLayout={(e) => {
                     const w = Math.floor(e.nativeEvent.layout.width);
@@ -671,7 +739,7 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                         <View key={`w-${week}`} style={styles.weekRow}>
                           {calendarCells.slice(week * 7, week * 7 + 7).map((day, index) => {
                             if (day == null) {
-                              return <View key={`e-${week}-${index}`} style={{ width: cellSize, height: cellSize + CAL_AMOUNT_ROW }} />;
+                              return <View key={`e-${week}-${index}`} style={{ width: cellSize, height: cellSize }} />;
                             }
                             const key = dateKeyFromParts(year, month0, day);
                             const status = dayStatus.get(key);
@@ -687,23 +755,29 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                                   : status.paid > 0
                                     ? 'paid'
                                     : null;
+                            // The day number is the headline; the amount is the quiet, tinted detail
+                            // (dusty red when still to pay, grey once paid, green for income).
                             const tone =
-                              kind === 'due' ? colors.text : kind === 'income' ? colors.accentGreen : colors.textMuted;
+                              kind === 'due' ? BUDGET_OVER : kind === 'income' ? colors.accentGreen : colors.textMuted;
+                            // Total of every payment that day (paid + still due); income only when there's no payment.
+                            const paymentsTotal = status ? status.unpaid + status.paid : 0;
+                            const shownAmount = paymentsTotal > 0 ? paymentsTotal : (status?.income ?? 0);
                             return (
                               <Pressable
                                 key={key}
                                 accessibilityRole="button"
                                 accessibilityState={{ selected }}
-                                accessibilityLabel={`${day}${isToday ? ', aujourd’hui' : ''}${kind === 'due' ? `, ${formatDisplayMoneyAbsolute(status!.unpaid)} à payer` : kind === 'income' ? `, revenu ${formatDisplayMoneyAbsolute(status!.income)}` : kind === 'paid' ? ', payé' : ''}`}
+                                accessibilityLabel={`${day}${isToday ? ', aujourd’hui' : ''}${kind === 'income' ? `, revenu ${formatDisplayMoneyAbsolute(shownAmount)}` : kind ? `, ${formatDisplayMoneyAbsolute(shownAmount)}${kind === 'paid' ? ', payé' : ' de paiements'}` : ''}`}
                                 onPress={() => {
                                   tapHaptic();
                                   setSelectedDay((prev) => (prev === day ? null : day));
                                 }}
                               >
-                                <View style={[styles.dayCell, { width: cellSize, height: cellSize + CAL_AMOUNT_ROW }]}>
+                                <View style={[styles.dayCell, { width: cellSize, height: cellSize }]}>
                                   <View
                                     style={[
-                                      styles.dayCircle,
+                                      styles.dayTile,
+                                      { width: cellSize - 10, height: cellSize - 8 },
                                       kind === 'due' && !selected && { backgroundColor: colors.surfaceElevated },
                                       isToday && !selected && { borderColor: colors.text, borderWidth: 1.5 },
                                       selected && { backgroundColor: colors.text },
@@ -723,15 +797,14 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                                     >
                                       {day}
                                     </Text>
-                                  </View>
-                                  <View style={styles.dayAmountSlot}>
-                                    {kind === 'paid' ? (
-                                      <AppIcon family="ionicons" name="checkmark" size={11} color={colors.textMuted} />
-                                    ) : kind ? (
-                                      <FitText style={[styles.dayAmount, { color: tone }]}>
-                                        {kind === 'income' ? '+' : ''}
-                                        {compactCalendarAmount(kind === 'income' ? status!.income : status!.unpaid)}
-                                      </FitText>
+                                    {kind ? (
+                                      <Text
+                                        style={[styles.dayTileAmount, { color: selected ? colors.background : tone }]}
+                                        numberOfLines={1}
+                                      >
+                                        {kind === 'income' && paymentsTotal === 0 ? '+' : ''}
+                                        {compactCalendarAmount(shownAmount)}$
+                                      </Text>
                                     ) : null}
                                   </View>
                                 </View>
@@ -745,36 +818,20 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                 <View style={[styles.calLegend, { borderTopColor: colors.borderSubtle }]}>
                   {(
                     [
-                      { key: 'due', label: 'À payer', amount: monthCash.unpaidOut },
-                      { key: 'paid', label: 'Payé', amount: Math.max(0, monthCash.committed - monthCash.unpaidOut) },
-                      { key: 'income', label: 'Revenus', amount: monthCash.inflows },
+                      { key: 'due', label: 'À payer', color: BUDGET_OVER },
+                      { key: 'paid', label: 'Payé', color: colors.textMuted },
+                      { key: 'income', label: 'Revenu', color: colors.accentGreen },
                     ] as const
                   ).map((item) => (
                     <View key={item.key} style={styles.calLegendItem}>
-                      <View style={styles.calLegendMarker}>
-                        {item.key === 'paid' ? (
-                          <AppIcon family="ionicons" name="checkmark" size={11} color={colors.textMuted} />
-                        ) : (
-                          <View
-                            style={[
-                              styles.calLegendDot,
-                              item.key === 'due'
-                                ? { backgroundColor: colors.surfaceElevated, borderColor: colors.borderStrong }
-                                : { backgroundColor: colors.accentGreen, borderColor: colors.accentGreen },
-                            ]}
-                          />
-                        )}
-                      </View>
-                      <FitText style={[styles.calLegendText, { color: colors.textMuted }]}>
+                      <View style={[styles.dayDot, { backgroundColor: item.color }]} />
+                      <Text style={[styles.calLegendText, { color: colors.textMuted }]} numberOfLines={1}>
                         {item.label}
-                      </FitText>
-                      <Text style={[styles.calLegendAmount, { color: colors.text }]}>
-                        {`${Math.round(item.amount).toLocaleString('fr-CA')} $`}
                       </Text>
                     </View>
                   ))}
                 </View>
-              </ListCard>
+              </ListCard></AbsorbTouches>
             </Reveal>
           ) : null}
 
@@ -790,17 +847,17 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
           />
 
           {listTimeline.length === 0 ? (
-            <ListCard>
+            <AbsorbTouches><ListCard>
               <View style={styles.emptyRow}>
                 <Text style={[styles.empty, { color: colors.textMuted }]}>
                   {selectedDateKey ? 'Aucun paiement ce jour' : 'Aucun paiement récurrent ce mois'}
                 </Text>
               </View>
-            </ListCard>
+            </ListCard></AbsorbTouches>
           ) : selectedDateKey || managingPayments ? (
-            <ListCard>
+            <AbsorbTouches><ListCard>
               {flatItems.map((item, index) => renderBillRow(item, index === flatItems.length - 1))}
-            </ListCard>
+            </ListCard></AbsorbTouches>
           ) : (
             <>
               {thisWeek.length > 0 ? (
@@ -808,9 +865,9 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                   <Text style={[styles.dateLabel, { color: colors.textMuted }]}>
                     Cette semaine · {formatDisplayMoneyAbsolute(sumOut(thisWeek))}
                   </Text>
-                  <ListCard>
+                  <AbsorbTouches><ListCard>
                     {thisWeek.map((item, index) => renderBillRow(item, index === thisWeek.length - 1))}
-                  </ListCard>
+                  </ListCard></AbsorbTouches>
                 </View>
               ) : null}
 
@@ -819,15 +876,15 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                   <Text style={[styles.dateLabel, { color: colors.textMuted }]}>
                     Plus tard ce mois · {formatDisplayMoneyAbsolute(sumOut(later))}
                   </Text>
-                  <ListCard>
+                  <AbsorbTouches><ListCard>
                     {later.map((item, index) => renderBillRow(item, index === later.length - 1))}
-                  </ListCard>
+                  </ListCard></AbsorbTouches>
                 </View>
               ) : null}
 
               {paidItems.length > 0 ? (
                 <View style={styles.group}>
-                  <ListCard>
+                  <AbsorbTouches><ListCard>
                     <ListRow
                       leading={<IconWell icon="checkmark-done" color={colors.accentGreen} />}
                       title={`${paidItems.length} déjà payé${paidItems.length > 1 ? 's' : ''}`}
@@ -840,14 +897,14 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                     {paidExpanded
                       ? paidItems.map((item, index) => renderBillRow(item, index === paidItems.length - 1))
                       : null}
-                  </ListCard>
+                  </ListCard></AbsorbTouches>
                 </View>
               ) : null}
             </>
           )}
 
           <View style={[styles.section, styles.subsLink]}>
-            <ListCard>
+            <AbsorbTouches><ListCard>
               <ListRow
                 leading={<IconWell icon="repeat" />}
                 title="Abonnements"
@@ -856,8 +913,9 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                 isLast
                 onPress={() => router.push('/subscriptions-insights')}
               />
-            </ListCard>
+            </ListCard></AbsorbTouches>
           </View>
+          </Pressable>
         </ScrollView>
 
         <ConfirmDeleteModal
@@ -874,18 +932,20 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
         />
 
         {!managingPayments && !addTypeChooserVisible ? (
-          <PressScale
-            accessibilityRole="button"
-            accessibilityLabel="Ajouter un paiement récurrent"
-            scaleTo={0.92}
-            onPress={() => {
-              tapHaptic();
-              setAddTypeChooserVisible(true);
-            }}
-            style={[styles.fab, { backgroundColor: colors.text, bottom: Math.max(insets.bottom, 12) + 64 }]}
-          >
-            <AppIcon family="ionicons" name="add" size={28} color={colors.background} />
-          </PressScale>
+          <FabAutoHide style={styles.fabLayer}>
+            <PressScale
+              accessibilityRole="button"
+              accessibilityLabel="Ajouter un paiement récurrent"
+              scaleTo={0.92}
+              onPress={() => {
+                tapHaptic();
+                setAddTypeChooserVisible(true);
+              }}
+              style={[styles.fab, { backgroundColor: colors.text, bottom: Math.max(insets.bottom, 12) + 64 }]}
+            >
+              <AppIcon family="ionicons" name="add" size={28} color={colors.background} />
+            </PressScale>
+          </FabAutoHide>
         ) : null}
 
         {addTypeChooserVisible ? (
@@ -904,7 +964,7 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                 ]}
               >
                 <Text style={[styles.addTypeTitle, { color: colors.text }]}>Que veux-tu ajouter ?</Text>
-                <ListCard>
+                <AbsorbTouches><ListCard>
                   {AGENDA_ADD_TYPE_OPTIONS.map((option, index) => (
                     <ListRow
                       key={option.variant}
@@ -916,7 +976,7 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                       onPress={() => chooseAddType(option.variant)}
                     />
                   ))}
-                </ListCard>
+                </ListCard></AbsorbTouches>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Annuler"
@@ -940,7 +1000,6 @@ function TextAction({ label, onPress }: { label: string; onPress: () => void }) 
 
 /** Calendar: grey well = still to pay, green = income, ✓ = paid. */
 /** Extra height under each day for its amount. */
-const CAL_AMOUNT_ROW = 12;
 
 function compactCalendarAmount(value: number): string {
   if (value >= 1000) return `${(value / 1000).toLocaleString('fr-CA', { maximumFractionDigits: 1 })}k`;
@@ -949,6 +1008,7 @@ function compactCalendarAmount(value: number): string {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  backgroundTap: { flexGrow: 1 },
   section: { marginBottom: SECTION_GAP + spacing.sm },
   subsLink: { marginTop: 8 },
   modeRow: { marginBottom: spacing.lg },
@@ -965,37 +1025,38 @@ const styles = StyleSheet.create({
   nextMeta: { ...typographyKit.metaMedium, fontSize: 13 },
   nextAmount: { ...moneyAmountTypography({ tier: 'stat', fontSize: 30 }), letterSpacing: -0.8 },
   dateLabel: {
-    ...typographyKit.eyebrow,
-    fontSize: 11,
-    letterSpacing: 0.8,
+    ...typographyKit.metaMedium,
+    fontSize: 13.5,
+    lineHeight: 18,
     marginBottom: 8,
     paddingHorizontal: 2,
   },
   emptyRow: { paddingHorizontal: 14, paddingVertical: 18 },
   empty: { ...typographyKit.metaMedium, fontSize: 13 },
   payIconLogo: { borderRadius: 12, overflow: 'hidden' },
+  calHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
+  calNav: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  calMonth: { ...typographyKit.metaSemibold, fontSize: 16 },
   weekRow: { flexDirection: 'row' },
   dow: { textAlign: 'center', ...typographyKit.microMedium, fontSize: 11, paddingBottom: 6 },
-  dayCell: { alignItems: 'center', justifyContent: 'center', gap: 3 },
-  dayCircle: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  dayCell: { alignItems: 'center', justifyContent: 'center' },
+  dayTile: { borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 1 },
   dayNum: { ...typographyKit.metaSemibold, fontSize: 14 },
+  dayTileAmount: { ...typographyKit.metaMedium, fontSize: 10.5, lineHeight: 13, letterSpacing: -0.1, includeFontPadding: false },
   dayDot: { width: 5, height: 5, borderRadius: 2.5 },
   calLegend: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
+    justifyContent: 'center',
+    gap: 20,
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 12,
     marginTop: 6,
     paddingHorizontal: 4,
   },
-  calLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1, minWidth: 0 },
-  calLegendMarker: { width: 12, alignItems: 'center', justifyContent: 'center' },
-  calLegendDot: { width: 9, height: 9, borderRadius: 4.5, borderWidth: 1 },
-  calLegendText: { ...typographyKit.metaMedium, fontSize: 11 },
-  calLegendAmount: { ...typographyKit.metaSemibold, fontSize: 11.5, flexShrink: 0 },
-  dayAmountSlot: { height: 13, alignItems: 'center', justifyContent: 'center' },
-  dayAmount: { ...typographyKit.metaSemibold, fontSize: 9.5, letterSpacing: -0.2 },
+  calLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
+  calLegendText: { ...typographyKit.metaMedium, fontSize: 12, lineHeight: 16 },
+  /** The FAB anchors on a zero-height wrapper that used to sit at the screen's bottom — keep it there. */
+  fabLayer: { justifyContent: 'flex-end' },
   fab: {
     position: 'absolute',
     right: PAGE_PADDING_HORIZONTAL,

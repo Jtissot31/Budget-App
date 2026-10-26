@@ -24,17 +24,23 @@ const SPRING = { damping: 18, stiffness: 320, mass: 0.6 };
 
 type PressScaleProps = Omit<PressableProps, 'style'> & {
   style?: StyleProp<ViewStyle>;
+  /**
+   * Style for the outer touch target. `style` lands on the inner animated view, so a tile with
+   * `flex: 1` only fills its grid cell when the target stretches too — pass `{ flex: 1 }` here.
+   */
+  containerStyle?: StyleProp<ViewStyle>;
   /** Scale while pressed (0.97 rows, 0.94 buttons). */
   scaleTo?: number;
   children: ReactNode;
 };
 
-export function PressScale({ style, scaleTo = 0.97, children, onPressIn, onPressOut, ...rest }: PressScaleProps) {
+export function PressScale({ style, containerStyle, scaleTo = 0.97, children, onPressIn, onPressOut, ...rest }: PressScaleProps) {
   const scale = useSharedValue(1);
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return (
     <Pressable
       {...rest}
+      style={containerStyle}
       onPressIn={(e) => {
         scale.set(withSpring(scaleTo, SPRING));
         onPressIn?.(e);

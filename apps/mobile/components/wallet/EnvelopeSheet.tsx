@@ -1,18 +1,20 @@
 /**
- * Create / edit an envelope — built like the app's other form sheets (add-transaction,
- * new account): chrome header, small section labels, 48 px inputs, primary save button.
+ * Create / edit an envelope — built for speed and calm:
+ *   1. one tap on a suggestion (💡 Factures, 🎉 Loisirs…) fills the emoji + name,
+ *   2. the amount is the hero (big, centred) with 25 % / 50 % / Tout shortcuts,
+ *   3. one button.
+ * The emoji is tappable to change it; the name is a plain centred field. No grouped form rows.
  */
 import { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DraggableSheetScrollView, DraggableSheetSurface } from '@/components/DraggableSheetSurface';
-import { PressScale } from '@/components/kit/motion';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
 import { ghostCardShadow } from '@/constants/ghostUi';
 import {
-  FORM_SECTION_LABEL_STYLE,
+  jakartaBoldText,
   jakartaMediumText,
   jakartaSemiboldText,
   radius,
@@ -42,6 +44,15 @@ import {
 import { useAppTheme } from '@/lib/themeContext';
 import type { EnvelopeDraft } from '@/components/wallet/AccountEnvelopes';
 
+/** Amount shortcuts: share of what is still free in the account. */
+const QUICK_AMOUNTS: { label: string; share: number }[] = [
+  { label: '25 %', share: 0.25 },
+  { label: '50 %', share: 0.5 },
+  { label: 'Tout', share: 1 },
+];
+
+const money = formatDisplayMoneyAbsolute;
+
 export function EnvelopeSheet({
   draft,
   accountName,
@@ -56,12 +67,13 @@ export function EnvelopeSheet({
 }) {
   const { colors, isLight } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const sheetHeight = useFormSheetHeight(0.82);
+  const sheetHeight = useFormSheetHeight(0.76);
   const keyboardInset = useFormSheetKeyboardInset();
   const [name, setName] = useState('');
   const [icon, setIcon] = useState<string>(DEFAULT_ENVELOPE_ICON);
   const [amount, setAmount] = useState('');
   const [saving, setSaving] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const amountRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -70,6 +82,7 @@ export function EnvelopeSheet({
     setIcon(isEnvelopeEmoji(draft.envelope.icon) ? draft.envelope.icon : DEFAULT_ENVELOPE_ICON);
     setAmount(draft.isNew || !draft.envelope.amount ? '' : formatNumberInputFromValue(draft.envelope.amount));
     setSaving(false);
+    setEmojiOpen(false);
   }, [draft]);
 
   if (!draft) return null;
@@ -78,8 +91,16 @@ export function EnvelopeSheet({
   const amountValue = Number.isNaN(parsed) ? 0 : parsed;
   const remainingAfter = available - amountValue;
   const canSave = name.trim().length > 0 && !saving;
-  const inputSurface = { backgroundColor: colors.input, borderColor: colors.border };
-  const label = [FORM_SECTION_LABEL_STYLE, { color: colors.textMuted }];
+  const cents = (value: number) => Math.round(value * 100) / 100;
+
+  const pickPreset = (preset: { name: string; icon: string }) => {
+    tapHaptic();
+    setName(preset.name);
+    setIcon(preset.icon);
+    setEmojiOpen(false);
+    // The name is settled — the amount is the only thing left to type.
+    amountRef.current?.focus();
+  };
 
   const save = async () => {
     if (!canSave) return;
@@ -104,7 +125,7 @@ export function EnvelopeSheet({
             <DraggableSheetSurface
               onClose={onClose}
               sheetHeight={sheetHeight}
-              style={[styles.sheet, ghostCardShadow, { backgroundColor: colors.background, borderColor: colors.containerBorder }]}
+              style={[styles.sheet, ghostCardShadow, { backgroundColor: colors.background }]}
             >
               <FormSheetChromeHeader
                 title={draft.isNew ? 'Nouvelle enveloppe' : 'Modifier l’enveloppe'}
@@ -129,127 +150,135 @@ export function EnvelopeSheet({
                   Dans {accountName}
                 </Text>
 
-                {/* Name, with the chosen emoji at the start of the row */}
-                <View style={styles.section}>
-                  <Text style={label}>Nom</Text>
-                  <View style={[styles.nameRow, inputSurface]}>
-                    <Text style={styles.nameEmoji}>{icon}</Text>
-                    <TextInput
-                      value={name}
-                      onChangeText={setName}
-                      placeholder="Ex. Factures"
-                      placeholderTextColor={colors.textMuted}
-                      autoFocus={draft.isNew && !draft.envelope.name}
-                      returnKeyType="next"
-                      onSubmitEditing={() => amountRef.current?.focus()}
-                      style={[styles.nameInput, { color: colors.text }]}
-                      accessibilityLabel="Nom de l’enveloppe"
-                    />
-                  </View>
-                  {draft.isNew ? (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={styles.chipRow}>
-                      {ENVELOPE_PRESETS.map((preset) => {
-                        const selected = name === preset.name;
-                        return (
-                          <PressScale
-                            key={preset.name}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected }}
-                            onPress={() => {
-                              tapHaptic();
-                              setName(preset.name);
-                              setIcon(preset.icon);
-                            }}
-                            scaleTo={0.94}
-                            style={[styles.chip, { backgroundColor: selected ? colors.text : colors.surfaceElevated }]}
-                          >
-                            <Text style={styles.chipEmoji}>{preset.icon}</Text>
-                            <Text style={[styles.chipText, { color: selected ? colors.background : colors.text }]}>{preset.name}</Text>
-                          </PressScale>
-                        );
-                      })}
-                    </ScrollView>
-                  ) : null}
-                </View>
-
-                {/* Emoji — compact inline row */}
-                <View style={styles.section}>
-                  <Text style={label}>Emoji</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={styles.emojiRow}>
-                    {ENVELOPE_EMOJIS.map((emoji) => {
-                      const selected = icon === emoji;
+                {/* One-tap starting points (new envelopes only) */}
+                {draft.isNew ? (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    keyboardShouldPersistTaps="always"
+                    style={styles.presetsScroll}
+                    contentContainerStyle={styles.presets}
+                  >
+                    {ENVELOPE_PRESETS.map((preset) => {
+                      const active = name.trim() === preset.name && icon === preset.icon;
                       return (
-                        <PressScale
-                          key={emoji}
+                        <Pressable
+                          key={preset.name}
                           accessibilityRole="button"
-                          accessibilityState={{ selected }}
-                          accessibilityLabel={emoji}
-                          onPress={() => {
-                            tapHaptic();
-                            setIcon(emoji);
-                          }}
-                          scaleTo={0.88}
-                          style={[
-                            styles.emojiOption,
-                            { backgroundColor: selected ? colors.surfaceElevated : 'transparent', borderColor: selected ? colors.text : 'transparent' },
-                          ]}
+                          accessibilityState={{ selected: active }}
+                          onPress={() => pickPreset(preset)}
+                          style={[styles.chip, { backgroundColor: active ? colors.text : colors.containerBackground }]}
                         >
-                          <Text style={styles.emojiText}>{emoji}</Text>
-                        </PressScale>
+                          <Text style={styles.chipEmoji}>{preset.icon}</Text>
+                          <Text style={[styles.chipLabel, { color: active ? colors.background : colors.text }]}>
+                            {preset.name}
+                          </Text>
+                        </Pressable>
                       );
                     })}
                   </ScrollView>
-                </View>
+                ) : null}
 
-                {/* Amount */}
-                <View style={styles.section}>
-                  <Text style={label}>Montant</Text>
-                  <View style={[styles.amountRow, inputSurface]}>
-                    <NumericAmountInput
-                      ref={amountRef}
-                      value={amount}
-                      onChangeText={setAmount}
-                      placeholder="0"
-                      placeholderTextColor={colors.textMuted}
-                      keyboardType="decimal-pad"
-                      style={[styles.amountInput, { color: colors.text }]}
-                      accessibilityLabel="Montant de l’enveloppe"
-                    />
-                    <Text style={[styles.suffix, { color: colors.textMuted }]}>$</Text>
-                  </View>
-                  <View style={styles.helperRow}>
-                    <Text style={[styles.helper, { color: remainingAfter < 0 ? colors.danger : colors.textMuted }]}>
-                      {remainingAfter < 0
-                        ? `Dépasse le solde de ${formatDisplayMoneyAbsolute(-remainingAfter)}`
-                        : `Reste à répartir : ${formatDisplayMoneyAbsolute(remainingAfter)}`}
-                    </Text>
-                    {available > 0 ? (
-                      <Pressable
-                        accessibilityRole="button"
-                        hitSlop={8}
-                        onPress={() => {
-                          tapHaptic();
-                          setAmount(formatNumberInputFromValue(Math.round(available * 100) / 100));
-                        }}
-                      >
-                        <Text style={[styles.helperAction, { color: colors.text }]}>Tout le reste</Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-                </View>
-
-                <View style={!canSave && styles.disabled}>
-                  <PrimarySaveButton
-                    label={draft.isNew ? 'Créer l’enveloppe' : 'Enregistrer'}
-                    onPress={() => void save()}
-                    loading={saving}
-                    disabled={!canSave}
+                {/* Emoji + name */}
+                <View style={styles.identity}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Changer l’emoji"
+                    hitSlop={8}
+                    onPress={() => {
+                      tapHaptic();
+                      setEmojiOpen((open) => !open);
+                    }}
+                    style={[styles.emojiButton, { backgroundColor: colors.containerBackground }]}
+                  >
+                    <Text style={styles.emoji}>{icon}</Text>
+                  </Pressable>
+                  <TextInput
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="Nom"
+                    placeholderTextColor={colors.textMuted}
+                    returnKeyType="next"
+                    onSubmitEditing={() => amountRef.current?.focus()}
+                    style={[styles.nameInput, { color: colors.text }]}
+                    accessibilityLabel="Nom de l’enveloppe"
                   />
                 </View>
 
+                {emojiOpen ? (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    keyboardShouldPersistTaps="always"
+                    contentContainerStyle={styles.emojiRow}
+                  >
+                    {ENVELOPE_EMOJIS.map((emoji) => (
+                      <Pressable
+                        key={emoji}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: icon === emoji }}
+                        accessibilityLabel={emoji}
+                        onPress={() => {
+                          tapHaptic();
+                          setIcon(emoji);
+                          setEmojiOpen(false);
+                        }}
+                        style={[styles.emojiOption, icon !== emoji && styles.emojiDim]}
+                      >
+                        <Text style={styles.emojiOptionText}>{emoji}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                ) : null}
+
+                {/* The amount is the hero */}
+                <View style={styles.amountBlock}>
+                  <NumericAmountInput
+                    ref={amountRef}
+                    value={amount}
+                    onChangeText={setAmount}
+                    placeholder="0 $"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="decimal-pad"
+                    style={[styles.amountInput, { color: colors.text }]}
+                    accessibilityLabel="Montant de l’enveloppe"
+                  />
+                  <Text style={[styles.helper, { color: remainingAfter < 0 ? colors.danger : colors.textMuted }]}>
+                    {remainingAfter < 0
+                      ? `Dépasse le solde de ${money(-remainingAfter)}`
+                      : `${money(remainingAfter)} disponibles`}
+                  </Text>
+                  {available > 0 ? (
+                    <View style={styles.quickRow}>
+                      {QUICK_AMOUNTS.map((quick) => (
+                        <Pressable
+                          key={quick.label}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${quick.label} du disponible`}
+                          onPress={() => {
+                            tapHaptic();
+                            setAmount(formatNumberInputFromValue(cents(available * quick.share)));
+                          }}
+                          style={[styles.quick, { backgroundColor: colors.containerBackground }]}
+                        >
+                          <Text style={[styles.quickText, { color: colors.text }]}>{quick.label}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+
+                <PrimarySaveButton
+                  label={draft.isNew ? 'Créer' : 'Enregistrer'}
+                  onPress={() => void save()}
+                  loading={saving}
+                  disabled={!canSave}
+                  style={styles.save}
+                />
+
                 {!draft.isNew ? (
                   <Pressable accessibilityRole="button" onPress={() => void remove()} hitSlop={8} style={styles.deleteRow}>
-                    <Text style={[styles.deleteText, { color: colors.danger }]}>Supprimer l’enveloppe</Text>
+                    <Text style={[styles.deleteText, { color: colors.danger }]}>Supprimer</Text>
                   </Pressable>
                 ) : null}
               </DraggableSheetScrollView>
@@ -266,50 +295,52 @@ const styles = StyleSheet.create({
   sheet: {
     borderTopLeftRadius: radius.xxl,
     borderTopRightRadius: radius.xxl,
-    borderWidth: StyleSheet.hairlineWidth,
     paddingTop: FORM_SHEET_CONTENT_PADDING_TOP,
   },
   headerPad: { paddingHorizontal: spacing.lg, marginBottom: spacing.xs },
-  content: { paddingHorizontal: spacing.lg, gap: spacing.md + 2 },
-  context: { ...jakartaMediumText, fontSize: 13, marginTop: -spacing.xs },
-  section: { gap: spacing.sm },
+  content: { paddingHorizontal: spacing.lg, gap: spacing.lg },
+  context: { ...jakartaMediumText, fontSize: 13, marginTop: -spacing.sm },
 
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    minHeight: 48,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
+  /* Suggestions */
+  presetsScroll: { marginHorizontal: -spacing.lg },
+  presets: { gap: 8, paddingHorizontal: spacing.lg },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: 14, borderRadius: 20 },
+  chipEmoji: { fontSize: 16 },
+  chipLabel: { ...jakartaSemiboldText, fontSize: 14 },
+
+  /* Emoji + name */
+  identity: { alignItems: 'center', gap: spacing.sm },
+  emojiButton: { width: 72, height: 72, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  emoji: { fontSize: 36, lineHeight: 46 },
+  nameInput: {
+    ...jakartaSemiboldText,
+    alignSelf: 'stretch',
+    textAlign: 'center',
+    fontSize: 22,
+    letterSpacing: -0.4,
+    paddingVertical: 8,
   },
-  nameEmoji: { fontSize: 20 },
-  nameInput: { flex: 1, minWidth: 0, ...jakartaMediumText, fontSize: 15, paddingVertical: 10 },
-  chipRow: { gap: 6 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 32, paddingHorizontal: 11, borderRadius: 16 },
-  chipEmoji: { fontSize: 13 },
-  chipText: { ...jakartaMediumText, fontSize: 13 },
+  emojiRow: { gap: 2, paddingHorizontal: 2 },
+  emojiOption: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  emojiOptionText: { fontSize: 24 },
+  emojiDim: { opacity: 0.45 },
 
-  emojiRow: { gap: 4 },
-  emojiOption: { width: 40, height: 40, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  emojiText: { fontSize: 20 },
-
-  amountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    minHeight: 48,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
+  /* Amount */
+  amountBlock: { alignItems: 'center', gap: spacing.sm },
+  amountInput: {
+    ...jakartaBoldText,
+    alignSelf: 'stretch',
+    textAlign: 'center',
+    fontSize: 44,
+    letterSpacing: -1.2,
+    paddingVertical: 4,
   },
-  amountInput: { flex: 1, minWidth: 0, ...jakartaSemiboldText, fontSize: 18, paddingVertical: 8 },
-  suffix: { ...jakartaMediumText, fontSize: 15 },
-  helperRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
-  helper: { ...jakartaMediumText, fontSize: 12.5, flexShrink: 1 },
-  helperAction: { ...jakartaSemiboldText, fontSize: 12.5 },
+  helper: { ...jakartaMediumText, fontSize: 13 },
+  quickRow: { flexDirection: 'row', gap: 8, marginTop: 2 },
+  quick: { height: 34, paddingHorizontal: 16, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  quickText: { ...jakartaSemiboldText, fontSize: 13 },
 
-  disabled: { opacity: 0.45 },
+  save: { marginTop: spacing.xs },
   deleteRow: { alignItems: 'center', paddingVertical: 4 },
-  deleteText: { ...jakartaSemiboldText, fontSize: 14 },
+  deleteText: { ...jakartaMediumText, fontSize: 14 },
 });

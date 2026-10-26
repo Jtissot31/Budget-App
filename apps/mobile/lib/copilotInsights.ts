@@ -32,6 +32,8 @@ export type CopilotInput = {
   monthlyExpenses: number;
   subscriptionsMonthly: number;
   subscriptionsCount: number;
+  /** All recurring payments per month (rent, insurance, subscriptions…), income excluded. */
+  recurringMonthly?: number;
   goals: readonly { id: string; name: string; saved: number; target: number; icon?: string | null }[];
 };
 

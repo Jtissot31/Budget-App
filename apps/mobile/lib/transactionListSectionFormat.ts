@@ -91,10 +91,16 @@ export function formatProtoDaySectionLabel(dateKey: string, todayKey: string): s
   if (!date || !today) return dateKey.toUpperCase();
 
   const yesterdayKey = dateKeyFromDate(addDays(today, -1));
-  if (dateKey === todayKey) return 'AUJ.';
-  if (dateKey === yesterdayKey) return 'HIER';
-  return formatListShortDate(dateKey).toUpperCase();
+  if (dateKey === todayKey) return "Aujourd'hui";
+  if (dateKey === yesterdayKey) return 'Hier';
+  const weekday = DAY_NAMES_FR[date.getDay()];
+  const day = date.getDate() === 1 ? '1er' : String(date.getDate());
+  const year = date.getFullYear() !== today.getFullYear() ? ` ${date.getFullYear()}` : '';
+  return `${weekday} ${day} ${MONTH_NAMES_FR[date.getMonth()]}${year}`;
 }
+
+const DAY_NAMES_FR = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+const MONTH_NAMES_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
 export function sumHistoryDayTotals(txs: Transaction[]) {
   let expenseTotal = 0;

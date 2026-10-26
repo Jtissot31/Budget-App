@@ -21,6 +21,7 @@ import {
   KNOWN_BANK_INSTITUTION_LABELS,
   matchBankInstitution,
 } from '@/lib/bankInstitutions';
+import { MERCHANT_LOGO_DATABASE } from '@/lib/merchantLogoDatabase';
 import type { MerchantOverride } from '@/types';
 
 /** Bundled merchant logos (full resolution — not downscaled favicons). */
@@ -460,10 +461,51 @@ function resolveMerchantDomain(name: string): string | null {
   if (GENERIC_TRANSACTION_LABELS.has(key)) return null;
   const mapped = MERCHANT_DOMAIN_MAP[key];
   if (mapped) return mapped;
+  const fromDatabase = lookupMerchantDatabaseDomain(key);
+  if (fromDatabase) return fromDatabase;
   for (const [needle, domain] of MERCHANT_KEYWORD_DOMAIN_MAP) {
     if (key.includes(needle)) return domain;
   }
   return domainFromDomainLikeName(name);
+}
+
+/* ───────────── Large merchant database (merchantLogoDatabase.ts) ───────────── */
+
+let databaseIndex: { exact: Map<string, string>; words: Array<[string, string]> } | null = null;
+
+/** Built lazily once: exact keys (name, aliases, no-space variants) + whole-word needles, longest first. */
+function getDatabaseIndex() {
+  if (databaseIndex) return databaseIndex;
+  const exact = new Map<string, string>();
+  const words = new Map<string, string>();
+  for (const [displayName, domain, ...aliases] of MERCHANT_LOGO_DATABASE) {
+    for (const raw of [displayName, ...aliases]) {
+      const key = normalizeMerchantKey(raw);
+      if (!key) continue;
+      if (!exact.has(key)) exact.set(key, domain);
+      const compact = key.replace(/[\s'.&*]+/g, '');
+      if (compact && !exact.has(compact)) exact.set(compact, domain);
+      // Short needles (« td », « bk ») only match exactly — too many false hits inside text.
+      if (key.length >= 3 && !words.has(key)) words.set(key, domain);
+    }
+  }
+  databaseIndex = {
+    exact,
+    words: [...words.entries()].sort((a, b) => b[0].length - a[0].length),
+  };
+  return databaseIndex;
+}
+
+function lookupMerchantDatabaseDomain(key: string): string | null {
+  const index = getDatabaseIndex();
+  const direct = index.exact.get(key) ?? index.exact.get(key.replace(/[\s'.&*]+/g, ''));
+  if (direct) return direct;
+  // Bank descriptors: « TIM HORTONS #1234 MONTREAL QC » → whole-word match.
+  const padded = ` ${key.replace(/[#*/,]+/g, ' ').replace(/\s+/g, ' ')} `;
+  for (const [needle, domain] of index.words) {
+    if (padded.includes(` ${needle} `)) return domain;
+  }
+  return null;
 }
 
 /** Up to two initials for logo fallback when favicon fetch fails. */
@@ -699,6 +741,8 @@ function buildMerchantSuggestionCatalog(): string[] {
   for (const name of KNOWN_MERCHANT_NAMES) add(name);
   for (const option of POPULAR_MERCHANT_LOGO_OPTIONS) add(option.label);
   for (const option of RECURRING_SERVICE_LOGO_OPTIONS) add(option.label);
+  // Proper display names (« Jean Coutu », « Hydro-Québec ») before the lowercase domain-map keys.
+  for (const [displayName] of MERCHANT_LOGO_DATABASE) add(displayName);
   for (const key of Object.keys(MERCHANT_DOMAIN_MAP)) add(formatMerchantKeyAsLabel(key));
 
   return catalog.sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));

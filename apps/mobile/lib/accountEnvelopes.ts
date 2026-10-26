@@ -79,7 +79,11 @@ export function newEnvelopeId(): string {
   return `env-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export async function saveEnvelope(envelope: AccountEnvelope, isNew: boolean): Promise<void> {
+export async function saveEnvelope(
+  envelope: AccountEnvelope,
+  isNew: boolean,
+  options?: { emit?: boolean },
+): Promise<void> {
   const db = await getDb();
   if (isNew) {
     await db.runAsync(
@@ -102,12 +106,53 @@ export async function saveEnvelope(envelope: AccountEnvelope, isNew: boolean): P
       envelope.amount,
       envelope.id,
     ]);
+    await syncLinkedGoals(db);
   }
-  dataEvents.emit();
+  if (options?.emit !== false) dataEvents.emit();
+}
+
+/** Envelope → goal: a goal linked to an envelope always shows that envelope's amount. */
+async function syncLinkedGoals(db: Awaited<ReturnType<typeof getDb>>): Promise<void> {
+  await db.runAsync(
+    `UPDATE savings_goals
+       SET current_amount = COALESCE(
+         (SELECT amount FROM account_envelopes e WHERE e.id = savings_goals.linked_envelope_id),
+         current_amount
+       )
+       WHERE linked_envelope_id IS NOT NULL`,
+  );
 }
 
 export async function deleteEnvelope(id: string): Promise<void> {
   const db = await getDb();
+  await db.runAsync(
+    'UPDATE savings_goals SET linked_account_id = NULL, linked_envelope_id = NULL WHERE linked_envelope_id = ?',
+    [id],
+  );
   await db.runAsync('DELETE FROM account_envelopes WHERE id = ?', [id]);
+  dataEvents.emit();
+}
+
+/**
+ * Moves money between a single account's envelopes. `null` means the account's
+ * unassigned part (« Non attribué »), so null → envelope fills it from the free balance.
+ * The account balance itself never changes — envelopes only split it.
+ */
+export async function moveEnvelopeMoney(
+  fromEnvelopeId: string | null,
+  toEnvelopeId: string | null,
+  amount: number,
+): Promise<void> {
+  if (!(amount > 0) || fromEnvelopeId === toEnvelopeId) return;
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    if (fromEnvelopeId) {
+      await db.runAsync('UPDATE account_envelopes SET amount = MAX(0, amount - ?) WHERE id = ?', [amount, fromEnvelopeId]);
+    }
+    if (toEnvelopeId) {
+      await db.runAsync('UPDATE account_envelopes SET amount = amount + ? WHERE id = ?', [amount, toEnvelopeId]);
+    }
+    await syncLinkedGoals(db);
+  });
   dataEvents.emit();
 }

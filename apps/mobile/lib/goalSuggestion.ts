@@ -5,13 +5,17 @@
  * Priority (first gap wins):
  *   1. Emergency fund (3 months of expenses) — the foundation, if missing.
  *   2. Emergency fund top-up — if one exists but covers < 3 months of expenses.
- *   3. Annual bills cushion — when subscriptions are significant (≈ one year of them).
+ *   3. Factures d'avance — a ladder of small steps (2 weeks → 1 month → …) of recurring payments.
  *   4. Vacation fund.
  *   5. Long-term investing (CELI / REER) — ~10 % of yearly income.
  */
 
+import { billsGoalName, cushionTiers } from '@/lib/billsCushionTiers';
+
 export type GoalSuggestion = {
   id: string;
+  /** « bills-cushion » opens the dedicated sheet (account + envelope) instead of the plain goal form. */
+  kind?: 'bills-cushion';
   name: string;
   /** Ionicons glyph used by the goal form. */
   icon: string;
@@ -27,6 +31,8 @@ export type GoalSuggestionInput = {
   monthlyIncome: number;
   monthlyExpenses: number;
   subscriptionsMonthly: number;
+  /** Everything recurring (rent, insurance, subscriptions…) per month. */
+  recurringMonthly?: number;
   goals: readonly { name: string; saved: number; target: number }[];
 };
 
@@ -57,7 +63,7 @@ export function suggestNextGoal(input: GoalSuggestionInput): GoalSuggestion | nu
       icon: 'shield-checkmark-outline',
       targetAmount: emergencyTarget,
       ...plan(emergencyTarget, 12),
-      reason: '3 mois de dépenses de côté : la base pour dormir tranquille.',
+      reason: '3 mois de dépenses de côté.',
     };
   }
   if (emergency.target < expenses * 3 * 0.8) {
@@ -68,20 +74,25 @@ export function suggestNextGoal(input: GoalSuggestionInput): GoalSuggestion | nu
       icon: 'shield-checkmark-outline',
       targetAmount: topUp,
       ...plan(topUp, 10),
-      reason: `Ton fonds couvre moins de 3 mois de dépenses — il manque environ ${topUp} $.`,
+      reason: `Il manque environ ${topUp} $ pour 3 mois.`,
     };
   }
 
-  if (input.subscriptionsMonthly >= 60 && !has(BILLS_RE)) {
-    const target = roundTo(input.subscriptionsMonthly * 12, 100);
-    return {
-      id: 'bills-cushion',
-      name: 'Coussin factures annuelles',
-      icon: 'receipt-outline',
-      targetAmount: target,
-      ...plan(target, 12),
-      reason: 'Un an d’abonnements d’avance : plus jamais de mauvaise surprise.',
-    };
+  const recurringMonthly = input.recurringMonthly ?? 0;
+  if (recurringMonthly >= 200 && !has(BILLS_RE)) {
+    // Start with the easiest step (2 weeks of bills) — the goal climbs the ladder by itself.
+    const first = cushionTiers(recurringMonthly)[0];
+    if (first) {
+      return {
+        id: 'bills-cushion',
+        kind: 'bills-cushion',
+        name: billsGoalName(first),
+        icon: 'receipt-outline',
+        targetAmount: first.amount,
+        ...plan(first.amount, 4),
+        reason: '2 semaines de factures de côté, puis plus.',
+      };
+    }
   }
 
   if (!has(TRAVEL_RE)) {
@@ -91,7 +102,7 @@ export function suggestNextGoal(input: GoalSuggestionInput): GoalSuggestion | nu
       icon: 'airplane-outline',
       targetAmount: 1500,
       ...plan(1500, 10),
-      reason: 'Ton coussin est solide — place à un objectif qui fait plaisir.',
+      reason: 'Un objectif qui fait plaisir.',
     };
   }
 
@@ -103,7 +114,7 @@ export function suggestNextGoal(input: GoalSuggestionInput): GoalSuggestion | nu
       icon: 'trending-up-outline',
       targetAmount: target,
       ...plan(target, 12),
-      reason: 'Investir 10 % de tes revenus fait travailler ton argent à long terme.',
+      reason: '10 % de tes revenus, à long terme.',
     };
   }
 

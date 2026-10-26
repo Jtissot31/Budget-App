@@ -58,7 +58,7 @@ const MOCK_CATEGORY_DEFS: MockCategoryDef[] = [
   { id: 'cat-budget-loisirs', name: 'Loisirs', icon: 'Gamepad2', limit: 150, spent: 87 },
   { id: 'cat-budget-vetements', name: 'Vêtements', icon: 'Shirt', limit: 100, spent: 45 },
   { id: 'cat-budget-sante', name: 'Santé', icon: 'HeartPulse', limit: 100, spent: 30 },
-  { id: 'cat-budget-depenses-inutiles', name: 'Dépenses inutiles', icon: 'CircleAlert', limit: 150, spent: 95 },
+  { id: 'cat-budget-depenses-inutiles', name: 'Extras', icon: 'CircleAlert', limit: 150, spent: 95 },
 ];
 
 export const MOCK_BUDGET_CATEGORIES: BudgetCategory[] = MOCK_CATEGORY_DEFS.map((def, index) => ({

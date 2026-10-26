@@ -1,10 +1,10 @@
 /**
- * Budget status colours — vivid, but used only as a small signal (rings, bars, short %),
- * never on headline amounts or sentences, so the Budget screens stay calm without looking faded.
+ * Budget status colours — muted on purpose: on the dark theme only green is bright.
+ * Used as a small signal (rings, bars, short %), never on headline amounts or sentences.
  */
 
-/** Over budget. */
-export const BUDGET_OVER = '#EF4444';
+/** Over budget — dusty red, readable on charcoal without glowing. */
+export const BUDGET_OVER = '#B86B6B';
 
-/** Close to the limit (≥ 90 %). */
-export const BUDGET_NEAR = '#F59E0B';
+/** Close to the limit (≥ 90 %) — muted sand instead of bright orange. */
+export const BUDGET_NEAR = '#A8916A';

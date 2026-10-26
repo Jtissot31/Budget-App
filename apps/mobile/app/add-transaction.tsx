@@ -1,3 +1,4 @@
+import { getEnvelopesByAccount, moveEnvelopeMoney, type AccountEnvelope } from '@/lib/accountEnvelopes';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { AppIcon } from '@/components/icons/AppIcon';
@@ -206,12 +207,17 @@ type PaymentAccountOption = {
   isSimulated: boolean;
 };
 
+/** Picker ids for envelopes, so they never collide with account ids. */
+const ENVELOPE_ENDPOINT_PREFIX = 'envelope:';
+
 type TransferEndpoint = {
   id: string;
   label: string;
   sublabel: string;
-  kind: 'account' | 'goal';
+  kind: 'account' | 'goal' | 'envelope';
   isSimulated: boolean;
+  /** Envelopes only: the account they split. */
+  accountId?: string;
   icon: string;
   logoUrl?: string | null;
   logoAsset?: number | null;
@@ -323,6 +329,7 @@ export default function AddTransactionScreen() {
   const [pickedSuggestion, setPickedSuggestion] = useState<string | null>(null);
   const [merchantOverrides, setMerchantOverrides] = useState<MerchantOverride[]>([]);
   const [simulatedAccounts, setSimulatedAccounts] = useState<SimulatedAccount[]>([]);
+  const [envelopesByAccount, setEnvelopesByAccount] = useState<Record<string, AccountEnvelope[]>>({});
   const [loans, setLoans] = useState<Loan[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -594,6 +601,7 @@ export default function AddTransactionScreen() {
 
   useEffect(() => {
     void getSimulatedAccounts().then(setSimulatedAccounts);
+    void getEnvelopesByAccount().then(setEnvelopesByAccount).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -768,8 +776,23 @@ export default function AddTransactionScreen() {
       logoUrl: null,
       color: g.color || colors.primary,
     }));
-    return [...sortedAccountEntries, ...goalEntries];
+    // Envelopes: « virement » from an account into one of its own envelopes (no balance change).
+    const envelopeEntries: TransferEndpoint[] = Object.values(envelopesByAccount)
+      .flat()
+      .map((e) => ({
+        id: `${ENVELOPE_ENDPOINT_PREFIX}${e.id}`,
+        label: `${e.icon} ${e.name}`,
+        sublabel: `Enveloppe · ${formatNumberDisplay(Math.round(e.amount))} $`,
+        kind: 'envelope' as const,
+        isSimulated: false,
+        accountId: e.accountId,
+        icon: 'mail-outline',
+        logoUrl: null,
+        color: colors.textSecondary,
+      }));
+    return [...sortedAccountEntries, ...goalEntries, ...envelopeEntries];
   }, [
+    envelopesByAccount,
     accountOptions,
     colors.primary,
     colors.textSecondary,
@@ -780,7 +803,7 @@ export default function AddTransactionScreen() {
 
   const transferSourcePickerOptions = useMemo<SettingsPickerOption<string>[]>(
     () =>
-      transferEndpoints.map((endpoint) => {
+      transferEndpoints.filter((endpoint) => endpoint.kind !== 'envelope').map((endpoint) => {
         const last4Match = endpoint.sublabel.match(/••(\d{4})/);
         return {
           id: endpoint.id,
@@ -798,9 +821,20 @@ export default function AddTransactionScreen() {
     [transferEndpoints],
   );
 
-  const transferDestinationPickerOptions = useMemo(
-    () => transferSourcePickerOptions.filter((option) => option.id !== accountId),
-    [accountId, transferSourcePickerOptions],
+  const transferDestinationPickerOptions = useMemo<SettingsPickerOption<string>[]>(
+    () => [
+      ...transferSourcePickerOptions.filter((option) => option.id !== accountId),
+      // Only the source account's own envelopes.
+      ...transferEndpoints
+        .filter((endpoint) => endpoint.kind === 'envelope' && endpoint.accountId === accountId)
+        .map((endpoint) => ({
+          id: endpoint.id,
+          label: endpoint.label,
+          description: endpoint.sublabel,
+          icon: endpoint.icon,
+        })),
+    ],
+    [accountId, transferEndpoints, transferSourcePickerOptions],
   );
 
   useEffect(() => {
@@ -1858,6 +1892,24 @@ export default function AddTransactionScreen() {
     }
 
     setFormFeedback(null);
+
+    // Account → its own envelope: just re-split the balance, no transaction.
+    if (saveAsStandardTransfer && destinationEndpoint?.kind === 'envelope') {
+      setSaving(true);
+      try {
+        await moveEnvelopeMoney(null, destinationEndpoint.id.slice(ENVELOPE_ENDPOINT_PREFIX.length), parsed ?? 0);
+        successHaptic();
+        showToast({
+          title: 'Ajouté à l’enveloppe',
+          subtitle: [destinationEndpoint.label, displayAmount].filter(Boolean).join(' · '),
+          icon: 'swap-horizontal',
+        });
+        router.back();
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
 
     if (saveAsStandardTransfer) {
       await upsertCategory(TRANSFER_CATEGORY);

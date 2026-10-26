@@ -1,7 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { usePressScale } from '@/components/kit/motion';
-import { jakartaExtraBoldText, radius, typography } from '@/constants/theme';
+import { jakartaSemiboldText } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
@@ -32,14 +32,15 @@ export function PrimarySaveButton({ label, onPress, disabled, loading, style }: 
         style={[
           styles.btn,
           press.animatedStyle,
-          { backgroundColor: colors.primary },
-          (disabled || loading) && styles.disabled,
+          { backgroundColor: disabled && !loading ? colors.surfaceElevated : colors.text },
         ]}
       >
         {loading ? (
           <ActivityIndicator color={colors.background} />
         ) : (
-          <Text style={[styles.text, { color: colors.background }]}>{label}</Text>
+          <Text style={[styles.text, { color: disabled ? colors.textMuted : colors.background }]} numberOfLines={1}>
+            {label}
+          </Text>
         )}
       </Animated.View>
     </Pressable>
@@ -47,14 +48,17 @@ export function PrimarySaveButton({ label, onPress, disabled, loading, style }: 
 }
 
 const styles = StyleSheet.create({
+  // Minimal pill: neutral fill (theme text colour), no brand green, medium weight.
   btn: {
     alignItems: 'center',
-    borderRadius: radius.sm,
-    paddingVertical: 16,
+    justifyContent: 'center',
+    height: 50,
+    borderRadius: 25,
+    paddingHorizontal: 24,
   },
-  disabled: { opacity: 0.45 },
   text: {
-    ...jakartaExtraBoldText,
-    fontSize: typography.body,
+    ...jakartaSemiboldText,
+    fontSize: 15,
+    letterSpacing: -0.1,
   },
 });

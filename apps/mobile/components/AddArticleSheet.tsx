@@ -27,6 +27,7 @@ import {
   containerSurfaceStyle,
   detailSectionLabelStyle,
   detailSubSectionHeaderStyle,
+  jakartaSemiboldText,
   moneyAmountTypography,
   radius,
   spacing,
@@ -580,7 +581,7 @@ export function AddArticleSheet({
         onPress={handleSave}
         style={({ pressed }) => [
           styles.inlineAddButton,
-          { backgroundColor: colors.primary },
+          { backgroundColor: colors.text },
           !canSave && styles.inlineAddButtonDisabled,
           pressed && canSave && styles.pressed,
         ]}
@@ -589,7 +590,8 @@ export function AddArticleSheet({
           style={[
             typographyKit.caption,
             styles.inlineAddButtonLabel,
-            { color: canSave ? '#000000' : colors.textMuted },
+            jakartaSemiboldText,
+            { color: canSave ? colors.background : colors.textMuted },
           ]}
         >
           Ajouter
@@ -661,12 +663,12 @@ export function AddArticleSheet({
         onPress={handlePrimaryAction}
         style={({ pressed }) => [
           styles.articleSaveButton,
-          { backgroundColor: colors.primary },
+          { backgroundColor: colors.text },
           primaryDisabled && styles.articleSaveButtonDisabled,
           pressed && !primaryDisabled && styles.pressed,
         ]}
       >
-        <Text style={styles.articleSaveButtonText}>{primaryLabel}</Text>
+        <Text style={[styles.articleSaveButtonText, jakartaSemiboldText, { color: colors.background }]}>{primaryLabel}</Text>
       </Pressable>
     </View>
   );
@@ -844,7 +846,7 @@ const styles = StyleSheet.create({
   inlineAddButton: {
     flex: 1,
     minHeight: 44,
-    borderRadius: radius.lg,
+    borderRadius: 22,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
@@ -929,7 +931,7 @@ const styles = StyleSheet.create({
   articleSaveButton: {
     flex: 1.35,
     minHeight: 48,
-    borderRadius: radius.lg,
+    borderRadius: 24,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },

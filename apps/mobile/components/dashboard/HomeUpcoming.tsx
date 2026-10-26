@@ -490,7 +490,8 @@ const styles = StyleSheet.create({
   headCopy: { flexShrink: 1, flexGrow: 1, minWidth: 0 },
   headPills: { alignItems: 'flex-end', gap: 6, flexShrink: 0 },
   eyebrow: { ...typographyKit.eyebrow, fontSize: 11, letterSpacing: 0.6, marginBottom: 2 },
-  sub: { fontSize: 12, marginTop: 1 },
+  // letterSpacing reset: nested in tight-tracked amounts, it would swallow the thousands space (« 10000$ »).
+  sub: { fontSize: 12, marginTop: 1, letterSpacing: 0 },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',

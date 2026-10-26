@@ -44,7 +44,7 @@ export function TransactionsViewHeader({ topInset, titleColor }: ChromeProps) {
     >
       <View style={styles.topBar}>
         <Text style={[styles.title, { color: titleColor }]} numberOfLines={1}>
-          Transactions
+          Activité
         </Text>
       </View>
     </View>

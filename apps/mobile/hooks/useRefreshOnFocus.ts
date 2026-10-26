@@ -1,6 +1,6 @@
 import type { MutableRefObject } from 'react';
 import { useCallback, useRef } from 'react';
-import { InteractionManager } from 'react-native';
+import { runAfterInteractions } from '@/lib/runAfterInteractions';
 import { useFocusEffect } from 'expo-router';
 
 type RefreshOnFocusOptions = {
@@ -77,7 +77,7 @@ export function useRefreshOnFocus(
         void refreshRef.current();
       };
 
-      const interaction = InteractionManager.runAfterInteractions(run);
+      const interaction = runAfterInteractions(run);
       const fallback = setTimeout(run, DEFERRED_REFRESH_FALLBACK_MS);
 
       return () => {

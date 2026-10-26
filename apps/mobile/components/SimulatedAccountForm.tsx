@@ -42,7 +42,6 @@ import {
 import { accountBalanceIconForKind } from '@/lib/accountBalancePresentation';
 import { listBankInstitutions } from '@/lib/bankSync';
 import { insertSimulatedAccount } from '@/lib/db';
-import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { formValidationError, type FormFeedback, type FormSaveResult } from '@/lib/formFeedback';
 import { parseFormattedNumber, sanitizeNumericInput } from '@/lib/formatNumber';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
@@ -233,7 +232,6 @@ export function SimulatedAccountFormModal({
   if (!form) return null;
 
   const update = (patch: Partial<AccountForm>) => setForm((prev) => (prev ? { ...prev, ...patch } : prev));
-  const balanceValue = parseFormattedNumber(form.balance || '0');
   const last4 = form.last4.replace(/\D/g, '');
   const previewMeta = [KIND_LABEL[kind], last4.length === 4 ? `··${last4}` : null].filter(Boolean).join(' ');
   const hasExtras = kind === 'credit' || kind === 'savings';
@@ -275,8 +273,8 @@ export function SimulatedAccountFormModal({
                   { paddingBottom: formSheetScrollPaddingBottom(insets.bottom, keyboardInset) },
                 ]}
               >
-                {/* Live preview — exactly what the Wallet row will show. */}
-                <View style={[styles.preview, { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder }]}>
+                {/* Identity — logo (tap to change) + name edited inline, no container. */}
+                <View style={styles.identity}>
                   <PressScale
                     accessibilityRole="button"
                     accessibilityLabel="Changer l’icône du compte"
@@ -285,29 +283,31 @@ export function SimulatedAccountFormModal({
                       setIconPickerVisible(true);
                     }}
                     scaleTo={0.9}
-                    style={styles.previewIcon}
+                    style={styles.identityIcon}
                   >
                     {previewLogoAsset || previewLogoUrl ? (
-                      <LogoIconFrame asset={previewLogoAsset} uri={previewLogoUrl} size={32} />
+                      <LogoIconFrame asset={previewLogoAsset} uri={previewLogoUrl} size={52} />
                     ) : (
-                      <UserPickedIconWell icon={manualIcon || accountBalanceIconForKind(kind)} size={32} iconSize={16} />
+                      <UserPickedIconWell icon={manualIcon || accountBalanceIconForKind(kind)} size={52} iconSize={24} />
                     )}
-                    <View style={[styles.editBadge, { backgroundColor: colors.text, borderColor: colors.containerBackground }]}>
-                      <AppIcon family="ionicons" name="pencil" size={9} color={colors.background} />
+                    <View style={[styles.editBadge, { backgroundColor: colors.text, borderColor: colors.background }]}>
+                      <AppIcon family="ionicons" name="pencil" size={10} color={colors.background} />
                     </View>
                   </PressScale>
-                  <View style={styles.previewCopy}>
-                    <Text style={[styles.previewName, { color: colors.text }]} numberOfLines={1}>
-                      {displayName}
-                    </Text>
-                    <Text style={[styles.previewMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                  <View style={styles.identityCopy}>
+                    <TextInput
+                      value={form.name}
+                      onChangeText={(name) => update({ name })}
+                      placeholder={displayName}
+                      placeholderTextColor={colors.text}
+                      accessibilityLabel="Nom du compte"
+                      returnKeyType="done"
+                      style={[styles.identityName, { color: colors.text, borderBottomColor: colors.border }]}
+                    />
+                    <Text style={[styles.identityMeta, { color: colors.textMuted }]} numberOfLines={1}>
                       {previewMeta}
                     </Text>
                   </View>
-                  <Text style={[styles.previewBalance, { color: kind === 'credit' && balanceValue > 0 ? colors.danger : colors.text }]}>
-                    {kind === 'credit' && balanceValue > 0 ? '−' : ''}
-                    {formatDisplayMoneyAbsolute(Number.isNaN(balanceValue) ? 0 : balanceValue)}
-                  </Text>
                 </View>
                 {manualIcon ? (
                   <Pressable accessibilityRole="button" onPress={() => update({ icon: null })} hitSlop={8}>
@@ -385,31 +385,15 @@ export function SimulatedAccountFormModal({
                 ) : null}
 
                 {kind !== 'cash' ? (
-                  <View style={styles.pair}>
-                    <LabeledInput
-                      label="Nom (optionnel)"
-                      value={form.name}
-                      onChangeText={(name) => update({ name })}
-                      placeholder={autoAccountName(kind, institution)}
-                    />
-                    <LabeledInput
-                      label="4 derniers chiffres"
-                      value={form.last4}
-                      onChangeText={(value) => update({ last4: value.replace(/\D/g, '').slice(0, 4) })}
-                      placeholder="1234"
-                      keyboardType="number-pad"
-                      maxLength={4}
-                      narrow
-                    />
-                  </View>
-                ) : (
                   <LabeledInput
-                    label="Nom (optionnel)"
-                    value={form.name}
-                    onChangeText={(name) => update({ name })}
-                    placeholder="Espèces"
+                    label="4 derniers chiffres (optionnel)"
+                    value={form.last4}
+                    onChangeText={(value) => update({ last4: value.replace(/\D/g, '').slice(0, 4) })}
+                    placeholder="1234"
+                    keyboardType="number-pad"
+                    maxLength={4}
                   />
-                )}
+                ) : null}
 
                 {/* Rarely needed details stay folded away. */}
                 {hasExtras ? (
@@ -515,31 +499,29 @@ const styles = StyleSheet.create({
   grow: { flex: 1, minWidth: 0 },
   narrow: { width: 132 },
 
-  preview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  previewIcon: { width: 32, height: 32 },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: spacing.xs },
+  identityIcon: { width: 52, height: 52 },
   editBadge: {
     position: 'absolute',
     right: -3,
     bottom: -3,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  previewCopy: { flex: 1, minWidth: 0, gap: 2 },
-  previewName: { ...jakartaSemiboldText, fontSize: 14 },
-  previewMeta: { ...jakartaMediumText, fontSize: 12 },
-  previewBalance: { ...jakartaSemiboldText, fontSize: 14 },
+  identityCopy: { flex: 1, minWidth: 0, gap: 4 },
+  identityName: {
+    ...jakartaSemiboldText,
+    fontSize: 20,
+    letterSpacing: -0.3,
+    paddingVertical: 4,
+    paddingHorizontal: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  identityMeta: { ...jakartaMediumText, fontSize: 13 },
   link: { ...jakartaMediumText, fontSize: 12.5, marginTop: -spacing.sm, marginLeft: 2 },
 
   input: {

@@ -7,7 +7,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { loadAsync as loadFontAsync } from 'expo-font';
 import { useEffect, useState } from 'react';
-import { InteractionManager, Platform, View } from 'react-native';
+import { Platform, View } from 'react-native';
+import { runAfterInteractions } from '@/lib/runAfterInteractions';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PortalHost } from '@rn-primitives/portal';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -38,8 +39,12 @@ export const unstable_settings = {
   initialRouteName: '(tabs)',
 };
 
-/** Safety cap only — Stack renders immediately; fonts/DB run in the background. */
-const BOOTSTRAP_MAX_MS = 0;
+/**
+ * Splash stays up until Plus Jakarta is loaded (DB still runs in the background). Rendering
+ * earlier laid text out with the system font, then the wider bold font swapped in and got
+ * clipped (« Agend », « Demai »). Safety cap so a font failure never blocks the app.
+ */
+const FONT_WAIT_MAX_MS = 3_000;
 
 configureTypographyDefaults();
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -71,7 +76,7 @@ function ThemedRootShell() {
 
 function RootLayoutContent() {
   const { colors, statusBarStyle } = useAppTheme();
-  const [ready, setReady] = useState(true);
+  const [fontWaitExpired, setFontWaitExpired] = useState(false);
   // Critical path fonts only — DM Mono is receipt/articles-only (deferred).
   const [fontsLoaded, fontError] = useAppFonts({
     PlusJakartaSans_400Regular,
@@ -85,8 +90,6 @@ function RootLayoutContent() {
 
   useEffect(() => {
     preloadVectorIconFonts();
-    console.log('[Boot] layout mount — Stack visible immediately');
-    SplashScreen.hideAsync().catch(() => {});
     void (async () => {
       try {
         await ensureDbReady();
@@ -97,7 +100,7 @@ function RootLayoutContent() {
         console.warn('[Boot] database init failed', error);
       }
     })();
-    const idle = InteractionManager.runAfterInteractions(() => {
+    const idle = runAfterInteractions(() => {
       void loadFontAsync({
         DMMono_400Regular,
         DMMono_500Medium,
@@ -106,9 +109,9 @@ function RootLayoutContent() {
       });
     });
     const timer = setTimeout(() => {
-      console.log('[Boot] bootstrap safety tick');
-      setReady(true);
-    }, Platform.OS === 'web' ? 1_200 : BOOTSTRAP_MAX_MS || 3_000);
+      console.log('[Boot] font wait expired — rendering with fallback');
+      setFontWaitExpired(true);
+    }, Platform.OS === 'web' ? 1_200 : FONT_WAIT_MAX_MS);
     return () => {
       idle.cancel();
       clearTimeout(timer);
@@ -124,6 +127,12 @@ function RootLayoutContent() {
       configureSystemTypographyDefaults();
     }
   }, [fontsLoaded, fontError]);
+
+  const ready = fontsLoaded || fontError != null || fontWaitExpired;
+
+  useEffect(() => {
+    if (ready) SplashScreen.hideAsync().catch(() => {});
+  }, [ready]);
 
   if (!ready) {
     return (

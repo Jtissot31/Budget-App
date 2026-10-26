@@ -61,6 +61,7 @@ import { dataEvents } from '@/lib/events';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { BUDGET_NEAR, BUDGET_OVER } from '@/lib/budgetTone';
+import { BUDGET_SCREEN_CACHE_KEY as BUDGET_CACHE_KEY, readScreenCache, writeScreenCache } from '@/lib/screenCache';
 import { useAppTheme } from '@/lib/themeContext';
 
 function currentMonthStart(): Date {
@@ -88,9 +89,10 @@ export default function BudgetScreen() {
   const { colors, isLight } = useAppTheme();
   const scrollRef = useRef<ScrollView>(null);
 
-  const [categories, setCategories] = useState<BudgetCategoryUiModel[]>([]);
+  const [cached] = useState(() => readScreenCache<BudgetCategoryUiModel[]>(BUDGET_CACHE_KEY));
+  const [categories, setCategories] = useState<BudgetCategoryUiModel[]>(cached ?? []);
   /** False until the first month finishes loading — avoids flashing the empty state. */
-  const [hasLoaded, setHasLoaded] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(cached != null);
   const [detailCategoryId, setDetailCategoryId] = useState<string | null>(null);
   const [managingCategories, setManagingCategories] = useState(false);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
@@ -126,8 +128,12 @@ export default function BudgetScreen() {
     const budgets = await getCategoriesForMonth(month);
     if (requestId !== loadRequestIdRef.current) return;
 
+    const uiCategories = mapBudgetCategoriesToUi(budgets);
+    if (month.getTime() === currentMonthStart().getTime()) {
+      writeScreenCache(BUDGET_CACHE_KEY, uiCategories);
+    }
     setDisplayMonth(month);
-    setCategories(mapBudgetCategoriesToUi(budgets));
+    setCategories(uiCategories);
     setHasLoaded(true);
   }, []);
 

@@ -40,7 +40,7 @@ export function PillButton({ label, onPress, icon, tone = 'neutral', accessibili
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      hitSlop={6}
+      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }} // 28pt pill → 44pt target
       onPress={() => {
         tapHaptic();
         onPress();

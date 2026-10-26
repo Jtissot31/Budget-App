@@ -362,6 +362,10 @@ type SummaryCardProps = {
   style?: StyleProp<ViewStyle>;
   /** Page hero: same content without the card container (sits directly on the canvas). */
   bare?: boolean;
+  /** « title » = card-title label (same type as the Copilote widget header) instead of a muted caption. */
+  labelVariant?: 'caption' | 'title';
+  /** Center each stat's label and value within its column. */
+  centerStats?: boolean;
 };
 
 function SummaryAmount({
@@ -412,6 +416,8 @@ export function SummaryCard({
   accessibilityLabel,
   style,
   bare = false,
+  labelVariant = 'caption',
+  centerStats = false,
 }: SummaryCardProps) {
   const { colors } = useAppTheme();
   const Shell = bare ? BareShell : ProtoGlassCard;
@@ -420,7 +426,13 @@ export function SummaryCard({
       <View style={styles.summaryTop}>
         <View style={styles.summaryHero}>
           <View style={styles.summaryLabelRow}>
-            <FitText style={[styles.summaryLabel, { color: colors.textMuted }]}>
+            <FitText
+              style={
+                labelVariant === 'title'
+                  ? [styles.summaryTitle, jakartaSemiboldText, { color: colors.text }]
+                  : [styles.summaryLabel, { color: colors.textMuted }]
+              }
+            >
               {label}
             </FitText>
             {badge && !aside ? (
@@ -451,10 +463,11 @@ export function SummaryCard({
               key={stat.label}
               style={[
                 styles.statCell,
+                centerStats && styles.statCellCentered,
                 index > 0 && {
                   borderLeftWidth: StyleSheet.hairlineWidth,
                   borderLeftColor: colors.borderSubtle,
-                  paddingLeft: spacing.md,
+                  paddingLeft: centerStats ? 0 : spacing.md,
                 },
               ]}
             >
@@ -570,6 +583,8 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
   },
   statCell: { flex: 1, minWidth: 0, gap: 3 },
+  statCellCentered: { alignItems: 'center' },
+  summaryTitle: { fontSize: 15, letterSpacing: -0.2, flexShrink: 1 },
   statLabel: { ...typographyKit.metaMedium, fontSize: 11 },
   pressed: { opacity: 0.78 },
 });

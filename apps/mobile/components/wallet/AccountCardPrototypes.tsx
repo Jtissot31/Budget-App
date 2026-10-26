@@ -166,6 +166,9 @@ export function InstitutionMark({
     (preferAsset
       ? CARD_NETWORK_LOGO_URI_RE.test(`${account.institution ?? ''} ${account.name}`)
       : uri != null && CARD_NETWORK_LOGO_URI_RE.test(uri));
+  // The bundled Visa PNG is transparent, so in list rows it is drawn as a single quiet colour
+  // (like the other bank marks) instead of a bright white plate.
+  const monochromeAsset = tile && preferAsset && isCardNetworkLogo;
   const glyphColor = tinted
     ? accountBalanceIconTone(account.kind, colors)
     : colors.textMuted;
@@ -179,7 +182,7 @@ export function InstitutionMark({
         showLogo ? logoIconWellStyle(size, isLight) : userPickedIconWellStyle(size, isLight),
         transparentWell && styles.transparentWell,
         tile && showLogo && {
-          backgroundColor: isCardNetworkLogo ? '#FFFFFF' : 'transparent',
+          backgroundColor: isCardNetworkLogo && !monochromeAsset ? '#FFFFFF' : 'transparent',
           borderRadius: Math.round(size * 0.28),
           borderWidth: 0,
         },
@@ -199,6 +202,7 @@ export function InstitutionMark({
                 : TILE_LOGO_INSET_RATIO
               : CARD_NETWORK_LOGO_INSET_RATIO
           }
+          tintColor={monochromeAsset ? colors.textSecondary : undefined}
           onError={() => setAssetFailed(true)}
         />
       ) : uri ? (

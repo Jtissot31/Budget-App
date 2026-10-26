@@ -3,12 +3,13 @@
  * budget pace, savings rate, subscriptions), the closest goal, then every tip grouped
  * by priority. Calm palette: green when it's going well, amber otherwise — never red.
  */
-import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useRouter } from 'expo-router';
 import Animated from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BillsCushionSheet } from '@/components/copilot/BillsCushionSheet';
 import { CopilotInsightRow, useCopilotData, WARN_TONE } from '@/components/copilot/CopilotCard';
 import { FixedScreenHeader, fixedHeaderScreenStyle, fixedHeaderScrollStyle } from '@/components/FixedScreenHeader';
 import { AppIcon } from '@/components/icons/AppIcon';
@@ -31,6 +32,7 @@ import { formatNumberInputFromValue } from '@/lib/formatNumber';
 import { isFormSaveSuccess, type FormFeedback } from '@/lib/formFeedback';
 import { suggestNextGoal } from '@/lib/goalSuggestion';
 import {
+  createNewGoalForm,
   createNewGoalFormFromSuggestion,
   SavingsGoalFormModal,
   saveSavingsGoalForm,
@@ -118,6 +120,7 @@ export default function CopilotScreen() {
             monthlyIncome: input.monthlyIncome,
             monthlyExpenses: input.monthlyExpenses,
             subscriptionsMonthly: input.subscriptionsMonthly,
+            recurringMonthly: input.recurringMonthly,
             goals: input.goals,
           })
         : null,
@@ -135,9 +138,8 @@ export default function CopilotScreen() {
   const [savingGoal, setSavingGoal] = useState(false);
   const [goalFeedback, setGoalFeedback] = useState<FormFeedback | null>(null);
 
-  const openSuggestedGoal = async () => {
-    if (!suggestion) return;
-    tapHaptic();
+  /** The goal form needs fresh goals / budget context before it opens. */
+  const loadGoalDeps = async () => {
     const [goals, dashboard, categoryBudgets, recurringPayments] = await Promise.all([
       getSavingsGoals(),
       getDashboard(),
@@ -146,6 +148,25 @@ export default function CopilotScreen() {
     ]);
     setGoalDeps({ goals, dashboard, categoryBudgets, recurringPayments });
     setGoalFeedback(null);
+  };
+
+  const openNewGoal = async () => {
+    tapHaptic();
+    await loadGoalDeps();
+    setGoalForm(createNewGoalForm());
+  };
+
+  // Factures d'avance has its own sheet: it also asks which account gets the envelope.
+  const [cushionOpen, setCushionOpen] = useState(false);
+
+  const openSuggestedGoal = async () => {
+    if (!suggestion) return;
+    tapHaptic();
+    if (suggestion.kind === 'bills-cushion') {
+      setCushionOpen(true);
+      return;
+    }
+    await loadGoalDeps();
     setGoalForm({
       ...createNewGoalFormFromSuggestion({ name: suggestion.name, icon: suggestion.icon }),
       targetAmount: formatNumberInputFromValue(suggestion.targetAmount),
@@ -175,10 +196,18 @@ export default function CopilotScreen() {
 
   const tileSurface = { backgroundColor: colors.containerBackground, borderColor: colors.containerBorder };
 
+  // Every stat tile takes the tallest tile's height, so both rows always match whatever the
+  // content or the system font size (the height only ever grows, so this settles in one pass).
+  const [tileHeight, setTileHeight] = useState(0);
+  const onTileLayout = useCallback((event: LayoutChangeEvent) => {
+    const height = Math.ceil(event.nativeEvent.layout.height);
+    setTileHeight((prev) => (height > prev ? height : prev));
+  }, []);
+  const tileHeightStyle = tileHeight > 0 ? { minHeight: tileHeight } : null;
+
   return (
     <PageTransition>
       <View style={[fixedHeaderScreenStyle, styles.screen, { backgroundColor: colors.background }]}>
-        <FixedScreenHeader title="Copilote" onBack={() => router.back()} />
         <ScrollView
           style={fixedHeaderScrollStyle}
           contentContainerStyle={{
@@ -187,6 +216,12 @@ export default function CopilotScreen() {
           }}
           showsVerticalScrollIndicator={false}
         >
+          {/* Scrolls away with the page — no pinned header on this screen. */}
+          <FixedScreenHeader
+            title="Copilote"
+            onBack={() => router.back()}
+            style={{ marginHorizontal: -PAGE_PADDING_HORIZONTAL }}
+          />
           {/* 1. Health score */}
           {insights ? (
             <Reveal style={[styles.hero, tileSurface]}>
@@ -218,7 +253,7 @@ export default function CopilotScreen() {
           {stats ? (
             <View style={styles.grid}>
               <Reveal index={1} style={styles.cell}>
-                <PressScale accessibilityRole="button" onPress={() => go('/accounts')} scaleTo={0.96} style={[styles.tile, tileSurface]}>
+                <PressScale accessibilityRole="button" onPress={() => go('/accounts')} scaleTo={0.96} containerStyle={styles.tileTarget} onLayout={onTileLayout} style={[styles.tile, tileSurface, tileHeightStyle]}>
                   <TileHead icon="shield-checkmark" title="Coussin" />
                   <Text style={[styles.tileValue, { color: colors.text }]} numberOfLines={1}>
                     {money(Math.max(0, input!.liquidCash))}
@@ -233,7 +268,7 @@ export default function CopilotScreen() {
               </Reveal>
 
               <Reveal index={2} style={styles.cell}>
-                <PressScale accessibilityRole="button" onPress={() => go('/budgets')} scaleTo={0.96} style={[styles.tile, tileSurface]}>
+                <PressScale accessibilityRole="button" onPress={() => go('/budgets')} scaleTo={0.96} containerStyle={styles.tileTarget} onLayout={onTileLayout} style={[styles.tile, tileSurface, tileHeightStyle]}>
                   <TileHead icon="speedometer" title="Rythme" />
                   <Text style={[styles.tileValue, { color: colors.text }]} numberOfLines={1}>
                     {stats.limit > 0 ? `${Math.round((stats.spent / stats.limit) * 100)} %` : '—'}
@@ -248,7 +283,7 @@ export default function CopilotScreen() {
               </Reveal>
 
               <Reveal index={3} style={styles.cell}>
-                <PressScale accessibilityRole="button" onPress={() => go('/transactions-insights')} scaleTo={0.96} style={[styles.tile, tileSurface]}>
+                <PressScale accessibilityRole="button" onPress={() => go('/transactions-insights')} scaleTo={0.96} containerStyle={styles.tileTarget} onLayout={onTileLayout} style={[styles.tile, tileSurface, tileHeightStyle]}>
                   <TileHead icon="leaf" title="Épargne" />
                   <View style={styles.ringRow}>
                     <RingGauge
@@ -267,7 +302,7 @@ export default function CopilotScreen() {
               </Reveal>
 
               <Reveal index={4} style={styles.cell}>
-                <PressScale accessibilityRole="button" onPress={() => go('/subscriptions-insights')} scaleTo={0.96} style={[styles.tile, tileSurface]}>
+                <PressScale accessibilityRole="button" onPress={() => go('/subscriptions-insights')} scaleTo={0.96} containerStyle={styles.tileTarget} onLayout={onTileLayout} style={[styles.tile, tileSurface, tileHeightStyle]}>
                   <TileHead icon="repeat" title="Abonnements" />
                   <Text style={[styles.tileValue, { color: colors.text }]} numberOfLines={1}>
                     {money(input!.subscriptionsMonthly)}
@@ -284,7 +319,7 @@ export default function CopilotScreen() {
           ) : null}
 
           {/* 3. Goals — same GoalTile as Accueil / Wallet, plus the Copilote's next-goal suggestion */}
-          {stats && (stats.goals.length > 0 || suggestion) ? (
+          {stats ? (
             <Reveal index={5} style={styles.section}>
               <SectionLabel title="Objectifs" actionLabel="Tout voir" onAction={() => router.navigate('/accounts')} />
               {suggestion ? (
@@ -296,15 +331,17 @@ export default function CopilotScreen() {
                   <View style={styles.suggestionHead}>
                     <UserPickedIconWell icon={suggestion.icon} size={36} />
                     <View style={styles.suggestionCopy}>
-                      <Text style={[styles.suggestionName, { color: colors.text }]} numberOfLines={1}>
-                        {suggestion.name}
+                      <Text style={[styles.suggestionName, { color: colors.text }]} numberOfLines={2}>
+                        {suggestion.name.split(' · ')[0]}
                       </Text>
                       <Text style={[styles.suggestionMeta, { color: colors.textMuted }]} numberOfLines={1}>
-                        {money(suggestion.targetAmount)} · {money(suggestion.monthly)} / mois · {suggestion.months} mois
+                        {money(suggestion.targetAmount)} · {money(suggestion.monthly)} / mois
                       </Text>
                     </View>
                   </View>
-                  <Text style={[styles.suggestionReason, { color: colors.textSecondary }]}>{suggestion.reason}</Text>
+                  <Text style={[styles.suggestionReason, { color: colors.textSecondary }]} numberOfLines={2}>
+                    {suggestion.reason}
+                  </Text>
                   <PressScale
                     accessibilityRole="button"
                     accessibilityLabel={`Créer l’objectif ${suggestion.name}`}
@@ -329,6 +366,22 @@ export default function CopilotScreen() {
                     />
                   </View>
                 ))}
+                {/* Always offer a new goal — it also fills the empty half next to an odd goal. */}
+                <View style={styles.goalCell}>
+                  <PressScale
+                    accessibilityRole="button"
+                    accessibilityLabel="Créer un nouvel objectif d’épargne"
+                    onPress={() => void openNewGoal()}
+                    scaleTo={0.96}
+                    containerStyle={styles.tileTarget}
+                    style={[styles.newGoalTile, { borderColor: colors.containerBorder }]}
+                  >
+                    <View style={[styles.newGoalIcon, { backgroundColor: colors.surfaceElevated }]}>
+                      <AppIcon family="ionicons" name="add" size={22} color={colors.text} />
+                    </View>
+                    <Text style={[styles.newGoalTitle, { color: colors.text }]}>Nouvel objectif</Text>
+                  </PressScale>
+                </View>
               </View>
             </Reveal>
           ) : null}
@@ -355,6 +408,17 @@ export default function CopilotScreen() {
             </Reveal>
           ))}
         </ScrollView>
+
+        {cushionOpen ? (
+          <BillsCushionSheet
+            suggestedMonthly={suggestion?.kind === 'bills-cushion' ? suggestion.monthly : 0}
+            onClose={() => setCushionOpen(false)}
+            onCreated={() => {
+              setCushionOpen(false);
+              dataEvents.emit();
+            }}
+          />
+        ) : null}
 
         {goalDeps ? (
           <SavingsGoalFormModal
@@ -421,8 +485,11 @@ const styles = StyleSheet.create({
   heroBody: { ...jakartaMediumText, fontSize: 13, lineHeight: 18 },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5, marginBottom: SECTION_GAP - 4 },
-  cell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10 },
-  tile: { borderRadius: 20, borderWidth: 1, padding: 14, gap: 8, minHeight: 150 },
+  // Cells stretch to the row; tiles fill the cell and share one height so both rows line up.
+  cell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10, alignSelf: 'stretch' },
+  /** The touch target must stretch too, or the tile's flex: 1 has nothing to fill (uneven tiles). */
+  tileTarget: { flex: 1 },
+  tile: { flex: 1, borderRadius: 20, borderWidth: 1, padding: 14, gap: 8, minHeight: 168 },
   tileHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   tileTitle: { ...jakartaSemiboldText, fontSize: 12.5 },
   tileValue: { ...jakartaBoldText, fontSize: 20, letterSpacing: -0.4 },
@@ -451,7 +518,20 @@ const styles = StyleSheet.create({
   },
   suggestionButtonText: { ...jakartaSemiboldText, fontSize: 13.5 },
   goalGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
-  goalCell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10 },
+  goalCell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10, alignSelf: 'stretch' },
+  newGoalTile: {
+    flex: 1,
+    minHeight: 150,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    padding: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  newGoalIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  newGoalTitle: { ...jakartaSemiboldText, fontSize: 15 },
 
   empty: { ...jakartaMediumText, fontSize: 14, textAlign: 'center', paddingVertical: spacing.xl },
 });

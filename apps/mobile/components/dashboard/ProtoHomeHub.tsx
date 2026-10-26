@@ -27,9 +27,7 @@ import {
   SectionLabel,
   SummaryCard,
 } from '@/components/kit';
-import { GoalsOverview, NextPayments, SpendingSnapshot } from '@/components/dashboard/HomeUpcoming';
-import { TodayCard } from '@/components/dashboard/TodayCard';
-import { WinsCard } from '@/components/dashboard/WinsCard';
+import { GoalWideCard, GoalsOverview, NextPayments, SpendingSnapshot } from '@/components/dashboard/HomeUpcoming';
 import { CopilotWidget } from '@/components/copilot/CopilotCard';
 import { PageTransition } from '@/components/PageTransition';
 import {
@@ -60,15 +58,13 @@ import { formatNumberDisplay } from '@/lib/formatNumber';
 import type { FormFeedback } from '@/lib/formFeedback';
 import { isFormSaveSuccess } from '@/lib/formFeedback';
 import { tapHaptic } from '@/lib/haptics';
-import { buildHomeWins } from '@/lib/homeWins';
 import { ensureDbReady } from '@/lib/init';
-import { computeLoggingStreak } from '@/lib/loggingStreak';
 import { buildRecurringBillsByDate } from '@/lib/protoAgendaBills';
 import { buildGoalProgressions } from '@/lib/savingsGamification';
 import { syncWithServer } from '@/lib/sync';
 import { useAppTheme } from '@/lib/themeContext';
 import { getUserDisplayName } from '@/lib/userDisplay';
-import { readScreenCache, refreshScreenCache, writeScreenCache } from '@/lib/screenCache';
+import { BUDGET_SCREEN_CACHE_KEY, readScreenCache, refreshScreenCache, writeScreenCache } from '@/lib/screenCache';
 import type {
   AgendaBill,
   CategoryBudget,
@@ -81,6 +77,8 @@ import type {
 
 const TREND_DAY_COUNT = 30;
 const UPCOMING_WINDOW_DAYS = 45;
+/** Home shows only the next few payments — the full list lives in Agenda. */
+const UPCOMING_SHOWN = 4;
 
 function timeOfDayGreeting(now: Date): string {
   const hour = now.getHours();
@@ -165,6 +163,9 @@ async function fetchHomeSnapshot(): Promise<HomeSnapshot> {
       // Same source as the Budget tab so both screens show identical numbers.
       getCategoriesForMonth(startOfMonth(new Date())),
     ]);
+  const budgetCategories = mapBudgetCategoriesToUi(monthCats);
+  // Seeds the Budget tab so its first open paints immediately, like Accueil.
+  writeScreenCache(BUDGET_SCREEN_CACHE_KEY, budgetCategories);
   return {
     displayName: name,
     accounts,
@@ -173,7 +174,7 @@ async function fetchHomeSnapshot(): Promise<HomeSnapshot> {
     categoryBudgets,
     recurringPayments,
     trendTransactions,
-    budgetCategories: mapBudgetCategoriesToUi(monthCats),
+    budgetCategories,
   };
 }
 
@@ -299,9 +300,36 @@ export function ProtoHomeHub() {
   );
 
   const upcoming = useMemo(
-    () => upcomingPaymentRows(recurringPayments, new Date()),
+    () => upcomingPaymentRows(recurringPayments, new Date()).slice(0, UPCOMING_SHOWN),
     [recurringPayments],
   );
+
+  /** Missing amount per upcoming row, if the paying account can't cover it (earlier bills on the same account count first). */
+  const shortfalls = useMemo(() => {
+    const accountIdByPayment = new Map(recurringPayments.map((p) => [p.id, p.accountId]));
+    const accountById = new Map(accounts.map((a) => [a.id, a]));
+    const spentByAccount = new Map<string, number>();
+    const result = new Map<string, number>();
+    for (const row of upcoming) {
+      const accountId = row.bill.sourceId ? accountIdByPayment.get(row.bill.sourceId) : undefined;
+      const account = accountId ? accountById.get(accountId) : undefined;
+      if (!account) continue;
+      let available: number;
+      if (account.kind === 'credit') {
+        if (!(typeof account.creditLimit === 'number' && account.creditLimit > 0)) continue;
+        available = account.creditLimit + account.balance;
+      } else {
+        available = account.balance;
+      }
+      const alreadyDue = spentByAccount.get(account.id) ?? 0;
+      const needed = alreadyDue + row.bill.amount;
+      spentByAccount.set(account.id, needed);
+      if (needed > available) {
+        result.set(`${row.bill.sourceId}:${row.dateKey}`, Math.min(row.bill.amount, needed - Math.max(0, available)));
+      }
+    }
+    return result;
+  }, [accounts, recurringPayments, upcoming]);
   const goalTotals = useMemo(() => {
     const all = buildGoalProgressions(goals);
     return {
@@ -364,26 +392,11 @@ export function ProtoHomeHub() {
   const budgetPct = Math.round(budgetRatio * 100);
   const budgetColor = budgetPct <= 102 ? colors.accentGreen : '#F59E0B';
 
-  const budgetedCount = budgetCategories.filter((b) => b.limit > 0).length;
+  // Says « utilisé » so the ring's percentage can't be read as « remaining » — kept short for phones.
   const budgetSubtitle =
     budget.over > 0
-      ? `${budgetedCount - budget.over} catégorie${budgetedCount - budget.over > 1 ? 's' : ''} sur ${budgetedCount} dans le budget`
-      : `${formatDisplayMoneyAbsolute(budget.spent)} sur ${formatDisplayMoneyAbsolute(budget.limit)}`;
-
-  const homeWins = useMemo(() => {
-    const streak = computeLoggingStreak(trendTransactions);
-    return buildHomeWins({
-      firstName: firstName(displayName),
-      now: new Date(),
-      streakDays: streak.days,
-      loggedToday: streak.loggedToday,
-      categories: budgetCategories,
-      monthlyIncome,
-      monthlyExpenses,
-      netWorthUp: (netWorthPct ?? 0) > 0,
-      goals: goalProgressions.map((g) => ({ name: g.name, saved: g.currentAmount, target: g.targetAmount })),
-    });
-  }, [budgetCategories, displayName, goalProgressions, monthlyExpenses, monthlyIncome, netWorthPct, trendTransactions]);
+      ? `${budgetPct} % utilisé · ${budget.over} dépassée${budget.over > 1 ? 's' : ''}`
+      : `${formatDisplayMoneyAbsolute(budget.spent)} sur ${formatDisplayMoneyAbsolute(budget.limit)} utilisés`;
 
   return (
     <PageTransition>
@@ -435,14 +448,11 @@ export function ProtoHomeHub() {
               appears at once — no empty values, no late pop-in. Later visits use the cache. */}
           {hasLoaded ? (
             <>
-              <Reveal index={0} style={styles.winsLine}>
-                <WinsCard wins={homeWins} />
-              </Reveal>
-
             <Reveal index={0} style={styles.section}>
-              {/* Page hero — no container, so Accueil reads hero → sections, not card after card. */}
+              {/* Same card + title type as the Copilote widget below it. */}
               <SummaryCard
-                bare
+                labelVariant="title"
+                centerStats
                 label="Patrimoine net"
                 amount={signedMoney(totalNetWorth)}
                 amountValue={totalNetWorth}
@@ -473,7 +483,7 @@ export function ProtoHomeHub() {
                         ? colors.textMuted
                         : savingsRate >= 0
                           ? colors.accentGreen
-                          : colors.textMuted,
+                          : colors.danger,
                   },
                 ]}
                 onPress={() => router.navigate('/accounts')}
@@ -487,10 +497,6 @@ export function ProtoHomeHub() {
 
             <Reveal index={1} style={styles.section}>
               <CopilotWidget gentle />
-            </Reveal>
-
-            <Reveal index={1} style={styles.section}>
-              <TodayCard />
             </Reveal>
 
             <Reveal index={2} style={styles.section}>
@@ -534,6 +540,7 @@ export function ProtoHomeHub() {
               ) : (
                 <NextPayments
                   rows={upcoming}
+                  shortfallFor={(row) => shortfalls.get(`${row.bill.sourceId}:${row.dateKey}`) ?? 0}
                   onOpen={(row) =>
                     row?.bill.sourceId
                       ? router.push({ pathname: '/payment-detail', params: { id: row.bill.sourceId, date: row.dateKey } })
@@ -572,6 +579,14 @@ export function ProtoHomeHub() {
                 <ListCard>
                   <EmptyRow label="Aucun objectif en cours" actionLabel="Créer" onAction={openNewGoalForm} />
                 </ListCard>
+              ) : homeGoals.length === 1 && homeGoals[0] ? (
+                <GoalWideCard
+                  name={homeGoals[0].name}
+                  icon={<UserPickedIconWell icon={homeGoals[0].icon} size={32} />}
+                  saved={homeGoals[0].currentAmount}
+                  target={homeGoals[0].targetAmount}
+                  onPress={() => go({ pathname: '/goal-detail', params: { goalId: homeGoals[0]!.goalId } })}
+                />
               ) : (
                 <View style={styles.goalGrid}>
                   {homeGoals.map((goal) => (
@@ -612,7 +627,6 @@ export function ProtoHomeHub() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   section: { marginBottom: SECTION_GAP + spacing.sm },
-  winsLine: { marginTop: -spacing.sm, marginBottom: SECTION_GAP },
   goalGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
   goalCell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10 },
   goalSummary: { marginBottom: 10 },

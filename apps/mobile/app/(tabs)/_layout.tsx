@@ -101,7 +101,7 @@ export default function TabLayout() {
         <Tabs.Screen name="goals" options={{ title: 'Agenda' }} />
         <Tabs.Screen
           name="accounts"
-          options={{ title: 'Wallet', animation: 'none' }}
+          options={{ title: 'Comptes', animation: 'none' }}
         />
         <Tabs.Screen name="settings" />
       </Tabs>

@@ -21,6 +21,8 @@ import {
   type CopilotInsight,
   type CopilotTone,
 } from '@/lib/copilotInsights';
+import { monthlyRecurringBills } from '@/lib/billsCushionTiers';
+import { syncBillsCushionTiers } from '@/lib/billsCushion';
 import { getDashboard, getLoans, getRecurringPayments, getSavingsGoals, getSimulatedAccounts } from '@/lib/db';
 import { dataEvents } from '@/lib/events';
 import { tapHaptic } from '@/lib/haptics';
@@ -50,6 +52,8 @@ export function preloadCopilotData(): Promise<unknown> {
 async function fetchCopilotData(): Promise<CopilotData> {
     await ensureDbReady();
     await initializeCategories();
+    // Bills-cushion goals climb their ladder before anything reads the goals.
+    await syncBillsCushionTiers().catch(() => undefined);
     const now = new Date();
     const [accounts, monthCats, dashboard, payments, loans, goals] = await Promise.all([
       getSimulatedAccounts(),
@@ -87,6 +91,7 @@ async function fetchCopilotData(): Promise<CopilotData> {
       monthlyExpenses: dashboard?.monthlyExpenses ?? 0,
       subscriptionsMonthly: subs.monthlyTotal,
       subscriptionsCount: subs.count,
+      recurringMonthly: monthlyRecurringBills(payments),
       goals: goals.map((g) => ({
         id: g.id,
         name: g.name,

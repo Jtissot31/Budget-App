@@ -89,6 +89,8 @@ export function AddTransactionFab({ style, bottomOffset, rightOffset }: Props) {
   const plusRotation = useAnimatedStyle(() => ({ transform: [{ rotate: `${progress.value * 135}deg` }] }));
 
   const fabGlyph = isLight ? '#FFFFFF' : '#0A0A0A';
+  // Flat charcoal, a few steps above the page so the type buttons read clearly — no glass, no shadow.
+  const actionFill = isLight ? colors.surfaceElevated : '#2C2C30';
 
   return (
     <>
@@ -126,6 +128,7 @@ export function AddTransactionFab({ style, bottomOffset, rightOffset }: Props) {
               order={ACTIONS.length - 1 - index}
               progress={progress}
               glyphColor={colors.text}
+              fill={actionFill}
               backdrop={backdrop}
               stackOrigin={stackOrigin}
               onPress={() => choose(action.type)}
@@ -133,7 +136,7 @@ export function AddTransactionFab({ style, bottomOffset, rightOffset }: Props) {
           ))}
 
           <Pressable accessibilityRole="button" accessibilityLabel="Fermer" onPress={() => closeMenu()} style={styles.mainSlot}>
-            <Animated.View style={[transactionsSolidFabStyle(colors.accentGreen), plusRotation]}>
+            <Animated.View style={[transactionsSolidFabStyle(colors.accentGreen), styles.noShadow, plusRotation]}>
               <AppIcon family="ionicons" name="add" size={30} color={fabGlyph} />
             </Animated.View>
           </Pressable>
@@ -148,21 +151,20 @@ function ActionBubble({
   order,
   progress,
   glyphColor,
-  backdrop,
-  stackOrigin,
+  fill,
   onPress,
 }: {
   action: (typeof ACTIONS)[number];
   order: number;
   progress: SharedValue<number>;
   glyphColor: string;
+  fill: string;
   backdrop: GlassBackdrop | null;
   stackOrigin: Point | null;
   onPress: () => void;
 }) {
   const press = usePressScale(0.9);
   const [row, setRow] = useState<LayoutRectangle | null>(null);
-  const [labelWidth, setLabelWidth] = useState(0);
   // Each bubble starts tucked behind the « + » and springs up to its slot, staggered.
   const travel = (order + 1) * (ACTION_SIZE + ACTION_GAP);
   const local = useSharedValue(0);
@@ -186,32 +188,10 @@ function ActionBubble({
     return { opacity: interpolate(p, [0.5, 1], [0, 1], 'clamp'), transform: [{ translateX: interpolate(p, [0, 1], [12, 0]) }] };
   });
 
-  // Lens centres in window coordinates — the final (settled) positions of bubble and label.
-  const rowCenterY = stackOrigin && row ? stackOrigin.y + row.y + row.height / 2 : null;
-  const bubbleCenter =
-    stackOrigin && row && rowCenterY != null ? { x: stackOrigin.x + row.x + row.width - ACTION_SIZE / 2, y: rowCenterY } : null;
-  const labelCenter =
-    stackOrigin && row && rowCenterY != null && labelWidth > 0
-      ? { x: stackOrigin.x + row.x + labelWidth / 2, y: rowCenterY }
-      : null;
-
   return (
     <Animated.View style={[styles.actionRow, animated]} onLayout={(event) => setRow(event.nativeEvent.layout)}>
       <Animated.View style={labelAnimated}>
-        <View style={styles.label} onLayout={(event) => setLabelWidth(event.nativeEvent.layout.width)}>
-          {labelWidth > 0 ? (
-            <GlassLens
-              backdrop={backdrop}
-              center={labelCenter}
-              width={labelWidth}
-              height={LABEL_HEIGHT}
-              radius={LABEL_HEIGHT / 2}
-              magnification={1}
-              blur={14}
-              tintStrength={0.45}
-              style={StyleSheet.absoluteFill}
-            />
-          ) : null}
+        <View style={[styles.label, { backgroundColor: fill }]}>
           <Text style={[styles.labelText, { color: glyphColor }]}>{action.label}</Text>
         </View>
       </Animated.View>
@@ -224,17 +204,9 @@ function ActionBubble({
         hitSlop={6}
       >
         <Animated.View style={press.animatedStyle}>
-          <GlassLens
-            backdrop={backdrop}
-            center={bubbleCenter}
-            width={ACTION_SIZE}
-            height={ACTION_SIZE}
-            radius={ACTION_SIZE / 2}
-            magnification={1.2}
-            blur={1}
-          >
+          <View style={[styles.bubble, { backgroundColor: fill }]}>
             <AppIcon family="ionicons" name={action.icon} size={22} color={glyphColor} />
-          </GlassLens>
+          </View>
         </Animated.View>
       </Pressable>
     </Animated.View>
@@ -256,4 +228,6 @@ const styles = StyleSheet.create({
   },
   label: { height: LABEL_HEIGHT, paddingHorizontal: 14, borderRadius: LABEL_HEIGHT / 2, justifyContent: 'center' },
   labelText: { ...jakartaSemiboldText, fontSize: 14 },
+  bubble: { width: ACTION_SIZE, height: ACTION_SIZE, borderRadius: ACTION_SIZE / 2, alignItems: 'center', justifyContent: 'center' },
+  noShadow: { shadowOpacity: 0, shadowRadius: 0, elevation: 0 },
 });

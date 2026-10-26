@@ -366,6 +366,7 @@ export function ProtoWalletHub() {
   const listedAccounts = useMemo(() => accounts.filter((a) => !a.hidden), [accounts]);
   const liquidAccounts = useMemo(() => listedAccounts.filter((a) => isLiquid(a.kind)), [listedAccounts]);
   const creditAccounts = useMemo(() => listedAccounts.filter((a) => !isLiquid(a.kind)), [listedAccounts]);
+  const orderedAccounts = useMemo(() => [...liquidAccounts, ...creditAccounts], [liquidAccounts, creditAccounts]);
 
   const liquidCash = liquidAccounts.reduce((sum, a) => sum + a.balance, 0);
   const creditTotal = creditAccounts.reduce((sum, a) => sum + a.balance, 0);
@@ -403,6 +404,8 @@ export function ProtoWalletHub() {
     const title = accountBalanceDisplayName(account) || 'Compte';
     // Envelopes: liquid accounts only, outside « Modifier » mode.
     const supportsEnvelopes = interactive && !managingAccounts && isLiquid(account.kind);
+    // Credit cards have no envelopes, but keep the chevron's space so balances share one right edge.
+    const reserveToggleSpace = interactive && !managingAccounts && !isLiquid(account.kind);
     const envelopes = envelopesByAccount[account.id] ?? [];
     const expanded = supportsEnvelopes && expandedAccountIds.includes(account.id);
     const meta = accountMeta(account);
@@ -411,11 +414,7 @@ export function ProtoWalletHub() {
         key={account.id}
         leading={managingAccounts ? <SelectWell selected={selected} /> : <View style={styles.logoSlot}><InstitutionMark account={account} size={36} tile /></View>}
         title={title}
-        subtitle={
-          supportsEnvelopes && envelopes.length > 0
-            ? `${meta} · ${envelopes.length} enveloppe${envelopes.length > 1 ? 's' : ''}`
-            : meta
-        }
+        subtitle={meta}
         value={money(account.balance)}
         valueColor={account.balance < 0 && !hideBalances ? colors.danger : colors.text}
         compactValue
@@ -425,7 +424,7 @@ export function ProtoWalletHub() {
               <Text style={[styles.manageValue, { color: colors.textMuted }]}>{money(account.balance)}</Text>
               <AppIcon family="ionicons" name="reorder-two" size={20} color={colors.textMuted} />
             </View>
-          ) : supportsEnvelopes ? (
+          ) : supportsEnvelopes || reserveToggleSpace ? (
             <View style={styles.envelopeTrailing}>
               <Text
                 style={[
@@ -437,21 +436,8 @@ export function ProtoWalletHub() {
               >
                 {money(account.balance)}
               </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={expanded ? 'Masquer les enveloppes' : 'Afficher les enveloppes'}
-                accessibilityState={{ expanded }}
-                hitSlop={12}
-                onPress={() => toggleAccountExpanded(account.id)}
-                style={[styles.expandButton, { backgroundColor: expanded ? colors.surfaceElevated : 'transparent' }]}
-              >
-                <AppIcon
-                  family="ionicons"
-                  name={expanded ? 'chevron-up' : 'chevron-down'}
-                  size={16}
-                  color={colors.textMuted}
-                />
-              </Pressable>
+              {/* Room for the expand toggle, which sits over the row as a sibling (never nested in it). */}
+              <View style={styles.expandButton} />
             </View>
           ) : undefined
         }
@@ -463,16 +449,38 @@ export function ProtoWalletHub() {
         }
       />
     );
-    if (!expanded) return row;
+    // A button inside the row's button is invalid on web and makes the two targets compete
+    // on native — so the toggle is layered over the row instead.
+    const rowWithToggle = supportsEnvelopes ? (
+      <View key={account.id} style={styles.rowWithToggle}>
+        {row}
+        {!expanded ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Afficher les enveloppes"
+            accessibilityState={{ expanded }}
+            onPress={() => toggleAccountExpanded(account.id)}
+            style={styles.expandHit}
+          >
+            <View style={styles.expandButton}>
+              <AppIcon family="ionicons" name="chevron-down" size={16} color={colors.textMuted} />
+            </View>
+          </Pressable>
+        ) : null}
+      </View>
+    ) : (
+      row
+    );
+    if (!expanded) return rowWithToggle;
     return (
       <View key={account.id}>
-        {row}
+        {rowWithToggle}
         <AccountEnvelopesPanel
-          balance={account.balance}
           envelopes={envelopes}
           hideBalances={hideBalances}
-          onAdd={(preset) => setEnvelopeDraft(newEnvelopeDraft(account.id, envelopes.length, preset))}
+          onAdd={() => setEnvelopeDraft(newEnvelopeDraft(account.id, envelopes.length))}
           onEdit={(envelope) => setEnvelopeDraft({ envelope, isNew: false })}
+          onCollapse={() => toggleAccountExpanded(account.id)}
         />
         {!isLast ? <View style={[styles.envelopeDivider, { backgroundColor: colors.borderSubtle }]} /> : null}
       </View>
@@ -523,7 +531,7 @@ export function ProtoWalletHub() {
         >
           <PageHeader
             topInset={insets.top}
-            title="Wallet"
+            title="Comptes"
             trailing={
               <HeaderIconButton
                 icon={hideBalances ? 'eye-off-outline' : 'eye-outline'}
@@ -623,22 +631,13 @@ export function ProtoWalletHub() {
               </>
             ) : (
               <>
-                {liquidAccounts.length > 0 ? (
+                {/* One list: liquid accounts first, credit cards last (the row already says « Crédit ··9104 »). */}
+                {orderedAccounts.length > 0 ? (
                   <ListCard style={styles.cardGap}>
-                    {liquidAccounts.map((account, index) =>
-                      renderAccountRow(account, index === liquidAccounts.length - 1),
+                    {orderedAccounts.map((account, index) =>
+                      renderAccountRow(account, index === orderedAccounts.length - 1),
                     )}
                   </ListCard>
-                ) : null}
-                {creditAccounts.length > 0 ? (
-                  <>
-                    <Text style={[styles.subLabel, { color: colors.textMuted }]}>Crédit</Text>
-                    <ListCard style={styles.cardGap}>
-                      {creditAccounts.map((account, index) =>
-                        renderAccountRow(account, index === creditAccounts.length - 1),
-                      )}
-                    </ListCard>
-                  </>
                 ) : null}
                 {/* Empty state only — with accounts, « Ajouter » lives in the section header. */}
                 {listedAccounts.length === 0 ? <ListCard>{addAccountRow}</ListCard> : null}
@@ -878,12 +877,23 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   envelopeTrailing: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
   expandButton: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  rowWithToggle: { position: 'relative' },
+  /** 44×44 target centred on the 28pt chevron (row padding is 14, so 14 − 8 = 6 from the edge). */
+  expandHit: {
+    position: 'absolute',
+    right: 6,
+    top: 0,
+    bottom: 0,
+    width: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   envelopeDivider: { height: StyleSheet.hairlineWidth, marginLeft: 14 },
   cardGap: { marginBottom: spacing.md },
   subLabel: {
-    ...typographyKit.eyebrow,
-    fontSize: 11,
-    letterSpacing: 0.8,
+    ...typographyKit.metaMedium,
+    fontSize: 13.5,
+    lineHeight: 18,
     marginBottom: 8,
     paddingHorizontal: 2,
   },
