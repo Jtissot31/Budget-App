@@ -7,7 +7,6 @@
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from '@/components/icons/AppIcon';
@@ -28,14 +27,11 @@ import {
   Reveal,
 } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
-import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsForm';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { getCategoryIconName } from '@/constants/categoryOptions';
 import {
   FLOATING_NAV_CONTENT_PADDING,
-  jakartaBoldText,
-  jakartaMediumText,
   PAGE_PADDING_HORIZONTAL,
   radius,
   spacing,
@@ -66,7 +62,6 @@ import { successHaptic, tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 import { BUDGET_OVER } from '@/lib/budgetTone';
 import { reportFabScroll } from '@/lib/fabScrollVisibility';
-import { FabAutoHide } from '@/components/tabbar/FabAutoHide';
 import type { PaymentDetailPayload } from '@/components/PaymentDetailSheet';
 import type { AgendaBill, RecurringPayment, Transaction } from '@/types';
 
@@ -80,31 +75,8 @@ const AGENDA_BODY_TABS: { id: AgendaBodyMode; label: string }[] = [
 /** Extra bottom inset so the agenda FAB clears the last payment rows. */
 const AGENDA_FAB_SCROLL_CLEARANCE = 64;
 
-const AGENDA_ADD_TYPE_OPTIONS: {
-  variant: RecurringPaymentAddVariant;
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  accessibilityLabel: string;
-}[] = [
-  {
-    variant: 'income',
-    label: 'Revenu récurrent',
-    icon: 'trending-up-outline',
-    accessibilityLabel: 'Ajouter un revenu récurrent',
-  },
-  {
-    variant: 'bill',
-    label: 'Paiement récurrent',
-    icon: 'document-text-outline',
-    accessibilityLabel: 'Ajouter un paiement récurrent',
-  },
-  {
-    variant: 'subscription',
-    label: 'Abonnement',
-    icon: 'repeat-outline',
-    accessibilityLabel: 'Ajouter un abonnement',
-  },
-];
+/** Extra height per calendar row, so the outline leaves room under the amount. */
+const DAY_ROW_EXTRA = 8;
 
 const DOW = ['L', 'M', 'M', 'J', 'V', 'S', 'D'] as const;
 
@@ -173,8 +145,6 @@ function signedMoney(value: number, { plus = false } = {}): string {
 type Props = {
   /** List-row tap → read-only payment detail (not the create/edit form). */
   onOpenPaymentDetail?: (detail: PaymentDetailPayload) => void;
-  /** Header add → create form (parent hosts RecurringPaymentFormModal). Falls back to uiEvents. */
-  onAddRecurringPayment?: (variant: RecurringPaymentAddVariant) => void;
 };
 
 /**
@@ -190,7 +160,7 @@ function AbsorbTouches({ children }: { children: ReactNode }) {
   );
 }
 
-export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }: Props) {
+export function ProtoAgendaScreen({ onOpenPaymentDetail }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   /** Deep link: `/goals?payment=<recurring id>&date=YYYY-MM-DD` opens that payment. */
@@ -200,7 +170,7 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
   const [cursor, setCursor] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
   /** null = full month list; set = filter to that calendar day. */
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
-  const [bodyMode, setBodyMode] = useState<AgendaBodyMode>('list');
+  const [bodyMode, setBodyMode] = useState<AgendaBodyMode>('calendar');
   const [payments, setPayments] = useState<RecurringPayment[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -208,29 +178,8 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
   const [selectedPaymentIds, setSelectedPaymentIds] = useState<string[]>([]);
   const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
   const [deletingSelected, setDeletingSelected] = useState(false);
-  const [addTypeChooserVisible, setAddTypeChooserVisible] = useState(false);
   const [paidExpanded, setPaidExpanded] = useState(false);
   const [calendarWidth, setCalendarWidth] = useState(0);
-
-  const openAddFormForVariant = useCallback(
-    (variant: RecurringPaymentAddVariant) => {
-      if (onAddRecurringPayment) {
-        onAddRecurringPayment(variant);
-        return;
-      }
-      uiEvents.requestNewRecurringPayment(variant);
-    },
-    [onAddRecurringPayment],
-  );
-
-  const chooseAddType = useCallback(
-    (variant: RecurringPaymentAddVariant) => {
-      tapHaptic();
-      setAddTypeChooserVisible(false);
-      openAddFormForVariant(variant);
-    },
-    [openAddFormForVariant],
-  );
 
   const year = cursor.getFullYear();
   const month0 = cursor.getMonth();
@@ -505,13 +454,6 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
     return text.charAt(0).toUpperCase() + text.slice(1);
   };
   /** Compact countdown for the hero pill. */
-  const dueShort = (dateKey: string) => {
-    if (dateKey === todayKey) return "Aujourd'hui";
-    const days = daysUntilPayment(dateKey, new Date(`${todayKey}T12:00:00`));
-    if (days <= 1) return 'Demain';
-    return `Dans ${days} j`;
-  };
-
   const renderBillRow = (item: AgendaItem, isLast: boolean) => {
     const { bill, paid, dateKey } = item;
     const isIncome = (bill.kind ?? 'payment') === 'income';
@@ -638,49 +580,30 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                         : colors.accentGreen,
                 },
               ]}
-            />
-            </AbsorbTouches>
-          </Reveal>
-
-          {nextItem && !selectedDateKey && !managingPayments ? (
-            <PressScale
-              accessibilityRole="button"
-              accessibilityLabel={`Prochain paiement : ${nextItem.bill.name}`}
-              scaleTo={0.985}
-              onPress={() => openBill(nextItem.bill, nextItem.dateKey)}
-              style={styles.section}
             >
-              <AbsorbTouches><ListCard padding={16} style={styles.nextCard}>
-                <View style={styles.nextTop}>
-                  <Text style={[styles.nextEyebrow, { color: colors.textMuted }]}>Prochain paiement</Text>
-                  <View style={[styles.countdown, { backgroundColor: colors.text }]}>
-                    <Text style={[styles.countdownText, { color: colors.background }]}>
-                      {dueShort(nextItem.dateKey)}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.nextBody}>
+              {nextItem && !selectedDateKey && !managingPayments ? (
+                <PressScale
+                  accessibilityRole="button"
+                  accessibilityLabel={`Prochain paiement : ${nextItem.bill.name}`}
+                  scaleTo={0.985}
+                  onPress={() => openBill(nextItem.bill, nextItem.dateKey)}
+                  style={[styles.nextRow, { borderTopColor: colors.borderSubtle }]}
+                >
                   <PayIcon bill={nextItem.bill} />
                   <View style={styles.nextCopy}>
-                    <FitText style={[styles.nextName, { color: colors.text }]}>
-                      {nextItem.bill.name}
-                    </FitText>
+                    <FitText style={[styles.nextName, { color: colors.text }]}>{nextItem.bill.name}</FitText>
                     <FitText style={[styles.nextMeta, { color: colors.textMuted }]}>
-                      {[dueLong(nextItem.dateKey), nextItem.bill.account].filter(Boolean).join(' · ')}
+                      {dueLong(nextItem.dateKey)}
                     </FitText>
                   </View>
-                </View>
-                <FitText
-                  style={[styles.nextAmount, { color: colors.text }]}
-                  fontSize={30}
-                  lineHeight={36}
-                  minScale={0.6}
-                >
-                  {`${(nextItem.bill.kind ?? 'payment') === 'income' ? '+' : '−'}${formatDisplayMoneyAbsolute(Math.abs(nextItem.bill.amount))}`}
-                </FitText>
-              </ListCard></AbsorbTouches>
-            </PressScale>
-          ) : null}
+                  <Text style={[styles.nextAmount, { color: colors.text }]} numberOfLines={1}>
+                    {`${(nextItem.bill.kind ?? 'payment') === 'income' ? '+' : '−'}${formatDisplayMoneyAbsolute(Math.abs(nextItem.bill.amount))}`}
+                  </Text>
+                </PressScale>
+              ) : null}
+            </SummaryCard>
+            </AbsorbTouches>
+          </Reveal>
 
           <View style={styles.modeRow}>
             <AbsorbTouches>
@@ -701,7 +624,8 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
 
           {bodyMode === 'calendar' ? (
             <Reveal index={1} style={styles.section}>
-              <AbsorbTouches><ListCard padding={12}>
+              {/* Any tap in the card that misses a date or an arrow clears the selected date. */}
+              <Pressable accessible={false} focusable={false} onPress={resetSelectedDay}><ListCard padding={12}>
                 <View style={styles.calHeader}>
                   <Pressable
                     accessibilityRole="button"
@@ -773,38 +697,35 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                                   setSelectedDay((prev) => (prev === day ? null : day));
                                 }}
                               >
-                                <View style={[styles.dayCell, { width: cellSize, height: cellSize }]}>
+                                <View style={[styles.dayCell, { width: cellSize, height: cellSize + DAY_ROW_EXTRA }]}>
                                   <View
                                     style={[
                                       styles.dayTile,
-                                      { width: cellSize - 10, height: cellSize - 8 },
-                                      kind === 'due' && !selected && { backgroundColor: colors.surfaceElevated },
-                                      isToday && !selected && { borderColor: colors.text, borderWidth: 1.5 },
-                                      selected && { backgroundColor: colors.text },
+                                      { width: cellSize - 4, height: cellSize + DAY_ROW_EXTRA - 4 },
+                                      kind === 'due' && { backgroundColor: colors.surfaceElevated },
+                                      (selected || isToday) && { borderColor: colors.text },
                                     ]}
                                   >
                                     <Text
                                       style={[
                                         styles.dayNum,
-                                        {
-                                          color: selected
-                                            ? colors.background
-                                            : isPast
-                                              ? colors.textMuted
-                                              : colors.text,
-                                        },
+                                        { color: isPast && !selected ? colors.textMuted : colors.text },
                                       ]}
                                     >
                                       {day}
                                     </Text>
                                     {kind ? (
+                                      <View style={styles.dayAmountBox}>
                                       <Text
-                                        style={[styles.dayTileAmount, { color: selected ? colors.background : tone }]}
+                                        style={[styles.dayTileAmount, { color: tone }]}
                                         numberOfLines={1}
+                                        adjustsFontSizeToFit
+                                        minimumFontScale={0.7}
                                       >
                                         {kind === 'income' && paymentsTotal === 0 ? '+' : ''}
                                         {compactCalendarAmount(shownAmount)}$
                                       </Text>
+                                      </View>
                                     ) : null}
                                   </View>
                                 </View>
@@ -831,7 +752,7 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
                     </View>
                   ))}
                 </View>
-              </ListCard></AbsorbTouches>
+              </ListCard></Pressable>
             </Reveal>
           ) : null}
 
@@ -931,64 +852,6 @@ export function ProtoAgendaScreen({ onOpenPaymentDetail, onAddRecurringPayment }
           onCancel={() => setConfirmDeleteVisible(false)}
         />
 
-        {!managingPayments && !addTypeChooserVisible ? (
-          <FabAutoHide style={styles.fabLayer}>
-            <PressScale
-              accessibilityRole="button"
-              accessibilityLabel="Ajouter un paiement récurrent"
-              scaleTo={0.92}
-              onPress={() => {
-                tapHaptic();
-                setAddTypeChooserVisible(true);
-              }}
-              style={[styles.fab, { backgroundColor: colors.text, bottom: Math.max(insets.bottom, 12) + 64 }]}
-            >
-              <AppIcon family="ionicons" name="add" size={28} color={colors.background} />
-            </PressScale>
-          </FabAutoHide>
-        ) : null}
-
-        {addTypeChooserVisible ? (
-          <View style={styles.addTypeOverlay} accessibilityViewIsModal>
-            <Pressable
-              style={styles.addTypeBackdrop}
-              onPress={() => setAddTypeChooserVisible(false)}
-              accessibilityRole="button"
-              accessibilityLabel="Fermer"
-            />
-            <View pointerEvents="box-none" style={styles.addTypeCardWrap}>
-              <View
-                style={[
-                  styles.addTypeCard,
-                  { backgroundColor: colors.background, borderColor: colors.containerBorder },
-                ]}
-              >
-                <Text style={[styles.addTypeTitle, { color: colors.text }]}>Que veux-tu ajouter ?</Text>
-                <AbsorbTouches><ListCard>
-                  {AGENDA_ADD_TYPE_OPTIONS.map((option, index) => (
-                    <ListRow
-                      key={option.variant}
-                      leading={<IconWell icon={option.icon} color={colors.text} />}
-                      title={option.label}
-                      chevron
-                      isLast={index === AGENDA_ADD_TYPE_OPTIONS.length - 1}
-                      accessibilityLabel={option.accessibilityLabel}
-                      onPress={() => chooseAddType(option.variant)}
-                    />
-                  ))}
-                </ListCard></AbsorbTouches>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Annuler"
-                  onPress={() => setAddTypeChooserVisible(false)}
-                  style={({ pressed }) => [styles.addTypeCancel, pressed && { opacity: 0.82 }]}
-                >
-                  <Text style={[styles.addTypeCancelLabel, { color: colors.textMuted }]}>Annuler</Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        ) : null}
       </View>
     </PageTransition>
   );
@@ -1014,16 +877,17 @@ const styles = StyleSheet.create({
   modeRow: { marginBottom: spacing.lg },
   sectionActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   group: { marginBottom: spacing.md },
-  nextCard: { gap: 12 },
-  nextTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  nextEyebrow: { ...typographyKit.metaMedium, fontSize: 12 },
-  countdown: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  countdownText: { ...typographyKit.metaSemibold, fontSize: 12 },
-  nextBody: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  nextCopy: { flex: 1, minWidth: 0, gap: 2 },
-  nextName: { ...typographyKit.metaSemibold, fontSize: 17 },
-  nextMeta: { ...typographyKit.metaMedium, fontSize: 13 },
-  nextAmount: { ...moneyAmountTypography({ tier: 'stat', fontSize: 30 }), letterSpacing: -0.8 },
+  nextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  nextCopy: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, gap: 2 },
+  nextName: { ...typographyKit.metaSemibold, fontSize: 15, lineHeight: 20 },
+  nextMeta: { ...typographyKit.metaMedium, fontSize: 12.5, lineHeight: 16 },
+  nextAmount: { ...moneyAmountTypography({ tier: 'row', fontSize: 15 }), flexShrink: 0 },
   dateLabel: {
     ...typographyKit.metaMedium,
     fontSize: 13.5,
@@ -1040,9 +904,12 @@ const styles = StyleSheet.create({
   weekRow: { flexDirection: 'row' },
   dow: { textAlign: 'center', ...typographyKit.microMedium, fontSize: 11, paddingBottom: 6 },
   dayCell: { alignItems: 'center', justifyContent: 'center' },
-  dayTile: { borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 1 },
-  dayNum: { ...typographyKit.metaSemibold, fontSize: 14 },
-  dayTileAmount: { ...typographyKit.metaMedium, fontSize: 10.5, lineHeight: 13, letterSpacing: -0.1, includeFontPadding: false },
+  // Always bordered (transparent when off), and the amount has side padding: the outline never touches it.
+  dayTile: { borderRadius: 12, borderWidth: 1.5, borderColor: 'transparent', overflow: 'hidden', alignItems: 'center', justifyContent: 'center', gap: 1 },
+  // Padding here, not on the Text: Android's font auto-fit breaks on padded text (crops the $, loses centring).
+  dayAmountBox: { alignSelf: 'stretch', paddingHorizontal: 3 },
+  dayNum: { ...typographyKit.metaSemibold, fontSize: 14, lineHeight: 18 },
+  dayTileAmount: { ...typographyKit.metaMedium, alignSelf: 'stretch', paddingHorizontal: 0, textAlign: 'center', fontSize: 10.5, lineHeight: 13, letterSpacing: -0.1, includeFontPadding: false },
   dayDot: { width: 5, height: 5, borderRadius: 2.5 },
   calLegend: {
     flexDirection: 'row',
@@ -1055,37 +922,4 @@ const styles = StyleSheet.create({
   },
   calLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 },
   calLegendText: { ...typographyKit.metaMedium, fontSize: 12, lineHeight: 16 },
-  /** The FAB anchors on a zero-height wrapper that used to sit at the screen's bottom — keep it there. */
-  fabLayer: { justifyContent: 'flex-end' },
-  fab: {
-    position: 'absolute',
-    right: PAGE_PADDING_HORIZONTAL,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 20,
-    elevation: 6,
-  },
-  addTypeOverlay: {
-    ...StyleSheet.absoluteFill,
-    zIndex: 40,
-    elevation: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-  },
-  addTypeBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.72)' },
-  addTypeCardWrap: { width: '100%', maxWidth: 360, zIndex: 1 },
-  addTypeCard: {
-    width: '100%',
-    borderRadius: radius.card + 4,
-    borderWidth: 1,
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  addTypeTitle: { ...jakartaBoldText, fontSize: typography.body, textAlign: 'center', marginTop: spacing.xs },
-  addTypeCancel: { alignSelf: 'stretch', paddingVertical: 10, alignItems: 'center' },
-  addTypeCancelLabel: { ...jakartaMediumText, fontSize: typography.caption },
 });

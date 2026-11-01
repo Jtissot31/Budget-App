@@ -110,6 +110,10 @@ export function FitText({
         style={[textStyle, { fontSize: size, lineHeight: line, textAlign: align ?? flat.textAlign ?? 'left' }]}
         numberOfLines={wraps ? 2 : 1}
         ellipsizeMode="tail"
+        // Android can report the measuring copy clipped to the wrapper, so `ratio` stays at 1:
+        // let the native text shrink as well instead of ending in « … ».
+        adjustsFontSizeToFit={!wraps}
+        minimumFontScale={minScale}
         accessibilityLabel={accessibilityLabel}
       >
         {children}

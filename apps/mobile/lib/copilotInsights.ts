@@ -91,7 +91,7 @@ export function buildCopilotInsights(input: CopilotInput): CopilotInsight[] {
         id: 'pace',
         tone: 'risk',
         icon: 'trending-up-outline',
-        title: `Budget dépassé de ${money(-remaining)}`,
+        title: `${money(-remaining)} au-delà du plan`,
         detail: 'Limite les dépenses non essentielles jusqu’à la fin du mois.',
         route: '/budgets',
       });
@@ -133,7 +133,7 @@ export function buildCopilotInsights(input: CopilotInput): CopilotInsight[] {
       tone: over ? 'risk' : 'warn',
       icon: 'pie-chart-outline',
       route: { pathname: '/budget-category', params: { id: atRisk.c.id } },
-      title: over ? `${atRisk.c.name} : budget dépassé` : `${atRisk.c.name} : risque de dépassement`,
+      title: over ? `${atRisk.c.name} : au-delà du plan` : `${atRisk.c.name} : à surveiller`,
       detail: over
         ? `${money(atRisk.c.spent - atRisk.c.limit)} au-dessus des ${money(atRisk.c.limit)} prévus.`
         : `À ce rythme : ${money(atRisk.projected)} pour ${money(atRisk.c.limit)} prévus.`,

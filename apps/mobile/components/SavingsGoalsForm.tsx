@@ -288,6 +288,7 @@ export function SavingsGoalFormModal({
                     <GoalKindHeader
                       name={form?.name ?? ''}
                       resolvedIcon={resolvedIcon}
+                      controlStrong={themed.controlStrong}
                       onChangeName={(value) =>
                         setForm((cur) =>
                           cur
@@ -301,12 +302,11 @@ export function SavingsGoalFormModal({
                         )
                       }
                     />
-                    <Text style={[styles.fieldHint, themed.textMuted]}>
-                      Icône auto selon le nom
-                    </Text>
                   </View>
 
+                  <View style={styles.amountRow}>
                   <FormField
+                    half
                     label="Montant cible"
                     value={form?.targetAmount ?? ''}
                     placeholder="5 000"
@@ -320,7 +320,8 @@ export function SavingsGoalFormModal({
                     }
                   />
                   <FormField
-                    label="Montant déjà épargné"
+                    half
+                    label="Déjà épargné"
                     value={form?.currentAmount ?? ''}
                     placeholder="0"
                     keyboardType="decimal-pad"
@@ -332,12 +333,13 @@ export function SavingsGoalFormModal({
                       )
                     }
                   />
+                  </View>
 
                   <View style={styles.section}>
                     <DatePickerField
-                      label="Date cible"
+                      label="Date cible · facultatif"
                       value={form?.dueDate ?? ''}
-                      placeholder="Optionnelle · aucune date max"
+                      placeholder="Aucune"
                       allowClear
                       variant="sheet"
                       labelStyle={sectionLabelStyle}
@@ -346,14 +348,11 @@ export function SavingsGoalFormModal({
                         setForm((cur) => (cur ? { ...cur, dueDate: value } : cur))
                       }
                     />
-                    <Text style={[styles.fieldHint, themed.textMuted]}>
-                      Facultatif · sert à calculer le versement minimum
-                    </Text>
                   </View>
 
                   <View style={styles.section}>
                     <DashboardSectionLabel style={sectionLabelStyle}>
-                      Montant des versements
+                      Versement · facultatif
                     </DashboardSectionLabel>
                     <ThemeSegmentedControl
                       tabs={SAVINGS_GOAL_CONTRIBUTION_FREQUENCIES}
@@ -411,12 +410,7 @@ export function SavingsGoalFormModal({
                         {formatSuggestedAmount(suggestedAtFrequency ?? suggestedWeekly)} ${' '}
                         {savingsGoalContributionFrequencyLabel(contributionFrequency).toLowerCase()}
                       </Text>
-                    ) : (
-                      <Text style={[styles.fieldHint, themed.textMuted]}>
-                        Facultatif
-                        {isEditingExistingGoal ? ' · estime la projection' : ''}
-                      </Text>
-                    )}
+                    ) : null}
                     {isWeeklyBelowSuggestion && suggestedWeekly != null ? (
                       <View style={[styles.weeklyWarning, themed.warningCard]}>
                         <Text style={[styles.weeklyWarningText, themed.warningText]}>
@@ -469,6 +463,7 @@ function FormField({
   controlStrong,
   sectionLabelStyle,
   hideLabel = false,
+  half = false,
 }: {
   label: string;
   value: string;
@@ -478,13 +473,15 @@ function FormField({
   controlStrong: { backgroundColor: string; borderColor: string; borderWidth: number };
   sectionLabelStyle: StyleProp<TextStyle>;
   hideLabel?: boolean;
+  /** Takes half of an `amountRow`. */
+  half?: boolean;
 }) {
   const { colors } = useAppTheme();
   const InputComponent = keyboardType === 'decimal-pad' ? NumericAmountInput : TextInput;
   const isAmount = keyboardType === 'decimal-pad';
 
   return (
-    <View style={styles.field}>
+    <View style={[styles.field, half && styles.fieldHalf]}>
       {!hideLabel && label ? (
         <DashboardSectionLabel style={sectionLabelStyle}>{label}</DashboardSectionLabel>
       ) : null}
@@ -508,10 +505,12 @@ function FormField({
 function GoalKindHeader({
   name,
   resolvedIcon,
+  controlStrong,
   onChangeName,
 }: {
   name: string;
   resolvedIcon: string;
+  controlStrong: { backgroundColor: string; borderColor: string; borderWidth: number };
   onChangeName: (value: string) => void;
 }) {
   const { colors, isLight } = useAppTheme();
@@ -522,7 +521,7 @@ function GoalKindHeader({
   const glyphName = resolveGoalIdentityGlyph(resolvedIcon);
 
   return (
-    <View style={styles.identityRow}>
+    <View style={[styles.inputShell, controlStrong]}>
       <View style={styles.iconAffordance}>
         {trimmedName ? (
           <View style={styles.iconSlot}>
@@ -546,14 +545,7 @@ function GoalKindHeader({
         )}
       </View>
       <TextInput
-        style={[
-          styles.nameInput,
-          {
-            color: colors.text,
-            borderBottomColor: colors.border,
-            borderBottomWidth: StyleSheet.hairlineWidth,
-          },
-        ]}
+        style={[styles.inputWithSuffix, { color: colors.text }]}
         value={name}
         onChangeText={onChangeName}
         placeholder="Ex. Fonds d'urgence"
@@ -957,6 +949,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   field: { gap: spacing.sm },
+  fieldHalf: { flexGrow: 1, flexBasis: 0, minWidth: 0 },
+  amountRow: { flexDirection: 'row', gap: spacing.md },
   inputShell: {
     minHeight: 50,
     borderRadius: radius.lg,
@@ -975,15 +969,9 @@ const styles = StyleSheet.create({
   suffix: {
     ...typographyKit.metaMedium,
   },
-  identityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 48,
-  },
   iconAffordance: {
-    width: 36,
-    height: 36,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -1002,15 +990,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     opacity: 0.42,
-  },
-  nameInput: {
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: 0,
-    fontSize: typography.body,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    ...jakartaSemiboldText,
   },
   fieldHint: {
     ...typographyKit.metaMedium,

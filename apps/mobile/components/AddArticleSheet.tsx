@@ -579,23 +579,21 @@ export function AddArticleSheet({
         accessibilityLabel="Ajouter l'article"
         disabled={!canSave}
         onPress={handleSave}
-        style={({ pressed }) => [
-          styles.inlineAddButton,
-          { backgroundColor: colors.text },
-          !canSave && styles.inlineAddButtonDisabled,
-          pressed && canSave && styles.pressed,
-        ]}
+        style={({ pressed }) => [styles.inlineAddHit, pressed && canSave && styles.pressed]}
       >
-        <Text
-          style={[
-            typographyKit.caption,
-            styles.inlineAddButtonLabel,
-            jakartaSemiboldText,
-            { color: canSave ? colors.background : colors.textMuted },
-          ]}
-        >
-          Ajouter
-        </Text>
+        {/* Fill and centring on a plain View: Android drops them from a Pressable style function. */}
+        <View style={[styles.inlineAddButton, { backgroundColor: canSave ? colors.text : colors.surfaceElevated }]}>
+          <Text
+            style={[
+              typographyKit.caption,
+              styles.inlineAddButtonLabel,
+              jakartaSemiboldText,
+              { color: canSave ? colors.background : colors.textMuted },
+            ]}
+          >
+            Ajouter
+          </Text>
+        </View>
       </Pressable>
     </View>
   );
@@ -843,16 +841,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.xs,
   },
+  inlineAddHit: {
+    flexGrow: 1,
+    flexBasis: 0,
+  },
   inlineAddButton: {
-    flex: 1,
     minHeight: 44,
     borderRadius: 22,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-  },
-  inlineAddButtonDisabled: {
-    opacity: 0.35,
-    backgroundColor: 'transparent',
   },
   inlineAddButtonLabel: {
     letterSpacing: 0.1,

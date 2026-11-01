@@ -50,7 +50,7 @@ export function GoalTile({ name, icon, saved, target, hidden = false, selecting 
       ]}
     >
       <View style={styles.top}>
-        <RingGauge progress={progress} color={colors.accentGreen} size={54} stroke={5}>
+        <RingGauge progress={progress} color={colors.accentGreen} size={54} stroke={4}>
           <View style={[styles.iconWell, { backgroundColor: colors.surfaceElevated }]}>{icon}</View>
         </RingGauge>
         {selecting ? (

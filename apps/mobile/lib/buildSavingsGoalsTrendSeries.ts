@@ -135,61 +135,6 @@ export function getCurrentSingleGoalAmount(
   return getCurrentSavingsGoalsTotal([goal], transactions, accounts, now);
 }
 
-/** True when the series has no visible climb (empty, zeros, or flat). */
-function isEffectivelyFlatSeries(values: readonly number[]): boolean {
-  if (values.length < 2) return true;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  if (max < 0.01) return true;
-  return max - min < Math.max(1, max * 0.02);
-}
-
-/** Period start as a fraction of the ending balance — longer windows climb more. */
-const DEMO_START_FRACTION: Record<GoalContributionChartPeriod, number> = {
-  '1M': 0.82,
-  '3M': 0.42,
-  '6M': 0.14,
-  '1A': 0.05,
-  '5A': 0.02,
-};
-
-/** Fallback when currentAmount is unset — Fonds d’urgence–scale demo (~6,2 k$). */
-const DEMO_FALLBACK_END_AMOUNT = 6_200;
-
-/**
- * Smooth upward cumulative versements for mockup when deposit history is empty/flat.
- * One point per simulated versement — ends exactly at `endAmount`.
- */
-export function buildDemoGoalContributionRamp(
-  pointCount: number,
-  endAmount: number,
-  period: GoalContributionChartPeriod,
-): number[] {
-  const count = Math.max(2, pointCount);
-  const end = Math.max(0, endAmount);
-  const start = Math.max(0, end * DEMO_START_FRACTION[period]);
-  const span = end - start;
-
-  return Array.from({ length: count }, (_, index) => {
-    if (index === count - 1) return end;
-    const t = index / (count - 1);
-    // Smoothstep — steady climb with a soft finish (not a flat line).
-    const eased = t * t * (3 - 2 * t);
-    // Tiny undulation so the sparkline reads as organic deposits, not a ruler.
-    const wobble = Math.sin(t * Math.PI * 2.5) * span * 0.012;
-    return Math.max(0, start + span * eased + wobble);
-  });
-}
-
-/** How many simulated versements to plot per period (one dot each). */
-const DEMO_VERSEMENT_COUNT: Record<GoalContributionChartPeriod, number> = {
-  '1M': 4,
-  '3M': 8,
-  '6M': 12,
-  '1A': 18,
-  '5A': 30,
-};
-
 function periodWindowStartMs(period: GoalContributionChartPeriod, now: Date): number {
   const start = new Date(now);
   if (period === '1M') start.setDate(start.getDate() - 30);
@@ -240,16 +185,9 @@ function buildContributionEventSeries(
   return values.length >= 2 ? { values, versementIndices } : null;
 }
 
-function resolveSparklineEndAmount(goal: SavingsGoal, depositSeries: readonly number[]): number {
-  const fromGoal = Math.max(0, goal.currentAmount);
-  const fromDeposits = depositSeries.length > 0 ? Math.max(...depositSeries) : 0;
-  const resolved = Math.max(fromGoal, fromDeposits);
-  return resolved > 0 ? resolved : DEMO_FALLBACK_END_AMOUNT;
-}
-
 /**
  * Contribution sparkline for one goal: one point (and later one dot) per versement.
- * Uses real deposits when available; otherwise a smooth upward demo ramp.
+ * Real deposits only: a period without any stays flat at the current amount, never made up.
  */
 export function buildSingleGoalContributionSparkline(
   goal: SavingsGoal,
@@ -262,14 +200,8 @@ export function buildSingleGoalContributionSparkline(
   const events = buildSavingsGoalDepositEvents([goal], transactions, accounts, nowMs);
   const fromEvents = buildContributionEventSeries(goal, events, period, now);
 
-  if (fromEvents && !isEffectivelyFlatSeries(fromEvents.values)) {
-    return fromEvents;
-  }
+  if (fromEvents) return fromEvents;
 
-  const endAmount = resolveSparklineEndAmount(goal, fromEvents?.values ?? []);
-  const values = buildDemoGoalContributionRamp(DEMO_VERSEMENT_COUNT[period], endAmount, period);
-  return {
-    values,
-    versementIndices: values.map((_, index) => index),
-  };
+  const current = Math.max(0, goal.currentAmount);
+  return { values: [current, current], versementIndices: [] };
 }

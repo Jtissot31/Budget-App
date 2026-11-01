@@ -102,7 +102,7 @@ function kindIcon(kind: AccountKind): string {
 }
 
 /** Minus sign is U+2212 so it lines up with Inter numeric amounts. */
-function formatSignedBalance(balance: number): string {
+export function formatSignedBalance(balance: number): string {
   const amount = formatDisplayMoneyAbsolute(Math.abs(balance));
   return balance < 0 ? `−${amount}` : amount;
 }
@@ -523,7 +523,7 @@ export function AccountPatrimoinePrototype({ account, onPress }: AccountCardProt
   return <AccountPatrimoineTile account={account} onPress={onPress} />;
 }
 
-function accountDetailBalanceCaption(account: SimulatedAccount): string {
+export function accountDetailBalanceCaption(account: SimulatedAccount): string {
   if (account.kind === 'credit') {
     return account.balance < 0 ? 'Solde dû' : 'Solde';
   }
@@ -593,20 +593,19 @@ export function AccountDetailHeroCard({ account }: { account: SimulatedAccount }
 }
 
 /**
- * Account detail summary — same shell as the tab summaries (kit SummaryCard).
- * Credit accounts show available / limit; callers append monthly flow stats.
+ * Account detail summary — same shell as the tab summaries (kit SummaryCard), under the
+ * bank card, which already shows the balance. Credit accounts show available / limit;
+ * callers append monthly flow stats.
  */
 export function AccountDetailSummaryCard({
   account,
   stats = [],
   footer,
-  badge,
   children,
 }: {
   account: SimulatedAccount;
   stats?: SummaryStat[];
   footer?: string;
-  badge?: { label: string; color: string };
   children?: ReactNode;
 }) {
   const { colors } = useAppTheme();
@@ -637,7 +636,7 @@ export function AccountDetailSummaryCard({
       amountValue={account.balance}
       formatAmount={formatSignedBalance}
       amountColor={accountBalanceValueColor(account, colors.text)}
-      badge={badge ?? (utilization != null ? { label: `${Math.round(utilization)} % utilisé`, color: tone } : undefined)}
+      hideHero
       stats={[...creditStats, ...stats]}
       footer={footer}
     >

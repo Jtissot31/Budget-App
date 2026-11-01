@@ -281,17 +281,16 @@ export function TransactionArticlesReceiptCard({
             accessibilityRole="button"
             accessibilityLabel="Ajouter un article"
             onPress={onOpenInlineArticle}
-            style={({ pressed }) => [
-              styles.joinButton,
-              { backgroundColor: addCtaBackground, borderColor: addCtaBackground },
-              pressed && styles.pressed,
-            ]}
+            style={({ pressed }) => pressed && styles.pressed}
           >
-            <View style={styles.joinButtonRow}>
-              <AppIcon family="ionicons" name="add" size={14} color={addCtaForeground} />
-              <Text style={[styles.joinButtonText, typographyKit.bodyBold, { color: addCtaForeground }]}>
-                Ajouter
-              </Text>
+            {/* Fill on a plain View: Android drops it from a Pressable style function (dark label on dark card). */}
+            <View style={[styles.joinButton, { backgroundColor: addCtaBackground, borderColor: addCtaBackground }]}>
+              <View style={styles.joinButtonRow}>
+                <AppIcon family="ionicons" name="add" size={14} color={addCtaForeground} />
+                <Text style={[styles.joinButtonText, typographyKit.bodyBold, { color: addCtaForeground }]}>
+                  Ajouter
+                </Text>
+              </View>
             </View>
           </Pressable>
         ) : null}

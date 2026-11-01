@@ -314,7 +314,6 @@ export default function SettingsScreen() {
               <ChipSelectField
                 label="Devise"
                 showLabel={false}
-                reorderSelected={false}
                 options={CURRENCY_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
                 selectedId={currency}
                 onSelect={(id) => {
@@ -410,7 +409,6 @@ export default function SettingsScreen() {
               <ChipSelectField
                 label="Fréquence des paies"
                 showLabel={false}
-                reorderSelected={false}
                 options={PAY_ESTIMATION_FREQUENCY_OPTIONS.map((option) => ({ id: option.id, label: option.label }))}
                 selectedId={payFrequency ?? ''}
                 onSelect={(id) => {

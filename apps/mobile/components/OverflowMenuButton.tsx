@@ -14,7 +14,6 @@ import {
 import { MODIFIER_ICON_NAME } from '@/components/ModifierButton';
 import {
   destructiveTextActionStyle,
-  FLOATING_NAV_CONTENT_PADDING,
   jakartaBoldText,
   radius,
   spacing,
@@ -37,6 +36,9 @@ type Props = {
   style?: StyleProp<ViewStyle>;
 };
 
+/** Long enough for the Modal's fade to finish. */
+const MENU_CLOSE_MS = 240;
+
 /** Three-dot overflow trigger that opens a themed bottom action sheet. */
 export function OverflowMenuButton({
   items,
@@ -56,7 +58,9 @@ export function OverflowMenuButton({
 
   const onItemPress = (item: OverflowMenuItem) => {
     close();
-    item.onPress();
+    // After the menu's own Modal is gone: on Android, a dialog or a keyboard focus requested
+    // while it is still closing is dropped, and the option seems to do nothing.
+    setTimeout(item.onPress, MENU_CLOSE_MS);
   };
 
   return (
@@ -77,7 +81,7 @@ export function OverflowMenuButton({
         <View
           style={[
             styles.backdrop,
-            { paddingBottom: insets.bottom + FLOATING_NAV_CONTENT_PADDING },
+            { paddingBottom: insets.bottom + spacing.md },
           ]}
         >
           <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="Fermer le menu" />

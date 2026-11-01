@@ -15,11 +15,9 @@ import {
 import { AppIcon } from '@/components/icons/AppIcon';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MinimalDatePicker } from '@/components/MinimalDatePicker';
 import { PageTransition } from '@/components/PageTransition';
 import { ProtoGlassCard } from '@/components/proto/ProtoGlassCard';
 import {
-  ProtoActiveFilterChip,
   ProtoSearchField,
   ProtoToolbarIconButton,
 } from '@/components/proto/ProtoSearchToolbar';
@@ -42,7 +40,6 @@ import {
   typography,
   typographyKit,
 } from '@/constants/theme';
-import { formatFriendlyDateLabel } from '@/lib/formatFriendlyDateLabel';
 import {
   formatProtoDaySectionLabel,
   todayDayKey,
@@ -117,8 +114,6 @@ export default function TransactionsScreen() {
   const [simulatedAccounts, setSimulatedAccounts] = useState<SimulatedAccount[]>([]);
   const [historyTypeFilter, setHistoryTypeFilter] = useState<HistoryTypeFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
-  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [voiceSheetOpen, setVoiceSheetOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const savingsGoals = useSavingsGoals();
@@ -153,11 +148,10 @@ export default function TransactionsScreen() {
     const query = searchQuery.trim();
     return items.filter((tx) => {
       if (historyTypeFilter !== 'all' && tx.type !== historyTypeFilter) return false;
-      if (dateFilter && getLocalDayKey(tx.date) !== dateFilter) return false;
       if (query && !transactionMatchesSearch(tx, query)) return false;
       return true;
     });
-  }, [dateFilter, historyTypeFilter, items, searchQuery]);
+  }, [historyTypeFilter, items, searchQuery]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, Transaction[]>();
@@ -185,16 +179,6 @@ export default function TransactionsScreen() {
     openTransactionDetail(transactionId);
   }, []);
 
-  const openDatePicker = useCallback(() => {
-    tapHaptic();
-    setDatePickerOpen(true);
-  }, []);
-
-  const clearDateFilter = useCallback(() => {
-    tapHaptic();
-    setDateFilter('');
-  }, []);
-
   const listHeader = useMemo(
     () => (
       <>
@@ -214,23 +198,7 @@ export default function TransactionsScreen() {
               }}
               accessibilityLabel="Bibliothèque de documents"
             />
-            <ProtoToolbarIconButton
-              icon={dateFilter ? 'calendar' : 'calendar-outline'}
-              active={Boolean(dateFilter)}
-              onPress={openDatePicker}
-              accessibilityLabel="Rechercher par date"
-            />
           </View>
-          {dateFilter ? (
-            <ProtoActiveFilterChip
-              icon="calendar"
-              label={formatFriendlyDateLabel(dateFilter)}
-              onPress={openDatePicker}
-              onClear={clearDateFilter}
-              accessibilityLabel={`Date filtrée : ${formatFriendlyDateLabel(dateFilter)}. Modifier`}
-              clearAccessibilityLabel="Effacer le filtre de date"
-            />
-          ) : null}
           <TransactionsTypeFilter value={historyTypeFilter} onChange={setHistoryTypeFilter} />
         </View>
         <View style={{ paddingHorizontal: contentGutter, marginBottom: spacing.md }}>
@@ -239,13 +207,10 @@ export default function TransactionsScreen() {
       </>
     ),
     [
-      clearDateFilter,
       colors.text,
       contentGutter,
-      dateFilter,
       historyTypeFilter,
       insets.top,
-      openDatePicker,
       router,
       searchQuery,
     ],
@@ -265,8 +230,7 @@ export default function TransactionsScreen() {
     [contentGutter, handlePressTransaction, savingsGoals, simulatedAccounts],
   );
 
-  const hasActiveFilter =
-    historyTypeFilter !== 'all' || searchQuery.trim().length > 0 || Boolean(dateFilter);
+  const hasActiveFilter = historyTypeFilter !== 'all' || searchQuery.trim().length > 0;
 
   return (
     <PageTransition>
@@ -276,7 +240,7 @@ export default function TransactionsScreen() {
           style={styles.listViewport}
           data={grouped}
           keyExtractor={([date]) => date}
-          extraData={`${historyTypeFilter}:${searchQuery}:${dateFilter}:${simulatedAccounts.length}`}
+          extraData={`${historyTypeFilter}:${searchQuery}:${simulatedAccounts.length}`}
           initialNumToRender={8}
           maxToRenderPerBatch={6}
           windowSize={7}
@@ -342,17 +306,6 @@ export default function TransactionsScreen() {
             </View>
           }
           renderItem={renderDayGroup}
-        />
-
-        <MinimalDatePicker
-          visible={datePickerOpen}
-          value={dateFilter}
-          allowClear
-          onCancel={() => setDatePickerOpen(false)}
-          onConfirm={(value) => {
-            setDateFilter(value);
-            setDatePickerOpen(false);
-          }}
         />
 
         <VoiceTransactionSheet

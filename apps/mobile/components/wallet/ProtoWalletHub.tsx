@@ -13,6 +13,7 @@ import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { AppIcon } from '@/components/icons/AppIcon';
 import {
   HeaderIconButton,
+  EmptyRow,
   GoalTile,
   IconWell,
   ListCard,
@@ -52,13 +53,6 @@ import {
   subtleDeleteButtonStyle,
   typographyKit,
 } from '@/constants/theme';
-import { getEnvelopesByAccount, type AccountEnvelope } from '@/lib/accountEnvelopes';
-import {
-  AccountEnvelopesPanel,
-  EnvelopeSheet,
-  newEnvelopeDraft,
-  type EnvelopeDraft,
-} from '@/components/wallet/AccountEnvelopes';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { accountBalanceDisplayName, accountKindTypeLabel } from '@/lib/accountBalancePresentation';
 import { ensureDbReady } from '@/lib/init';
@@ -83,6 +77,7 @@ import { buildNetWorthDailySeries } from '@/lib/buildNetWorthTrendSeries';
 import { formatNumberDisplay } from '@/lib/formatNumber';
 import { resolveSavingsGoalDisplayIcon } from '@/lib/getAutomaticGoalIcon';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
+import { LoanFormSheet } from '@/components/loans/LoanFormSheet';
 import { resolveLoanIcon } from '@/lib/loanIcons';
 import { formatLoanObligationName, formatWalletLoanGoalRow } from '@/lib/loanPresentation';
 import { useAppTheme } from '@/lib/themeContext';
@@ -139,15 +134,13 @@ export function ProtoWalletHub() {
   const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [loanFormOpen, setLoanFormOpen] = useState(false);
   const [trendTx, setTrendTx] = useState<Transaction[]>([]);
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudget[]>([]);
   const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
   const [hideBalances, setHideBalances] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [envelopesByAccount, setEnvelopesByAccount] = useState<Record<string, AccountEnvelope[]>>({});
-  const [expandedAccountIds, setExpandedAccountIds] = useState<string[]>([]);
-  const [envelopeDraft, setEnvelopeDraft] = useState<EnvelopeDraft | null>(null);
 
   const [managingAccounts, setManagingAccounts] = useState(false);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
@@ -191,7 +184,6 @@ export function ProtoWalletHub() {
     setRecurringPayments(nextPayments);
     setLoans(nextLoans);
     setTrendTx(nextTrend);
-    setEnvelopesByAccount(await getEnvelopesByAccount());
   }, []);
 
   useEffect(() => {
@@ -394,20 +386,9 @@ export function ProtoWalletHub() {
 
   /* ── Rows ── */
 
-  const toggleAccountExpanded = (id: string) => {
-    tapHaptic();
-    setExpandedAccountIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  };
-
   const renderAccountRow = (account: SimulatedAccount, isLast: boolean, interactive = true) => {
     const selected = selectedAccountIds.includes(account.id);
     const title = accountBalanceDisplayName(account) || 'Compte';
-    // Envelopes: liquid accounts only, outside « Modifier » mode.
-    const supportsEnvelopes = interactive && !managingAccounts && isLiquid(account.kind);
-    // Credit cards have no envelopes, but keep the chevron's space so balances share one right edge.
-    const reserveToggleSpace = interactive && !managingAccounts && !isLiquid(account.kind);
-    const envelopes = envelopesByAccount[account.id] ?? [];
-    const expanded = supportsEnvelopes && expandedAccountIds.includes(account.id);
     const meta = accountMeta(account);
     const row = (
       <ListRow
@@ -424,24 +405,9 @@ export function ProtoWalletHub() {
               <Text style={[styles.manageValue, { color: colors.textMuted }]}>{money(account.balance)}</Text>
               <AppIcon family="ionicons" name="reorder-two" size={20} color={colors.textMuted} />
             </View>
-          ) : supportsEnvelopes || reserveToggleSpace ? (
-            <View style={styles.envelopeTrailing}>
-              <Text
-                style={[
-                  jakartaSemiboldText,
-                  { fontSize: 15, lineHeight: 20 },
-                  { color: account.balance < 0 && !hideBalances ? colors.danger : colors.text, letterSpacing: -0.3 },
-                ]}
-                numberOfLines={1}
-              >
-                {money(account.balance)}
-              </Text>
-              {/* Room for the expand toggle, which sits over the row as a sibling (never nested in it). */}
-              <View style={styles.expandButton} />
-            </View>
           ) : undefined
         }
-        isLast={isLast && !expanded}
+        isLast={isLast}
         onPress={
           interactive
             ? () => router.push({ pathname: '/account-detail', params: { accountId: account.id } })
@@ -449,50 +415,8 @@ export function ProtoWalletHub() {
         }
       />
     );
-    // A button inside the row's button is invalid on web and makes the two targets compete
-    // on native — so the toggle is layered over the row instead.
-    const rowWithToggle = supportsEnvelopes ? (
-      <View key={account.id} style={styles.rowWithToggle}>
-        {row}
-        {!expanded ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Afficher les enveloppes"
-            accessibilityState={{ expanded }}
-            onPress={() => toggleAccountExpanded(account.id)}
-            style={styles.expandHit}
-          >
-            <View style={styles.expandButton}>
-              <AppIcon family="ionicons" name="chevron-down" size={16} color={colors.textMuted} />
-            </View>
-          </Pressable>
-        ) : null}
-      </View>
-    ) : (
-      row
-    );
-    if (!expanded) return rowWithToggle;
-    return (
-      <View key={account.id}>
-        {rowWithToggle}
-        <AccountEnvelopesPanel
-          envelopes={envelopes}
-          hideBalances={hideBalances}
-          onAdd={() => setEnvelopeDraft(newEnvelopeDraft(account.id, envelopes.length))}
-          onEdit={(envelope) => setEnvelopeDraft({ envelope, isNew: false })}
-          onCollapse={() => toggleAccountExpanded(account.id)}
-        />
-        {!isLast ? <View style={[styles.envelopeDivider, { backgroundColor: colors.borderSubtle }]} /> : null}
-      </View>
-    );
+    return row;
   };
-
-  const draftAccount = envelopeDraft ? accounts.find((a) => a.id === envelopeDraft.envelope.accountId) ?? null : null;
-  const draftAvailable = (() => {
-    if (!envelopeDraft || !draftAccount) return 0;
-    const others = (envelopesByAccount[draftAccount.id] ?? []).filter((e) => e.id !== envelopeDraft.envelope.id);
-    return draftAccount.balance - others.reduce((sum, e) => sum + e.amount, 0);
-  })();
 
   const renderSortableAccount = useCallback<SortableGridRenderItem<SimulatedAccount>>(
     ({ item, index }) => (
@@ -646,27 +570,16 @@ export function ProtoWalletHub() {
           </Reveal>
 
           <Reveal index={2} style={styles.section}>
-            <SectionLabel title="Patrimoine" />
-            <ListCard>
-              <ListRow
-                leading={<IconWell icon="home-outline" />}
-                title="Placements et biens"
-                subtitle="Actions, immobilier, véhicules"
-                chevron
-                isLast
-                onPress={() => router.push('/patrimoine')}
-              />
-            </ListCard>
-          </Reveal>
-
-          {loans.length > 0 ? (
-            <Reveal index={3} style={styles.section}>
-              <SectionLabel title="Prêts" />
-              {loans.length === 1 && loans[0] ? (
+              <SectionLabel title="Prêts" trailing={<TextAction label="Ajouter" onPress={() => setLoanFormOpen(true)} />} />
+              {loans.length === 0 ? (
+                <ListCard>
+                  <EmptyRow label="Aucun prêt pour l’instant" />
+                </ListCard>
+              ) : loans.length === 1 && loans[0] ? (
                 // One loan → full-width landscape card instead of a list row.
                 <LoanWideCard
                   name={formatLoanObligationName(loans[0])}
-                  icon={<UserPickedIconWell icon={resolveLoanIcon(loans[0])} size={32} />}
+                  icon={<UserPickedIconWell icon={resolveLoanIcon(loans[0])} size={34} iconSize={17} noBackground wellGlyphWhite />}
                   principal={loans[0].principal}
                   remaining={loans[0].balanceRemaining}
                   hidden={hideBalances}
@@ -678,7 +591,7 @@ export function ProtoWalletHub() {
                     <View key={loan.id} style={styles.loanCell}>
                       <LoanWideCard
                         name={formatLoanObligationName(loan)}
-                        icon={<UserPickedIconWell icon={resolveLoanIcon(loan)} size={32} />}
+                        icon={<UserPickedIconWell icon={resolveLoanIcon(loan)} size={34} iconSize={17} noBackground wellGlyphWhite />}
                         principal={loan.principal}
                         remaining={loan.balanceRemaining}
                         hidden={hideBalances}
@@ -689,7 +602,6 @@ export function ProtoWalletHub() {
                 </View>
               )}
             </Reveal>
-          ) : null}
 
           <Reveal index={4} style={styles.section}>
             <SectionLabel
@@ -717,7 +629,7 @@ export function ProtoWalletHub() {
               // One goal → full-width landscape card instead of a half-empty grid.
               <GoalWideCard
                 name={goals[0].name}
-                icon={<UserPickedIconWell icon={resolveSavingsGoalDisplayIcon(goals[0])} size={32} />}
+                icon={<UserPickedIconWell icon={resolveSavingsGoalDisplayIcon(goals[0])} size={34} iconSize={17} noBackground wellGlyphWhite />}
                 saved={goals[0].currentAmount ?? 0}
                 target={goals[0].targetAmount ?? 0}
                 hidden={hideBalances}
@@ -729,7 +641,7 @@ export function ProtoWalletHub() {
                   <View key={goal.id} style={styles.goalCell}>
                     <GoalTile
                       name={goal.name}
-                      icon={<UserPickedIconWell icon={resolveSavingsGoalDisplayIcon(goal)} size={32} />}
+                      icon={<UserPickedIconWell icon={resolveSavingsGoalDisplayIcon(goal)} size={34} iconSize={17} noBackground wellGlyphWhite />}
                       saved={goal.currentAmount ?? 0}
                       target={goal.targetAmount ?? 0}
                       hidden={hideBalances}
@@ -791,12 +703,7 @@ export function ProtoWalletHub() {
           onConnectBank={handleConnectBank}
         />
 
-        <EnvelopeSheet
-          draft={envelopeDraft}
-          accountName={draftAccount ? accountBalanceDisplayName(draftAccount) || 'Compte' : ''}
-          available={draftAvailable}
-          onClose={() => setEnvelopeDraft(null)}
-        />
+        <LoanFormSheet visible={loanFormOpen} accounts={accounts} onClose={() => setLoanFormOpen(false)} />
 
         <SimulatedAccountFormModal
           form={accountForm}
@@ -875,20 +782,7 @@ const styles = StyleSheet.create({
   section: { marginBottom: SECTION_GAP + spacing.sm },
   sectionActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  envelopeTrailing: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
-  expandButton: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  rowWithToggle: { position: 'relative' },
   /** 44×44 target centred on the 28pt chevron (row padding is 14, so 14 − 8 = 6 from the edge). */
-  expandHit: {
-    position: 'absolute',
-    right: 6,
-    top: 0,
-    bottom: 0,
-    width: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  envelopeDivider: { height: StyleSheet.hairlineWidth, marginLeft: 14 },
   cardGap: { marginBottom: spacing.md },
   subLabel: {
     ...typographyKit.metaMedium,

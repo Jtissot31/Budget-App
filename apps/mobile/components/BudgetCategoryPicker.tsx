@@ -32,8 +32,12 @@ export function BudgetCategoryPicker({
   variant = 'sheet',
 }: Props) {
   const { suggested } = useMemo(
-    () => partitionBudgetCategories(categories, searchText, selectedId, { transferReason }),
-    [categories, searchText, selectedId, transferReason],
+    // Chips: tapping one must not reorder the row, so only the typed text picks the suggestion.
+    () =>
+      partitionBudgetCategories(categories, searchText, variant === 'chips' ? null : selectedId, {
+        transferReason,
+      }),
+    [categories, searchText, selectedId, transferReason, variant],
   );
 
   const options = useMemo<SettingsPickerOption<string>[]>(() => {

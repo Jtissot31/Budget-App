@@ -69,8 +69,9 @@ const DB_SINGLETON_KEY = '__budgetTrackerSqlite__';
  * Web keeps the open DB on globalThis across Fast Refresh — without a version bump,
  * new SELECTs/INSERTs can hit missing columns until a full reload.
  * v3: wealth_assets.certificate_uri / certificate_file_name (authenticity certificate).
+ * v4: account_envelope_moves (envelope movement history).
  */
-const SCHEMA_MIGRATION_VERSION = 3;
+const SCHEMA_MIGRATION_VERSION = 4;
 
 interface DbSingletonState {
   promise: Promise<SQLite.SQLiteDatabase> | null;
@@ -552,6 +553,15 @@ async function ensureAccountEnvelopesTable(db: SQLite.SQLiteDatabase): Promise<v
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_account_envelopes_account ON account_envelopes(account_id);
+    CREATE TABLE IF NOT EXISTS account_envelope_moves (
+      id TEXT PRIMARY KEY NOT NULL,
+      account_id TEXT NOT NULL,
+      from_envelope_id TEXT,
+      to_envelope_id TEXT,
+      amount REAL NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_account_envelope_moves_account ON account_envelope_moves(account_id);
   `);
 }
 
@@ -978,6 +988,7 @@ export async function deleteSimulatedAccount(id: string): Promise<void> {
     [trimmed],
   );
   await db.runAsync('DELETE FROM account_envelopes WHERE account_id = ?', [trimmed]);
+  await db.runAsync('DELETE FROM account_envelope_moves WHERE account_id = ?', [trimmed]);
   dataEvents.emit();
 }
 

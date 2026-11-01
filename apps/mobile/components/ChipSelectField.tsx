@@ -1,10 +1,9 @@
 /**
  * Inline single-choice field: a labeled, horizontally scrolling row of chips — no popup.
  * Same props/options as `SettingsSelectField`, so call sites can swap freely.
- * The selected chip is filled and moves to the front, so the current choice is always visible first.
+ * Chips keep their place: the selected one is filled, and the row scrolls to it only when it is off screen.
  */
-import { useEffect, useMemo, useRef } from 'react';
-import Animated, { LinearTransition } from 'react-native-reanimated';
+import { useCallback, useEffect, useRef, type ComponentRef } from 'react';
 import { ScrollView, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import { PressScale } from '@/components/kit/motion';
@@ -15,7 +14,6 @@ import { useAppTheme } from '@/lib/themeContext';
 
 const CHIP_HEIGHT = 38;
 const CHIP_ICON = 18;
-const REORDER = LinearTransition.springify().damping(18).stiffness(220);
 
 type Props = {
   label: string;
@@ -28,8 +26,6 @@ type Props = {
   /** Unused — accepted so `SettingsSelectField` call sites can swap without edits. */
   pickerTitle?: string;
   placeholder?: string;
-  /** Move the selected chip to the front (animated). Off = chips stay put, only the selection highlights. */
-  reorderSelected?: boolean;
   /** Hide the section label (e.g. inside a Settings row that already shows one). */
   showLabel?: boolean;
 };
@@ -42,23 +38,26 @@ export function ChipSelectField({
   emptyHint,
   labelStyle,
   style,
-  reorderSelected = true,
   showLabel = true,
 }: Props) {
   const { colors } = useAppTheme();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const chipFrames = useRef(new Map<string, { x: number; width: number }>());
+  const scrollX = useRef(0);
+  const viewportWidth = useRef(0);
 
-  // Selected option first; the rest keep their original order.
-  const ordered = useMemo(() => {
-    if (!reorderSelected) return options;
-    const selected = options.find((option) => option.id === selectedId);
-    return selected ? [selected, ...options.filter((option) => option.id !== selectedId)] : options;
-  }, [options, reorderSelected, selectedId]);
+  /** A choice made outside the row (auto-suggested category, edit mode) can sit off screen. */
+  const revealChip = useCallback((id: string, animated: boolean) => {
+    const frame = chipFrames.current.get(id);
+    if (!frame || viewportWidth.current <= 0) return;
+    const visible =
+      frame.x >= scrollX.current && frame.x + frame.width <= scrollX.current + viewportWidth.current;
+    if (!visible) scrollRef.current?.scrollTo({ x: Math.max(0, frame.x), animated });
+  }, []);
 
-  // Bring the row back to the start so the (now first) selected chip is in view.
   useEffect(() => {
-    if (reorderSelected) scrollRef.current?.scrollTo({ x: 0, animated: true });
-  }, [reorderSelected, selectedId]);
+    revealChip(selectedId, true);
+  }, [revealChip, selectedId]);
 
   return (
     <View style={[styles.field, style]}>
@@ -72,12 +71,27 @@ export function ChipSelectField({
           showsHorizontalScrollIndicator={false}
           keyboardShouldPersistTaps="always"
           contentContainerStyle={styles.row}
+          scrollEventThrottle={32}
+          onScroll={(event) => {
+            scrollX.current = event.nativeEvent.contentOffset.x;
+          }}
+          onLayout={(event) => {
+            viewportWidth.current = event.nativeEvent.layout.width;
+            revealChip(selectedId, false);
+          }}
         >
-          {ordered.map((option) => {
+          {options.map((option) => {
             const selected = option.id === selectedId;
             const fg = selected ? colors.background : colors.text;
             return (
-              <Animated.View key={option.id} layout={reorderSelected ? REORDER : undefined}>
+              <View
+                key={option.id}
+                onLayout={(event) => {
+                  const { x, width } = event.nativeEvent.layout;
+                  chipFrames.current.set(option.id, { x, width });
+                  if (selected) revealChip(option.id, false);
+                }}
+              >
                 <PressScale
                   accessibilityRole="radio"
                   accessibilityState={{ selected }}
@@ -118,7 +132,7 @@ export function ChipSelectField({
                     {option.fieldLabel?.trim() || option.label}
                   </Text>
                 </PressScale>
-              </Animated.View>
+              </View>
             );
           })}
         </ScrollView>

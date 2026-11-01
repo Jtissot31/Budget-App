@@ -29,19 +29,10 @@ type EnvelopeRow = {
 
 export const DEFAULT_ENVELOPE_ICON = '💰';
 
-/** One-tap starting points (empty state + « Nouvelle enveloppe » sheet). */
-export const ENVELOPE_PRESETS: { name: string; icon: string }[] = [
-  { name: 'Factures', icon: '💡' },
-  { name: 'Loisirs', icon: '🎉' },
-  { name: 'Épargne', icon: '🌱' },
-  { name: 'Dépenses', icon: '🛒' },
-  { name: 'Urgence', icon: '🚨' },
-  { name: 'Voyage', icon: '✈️' },
-];
-
+/** Short, sober choice. An envelope saved with an older emoji keeps it until the user picks another. */
 export const ENVELOPE_EMOJIS = [
-  '💰', '💡', '🛒', '🎉', '🌱', '🚨', '✈️', '🏠', '🚗', '🍔',
-  '🎁', '🎓', '🐾', '💊', '👶', '🎮', '📱', '💪', '☕', '🎵',
+  '💰', '💡', '🏠', '🛒', '🚗', '✈️',
+  '🎓', '💊', '🐾', '🎁', '📱', '🌱',
 ] as const;
 
 /** Older envelopes stored an Ionicons name (« cart-outline »); new ones store an emoji. */
@@ -145,7 +136,18 @@ export async function moveEnvelopeMoney(
 ): Promise<void> {
   if (!(amount > 0) || fromEnvelopeId === toEnvelopeId) return;
   const db = await getDb();
+  const owner = await db.getFirstAsync<{ account_id: string }>(
+    'SELECT account_id FROM account_envelopes WHERE id = ?',
+    [toEnvelopeId ?? fromEnvelopeId],
+  );
   await db.withTransactionAsync(async () => {
+    if (owner) {
+      await db.runAsync(
+        `INSERT INTO account_envelope_moves (id, account_id, from_envelope_id, to_envelope_id, amount, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [newEnvelopeId(), owner.account_id, fromEnvelopeId, toEnvelopeId, amount, new Date().toISOString()],
+      );
+    }
     if (fromEnvelopeId) {
       await db.runAsync('UPDATE account_envelopes SET amount = MAX(0, amount - ?) WHERE id = ?', [amount, fromEnvelopeId]);
     }

@@ -25,7 +25,6 @@ import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
-import { ThemeSegmentedControl } from '@/components/ThemeSegmentedControl';
 import { ThemedFormMessage } from '@/components/ThemedFormMessage';
 import {
   CATEGORY_ICON_PICKER_OPTIONS,
@@ -58,22 +57,15 @@ import {
   findConflictingCategory,
   parseBudgetLimitInput,
   validateBudgetCategoryDraft,
-  BUDGET_PERIOD_EXCEEDS_MONTHLY_MESSAGE,
   type BudgetCategoryFieldKey,
 } from '@/lib/budgetCategoryValidation';
 import { upsertCategory, upsertCategoryBudget } from '@/lib/db';
 import { formValidationError, type FormFeedback } from '@/lib/formFeedback';
-import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
 import {
   getPayEstimationSettings,
   toMonthlyAveragePayAmount,
 } from '@/lib/payEstimationSettings';
-import {
-  convertContributionAmountBetweenFrequencies,
-  toWeeklyContributionAmount,
-  type SavingsGoalContributionFrequency,
-} from '@/lib/savingsGoalContribution';
 import {
   FORM_SHEET_CHROME_HEIGHT,
   FORM_SHEET_CONTENT_PADDING_TOP,
@@ -90,26 +82,8 @@ import {
 } from '@/lib/sheet/formSheetScroll';
 import { useDraggableSheetGesture } from '@/lib/sheet/useDraggableSheetGesture';
 import { useAppTheme } from '@/lib/themeContext';
-import { FitText } from '@/components/kit/FitText';
 
-type PeriodFrequency = Extract<SavingsGoalContributionFrequency, 'weekly' | 'biweekly'>;
-type LimitSource = 'manual' | 'auto';
 type FieldKey = BudgetCategoryFieldKey;
-
-const PERIOD_EXCEED_MONTHLY_MESSAGE = BUDGET_PERIOD_EXCEEDS_MONTHLY_MESSAGE;
-
-const PERIOD_FREQUENCY_TABS: Array<{ id: PeriodFrequency; label: string }> = [
-  { id: 'weekly', label: 'Semaine' },
-  { id: 'biweekly', label: 'Bihebdo' },
-];
-
-function formatLimitFieldAmount(value: number): string {
-  return String(Math.max(0, Math.round(value)));
-}
-
-function monthlyFromPeriodAmount(periodAmount: number, frequency: PeriodFrequency): number {
-  return convertContributionAmountBetweenFrequencies(periodAmount, frequency, 'monthly');
-}
 
 export type AddBudgetCategoryPrefill = {
   name?: string;
@@ -196,16 +170,10 @@ export default function AddBudgetCategoryScreen() {
   const [limit, setLimit] = useState(() =>
     prefill?.limit != null && prefill.limit > 0 ? String(Math.round(prefill.limit)) : '',
   );
-  const [limitSource, setLimitSource] = useState<LimitSource | null>(() =>
-    prefill?.limit != null && prefill.limit > 0 ? 'manual' : null,
-  );
-  const [periodFrequency, setPeriodFrequency] = useState<PeriodFrequency>('weekly');
-  const [periodLimit, setPeriodLimit] = useState('');
   const [manualIcon, setManualIcon] = useState<IconName | null>(() => prefill?.icon ?? null);
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [feedback, setFeedback] = useState<FormFeedback | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, string>>>({});
-  const [periodCapMessage, setPeriodCapMessage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [existing, setExisting] = useState<BudgetCategory[]>([]);
   const [monthlySalary, setMonthlySalary] = useState<number | null>(null);
@@ -216,10 +184,8 @@ export default function AddBudgetCategoryScreen() {
   const scrollContentRef = useRef<View>(null);
   const nameSectionRef = useRef<View>(null);
   const limitSectionRef = useRef<View>(null);
-  const periodSectionRef = useRef<View>(null);
   const nameInputRef = useRef<TextInput>(null);
   const limitInputRef = useRef<TextInput>(null);
-  const periodInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -254,19 +220,6 @@ export default function AddBudgetCategoryScreen() {
   );
 
   const parsedLimit = useMemo(() => parseLimitInput(limit), [limit]);
-  const parsedPeriodLimit = useMemo(() => {
-    if (!periodLimit.trim()) return null;
-    return parseLimitInput(periodLimit);
-  }, [periodLimit]);
-  const periodExceedsMonthly =
-    parsedLimit != null && parsedPeriodLimit != null && parsedPeriodLimit > parsedLimit;
-  const showPeriodCapMessage = periodCapMessage || periodExceedsMonthly;
-  const weeklyLimitToStore = useMemo(() => {
-    if (parsedPeriodLimit == null) return null;
-    const capped =
-      parsedLimit != null ? Math.min(parsedPeriodLimit, parsedLimit) : parsedPeriodLimit;
-    return toWeeklyContributionAmount(capped, periodFrequency);
-  }, [parsedLimit, parsedPeriodLimit, periodFrequency]);
   const trimmedName = name.trim();
   const resolvedIcon = useMemo((): IconName | null => {
     if (manualIcon) return manualIcon;
@@ -310,14 +263,8 @@ export default function AddBudgetCategoryScreen() {
   }, []);
 
   const scrollToField = useCallback((field: FieldKey) => {
-    const sectionRef =
-      field === 'name'
-        ? nameSectionRef
-        : field === 'limit'
-          ? limitSectionRef
-          : periodSectionRef;
-    const inputRef =
-      field === 'name' ? nameInputRef : field === 'limit' ? limitInputRef : periodInputRef;
+    const sectionRef = field === 'name' ? nameSectionRef : limitSectionRef;
+    const inputRef = field === 'name' ? nameInputRef : limitInputRef;
     const content = scrollContentRef.current;
     const section = sectionRef.current;
 
@@ -349,68 +296,13 @@ export default function AddBudgetCategoryScreen() {
     );
   }, []);
 
-  const applyPeriodDerivedMonthly = useCallback(
-    (periodValue: string, frequency: PeriodFrequency) => {
-      const parsed = parseLimitInput(periodValue);
-      if (parsed == null) {
-        if (limitSource === 'auto') {
-          setLimit('');
-          setLimitSource(null);
-        }
-        return;
-      }
-      setLimit(formatLimitFieldAmount(monthlyFromPeriodAmount(parsed, frequency)));
-      setLimitSource('auto');
-    },
-    [limitSource],
-  );
-
   const handleMonthlyLimitChange = useCallback(
     (value: string) => {
       setLimit(value);
-      setLimitSource(value.trim() ? 'manual' : null);
       clearFieldError('limit');
       if (feedback) setFeedback(null);
-
-      const nextMonthly = parseLimitInput(value);
-      if (nextMonthly == null) {
-        setPeriodCapMessage(false);
-        return;
-      }
-      const currentPeriod = parseLimitInput(periodLimit);
-      if (currentPeriod != null && currentPeriod > nextMonthly) {
-        setPeriodLimit(formatLimitFieldAmount(nextMonthly));
-        setPeriodCapMessage(true);
-      } else {
-        setPeriodCapMessage(false);
-      }
     },
-    [clearFieldError, feedback, periodLimit],
-  );
-
-  const handlePeriodLimitChange = useCallback(
-    (value: string) => {
-      setPeriodLimit(value);
-      setPeriodCapMessage(false);
-      clearFieldError('period');
-      clearFieldError('limit');
-      if (feedback) setFeedback(null);
-      // Period is source of truth when edited — always push monthly from conversion.
-      applyPeriodDerivedMonthly(value, periodFrequency);
-    },
-    [applyPeriodDerivedMonthly, clearFieldError, feedback, periodFrequency],
-  );
-
-  const handlePeriodFrequencyChange = useCallback(
-    (next: PeriodFrequency) => {
-      tapHaptic();
-      setPeriodFrequency(next);
-      setPeriodCapMessage(false);
-      if (periodLimit.trim()) {
-        applyPeriodDerivedMonthly(periodLimit, next);
-      }
-    },
-    [applyPeriodDerivedMonthly, periodLimit],
+    [clearFieldError, feedback],
   );
 
   const closeSheet = useCallback(() => {
@@ -460,7 +352,6 @@ export default function AddBudgetCategoryScreen() {
     const validation = validateBudgetCategoryDraft({
       name,
       limitInput: limit,
-      periodInput: periodLimit,
       existing,
       maxCategories: MAX_BUDGET_CATEGORIES,
       monthDate: formMonthDate,
@@ -521,7 +412,7 @@ export default function AddBudgetCategoryScreen() {
         color,
       });
       await Promise.all([
-        upsertCategoryBudget(id, savedLimit, weeklyLimitToStore),
+        upsertCategoryBudget(id, savedLimit),
         addCategory({
           id,
           name: savedName,
@@ -551,9 +442,7 @@ export default function AddBudgetCategoryScreen() {
     manualIcon,
     monthlySalary,
     name,
-    periodLimit,
     scrollToField,
-    weeklyLimitToStore,
   ]);
 
   /**
@@ -568,7 +457,7 @@ export default function AddBudgetCategoryScreen() {
     setFeedback(null);
     try {
       await Promise.all([
-        upsertCategoryBudget(duplicateCategory.id, parsedLimit, weeklyLimitToStore),
+        upsertCategoryBudget(duplicateCategory.id, parsedLimit),
         updateCategoryLimit(duplicateCategory.id, parsedLimit),
       ]);
       successHaptic();
@@ -580,7 +469,7 @@ export default function AddBudgetCategoryScreen() {
     } finally {
       setSaving(false);
     }
-  }, [closeSheet, duplicateCategory, parsedLimit, saving, weeklyLimitToStore]);
+  }, [closeSheet, duplicateCategory, parsedLimit, saving]);
 
   // Never disabled for a reason the screen does not spell out — the capacity notice
   // below stays visible instead.
@@ -614,7 +503,7 @@ export default function AddBudgetCategoryScreen() {
   );
   const submitButton = (
     <PrimarySaveButton
-      label={saving ? 'Création...' : 'Créer la catégorie'}
+      label={saving ? 'Création...' : 'Créer'}
       onPress={() => void handleSave()}
       loading={saving}
       disabled={!canSubmit}
@@ -717,14 +606,20 @@ export default function AddBudgetCategoryScreen() {
                 <View style={styles.formBody}>
                   <View ref={nameSectionRef} collapsable={false} style={styles.section}>
                     <DashboardSectionLabel style={sectionLabelStyle}>
-                      Nom de catégorie
+                      Nom
                     </DashboardSectionLabel>
                     {fieldErrors.name ? (
                       <Text style={[styles.fieldError, { color: colors.danger }]}>
                         {fieldErrors.name}
                       </Text>
                     ) : null}
-                    <View style={styles.identityRow}>
+                    <View
+                      style={[
+                        styles.inputShell,
+                        themed.controlStrong,
+                        fieldErrors.name ? { borderColor: colors.danger, borderWidth: 1.5 } : null,
+                      ]}
+                    >
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel="Changer l'icône de la catégorie"
@@ -732,10 +627,8 @@ export default function AddBudgetCategoryScreen() {
                           tapHaptic();
                           setShowIconPicker((open) => !open);
                         }}
-                        style={({ pressed }) => [
-                          styles.iconAffordance,
-                          pressed && styles.pressed,
-                        ]}
+                        hitSlop={8}
+                        style={({ pressed }) => pressed && styles.pressed}
                       >
                         {resolvedIcon ? (
                           <BudgetCategoryIcon
@@ -765,20 +658,10 @@ export default function AddBudgetCategoryScreen() {
                         }}
                         placeholder="Ex. Épicerie"
                         placeholderTextColor={colors.textMuted}
-                        style={[
-                          styles.nameInput,
-                          {
-                            color: colors.text,
-                            borderBottomColor: fieldErrors.name ? colors.danger : colors.border,
-                            borderBottomWidth: fieldErrors.name ? 1.5 : StyleSheet.hairlineWidth,
-                          },
-                        ]}
+                        style={[styles.inputWithSuffix, { color: colors.text }]}
                         returnKeyType="next"
                       />
                     </View>
-                    <Text style={[styles.fieldHint, { color: colors.textMuted }]}>
-                      {manualIcon ? 'Icône manuelle · toucher pour changer' : 'Icône auto · toucher pour choisir'}
-                    </Text>
                     {fieldErrors.name && duplicateCategory && parsedLimit != null ? (
                       <Pressable
                         accessibilityRole="button"
@@ -903,103 +786,6 @@ export default function AddBudgetCategoryScreen() {
                       />
                       <Text style={[styles.suffix, { color: colors.textSecondary }]}>$</Text>
                     </View>
-                    {limitSource === 'auto' && parsedLimit != null ? (
-                      <Text style={[styles.fieldHint, { color: colors.textMuted }]}>
-                        Calculé depuis la limite périodique · tu peux modifier
-                      </Text>
-                    ) : null}
-                    <View style={styles.quickRow}>
-                      {QUICK_LIMITS.map((amount) => {
-                        const active = parsedLimit === amount;
-                        return (
-                          <Pressable
-                            key={amount}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Limite ${amount} $`}
-                            onPress={() => {
-                              tapHaptic();
-                              handleMonthlyLimitChange(String(amount));
-                            }}
-                            style={({ pressed }) => [styles.quickHit, pressed && { opacity: 0.75 }]}
-                          >
-                            <View
-                              style={[
-                                styles.quickChip,
-                                { backgroundColor: active ? colors.text : colors.surfaceElevated },
-                              ]}
-                            >
-                              <Text style={[styles.quickChipText, { color: active ? colors.background : colors.text }]}>
-                                {amount} $
-                              </Text>
-                            </View>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                    {parsedLimit != null && parsedLimit > 0 ? (
-                      <View style={[styles.pacePreview, { backgroundColor: colors.surfaceElevated }]}>
-                        {[
-                          { label: 'Par jour', value: parsedLimit / 30.4 },
-                          { label: 'Par semaine', value: (parsedLimit * 12) / 52 },
-                          { label: 'Par année', value: parsedLimit * 12 },
-                        ].map((item) => (
-                          <View key={item.label} style={styles.paceItem}>
-                            <FitText style={[styles.paceValue, { color: colors.text }]}>
-                              {formatDisplayMoneyAbsolute(item.value)}
-                            </FitText>
-                            <Text style={[styles.paceLabel, { color: colors.textMuted }]}>{item.label}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    ) : null}
-                  </View>
-
-                  <View ref={periodSectionRef} collapsable={false} style={styles.section}>
-                    <DashboardSectionLabel style={sectionLabelStyle}>
-                      Limite périodique
-                    </DashboardSectionLabel>
-                    {fieldErrors.period ? (
-                      <Text style={[styles.fieldError, { color: colors.danger }]}>
-                        {fieldErrors.period}
-                      </Text>
-                    ) : null}
-                    <ThemeSegmentedControl
-                      tabs={PERIOD_FREQUENCY_TABS}
-                      active={periodFrequency}
-                      size="sm"
-                      variant="section"
-                      onChange={handlePeriodFrequencyChange}
-                    />
-                    <View
-                      style={[
-                        styles.inputShell,
-                        themed.controlStrong,
-                        (periodLimit.trim() && parsedPeriodLimit == null) ||
-                        showPeriodCapMessage ||
-                        fieldErrors.period
-                          ? { borderColor: colors.danger, borderWidth: 1.5 }
-                          : null,
-                      ]}
-                    >
-                      <NumericAmountInput
-                        ref={periodInputRef}
-                        value={periodLimit}
-                        onChangeText={handlePeriodLimitChange}
-                        placeholder={periodFrequency === 'biweekly' ? '300' : '150'}
-                        placeholderTextColor={colors.textMuted}
-                        style={[styles.inputWithSuffix, { color: colors.text }]}
-                      />
-                      <Text style={[styles.suffix, { color: colors.textSecondary }]}>$</Text>
-                    </View>
-                    {showPeriodCapMessage ? (
-                      <Text style={[styles.fieldError, { color: colors.warning }]}>
-                        {PERIOD_EXCEED_MONTHLY_MESSAGE}
-                      </Text>
-                    ) : !fieldErrors.period ? (
-                      <Text style={[styles.fieldHint, { color: colors.textMuted }]}>
-                        Facultatif · l’enveloppe budget reste mensuelle
-                      </Text>
-                    ) : null}
                   </View>
 
                   {atCapacity ? (
@@ -1049,17 +835,7 @@ export default function AddBudgetCategoryScreen() {
 }
 
 /** One-tap monthly limits — the field stays editable. */
-const QUICK_LIMITS = [100, 200, 300, 500, 800];
-
 const styles = StyleSheet.create({
-  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  quickHit: { borderRadius: 16 },
-  quickChip: { height: 32, paddingHorizontal: 12, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  quickChipText: { ...jakartaSemiboldText, fontSize: 13 },
-  pacePreview: { flexDirection: 'row', borderRadius: 14, paddingVertical: 10, paddingHorizontal: 12, marginTop: 10 },
-  paceItem: { flex: 1, gap: 2 },
-  paceValue: { ...jakartaSemiboldText, fontSize: 14 },
-  paceLabel: { ...jakartaMediumText, fontSize: 11 },
   screen: {
     flex: 1,
     backgroundColor: 'transparent',
@@ -1128,39 +904,12 @@ const styles = StyleSheet.create({
   section: {
     gap: spacing.sm,
   },
-  identityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 48,
-  },
-  iconAffordance: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
   iconGhostSlot: {
     width: 28,
     height: 28,
     alignItems: 'center',
     justifyContent: 'center',
     opacity: 0.42,
-  },
-  nameInput: {
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: 0,
-    fontSize: typography.body,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    ...jakartaSemiboldText,
-  },
-  fieldHint: {
-    ...typographyKit.metaMedium,
-    lineHeight: 16,
-    opacity: 0.85,
   },
   fieldError: {
     ...jakartaMediumText,

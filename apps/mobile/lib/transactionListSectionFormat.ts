@@ -99,8 +99,34 @@ export function formatProtoDaySectionLabel(dateKey: string, todayKey: string): s
   return `${weekday} ${day} ${MONTH_NAMES_FR[date.getMonth()]}${year}`;
 }
 
+/** « 6 oct. », « 1er nov. » */
+export function formatShortDay(date: Date): string {
+  const day = date.getDate() === 1 ? '1er' : String(date.getDate());
+  return `${day} ${SHORT_MONTH_NAMES_FR[date.getMonth()]}`;
+}
+
+/** Date inside a transaction row when the list is grouped by month: Aujourd'hui / Hier / 6 oct. */
+export function formatRowDayLabel(dateKey: string, todayKey: string): string {
+  const date = parseIsoDayKey(dateKey);
+  const today = parseIsoDayKey(todayKey);
+  if (!date || !today) return dateKey;
+  if (dateKey === todayKey) return "Aujourd'hui";
+  if (dateKey === dateKeyFromDate(addDays(today, -1))) return 'Hier';
+  return formatShortDay(date);
+}
+
+/** Month section title from a day key: « Octobre », with the year when it isn't this year. */
+export function formatMonthSectionLabel(dateKey: string, todayKey: string): string {
+  const date = parseIsoDayKey(dateKey);
+  const today = parseIsoDayKey(todayKey);
+  if (!date || !today) return dateKey;
+  const year = date.getFullYear() !== today.getFullYear() ? ` ${date.getFullYear()}` : '';
+  return `${capitalizeFirst(MONTH_NAMES_FR[date.getMonth()] ?? '')}${year}`;
+}
+
 const DAY_NAMES_FR = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 const MONTH_NAMES_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+const SHORT_MONTH_NAMES_FR = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 
 export function sumHistoryDayTotals(txs: Transaction[]) {
   let expenseTotal = 0;

@@ -18,7 +18,7 @@ import {
   SectionLabel,
   SummaryCard,
   PillButton,
-  AnimatedFill,
+  PressScale,
   Reveal,
 } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
@@ -34,6 +34,7 @@ import {
   spacing,
   subtleDeleteButtonStyle,
   typographyKit,
+  jakartaSemiboldText,
 } from '@/constants/theme';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import {
@@ -258,30 +259,7 @@ export default function BudgetScreen() {
     return lastDay - now.getDate() + 1;
   }, [viewingCurrent]);
 
-  /** Share of the current month already elapsed (0..1). */
-  const monthProgress = useMemo(() => {
-    const now = new Date();
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    return now.getDate() / lastDay;
-  }, []);
-
   const overCount = listCategories.filter((c) => c.usage.isOverBudget).length;
-
-  /** Categories already over, or at least half used and on pace to finish the month over their limit. */
-  const watchList = useMemo(() => {
-    const pace = viewingCurrent ? Math.max(monthProgress, 0.1) : 1;
-    return listCategories
-      .filter((c) => c.limit > 0 && c.spent > 0)
-      .map((c) => ({ category: c, projected: c.spent / pace }))
-      // A category sitting exactly at its limit is usually a fixed bill (rent, phone) — no projection there.
-      .filter(
-        ({ category, projected }) =>
-          category.spent > category.limit ||
-          (category.spent < category.limit && category.spent >= category.limit * 0.5 && projected > category.limit * 1.05),
-      )
-      .sort((a, b) => b.projected / b.category.limit - a.projected / a.category.limit)
-      .slice(0, 3);
-  }, [listCategories, monthProgress, viewingCurrent]);
 
   return (
     <PageTransition>
@@ -350,78 +328,11 @@ export default function BudgetScreen() {
                       ? { label: 'Par jour', value: formatDisplayMoneyAbsolute(remaining / daysLeft) }
                       : { label: 'Catégories', value: String(listCategories.length) },
                   ]}
-               >
-                  {/* Pace: how much of the budget is used vs how far we are into the month. */}
-                  <View style={styles.paceBlock}>
-                    <View style={[styles.paceTrack, { backgroundColor: colors.borderSubtle }]}>
-                      <AnimatedFill
-                        progress={Math.min(1, usedRatio)}
-                        delay={150}
-                        style={[
-                          styles.paceFill,
-                          {
-                            backgroundColor: usedRatio > 1 ? BUDGET_OVER : usedRatio > monthProgress + 0.1 ? BUDGET_NEAR : colors.accentGreen,
-                          },
-                        ]}
-                      />
-                      {viewingCurrent ? (
-                        <View style={[styles.paceMarker, { left: `${monthProgress * 100}%`, backgroundColor: colors.text }]} />
-                      ) : null}
-                    </View>
-                    {viewingCurrent ? (
-                      <View style={styles.paceLegend}>
-                        <Text style={[styles.paceText, { color: colors.textMuted }]}>
-                          Utilisé {Math.round(usedRatio * 100)} %
-                        </Text>
-                        <Text style={[styles.paceText, { color: colors.textMuted }]}>
-                          Mois écoulé {Math.round(monthProgress * 100)} %
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </SummaryCard>
+               />
+
               </Reveal>
 
-              {watchList.length > 0 && !managingCategories ? (
-                <Reveal index={1} style={styles.section}>
-                  <SectionLabel title="À surveiller" />
-                  <ListCard>
-                    {watchList.map(({ category, projected }, index) => {
-                      const over = category.spent > category.limit;
-                      const tone = over ? BUDGET_OVER : BUDGET_NEAR;
-                      return (
-                        <ListRow
-                          key={category.id}
-                          leading={
-                            <BudgetCategoryIcon
-                              icon={category.icon}
-                              name={category.name}
-                              id={category.id}
-                              wellSize={40}
-                              glyphSize={18}
-                            />
-                          }
-                          title={category.name}
-                          subtitle={
-                            over
-                              ? `Dépassé de ${formatDisplayMoneyAbsolute(category.spent - category.limit)}`
-                              : `Projection fin du mois : ${formatDisplayMoneyAbsolute(projected)}`
-                          }
-                          value={`${Math.round((category.spent / category.limit) * 100)} %`}
-                          valueColor={tone}
-                          valueSub={`sur ${formatDisplayMoneyAbsolute(category.limit)}`}
-                          progress={Math.min(1, category.spent / category.limit)}
-                          progressColor={tone}
-                          isLast={index === watchList.length - 1}
-                          onPress={() => onCategoryRowPress(category.id)}
-                        />
-                      );
-                    })}
-                  </ListCard>
-                </Reveal>
-              ) : null}
-
-              <Reveal index={2} style={styles.section}>
+              <Reveal index={1} style={styles.section}>
                 <SectionLabel
                   title="Catégories"
                   trailing={
@@ -444,23 +355,19 @@ export default function BudgetScreen() {
                   ))}
                   {!managingCategories && showAddButton ? (
                     <View style={styles.tileCell}>
-                      {/* Static flex style on the Pressable so the tile fills the row height. */}
-                      <Pressable
+                      <PressScale
                         accessibilityRole="button"
-                        accessibilityLabel="Nouvelle catégorie"
-                        onPress={() => {
-                          tapHaptic();
-                          openBlankCreate();
-                        }}
-                        style={styles.addTileHit}
+                        accessibilityLabel="Créer une catégorie"
+                        onPress={openBlankCreate}
+                        scaleTo={0.96}
+                        containerStyle={styles.newTileHit}
+                        style={[styles.newTile, { borderColor: colors.containerBorder }]}
                       >
-                        <View style={[styles.addTile, { borderColor: colors.borderStrong }]}>
-                          <View style={[styles.addTileIcon, { backgroundColor: colors.surfaceElevated }]}>
-                            <AppIcon family="ionicons" name="add" size={22} color={colors.text} />
-                          </View>
-                          <Text style={[styles.addTileText, { color: colors.text }]}>Nouvelle catégorie</Text>
+                        <View style={[styles.newTileIcon, { backgroundColor: colors.surfaceElevated }]}>
+                          <AppIcon family="ionicons" name="add" size={22} color={colors.text} />
                         </View>
-                      </Pressable>
+                        <Text style={[styles.newTileTitle, { color: colors.text }]}>Nouvelle catégorie</Text>
+                      </PressScale>
                     </View>
                   ) : null}
                 </View>
@@ -554,28 +461,23 @@ function TextAction({ label, onPress }: { label: string; onPress: () => void }) 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   section: { marginBottom: SECTION_GAP + spacing.sm },
-  paceBlock: { gap: 8 },
-  paceTrack: { height: 10, borderRadius: 5, overflow: 'visible', position: 'relative' },
-  paceFill: { height: '100%', borderRadius: 5 },
-  paceMarker: { position: 'absolute', top: -4, width: 2, height: 18, borderRadius: 1, marginLeft: -1 },
-  paceLegend: { flexDirection: 'row', justifyContent: 'space-between' },
-  paceText: { ...typographyKit.metaMedium, fontSize: 11.5 },
   tileGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
   tileCell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10 },
-  addTileHit: { flex: 1 },
-  addTile: {
-    flex: 1,
-    minHeight: 150,
+  newTileHit: { flexGrow: 1 },
+  // Same dashed tile as « Nouvel objectif » in Copilote.
+  newTile: {
+    flexGrow: 1,
+    minHeight: 136,
     borderRadius: 18,
     borderWidth: 1,
     borderStyle: 'dashed',
+    padding: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    padding: 14,
+    gap: 6,
   },
-  addTileIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  addTileText: { ...typographyKit.metaSemibold, fontSize: 13.5, textAlign: 'center' },
+  newTileIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  newTileTitle: { ...jakartaSemiboldText, fontSize: 14, lineHeight: 18, textAlign: 'center' },
   sectionActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   textAction: { fontSize: 11 },
   ringValue: { ...typographyKit.metaSemibold, fontSize: 15 },

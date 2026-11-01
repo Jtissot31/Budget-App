@@ -395,7 +395,7 @@ export function ProtoHomeHub() {
   // Says « utilisé » so the ring's percentage can't be read as « remaining » — kept short for phones.
   const budgetSubtitle =
     budget.over > 0
-      ? `${budgetPct} % utilisé · ${budget.over} dépassée${budget.over > 1 ? 's' : ''}`
+      ? `${budgetPct} % utilisé · ${budget.over} à revoir`
       : `${formatDisplayMoneyAbsolute(budget.spent)} sur ${formatDisplayMoneyAbsolute(budget.limit)} utilisés`;
 
   return (
@@ -465,12 +465,12 @@ export function ProtoHomeHub() {
                 stats={[
                   {
                     label: 'Revenus',
-                    value: `+${formatDisplayMoneyAbsolute(monthlyIncome)}`,
-                    color: colors.accentGreen,
+                    value: `${monthlyIncome > 0 ? '+' : ''}${formatDisplayMoneyAbsolute(monthlyIncome)}`,
+                    color: monthlyIncome > 0 ? colors.accentGreen : undefined,
                   },
                   {
                     label: 'Dépenses',
-                    value: `−${formatDisplayMoneyAbsolute(monthlyExpenses)}`,
+                    value: `${monthlyExpenses > 0 ? '−' : ''}${formatDisplayMoneyAbsolute(monthlyExpenses)}`,
                   },
                   {
                     label: 'Épargne',

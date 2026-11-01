@@ -366,6 +366,8 @@ type SummaryCardProps = {
   labelVariant?: 'caption' | 'title';
   /** Center each stat's label and value within its column. */
   centerStats?: boolean;
+  /** Drop the label + amount line when the page already shows that number above the card. */
+  hideHero?: boolean;
 };
 
 function SummaryAmount({
@@ -418,11 +420,13 @@ export function SummaryCard({
   bare = false,
   labelVariant = 'caption',
   centerStats = false,
+  hideHero = false,
 }: SummaryCardProps) {
   const { colors } = useAppTheme();
   const Shell = bare ? BareShell : ProtoGlassCard;
   const card = (
     <Shell padding={16} style={[styles.summaryCard, style]}>
+      {hideHero ? null : (
       <View style={styles.summaryTop}>
         <View style={styles.summaryHero}>
           <View style={styles.summaryLabelRow}>
@@ -455,6 +459,7 @@ export function SummaryCard({
         </View>
         {aside}
       </View>
+      )}
       {children}
       {stats && stats.length > 0 ? (
         <View style={[styles.statRow, { borderTopColor: colors.borderSubtle }]}>
@@ -471,10 +476,11 @@ export function SummaryCard({
                 },
               ]}
             >
-              <FitText style={[styles.statLabel, { color: colors.textMuted }]}>
+              <FitText align={centerStats ? 'center' : undefined} style={[styles.statLabel, { color: colors.textMuted }]}>
                 {stat.label}
               </FitText>
               <FitText
+                align={centerStats ? 'center' : undefined}
                 style={[
                   transactionRowAmountTypography({ fontSize: 16, lineHeight: 21 }),
                   { color: stat.color ?? colors.text, letterSpacing: -0.3 },
@@ -575,7 +581,7 @@ const styles = StyleSheet.create({
   summaryHero: { flex: 1, minWidth: 0, gap: 4 },
   summaryLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   summaryLabel: { ...typographyKit.metaMedium, fontSize: 12, letterSpacing: -0.1, flexShrink: 1 },
-  summaryBadge: { ...typographyKit.metaSemibold, fontSize: 12.5, flexShrink: 0 },
+  summaryBadge: { ...typographyKit.metaSemibold, fontSize: 12.5, lineHeight: 16, flexShrink: 0 },
   summaryFooter: { ...typographyKit.metaMedium, fontSize: 11.5, letterSpacing: -0.1 },
   statRow: {
     flexDirection: 'row',
@@ -584,7 +590,7 @@ const styles = StyleSheet.create({
   },
   statCell: { flex: 1, minWidth: 0, gap: 3 },
   statCellCentered: { alignItems: 'center' },
-  summaryTitle: { fontSize: 15, letterSpacing: -0.2, flexShrink: 1 },
-  statLabel: { ...typographyKit.metaMedium, fontSize: 11 },
+  summaryTitle: { fontSize: 15, lineHeight: 20, letterSpacing: -0.2, flexShrink: 1 },
+  statLabel: { ...typographyKit.metaMedium, fontSize: 11, lineHeight: 14 },
   pressed: { opacity: 0.78 },
 });

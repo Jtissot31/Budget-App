@@ -11,7 +11,7 @@ import { Platform, View } from 'react-native';
 import { runAfterInteractions } from '@/lib/runAfterInteractions';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PortalHost } from '@rn-primitives/portal';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DMMono_400Regular, DMMono_500Medium } from '@expo-google-fonts/dm-mono';
 import { Inter_600SemiBold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
 import {
@@ -42,9 +42,11 @@ export const unstable_settings = {
 /**
  * Splash stays up until Plus Jakarta is loaded (DB still runs in the background). Rendering
  * earlier laid text out with the system font, then the wider bold font swapped in and got
- * clipped (« Agend », « Demai »). Safety cap so a font failure never blocks the app.
+ * clipped (« Agend », « Demai »). Over a dev tunnel the fonts can take well over 3 s, and text
+ * measured before they arrive stays cropped, so the cap is long. A load failure doesn't wait for
+ * it (`fontError`); it only guards against a load that hangs.
  */
-const FONT_WAIT_MAX_MS = 3_000;
+const FONT_WAIT_MAX_MS = 20_000;
 
 configureTypographyDefaults();
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -71,6 +73,18 @@ function ThemedRootShell() {
         <PortalHost />
       </View>
     </SafeAreaProvider>
+  );
+}
+
+/** Content scrolled to the top must not run through the status bar's clock and icons. */
+function StatusBarScrim() {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <View
+      pointerEvents="none"
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: colors.background }}
+    />
   );
 }
 
@@ -202,6 +216,7 @@ function RootLayoutContent() {
               }}
             />
             <Stack.Screen name="account-detail" options={{ headerShown: false }} />
+            <Stack.Screen name="envelope-detail" options={{ headerShown: false }} />
             <Stack.Screen name="merchant-detail" options={{ headerShown: false }} />
             <Stack.Screen name="contact-detail" options={{ headerShown: false }} />
             <Stack.Screen name="merchant-receipts" options={{ headerShown: false }} />
@@ -251,6 +266,7 @@ function RootLayoutContent() {
             <Stack.Screen name="alert-types" options={{ headerShown: false }} />
           </Stack>
           </SwipeBackHost>
+          <StatusBarScrim />
           <ToastHost />
         </View>
       </View>

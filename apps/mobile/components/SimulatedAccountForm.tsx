@@ -320,7 +320,6 @@ export function SimulatedAccountFormModal({
                   <View style={styles.section}>
                     <ChipSelectField
                       label={kind === 'credit' ? 'Émetteur' : 'Banque'}
-                      reorderSelected={false}
                       options={bankOptions}
                       selectedId={selectedBankId}
                       onSelect={(id) => {

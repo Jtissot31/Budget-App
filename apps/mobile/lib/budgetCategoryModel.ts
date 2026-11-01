@@ -7,7 +7,7 @@ import {
 } from '@/lib/categoryBudgetUsage';
 import type { CategoryBudget } from '@/types';
 
-export const MAX_BUDGET_CATEGORIES = 10;
+export const MAX_BUDGET_CATEGORIES = 30;
 
 export type BudgetCategoryUiModel = {
   id: string;

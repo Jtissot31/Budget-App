@@ -351,7 +351,7 @@ export function CopilotWidget({ gentle = false }: { gentle?: boolean }) {
         {more > 0 ? (
           <View style={styles.moreRow}>
             <View style={[styles.moreChip, { backgroundColor: colors.surfaceElevated }]}>
-              <Text style={[styles.moreChipText, jakartaSemiboldText, { color: colors.textMuted }]}>
+              <Text style={[styles.moreChipText, jakartaSemiboldText, { color: colors.textMuted }]} numberOfLines={1}>
                 +{more} conseil{more > 1 ? 's' : ''}
               </Text>
             </View>
@@ -365,7 +365,7 @@ export function CopilotWidget({ gentle = false }: { gentle?: boolean }) {
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingTop: 14, paddingBottom: 12 },
   spark: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  headTitle: { fontSize: 15, letterSpacing: -0.2, flexGrow: 1, flexShrink: 1 },
+  headTitle: { fontSize: 15, lineHeight: 20, letterSpacing: -0.2, flexGrow: 1, flexShrink: 1 },
   status: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 28, paddingHorizontal: 11, borderRadius: 14, flexShrink: 0 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   headStack: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 6 },
@@ -377,9 +377,9 @@ const styles = StyleSheet.create({
   tipTitle: { fontSize: 13, lineHeight: 17, letterSpacing: -0.1 },
   moreRow: { flexDirection: 'row', paddingHorizontal: 12, paddingBottom: 12, marginTop: -4 },
   moreChip: { height: 26, paddingHorizontal: 10, borderRadius: 13, justifyContent: 'center' },
-  moreChipText: { fontSize: 12 },
+  moreChipText: { fontSize: 12, lineHeight: 16 },
   statusStacked: { maxWidth: '100%' },
-  statusText: { ...typographyKit.metaSemibold, fontSize: 12.5 },
+  statusText: { ...typographyKit.metaSemibold, fontSize: 12.5, lineHeight: 16 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

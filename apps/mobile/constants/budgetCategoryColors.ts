@@ -23,12 +23,9 @@ export function getColorForCategoryIndex(index: number): BudgetCategoryPaletteCo
   return BUDGET_CATEGORY_PALETTE[index % BUDGET_CATEGORY_PALETTE.length];
 }
 
-/** Returns the first palette color not already used (case-insensitive). */
+/** Returns the first palette color not already used (case-insensitive); past the palette, colors repeat. */
 export function assignCategoryColor(usedColors: readonly string[]): BudgetCategoryPaletteColor {
   const used = new Set(usedColors.map(normalizeHex));
   const available = BUDGET_CATEGORY_PALETTE.find((color) => !used.has(normalizeHex(color)));
-  if (!available) {
-    throw new Error('Toutes les couleurs de palette sont déjà utilisées.');
-  }
-  return available;
+  return available ?? getColorForCategoryIndex(usedColors.length);
 }

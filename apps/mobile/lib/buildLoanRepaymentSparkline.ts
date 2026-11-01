@@ -1,6 +1,5 @@
 import { parseAccountIdFromNote } from '@/lib/accountTransactionFlow';
 import {
-  buildDemoGoalContributionRamp,
   type GoalContributionChartPeriod,
   type GoalContributionSparkline,
 } from '@/lib/buildSavingsGoalsTrendSeries';
@@ -12,14 +11,6 @@ export type LoanRepaymentChartPeriod = GoalContributionChartPeriod;
 type LoanPaymentEvent = {
   ts: number;
   amount: number;
-};
-
-const DEMO_PAYMENT_COUNT: Record<LoanRepaymentChartPeriod, number> = {
-  '1M': 4,
-  '3M': 8,
-  '6M': 12,
-  '1A': 18,
-  '5A': 30,
 };
 
 function periodWindowStartMs(period: LoanRepaymentChartPeriod, now: Date): number {
@@ -61,14 +52,6 @@ function transactionMatchesLoan(
   const recurring = recurringName?.trim().toLowerCase();
   if (recurring && recurring.length >= 3 && label.includes(recurring)) return true;
   return false;
-}
-
-function isEffectivelyFlatSeries(values: readonly number[]): boolean {
-  if (values.length < 2) return true;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  if (max < 0.01) return true;
-  return max - min < Math.max(1, max * 0.02);
 }
 
 /**
@@ -133,7 +116,7 @@ function buildPaymentEventSeries(
 
 /**
  * Cumulative repaid sparkline for a loan — same Accueil / goal-detail language
- * (one point per payment, demo ramp when history is empty or flat).
+ * (one point per payment, flat when there is none in the period).
  */
 export function buildLoanRepaymentSparkline(params: {
   loan: Pick<Loan, 'id' | 'principal' | 'balanceRemaining'>;
@@ -165,18 +148,9 @@ export function buildLoanRepaymentSparkline(params: {
   });
   const fromEvents = buildPaymentEventSeries(events, period, now);
 
-  if (fromEvents && !isEffectivelyFlatSeries(fromEvents.values)) {
-    return fromEvents;
-  }
+  if (fromEvents) return fromEvents;
 
-  const endAmount = Math.max(paidAmount, 0);
-  if (endAmount < 0.01) {
-    return { values: [0, 0], versementIndices: [1] };
-  }
-
-  const values = buildDemoGoalContributionRamp(DEMO_PAYMENT_COUNT[period], endAmount, period);
-  return {
-    values,
-    versementIndices: values.map((_, index) => index),
-  };
+  // No real payment in this period: stay flat at what is already repaid, never made up.
+  const paid = Math.max(paidAmount, 0);
+  return { values: [paid, paid], versementIndices: [] };
 }

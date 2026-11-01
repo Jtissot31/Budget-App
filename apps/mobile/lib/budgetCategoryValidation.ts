@@ -3,8 +3,8 @@
  *
  * Every rejection is attached to the field that caused it, so the confirm button
  * never has to be disabled with a label the screen does not explain. The single
- * hard block is the category ceiling (`MAX_BUDGET_CATEGORIES`, one palette color
- * per category); allocating more than the monthly income is a soft warning —
+ * hard block is the category ceiling (`MAX_BUDGET_CATEGORIES`; colors repeat past the palette
+ * ); allocating more than the monthly income is a soft warning —
  * over-allocating is a diagnosis the user wants to read, not a wall.
  */
 import { formatDisplayMoneyAbsoluteExact } from '@/lib/formatDisplayMoney';

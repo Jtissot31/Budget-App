@@ -9,6 +9,7 @@ import {
   typography,
   typographyKit,
   type AppColors,
+  jakartaMediumText,
 } from '@/constants/theme';
 import { formatFriendlyDateLabel } from '@/lib/formatFriendlyDateLabel';
 import { tapHaptic } from '@/lib/haptics';
@@ -69,23 +70,22 @@ export function DatePickerField({
         }}
         accessibilityRole="button"
         accessibilityLabel={`Choisir ${label.toLowerCase()}`}
-        style={({ pressed }) => [
-          styles.inputButton,
-          variant === 'sheet' && styles.sheetInputButton,
-          inputSurface,
-          pressed && styles.pressed,
-        ]}
+        style={({ pressed }) => pressed && styles.pressed}
       >
-        <Text
-          style={[
-            styles.inputText,
-            variant === 'sheet' && styles.sheetInputText,
-            !value && styles.placeholder,
-          ]}
-        >
-          {displayValue || placeholder}
-        </Text>
-        <AppIcon family="ionicons" name="calendar-clear-outline" size={18} color={ghost.mutedSoft} />
+        {/* Row and fill on a plain View: Android drops them from a Pressable style function. */}
+        <View style={[styles.inputButton, variant === 'sheet' && styles.sheetInputButton, inputSurface]}>
+          <Text
+            style={[
+              styles.inputText,
+              variant === 'sheet' && styles.sheetInputText,
+              !value && styles.placeholder,
+            ]}
+            numberOfLines={1}
+          >
+            {displayValue || placeholder}
+          </Text>
+          <AppIcon family="ionicons" name="calendar-clear-outline" size={18} color={ghost.mutedSoft} />
+        </View>
       </Pressable>
 
       <MinimalDatePicker
@@ -468,7 +468,8 @@ function createStyles(colors: AppColors, ghost: GhostTokens, isLight: boolean) {
       paddingVertical: spacing.sm + 2,
     },
     inputText: {
-      flex: 1,
+      flexGrow: 1,
+      flexShrink: 1,
       color: colors.text,
       ...interNumericExtraBoldText,
       fontSize: typography.body,
@@ -479,7 +480,7 @@ function createStyles(colors: AppColors, ghost: GhostTokens, isLight: boolean) {
       ...interNumericExtraBoldText,
       fontVariant: ['tabular-nums'],
     },
-    placeholder: { color: colors.textMuted },
+    placeholder: { ...jakartaMediumText, color: colors.textMuted },
     pressed: { opacity: 0.72 },
     modalBackdrop: {
       flex: 1,

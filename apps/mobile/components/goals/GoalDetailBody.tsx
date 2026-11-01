@@ -196,12 +196,15 @@ export function GoalDetailBody({ goal, projection, transactions, accounts, onEdi
         </ListCard>
       </View>
 
-      <View style={styles.section}>
-        <SectionLabel title="Évolution" />
-        <ListCard padding={12}>
-          <GoalProgressChart goal={goal} transactions={transactions} accounts={accounts} showAmountHero={false} />
-        </ListCard>
-      </View>
+      {/* Only with real versements: without any, there is no evolution to draw. */}
+      {transactions.length > 0 ? (
+        <View style={styles.section}>
+          <SectionLabel title="Évolution" />
+          <ListCard padding={12}>
+            <GoalProgressChart goal={goal} transactions={transactions} accounts={accounts} showAmountHero={false} />
+          </ListCard>
+        </View>
+      ) : null}
 
       <View style={styles.section}>
         <SectionLabel

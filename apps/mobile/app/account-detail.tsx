@@ -30,11 +30,12 @@ import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { DashboardSectionLabel } from '@/components/DashboardSectionLabel';
 import { OnyxContainer } from '@/components/OnyxContainer';
 import { ProtoSectionHeader } from '@/components/proto/ProtoSectionHeader';
+import { AccountBankCard } from '@/components/wallet/AccountBankCard';
 import { AccountDetailSummaryCard } from '@/components/wallet/AccountCardPrototypes';
-import { AnimatedBar, AreaSparkline, EmptyRow, IconWell, ListCard, ListRow, PressScale, SectionLabel } from '@/components/kit';
+import { AnimatedBar, EmptyRow, IconWell, ListCard, ListRow, PillButton, SectionLabel } from '@/components/kit';
 import { IconPickerSheet } from '@/components/IconPickerSheet';
 import { EnvelopeTransferSheet } from '@/components/wallet/EnvelopeTransferSheet';
-import { EnvelopeEmoji } from '@/components/wallet/AccountEnvelopes';
+import { EnvelopeEmoji, EnvelopeSheet, newEnvelopeDraft, type EnvelopeDraft } from '@/components/wallet/AccountEnvelopes';
 import { getEnvelopesByAccount, type AccountEnvelope } from '@/lib/accountEnvelopes';
 import { MdiIcon } from '@/components/MdiIcon';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
@@ -52,7 +53,8 @@ import { LogoIconFrame } from '@/components/IconFrame';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { getMerchantLogoUrl } from '@/lib/merchantLogo';
 import { SegmentedTabs } from '@/components/SegmentedTabs';
-import { TransactionDayGroups } from '@/components/transactions/TransactionDayGroups';
+import { AccountHistoryList } from '@/components/wallet/AccountHistoryList';
+import { formatShortDay } from '@/lib/transactionListSectionFormat';
 import {
   frequencyLabel,
   manualAccountOptions,
@@ -177,7 +179,15 @@ function nextRecurringOccurrence(payment: RecurringPayment, from: Date) {
   return occurrence;
 }
 
-const SHORT_MONTHS_FR = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+/** Soon = relative (Aujourd'hui, Demain, Dans 3 j), later = the date. */
+function upcomingDateLabel(next: Date, today: Date) {
+  const days = Math.round((next.getTime() - today.getTime()) / 86_400_000);
+  if (days === 0) return "Aujourd'hui";
+  if (days === 1) return 'Demain';
+  return days < 7 ? `Dans ${days} j` : formatShortDay(next);
+}
+
+const SOON_TONE = '#F59E0B';
 
 export default function AccountDetailScreen() {
   const router = useRouter();
@@ -262,6 +272,7 @@ export default function AccountDetailScreen() {
   const loanByRecurringPaymentId = useMemo(() => buildLoanByRecurringPaymentId(loans), [loans]);
   const accountEnvelopes = useMemo(() => envelopesByAccount[accountId] ?? [], [accountId, envelopesByAccount]);
   const [envelopeTransferOpen, setEnvelopeTransferOpen] = useState(false);
+  const [envelopeDraft, setEnvelopeDraft] = useState<EnvelopeDraft | null>(null);
   const linkedSavingsGoal = useMemo(
     () => savingsGoals.find((goal) => goal.id === account?.linkedSavingsGoalId) ?? null,
     [account?.linkedSavingsGoalId, savingsGoals],
@@ -287,41 +298,21 @@ export default function AccountDetailScreen() {
     return date;
   }, []);
 
+  /** Soonest real occurrence first (a stored `nextDate` can be in the past); inactive ones last. */
   const accountRecurringPayments = useMemo(() => {
     if (!account) return [];
     return recurringPayments
       .filter((payment) => payment.accountId === account.id)
-      .sort((a, b) => (a.nextDate ?? '9999').localeCompare(b.nextDate ?? '9999'));
-  }, [account, recurringPayments]);
-  /** Daily end-of-day balance for the last 30 days, rebuilt backwards from today's balance. */
-  const balanceSeries = useMemo(() => {
-    if (!account) return [] as number[];
-    const days = 30;
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
-    const values: number[] = [];
-    let running = account.balance;
-    let txIndex = 0;
-    const txs = accountTransactions; // newest first
-    for (let d = 0; d < days; d++) {
-      const dayEnd = new Date(end);
-      dayEnd.setDate(end.getDate() - d);
-      // Undo transactions that happened after this day's end.
-      while (txIndex < txs.length && new Date(txs[txIndex]!.date) > dayEnd) {
-        const tx = txs[txIndex]!;
-        if (tx.type === 'income') running -= Math.abs(tx.amount);
-        else if (tx.type === 'expense') running += Math.abs(tx.amount);
-        txIndex += 1;
-      }
-      values.push(running);
-    }
-    return values.reverse();
-  }, [account, accountTransactions]);
+      .map((payment) => ({ payment, next: payment.active ? nextRecurringOccurrence(payment, today) : null }))
+      .sort((a, b) => (a.next?.getTime() ?? Infinity) - (b.next?.getTime() ?? Infinity));
+  }, [account, recurringPayments, today]);
+  const envelopeTotals = useMemo(() => {
+    const assigned = accountEnvelopes.reduce((sum, envelope) => sum + envelope.amount, 0);
+    return { assigned, free: Math.max(0, (account?.balance ?? 0) - assigned) };
+  }, [account?.balance, accountEnvelopes]);
   const visibleRecurringPayments = showRecurringPayments
     ? accountRecurringPayments
     : accountRecurringPayments.slice(0, 3);
-  const balanceChange =
-    balanceSeries.length > 1 ? balanceSeries[balanceSeries.length - 1]! - balanceSeries[0]! : null;
 
   const monthlyTransactionStats = useMemo(() => {
     if (!account || (account.kind !== 'checking' && account.kind !== 'credit' && account.kind !== 'cash')) return null;
@@ -338,11 +329,9 @@ export default function AccountDetailScreen() {
     });
     return { revenues, expenses };
   }, [account, accountTransactions]);
-  const headerChange = monthlyTransactionStats
-    ? { value: monthlyTransactionStats.revenues - monthlyTransactionStats.expenses, period: 'ce mois' }
-    : balanceChange != null
-      ? { value: balanceChange, period: '· 30 j' }
-      : null;
+  const hasMonthlyFlow =
+    monthlyTransactionStats != null &&
+    (monthlyTransactionStats.revenues > 0 || monthlyTransactionStats.expenses > 0);
   const logoSourceName = institution.trim() || name.trim();
   const manualIcon = icon?.trim() || null;
   const previewLogoAsset = useMemo(() => {
@@ -553,26 +542,12 @@ export default function AccountDetailScreen() {
       >
         {account ? (
           <>
-            <AccountDetailSummaryCard
-              account={account}
-              badge={
-                headerChange != null && Math.abs(headerChange.value) >= 0.01
-                  ? {
-                      label: `${headerChange.value >= 0 ? '+' : '−'}${formatMoney(Math.abs(headerChange.value))} ${headerChange.period}`,
-                      color: headerChange.value >= 0 ? colors.accentGreen : colors.danger,
-                    }
-                  : undefined
-              }
-            >
-              {balanceSeries.length > 1 ? (
-                <AreaSparkline
-                  data={balanceSeries}
-                  color={(balanceChange ?? 0) >= 0 ? colors.accentGreen : colors.danger}
-                  height={52}
-                />
-              ) : null}
-              {monthlyTransactionStats &&
-              (monthlyTransactionStats.revenues > 0 || monthlyTransactionStats.expenses > 0) ? (
+            <View style={styles.hero}>
+            <AccountBankCard account={account} />
+            {/* Nothing to show without a credit limit or activity this month: no empty container. */}
+            {account.kind === 'credit' || hasMonthlyFlow ? (
+            <AccountDetailSummaryCard account={account}>
+              {monthlyTransactionStats && hasMonthlyFlow ? (
                 <View style={styles.flowBars}>
                   {[
                     { key: 'in', label: 'Entrées', value: monthlyTransactionStats.revenues, color: colors.accentGreen, sign: '+' },
@@ -603,8 +578,8 @@ export default function AccountDetailScreen() {
                             height={8}
                           />
                         </View>
-                        <Text style={[styles.flowValue, { color: row.key === 'in' ? colors.accentGreen : colors.text }]}>
-                          {row.sign}
+                        <Text style={[styles.flowValue, { color: row.key === 'in' && row.value > 0 ? colors.accentGreen : colors.text }]}>
+                          {row.value > 0 ? row.sign : ''}
                           {formatMoney(row.value)}
                         </Text>
                       </View>
@@ -613,36 +588,92 @@ export default function AccountDetailScreen() {
                 </View>
               ) : null}
             </AccountDetailSummaryCard>
+            ) : null}
+            </View>
 
-            {account.kind !== 'credit' && accountEnvelopes.length > 0 ? (
+            {account.kind !== 'credit' ? (
               <View>
-                <SectionLabel title="Enveloppes" actionLabel="Virer" onAction={() => setEnvelopeTransferOpen(true)} />
-                <View>
-                  {accountEnvelopes.map((envelope, index) => (
-                    <PressScale
-                      key={envelope.id}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${envelope.name}, ${formatMoney(envelope.amount)}. Virer`}
-                      onPress={() => setEnvelopeTransferOpen(true)}
-                      scaleTo={0.98}
-                    >
-                      <View
-                        style={[
-                          styles.envelopeRow,
-                          index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.containerBorder },
-                        ]}
-                      >
-                        <View style={[styles.rowWell, { backgroundColor: colors.iconWell }]}>
-                          <EnvelopeEmoji icon={envelope.icon} size={40} glyphSize={20} />
-                        </View>
-                        <Text style={[styles.envelopeName, { color: colors.text }]} numberOfLines={1}>
-                          {envelope.name}
+                <SectionLabel
+                  title="Enveloppes"
+                  trailing={
+                    <View style={styles.envelopeActions}>
+                      <PillButton
+                        label={accountEnvelopes.length === 0 ? 'Créer' : 'Ajouter'}
+                        accessibilityLabel="Nouvelle enveloppe"
+                        onPress={() => setEnvelopeDraft(newEnvelopeDraft(account.id, accountEnvelopes.length))}
+                      />
+                      {accountEnvelopes.length > 0 ? (
+                        <PillButton label="Virer" icon="swap-horizontal" onPress={() => setEnvelopeTransferOpen(true)} />
+                      ) : null}
+                    </View>
+                  }
+                />
+                {accountEnvelopes.length === 0 ? (
+                  <ListCard>
+                    <EmptyRow label="Aucune enveloppe pour ce compte" />
+                  </ListCard>
+                ) : (
+                <ListCard>
+                  {/* How the balance is split: set aside vs still free. */}
+                  <View style={[styles.envelopeSummary, { borderBottomColor: colors.containerBorder }]}>
+                    <View style={styles.envelopeTotals}>
+                      <View style={styles.envelopeTotal}>
+                        <Text style={[styles.envelopeTotalLabel, { color: colors.textMuted }]} numberOfLines={1}>
+                          Mis de côté
                         </Text>
-                        <Text style={[styles.envelopeAmount, { color: colors.text }]}>{formatMoney(envelope.amount)}</Text>
+                        <FitText style={[styles.envelopeTotalValue, jakartaSemiboldText, { color: colors.text }]}>
+                          {formatMoney(envelopeTotals.assigned)}
+                        </FitText>
                       </View>
-                    </PressScale>
-                  ))}
-                </View>
+                      <View style={[styles.envelopeTotal, styles.envelopeTotalEnd]}>
+                        <Text style={[styles.envelopeTotalLabel, { color: colors.textMuted }]} numberOfLines={1}>
+                          Libre
+                        </Text>
+                        <FitText
+                          align="right"
+                          style={[styles.envelopeTotalValue, jakartaSemiboldText, { color: colors.text }]}
+                        >
+                          {formatMoney(envelopeTotals.free)}
+                        </FitText>
+                      </View>
+                    </View>
+                    <AnimatedBar
+                      progress={account.balance > 0 ? envelopeTotals.assigned / account.balance : 0}
+                      color={colors.accentGreen}
+                      trackColor={colors.borderSubtle}
+                      height={6}
+                    />
+                  </View>
+                  {accountEnvelopes.map((envelope, index) => {
+                    const share = account.balance > 0 ? (envelope.amount / account.balance) * 100 : 0;
+                    return (
+                      <ListRow
+                        key={envelope.id}
+                        leading={
+                          <IconWell>
+                            <EnvelopeEmoji icon={envelope.icon} size={40} glyphSize={20} />
+                          </IconWell>
+                        }
+                        title={envelope.name}
+                        subtitle={
+                          envelope.amount <= 0
+                            ? 'À remplir'
+                            : share < 1
+                              ? 'Moins de 1 % du solde'
+                              : `${Math.round(share)} % du solde`
+                        }
+                        value={formatMoney(envelope.amount)}
+                        compactValue
+                        isLast={index === accountEnvelopes.length - 1}
+                        accessibilityLabel={`${envelope.name}, ${formatMoney(envelope.amount)}. Voir le détail`}
+                        onPress={() =>
+                          router.push({ pathname: '/envelope-detail', params: { envelopeId: envelope.id } })
+                        }
+                      />
+                    );
+                  })}
+                </ListCard>
+                )}
               </View>
             ) : null}
 
@@ -691,61 +722,36 @@ export default function AccountDetailScreen() {
                   <EmptyRow label="Aucun paiement récurrent lié à ce compte" />
                 </ListCard>
               ) : (
-                /* Calendrier : une seule carte, la date en grand à gauche (≠ cartes de l'historique). */
-                <View>
-                  {visibleRecurringPayments.map((payment, index) => {
-                    const next = payment.active ? nextRecurringOccurrence(payment, today) : null;
+                <ListCard>
+                  {visibleRecurringPayments.map(({ payment, next }, index) => {
+                    const soon = next != null && next.getTime() - today.getTime() < 2 * 86_400_000;
+                    const logoUrl = payment.logoUrl?.trim() || getMerchantLogoUrl(payment.name) || null;
                     return (
-                      <PressScale
+                      <ListRow
                         key={payment.id}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Modifier ${payment.name}`}
-                        onPress={() => void openEditRecurringPayment(payment)}
-                        scaleTo={0.98}
-                      >
-                        <View
-                          style={[
-                            styles.paymentRow,
-                            index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.containerBorder },
-                          ]}
-                        >
-                          <View style={styles.paymentDate}>
-                            <Text style={[styles.paymentDay, { color: next ? colors.text : colors.textMuted }]}>
-                              {next ? next.getDate() : '—'}
-                            </Text>
-                            <Text style={[styles.paymentMonth, { color: colors.textMuted }]}>
-                              {next ? SHORT_MONTHS_FR[next.getMonth()] : 'inactif'}
-                            </Text>
-                          </View>
+                        leading={
                           <UserPickedIconWell
                             icon={resolveRecurringPaymentDisplayIconById(payment, loanByRecurringPaymentId)}
-                            color={payment.color}
                             size={40}
-                            wellGlyphWhite
-                            logoUrl={payment.logoUrl?.trim() || getMerchantLogoUrl(payment.name) || null}
+                            // No logo: a quiet glyph without a tile, so it sits level with the logos around it.
+                            noBackground={!logoUrl}
+                            iconSize={logoUrl ? undefined : 24}
+                            logoUrl={logoUrl}
                           />
-                          <View style={styles.paymentCopy}>
-                            <Text style={[styles.paymentName, { color: colors.text }]} numberOfLines={1}>
-                              {payment.name}
-                            </Text>
-                            <Text style={[styles.paymentMeta, { color: colors.textMuted }]} numberOfLines={1}>
-                              {frequencyLabel(payment.frequency)}
-                            </Text>
-                          </View>
-                          <Text
-                            style={[
-                              styles.paymentAmount,
-                              { color: payment.kind === 'income' ? colors.accentGreen : colors.text },
-                            ]}
-                          >
-                            {payment.kind === 'income' ? '+' : '−'}
-                            {formatMoney(Math.abs(payment.amount))}
-                          </Text>
-                        </View>
-                      </PressScale>
+                        }
+                        title={payment.name}
+                        subtitle={`${next ? upcomingDateLabel(next, today) : 'Inactif'} · ${frequencyLabel(payment.frequency)}`}
+                        subtitleColor={soon ? SOON_TONE : undefined}
+                        value={`${payment.kind === 'income' ? '+' : '−'}${formatMoney(Math.abs(payment.amount))}`}
+                        valueColor={payment.kind === 'income' ? colors.accentGreen : colors.text}
+                        compactValue
+                        isLast={index === visibleRecurringPayments.length - 1}
+                        accessibilityLabel={`Modifier ${payment.name}`}
+                        onPress={() => void openEditRecurringPayment(payment)}
+                      />
                     );
                   })}
-                </View>
+                </ListCard>
               )}
             </View>
 
@@ -799,14 +805,7 @@ export default function AccountDetailScreen() {
                         accessibilityLabel="Rechercher"
                         hitSlop={8}
                         onPress={expandSearch}
-                        style={({ pressed }) => [
-                          styles.searchIconBtn,
-                          {
-                            backgroundColor: colors.containerBackground,
-                            borderColor: colors.containerBorder,
-                          },
-                          pressed && styles.pressed,
-                        ]}
+                        style={styles.searchIconBtn}
                       >
                         <AppIcon family="ionicons"
                           name="search-outline"
@@ -823,14 +822,7 @@ export default function AccountDetailScreen() {
                           tapHaptic();
                           setHistoryFiltersExpanded((expanded) => !expanded);
                         }}
-                        style={({ pressed }) => [
-                          styles.searchIconBtn,
-                          {
-                            backgroundColor: colors.containerBackground,
-                            borderColor: colors.containerBorder,
-                          },
-                          pressed && styles.pressed,
-                        ]}
+                        style={styles.searchIconBtn}
                       >
                         <AppIcon family="ionicons"
                           name={historyFiltersExpanded ? 'filter' : 'filter-outline'}
@@ -861,10 +853,10 @@ export default function AccountDetailScreen() {
               ) : null}
 
               {groupedAccountTransactions.length > 0 ? (
-                <TransactionDayGroups
-                  plain
+                <AccountHistoryList
                   transactions={filteredAccountTransactions}
                   accounts={accounts}
+                  savingsGoals={savingsGoals}
                 />
               ) : (
                 <OnyxContainer style={styles.emptyCard}>
@@ -1178,10 +1170,13 @@ export default function AccountDetailScreen() {
         <EnvelopeTransferSheet
           visible={envelopeTransferOpen}
           accountId={account.id}
+          accountName={account.name}
           balance={account.balance}
           onClose={() => setEnvelopeTransferOpen(false)}
         />
       ) : null}
+
+      <EnvelopeSheet draft={envelopeDraft} onClose={() => setEnvelopeDraft(null)} />
 
       <RecurringPaymentFormModal
         visible={recurringForm != null}
@@ -1317,32 +1312,20 @@ function escapeRegExp(value: string) {
 }
 
 const styles = StyleSheet.create({
+  hero: { gap: spacing.md },
+  envelopeActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   flowBars: { gap: 8 },
   flowRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   // No fixed width: both labels share the widest one's measured width, so bars stay aligned.
   flowLabel: { ...typographyKit.metaMedium, fontSize: 12, flexShrink: 0 },
   flowTrackWrap: { flex: 1 },
   flowValue: { ...typographyKit.metaSemibold, fontSize: 13, minWidth: 82, textAlign: 'right' },
-  /* Envelopes: one card, one row per envelope — name and allocated amount. */
-  envelopeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingVertical: 10 },
-  rowWell: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  envelopeName: { ...typographyKit.metaMedium, flex: 1, minWidth: 0, fontSize: 15 },
-  envelopeAmount: { ...typographyKit.metaSemibold, fontSize: 15, letterSpacing: -0.2 },
-  /* Upcoming debits: one card, calendar rows — big date, small logo, name, amount. */
-  paymentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    minHeight: 64,
-    paddingVertical: 10,
-  },
-  paymentDate: { width: 34, alignItems: 'center' },
-  paymentDay: { ...typographyKit.metaSemibold, fontSize: 20, lineHeight: 24, letterSpacing: -0.4 },
-  paymentMonth: { ...typographyKit.metaMedium, fontSize: 12, lineHeight: 15 },
-  paymentCopy: { flex: 1, minWidth: 0, gap: 2 },
-  paymentName: { ...typographyKit.metaSemibold, fontSize: 15 },
-  paymentMeta: { ...typographyKit.metaMedium, fontSize: 12.5 },
-  paymentAmount: { ...typographyKit.metaSemibold, fontSize: 15, letterSpacing: -0.2 },
+  envelopeSummary: { padding: 14, gap: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  envelopeTotals: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.lg },
+  envelopeTotal: { flexShrink: 1, minWidth: 0, gap: 2 },
+  envelopeTotalEnd: { alignItems: 'flex-end' },
+  envelopeTotalLabel: { ...typographyKit.metaMedium, fontSize: 12.5, lineHeight: 16 },
+  envelopeTotalValue: { fontSize: 17, lineHeight: 22, letterSpacing: -0.2 },
   screen: { flex: 1, backgroundColor: 'transparent' },
   backButton: {
     width: 38,
@@ -1472,8 +1455,6 @@ const styles = StyleSheet.create({
   searchIconBtn: {
     width: 34,
     height: 34,
-    borderRadius: 17,
-    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -2,6 +2,8 @@ import { GlassFab } from '@/components/GlassFab';
 import { VoiceCommandIcon } from '@/components/icons/VoiceCommandIcon';
 import { AddTransactionFab } from '@/components/tabbar/AddTransactionFab';
 import { FabAutoHide } from '@/components/tabbar/FabAutoHide';
+import { SpeedDialFab, type SpeedDialAction } from '@/components/tabbar/SpeedDialFab';
+import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsForm';
 import { useShouldHideTabFabs } from '@/components/tabbar/floatingTabBarShared';
 import {
   SHOW_TRANSACTIONS_TAB_FABS,
@@ -117,14 +119,19 @@ export function AppBottomTabBar({ state, emitter, navigateToTab }: BottomTabBarP
   const hideTabFabs = useShouldHideTabFabs(pathname);
   /** Tab bar height = distance from the screen bottom to the FABs' baseline. */
   const [hostHeight, setHostHeight] = useState(0);
+  const [agendaManaging, setAgendaManaging] = useState(false);
   const activeRouteName = state.routes[state.index]?.name ?? '';
   const currentTab = ROUTE_TO_TAB_KEY[activeRouteName] ?? '';
   const showVoice =
     SHOW_TRANSACTIONS_TAB_FABS && activeRouteName === 'transactions' && !hideTabFabs;
 
+  const showAgendaAdd = activeRouteName === 'goals' && !hideTabFabs && !agendaManaging;
+
   useEffect(() => {
     resetFabScroll();
   }, [activeRouteName]);
+
+  useEffect(() => uiEvents.subscribeAgendaManageFabState((state) => setAgendaManaging(state.managing)), []);
 
   const onTabPress = (tabKey: string) => {
     const routeName = TAB_KEY_TO_ROUTE[tabKey];
@@ -172,10 +179,28 @@ export function AppBottomTabBar({ state, emitter, navigateToTab }: BottomTabBarP
           </GlassFab>
         </FabAutoHide>
       ) : null}
+      {showAgendaAdd ? (
+        <FabAutoHide>
+          <SpeedDialFab
+            actions={AGENDA_ADD_ACTIONS}
+            accessibilityLabel="Ajouter un paiement récurrent"
+            onChoose={uiEvents.requestNewRecurringPayment}
+            style={styles.voiceFab}
+            bottomOffset={hostHeight + FAB_RIGHT_GAP_BOTTOM}
+            rightOffset={FAB_RIGHT}
+          />
+        </FabAutoHide>
+      ) : null}
       <BottomNavBar currentTab={currentTab} onTabPress={onTabPress} />
     </View>
   );
 }
+
+const AGENDA_ADD_ACTIONS: SpeedDialAction<RecurringPaymentAddVariant>[] = [
+  { key: 'income', label: 'Revenu récurrent', icon: 'trending-up' },
+  { key: 'bill', label: 'Facture récurrente', icon: 'document-text-outline' },
+  { key: 'subscription', label: 'Abonnement', icon: 'repeat' },
+];
 
 const FAB_RIGHT = 20;
 const FAB_RIGHT_GAP_BOTTOM = 12;

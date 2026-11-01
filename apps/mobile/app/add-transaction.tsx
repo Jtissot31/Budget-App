@@ -1903,6 +1903,7 @@ export default function AddTransactionScreen() {
           title: 'Ajouté à l’enveloppe',
           subtitle: [destinationEndpoint.label, displayAmount].filter(Boolean).join(' · '),
           icon: 'swap-horizontal',
+          delayMs: SAVE_TOAST_DELAY_MS,
         });
         router.back();
       } finally {
@@ -2072,6 +2073,7 @@ export default function AddTransactionScreen() {
             : 'Dépense ajoutée',
       subtitle: [label.trim(), displayAmount].filter(Boolean).join(' · '),
       icon: type === 'income' ? 'arrow-down' : isTransfer ? 'swap-horizontal' : 'checkmark',
+      delayMs: SAVE_TOAST_DELAY_MS,
     });
     router.back();
     } catch {
@@ -2878,6 +2880,9 @@ export default function AddTransactionScreen() {
     </GestureHandlerRootView>
   );
 }
+
+/** The confirmation appears once the sheet has closed, so the two animations don't overlap. */
+const SAVE_TOAST_DELAY_MS = 280;
 
 const TYPE_TABS: { id: 'expense' | 'income' | 'transfer'; label: string }[] = [
   { id: 'expense', label: 'Dépense' },

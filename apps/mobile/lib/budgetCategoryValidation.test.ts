@@ -214,7 +214,7 @@ assert.equal(Object.keys(multi.fieldErrors).length, 3);
 
 // --- Capacity ceiling: blocking, but explained ------------------------------
 
-const full: ExistingBudgetCategory[] = Array.from({ length: 10 }, (_, index) => ({
+const full: ExistingBudgetCategory[] = Array.from({ length: 30 }, (_, index) => ({
   id: `cat-${index}`,
   name: `Catégorie ${index}`,
   limit: 100,
@@ -230,7 +230,7 @@ assert.deepEqual(atCapacity.fieldErrors, {}, 'the ceiling is not a field error')
 assert.equal(atCapacity.blocked?.code, 'at-capacity');
 assert.equal(
   atCapacity.blocked?.message,
-  "Tu as déjà 10 catégories, c'est le maximum. Supprime ou fusionne une catégorie pour faire de la place.",
+  "Tu as déjà 30 catégories, c'est le maximum. Supprime ou fusionne une catégorie pour faire de la place.",
 );
 // Nine rows still leave room — the old form disabled its button far too eagerly.
 assert.equal(

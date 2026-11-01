@@ -1,6 +1,6 @@
 # Where work stopped and what's next
 
-*Last updated: Oct 26, 2026, branch `fix/nav-bar-light-theme` (PR #2).* Update this file whenever you stop.
+*Last updated: Nov 1, 2026, branch `fix/nav-bar-light-theme` (PR #2).* Update this file whenever you stop.
 
 ## Done in the latest batch (needs on-device testing)
 - **Expo SDK 57 → 58** (React Native 0.88, React 19.3, Reanimated 4.7, Gesture Handler 3). `InteractionManager` was removed, so use `lib/runAfterInteractions.ts`.
@@ -13,8 +13,32 @@
 - **Primary buttons:** neutral pill (`PrimarySaveButton`, AddArticleSheet, GeminiApiKeySheet). The speed-dial bubbles are flat charcoal with no glass.
 - **Merchant logos:** a large lookup table (`lib/merchantLogoDatabase.ts`) that also matches whole words in bank-style labels like "TIM HORTONS #1234 …".
 
+## Done Nov 1, 2026 (uncommitted, needs on-device testing)
+- **Account detail:** Enveloppes, À venir and Historique are now cards with the same row. Enveloppes has a "Mis de côté / Libre" summary with a bar; À venir shows relative dates and sorts by real next occurrence; Historique has one card per month (`components/wallet/AccountHistoryList.tsx`), with the date under the amount and one net total per month.
+- **Envelope creation** (`EnvelopeSheet.tsx`) is name + emoji only, starting at 0 $. Money goes in through « Virer », and editing still shows the amount. The owner rejected preset chips, big-emoji heroes and quick-amount pills as childish. The keyboard opens by itself and the sheet is tall so the form stays above it (real Android keyboard untested).
+- **Envelope detail page** (`app/envelope-detail.tsx`): tapping an envelope on the account page opens it. Comptes no longer shows envelopes or expand chevrons; they are created from the account page. Amount, share of balance, round shortcuts Ajouter / Retirer / Transférer, linked goal; the owner asked for shortcuts instead of a Mouvements list. Modifier (name + emoji only) and Supprimer are in the … menu. New table `account_envelope_moves`, written by `moveEnvelopeMoney()` but not shown anywhere for now.
+- **Account detail hero:** `components/wallet/AccountBankCard.tsx` draws the account as a bank card, dark graphite with a tint of the bank from `lib/institutionBrandColor.ts`, balance on it. The owner rejected a saturated version with a gold chip and a big disc as ugly. The summary card under it drops its own amount (`hideHero`) and keeps Entrées / Sorties, or the credit details, and is hidden when empty. The owner had the balance chart removed from this page.
+- **Loans:** `components/loans/LoanFormSheet.tsx` is the first way to create a loan (Comptes → Prêts → Ajouter). It creates no recurring payment yet, so a new loan is not in the Agenda.
+- **Loans:** `components/loans/LoanFormSheet.tsx` is the first way to create a loan (Comptes → Prêts → Ajouter). It creates no recurring payment yet, so a new loan is not in the Agenda.
+- **Agenda:** calendar is the default view; next payment merged into the summary card; the « + » is `SpeedDialFab` in the tab bar, shared with Activité.
+- **Options menu:** `OverflowMenuButton` sits at the bottom of the screen and runs its action after closing, because Android dropped dialogs and focus requested during the close. **Category sheet:** the limit moved to its own row under the summary.
+- **FitText:** also uses native `adjustsFontSizeToFit`, because Android could measure the hidden copy clipped and end in « … ». **Status bar scrim** is in the root layout.
+- **Budget tiles:** ring and icon sizes are shared with goal tiles; a dashed « Nouvelle catégorie » tile ends the grid.
+- **Recurring form:** name in a filled field, account and category as chips like the transaction form; Actif and end date only show when editing. In the calendar, today and the selected day get an outline.
+- **Envelope transfers:** `EnvelopeTransferSheet` follows the Virement form (big amount, numpad, chips) and names the account instead of « Non attribué ».
+- **Loan cards:** headline is what is left to pay, in full (not « 208,8K »), then « à payer sur X ».
+- **New category form:** name (with icon) and monthly limit only. Quick amounts, pace preview and the periodic limit were removed at the owner's request; `upsertCategoryBudget` still accepts a weekly limit.
+- **Expense form:** `ChipSelectField` chips no longer jump to the front (reorder spring + scroll fought each other). Toast has no FitText/spring and waits for the sheet to close. « + Ajouter » on the articles card kept its fill off Android because of a Pressable style function, now on an inner View. The 24 h impulse tip is limited to shopping categories.
+- **Fake charts removed:** goal and loan charts used to draw a made-up ramp without real data (`buildDemoGoalContributionRamp`, deleted). Goal Évolution now only shows with real versements. Budget hero lost its pace bar; Patrimoine row is out of Comptes (route `/patrimoine` remains); tabs have a status bar scrim.
+- **Budget colours:** `lib/budgetTone.ts` is now one vivid amber; the À surveiller section is gone and category tiles show only ring, %, name and what is left (the owner found the screen too wordy).
+- **Activité:** the date filter icon was removed at the owner's request. **Goal form:** name in a filled field, target and saved side by side, hints removed. `DatePickerField` layout moved to an inner View (Android). Home carousel: two cards fit between the margins.
+- **Categories:** limit raised from 10 to 30 (the owner was at 10, which hid the add button); colours repeat past the palette. « + Ajouter » sits in the section header.
+- **Agenda:** calendar is the default view; next payment merged into the summary card; the « + » is `SpeedDialFab` in the tab bar, shared with Activité (`AddTransactionFab`).
+- **Income icon:** the big green `$` in a tile is gone. `IncomeIcon` is now a grey `trending-up`; in `ProtoTransactionRow` it has no tile, like the logos. Expense rows without a logo keep their tile.
+- **Crop:** the font wait cap went from 3 s to 20 s because fonts take longer over a tunnel. Accueil stats are centred; "+0$" / "−0$" lost their sign; "dépassé" was removed from Accueil and Copilote.
+- **Scroll twitch on Android (not confirmed fixed):** reported by the owner, not reproduced. The only change is a guard in `SwipeBackHost` `onFinalize`.
+
 ## Open questions for the owner
-- `lib/budgetTone.ts` was changed to **muted** red and sand (`#B86B6B` / `#A8916A`). That contradicts the "vivid colours" rule in `CLAUDE.md`. Ask before keeping it, or revert to `#EF4444` / `#F59E0B`.
 - The "Virement" → envelope path in `app/add-transaction.tsx` doesn't check that the amount is ≤ the account's unassigned money. `EnvelopeTransferSheet` does check.
 
 ## Next up (from `docs/ux-audit-2026-10-21.md`)

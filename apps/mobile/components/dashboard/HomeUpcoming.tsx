@@ -4,6 +4,7 @@
  * - SpendingSnapshot : où va l'argent ce mois (top catégories).
  * - GoalsOverview : progression globale de l'épargne au-dessus de la grille d'objectifs.
  */
+import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { PayIcon } from '@/components/agenda/ProtoAgendaScreen';
 import { BudgetCategoryIcon } from '@/components/budget/BudgetCategoryIcon';
@@ -17,7 +18,7 @@ import {
   typographyKit,
 } from '@/constants/theme';
 import type { BudgetCategoryUiModel } from '@/lib/budgetCategoryModel';
-import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
+import { formatDisplayMoneyAbsolute, formatDisplayMoneyAbsoluteExact } from '@/lib/formatDisplayMoney';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 import type { AgendaBill } from '@/types';
@@ -26,7 +27,9 @@ const AMBER = '#F59E0B';
 const CAROUSEL_MAX = 3;
 /** Low-balance warnings cover the next payment and anything due up to this many days after it. */
 const WARN_WINDOW_DAYS = 3;
+/** Fallback until the row is measured; then two cards fill it exactly, margin to margin. */
 const CARD_WIDTH = 136;
+const CARD_GAP = 10;
 const TOP_CATEGORIES = 4;
 /** Monochrome steps for « Où va ton argent » — biggest category brightest, no bright hues. */
 const MONO_TONES_DARK = ['#D4D4D8', '#A1A1AA', '#71717A', '#52525B'];
@@ -75,7 +78,11 @@ export function NextPayments({
   shortfallFor?: (row: UpcomingRow) => number;
 }) {
   const { colors } = useAppTheme();
+  const [rowWidth, setRowWidth] = useState(0);
   const [next, ...rest] = rows;
+  // A single remaining payment takes the whole row instead of leaving a hole beside it.
+  const halfWidth = rowWidth > 0 ? Math.floor((rowWidth - CARD_GAP) / 2) : CARD_WIDTH;
+  const cardWidth = rest.length === 1 && rowWidth > 0 ? rowWidth : halfWidth;
   if (!next) return null;
   const nextDays = daysUntil(next.dateKey);
   const nextShortfall = shortfallFor?.(next) ?? 0;
@@ -142,8 +149,9 @@ export function NextPayments({
           showsHorizontalScrollIndicator={false}
           style={styles.carousel}
           contentContainerStyle={styles.carouselContent}
+          onLayout={(event) => setRowWidth(Math.floor(event.nativeEvent.layout.width))}
           decelerationRate="fast"
-          snapToInterval={CARD_WIDTH + 10}
+          snapToInterval={cardWidth + CARD_GAP}
         >
           {rest.slice(0, CAROUSEL_MAX).map(({ dateKey, bill }) => {
             const days = daysUntil(dateKey);
@@ -161,6 +169,7 @@ export function NextPayments({
                 style={[
                   styles.card,
                   {
+                    width: cardWidth,
                     backgroundColor: sameDay ? featuredFill : colors.containerBackground,
                     borderColor: sameDay ? featuredFill : colors.containerBorder,
                   },
@@ -197,18 +206,6 @@ export function NextPayments({
               </PressScale>
             );
           })}
-          <PressScale
-            accessibilityRole="button"
-            accessibilityLabel="Ouvrir l'agenda"
-            scaleTo={0.95}
-            onPress={() => open(() => onOpen())}
-            style={[styles.card, styles.moreCard, { borderColor: colors.containerBorder }]}
-          >
-            <View style={[styles.moreIcon, { backgroundColor: colors.surfaceElevated }]}>
-              <AppIcon family="ionicons" name="calendar-outline" size={20} color={colors.text} />
-            </View>
-            <Text style={[styles.moreText, jakartaSemiboldText, { color: colors.text }]}>Voir l’agenda</Text>
-          </PressScale>
         </ScrollView>
       ) : null}
     </View>
@@ -319,8 +316,8 @@ export function GoalWideCard({
       onPress={() => open(onPress)}
       style={[styles.goalWide, { backgroundColor: colors.containerBackground }]}
     >
-      <RingGauge progress={progress} color={colors.accentGreen} size={72} stroke={6}>
-        <View style={[styles.goalWideIcon, { backgroundColor: colors.surfaceElevated }]}>{icon}</View>
+      <RingGauge progress={progress} color={colors.accentGreen} size={54} stroke={4}>
+        <View style={[styles.goalIconWell, { backgroundColor: colors.surfaceElevated }]}>{icon}</View>
       </RingGauge>
       <View style={styles.goalWideBody}>
         <View style={styles.catLine}>
@@ -368,7 +365,7 @@ export function LoanWideCard({
   const { colors } = useAppTheme();
   const progress = principal > 0 ? Math.min(1, Math.max(0, principal - remaining) / principal) : 0;
   const done = principal > 0 && remaining <= 0.005;
-  const show = (value: number) => (hidden ? '••••' : formatDisplayMoneyAbsolute(value));
+  const show = (value: number) => (hidden ? '••••' : formatDisplayMoneyAbsoluteExact(value));
   return (
     <PressScale
       accessibilityRole="button"
@@ -377,14 +374,14 @@ export function LoanWideCard({
       onPress={() => open(onPress)}
       style={[styles.goalWide, { backgroundColor: colors.containerBackground }]}
     >
-      <RingGauge progress={progress} color={colors.accentGreen} size={72} stroke={6}>
-        <View style={[styles.goalWideIcon, { backgroundColor: colors.surfaceElevated }]}>{icon}</View>
+      <RingGauge progress={progress} color={colors.accentGreen} size={54} stroke={4}>
+        <View style={[styles.goalIconWell, { backgroundColor: colors.surfaceElevated }]}>{icon}</View>
       </RingGauge>
       <View style={styles.goalWideBody}>
         <View style={styles.catLine}>
           <FitText style={[styles.goalWideName, jakartaSemiboldText, { color: colors.text }]}>{name}</FitText>
-          <Text style={[styles.goalWidePct, jakartaSemiboldText, { color: colors.accentGreen }]}>
-            {`${Math.round(progress * 100)} %`}
+          <Text style={[styles.goalWidePct, jakartaMediumText, { color: colors.textMuted }]}>
+            {`${Math.round(progress * 100)} % payé`}
           </Text>
         </View>
         <FitText
@@ -393,13 +390,10 @@ export function LoanWideCard({
           lineHeight={28}
           minScale={0.6}
         >
-          {`${show(remaining)} `}
-          <Text style={[styles.sub, jakartaMediumText, { color: colors.textMuted }]}>
-            {`sur ${show(principal)}`}
-          </Text>
+          {show(remaining)}
         </FitText>
-        <Text style={[styles.sub, jakartaMediumText, { color: colors.textMuted }]}>
-          {done ? 'Remboursé !' : `${show(remaining)} restant`}
+        <Text style={[styles.sub, jakartaMediumText, { color: colors.textMuted }]} numberOfLines={1}>
+          {done ? 'Remboursé !' : `à payer sur ${show(principal)}`}
         </Text>
       </View>
     </PressScale>
@@ -463,7 +457,7 @@ export function GoalsOverview({
 
 const styles = StyleSheet.create({
   goalWide: { flexDirection: 'row', alignItems: 'center', gap: 16, borderRadius: 18, padding: 16 },
-  goalWideIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  goalIconWell: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   goalWideBody: { flex: 1, minWidth: 0, gap: 2 },
   goalWideName: { fontSize: 15, flexShrink: 1 },
   goalWidePct: { fontSize: 13, flexShrink: 0 },
@@ -502,10 +496,9 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   pillText: { ...typographyKit.metaSemibold, fontSize: 12.5 },
-  carousel: { marginTop: 10, marginHorizontal: -PAGE_PADDING_HORIZONTAL },
-  carouselContent: { paddingHorizontal: PAGE_PADDING_HORIZONTAL, gap: 10 },
+  carousel: { marginTop: 10 },
+  carouselContent: { gap: CARD_GAP },
   card: {
-    width: CARD_WIDTH,
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
     padding: 12,
@@ -520,9 +513,6 @@ const styles = StyleSheet.create({
   },
   cardWhen: { ...typographyKit.metaSemibold, fontSize: 12, flexShrink: 0 },
   cardName: { letterSpacing: -0.2 },
-  moreCard: { alignItems: 'center', justifyContent: 'center', gap: 8, width: 104, borderStyle: 'dashed', borderWidth: 1 },
-  moreIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  moreText: { fontSize: 12.5, textAlign: 'center' },
   stack: { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', gap: 2 },
   catRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 12 },
   catIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
