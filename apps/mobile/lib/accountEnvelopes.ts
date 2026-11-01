@@ -1,0 +1,160 @@
+/**
+ * Account envelopes — split one account's balance into named portions
+ * (Dépenses, Factures, Loisirs…). Amounts are set by the user; whatever isn't
+ * assigned shows as « Non attribué ». Transactions don't move envelope money (v1).
+ */
+import { getDb } from '@/lib/db';
+import { dataEvents } from '@/lib/events';
+
+export type AccountEnvelope = {
+  id: string;
+  accountId: string;
+  name: string;
+  /** Emoji (current) or an Ionicons glyph name (older envelopes) — see `isEnvelopeEmoji`. */
+  icon: string;
+  amount: number;
+  displayOrder: number;
+  createdAt: string;
+};
+
+type EnvelopeRow = {
+  id: string;
+  account_id: string;
+  name: string;
+  icon: string | null;
+  amount: number;
+  display_order: number;
+  created_at: string;
+};
+
+export const DEFAULT_ENVELOPE_ICON = '💰';
+
+/** Short, sober choice. An envelope saved with an older emoji keeps it until the user picks another. */
+export const ENVELOPE_EMOJIS = [
+  '💰', '💡', '🏠', '🛒', '🚗', '✈️',
+  '🎓', '💊', '🐾', '🎁', '📱', '🌱',
+] as const;
+
+/** Older envelopes stored an Ionicons name (« cart-outline »); new ones store an emoji. */
+export function isEnvelopeEmoji(icon: string): boolean {
+  return !/^[a-z0-9-]+$/.test(icon);
+}
+
+function fromRow(row: EnvelopeRow): AccountEnvelope {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    name: row.name,
+    icon: row.icon || DEFAULT_ENVELOPE_ICON,
+    amount: Number(row.amount) || 0,
+    displayOrder: Number(row.display_order) || 0,
+    createdAt: row.created_at,
+  };
+}
+
+/** All envelopes grouped by account id, each list in display order. */
+export async function getEnvelopesByAccount(): Promise<Record<string, AccountEnvelope[]>> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<EnvelopeRow>('SELECT * FROM account_envelopes');
+  const grouped: Record<string, AccountEnvelope[]> = {};
+  for (const envelope of rows.map(fromRow)) {
+    (grouped[envelope.accountId] ??= []).push(envelope);
+  }
+  for (const list of Object.values(grouped)) {
+    list.sort((a, b) => a.displayOrder - b.displayOrder || a.createdAt.localeCompare(b.createdAt));
+  }
+  return grouped;
+}
+
+export function newEnvelopeId(): string {
+  return `env-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export async function saveEnvelope(
+  envelope: AccountEnvelope,
+  isNew: boolean,
+  options?: { emit?: boolean },
+): Promise<void> {
+  const db = await getDb();
+  if (isNew) {
+    await db.runAsync(
+      `INSERT INTO account_envelopes (id, account_id, name, icon, amount, display_order, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        envelope.id,
+        envelope.accountId,
+        envelope.name,
+        envelope.icon,
+        envelope.amount,
+        envelope.displayOrder,
+        envelope.createdAt,
+      ],
+    );
+  } else {
+    await db.runAsync('UPDATE account_envelopes SET name = ?, icon = ?, amount = ? WHERE id = ?', [
+      envelope.name,
+      envelope.icon,
+      envelope.amount,
+      envelope.id,
+    ]);
+    await syncLinkedGoals(db);
+  }
+  if (options?.emit !== false) dataEvents.emit();
+}
+
+/** Envelope → goal: a goal linked to an envelope always shows that envelope's amount. */
+async function syncLinkedGoals(db: Awaited<ReturnType<typeof getDb>>): Promise<void> {
+  await db.runAsync(
+    `UPDATE savings_goals
+       SET current_amount = COALESCE(
+         (SELECT amount FROM account_envelopes e WHERE e.id = savings_goals.linked_envelope_id),
+         current_amount
+       )
+       WHERE linked_envelope_id IS NOT NULL`,
+  );
+}
+
+export async function deleteEnvelope(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'UPDATE savings_goals SET linked_account_id = NULL, linked_envelope_id = NULL WHERE linked_envelope_id = ?',
+    [id],
+  );
+  await db.runAsync('DELETE FROM account_envelopes WHERE id = ?', [id]);
+  dataEvents.emit();
+}
+
+/**
+ * Moves money between a single account's envelopes. `null` means the account's
+ * unassigned part (« Non attribué »), so null → envelope fills it from the free balance.
+ * The account balance itself never changes — envelopes only split it.
+ */
+export async function moveEnvelopeMoney(
+  fromEnvelopeId: string | null,
+  toEnvelopeId: string | null,
+  amount: number,
+): Promise<void> {
+  if (!(amount > 0) || fromEnvelopeId === toEnvelopeId) return;
+  const db = await getDb();
+  const owner = await db.getFirstAsync<{ account_id: string }>(
+    'SELECT account_id FROM account_envelopes WHERE id = ?',
+    [toEnvelopeId ?? fromEnvelopeId],
+  );
+  await db.withTransactionAsync(async () => {
+    if (owner) {
+      await db.runAsync(
+        `INSERT INTO account_envelope_moves (id, account_id, from_envelope_id, to_envelope_id, amount, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [newEnvelopeId(), owner.account_id, fromEnvelopeId, toEnvelopeId, amount, new Date().toISOString()],
+      );
+    }
+    if (fromEnvelopeId) {
+      await db.runAsync('UPDATE account_envelopes SET amount = MAX(0, amount - ?) WHERE id = ?', [amount, fromEnvelopeId]);
+    }
+    if (toEnvelopeId) {
+      await db.runAsync('UPDATE account_envelopes SET amount = amount + ? WHERE id = ?', [amount, toEnvelopeId]);
+    }
+    await syncLinkedGoals(db);
+  });
+  dataEvents.emit();
+}

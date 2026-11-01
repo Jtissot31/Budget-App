@@ -1,4 +1,5 @@
-import { InteractionManager, Platform } from 'react-native';
+import { Platform } from 'react-native';
+import { runAfterInteractions } from '@/lib/runAfterInteractions';
 import { UNCATEGORIZED_TRANSACTION_CATEGORY } from '@/constants/categoryOptions';
 
 import { repairOrphanTransactionCategories, upsertCategory } from './db';
@@ -77,7 +78,7 @@ function withTimeout<T>(promise: Promise<T>, label: string, ms: number): Promise
 }
 
 function runWhenIdle(task: () => void): void {
-  InteractionManager.runAfterInteractions(() => {
+  runAfterInteractions(() => {
     // Yield one frame so Accueil can paint before enrichment work.
     setTimeout(task, 0);
   });

@@ -8,7 +8,8 @@ import Svg, { Path } from 'react-native-svg';
 import { AppIcon } from '@/components/icons/AppIcon';
 import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsForm';
 import { TRANSACTIONS_FAB_STACK_HEIGHT } from '@/constants/fabStyles';
-import { pressableCompactMotionStyle } from '@/constants/motionKit';
+import Animated from 'react-native-reanimated';
+import { usePopOnActive, usePressScale } from '@/components/kit/motion';
 import type { AppColors } from '@/constants/theme';
 import { spacing } from '@/constants/theme';
 import { uiEvents } from '@/lib/events';
@@ -255,35 +256,42 @@ export function TabButton({
   activeIndicatorColor,
   onPress,
 }: TabButtonProps) {
+  const press = usePressScale(0.88);
+  const pop = usePopOnActive(focused);
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [tabStyles.tabSlot, pressableCompactMotionStyle(pressed)]}
+      onPressIn={press.onPressIn}
+      onPressOut={press.onPressOut}
+      style={tabStyles.tabSlot}
       accessibilityRole="tab"
       accessibilityLabel={tabLabel}
       accessibilityState={{ selected: focused }}
     >
-      <View
+      <Animated.View
         style={[
           tabStyles.tabInner,
+          press.animatedStyle,
           floatingTabBarActiveWellShellStyle(),
           focused && activeWellColor ? { backgroundColor: activeWellColor } : null,
         ]}
       >
-        <AppIcon
-          family="material-community"
-          name={iconName}
-          size={focused ? TAB_ICON_SIZE_ACTIVE : TAB_ICON_SIZE}
-          color={iconColor}
-          focused={focused}
-        />
+        <Animated.View style={pop}>
+          <AppIcon
+            family="material-community"
+            name={iconName}
+            size={focused ? TAB_ICON_SIZE_ACTIVE : TAB_ICON_SIZE}
+            color={iconColor}
+            focused={focused}
+          />
+        </Animated.View>
         {focused && activeIndicatorColor ? (
           <View
             pointerEvents="none"
             style={[tabStyles.activeIndicator, { backgroundColor: activeIndicatorColor }]}
           />
         ) : null}
-      </View>
+      </Animated.View>
     </Pressable>
   );
 }

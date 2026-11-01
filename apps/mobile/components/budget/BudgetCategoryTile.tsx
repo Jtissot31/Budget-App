@@ -12,6 +12,7 @@ import { jakartaMediumText, jakartaSemiboldText, moneyAmountTypography } from '@
 import type { BudgetCategoryUiModel } from '@/lib/budgetCategoryModel';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { tapHaptic } from '@/lib/haptics';
+import { BUDGET_NEAR, BUDGET_OVER } from '@/lib/budgetTone';
 import { useAppTheme } from '@/lib/themeContext';
 
 type Props = {
@@ -22,7 +23,6 @@ type Props = {
 };
 
 /** Muted amber that sits well on the dark theme. */
-const WARNING_SOFT = '#E0B354';
 
 export const BudgetCategoryTile = memo(function BudgetCategoryTile({
   category,
@@ -34,15 +34,16 @@ export const BudgetCategoryTile = memo(function BudgetCategoryTile({
   const over = category.usage.isOverBudget;
   const left = category.limit - category.spent;
   const ratio = category.limit > 0 ? category.spent / category.limit : over ? 1 : 0;
-  // Colour carries meaning only: neutral when healthy, amber near the limit, red when over.
-  const nearLimit = !over && ratio >= 0.9;
-  const ringColor = over ? colors.danger : nearLimit ? WARNING_SOFT : colors.text;
+  // Status lives on the ring only: green when healthy, amber near or over the limit.
+  // Exactly at the limit (rent, phone paid in full) is fine — only « almost there » gets the amber ring.
+  const nearLimit = !over && ratio >= 0.9 && ratio < 0.995;
+  const ringColor = over ? BUDGET_OVER : nearLimit ? BUDGET_NEAR : colors.accentGreen;
   const pct = Math.round(ratio * 100);
 
   return (
     <PressScale
       accessibilityRole="button"
-      accessibilityLabel={`${category.name}, ${formatDisplayMoneyAbsolute(category.spent)} sur ${formatDisplayMoneyAbsolute(category.limit)}`}
+      accessibilityLabel={`${category.name}, ${formatDisplayMoneyAbsolute(category.spent)} sur ${formatDisplayMoneyAbsolute(category.limit)}, ${over ? 'dépassement de' : 'reste'} ${formatDisplayMoneyAbsolute(Math.abs(left))}`}
       scaleTo={0.96}
       onPress={() => {
         tapHaptic();
@@ -52,22 +53,20 @@ export const BudgetCategoryTile = memo(function BudgetCategoryTile({
         styles.tile,
         {
           backgroundColor: colors.containerBackground,
-          borderColor: selected ? colors.text : over ? `${colors.danger}55` : colors.containerBorder,
+          borderColor: selected ? colors.text : colors.containerBorder,
         },
       ]}
     >
       <View style={styles.top}>
-        <RingGauge progress={ratio} color={ringColor} size={54} stroke={5}>
-          <View
-            style={[
-              styles.iconWell,
-              { backgroundColor: colors.surfaceElevated },
-            ]}
-          >
+        <RingGauge progress={ratio} color={ringColor} size={54} stroke={4}>
+          {/* Round tinted well — same shape as the savings-goal tile. */}
+          <View style={[styles.iconWell, { backgroundColor: colors.surfaceElevated }]}>
             <BudgetCategoryIcon
               icon={category.icon}
               name={category.name}
               id={category.id}
+              tint={colors.text}
+              bare
               wellSize={34}
               glyphSize={17}
             />
@@ -81,8 +80,8 @@ export const BudgetCategoryTile = memo(function BudgetCategoryTile({
             color={selected ? colors.text : colors.textMuted}
           />
         ) : (
-          <Text style={[styles.pct, jakartaSemiboldText, { color: over ? colors.danger : colors.textMuted }]}>
-            {pct} %
+          <Text style={[styles.pct, jakartaSemiboldText, { color: colors.textMuted }]}>
+            {`${pct} %`}
           </Text>
         )}
       </View>
@@ -97,19 +96,13 @@ export const BudgetCategoryTile = memo(function BudgetCategoryTile({
       </FitText>
 
       <FitText
-        style={[moneyAmountTypography({ tier: 'stat', fontSize: 22 }), { color: over ? colors.danger : colors.text }]}
+        style={[moneyAmountTypography({ tier: 'stat', fontSize: 22 }), { color: colors.text }]}
         fontSize={22}
         lineHeight={27}
         minScale={0.6}
       >
         {over ? `−${formatDisplayMoneyAbsolute(Math.abs(left))}` : formatDisplayMoneyAbsolute(Math.max(0, left))}
       </FitText>
-      <Text style={[styles.caption, jakartaMediumText, { color: over ? colors.danger : colors.textMuted }]} numberOfLines={1}>
-        {over ? 'au-dessus du budget' : left <= 0.005 ? 'budget atteint' : 'restants'}
-      </Text>
-      <Text style={[styles.meta, jakartaMediumText, { color: colors.textMuted }]} numberOfLines={1}>
-        {formatDisplayMoneyAbsolute(category.spent)} / {formatDisplayMoneyAbsolute(category.limit)}
-      </Text>
     </PressScale>
   );
 });
@@ -130,6 +123,4 @@ const styles = StyleSheet.create({
   pct: { fontSize: 12 },
   iconWell: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   name: { letterSpacing: -0.2 },
-  caption: { fontSize: 11.5, marginTop: -2 },
-  meta: { fontSize: 11.5, marginTop: 6 },
 });

@@ -22,3 +22,11 @@ web-build/
 
 expo-env.d.ts
 # @end expo-cli
+
+# Local debug output (device screenshots, UI dumps, agent scratch files)
+/*.png
+/*.xml
+/*.log
+/.agent-tmp*
+/1
+modules/*/android/build/

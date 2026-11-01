@@ -143,6 +143,12 @@ export interface SavingsGoal {
   color: string;
   icon: string;
   createdAt: string;
+  /** Account whose balance this goal is carved out of (set together with an envelope). */
+  linkedAccountId?: string | null;
+  /** Envelope mirroring this goal's saved amount inside the linked account. */
+  linkedEnvelopeId?: string | null;
+  /** « bills » = the Factures d'avance ladder (its target follows the saved amount). */
+  tierKind?: 'bills' | null;
 }
 
 export type LoanType =

@@ -14,7 +14,6 @@ import Animated, {
   useSharedValue,
   withDelay,
   withSequence,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,6 +28,8 @@ export type ToastOptions = {
   /** Accent for the icon disc (defaults to green). */
   tone?: string;
   durationMs?: number;
+  /** Wait before appearing, e.g. until the sheet that triggered it has finished closing. */
+  delayMs?: number;
 };
 
 type Listener = (toast: ToastOptions & { id: number }) => void;
@@ -37,7 +38,9 @@ let nextId = 1;
 
 export function showToast(options: ToastOptions) {
   const toast = { ...options, id: nextId++ };
-  listeners.forEach((listener) => listener(toast));
+  const notify = () => listeners.forEach((listener) => listener(toast));
+  if (options.delayMs) setTimeout(notify, options.delayMs);
+  else notify();
 }
 
 export function ToastHost() {
@@ -67,7 +70,7 @@ export function ToastHost() {
     progress.set(0);
     progress.set(
       withSequence(
-        withSpring(1, { damping: 16, stiffness: 220 }),
+        withTiming(1, { duration: 240, easing: Easing.out(Easing.cubic) }),
         withDelay(
           toast.durationMs ?? 2200,
           withTiming(0, { duration: 220, easing: Easing.in(Easing.cubic) }, (done) => {
@@ -99,11 +102,12 @@ export function ToastHost() {
           <AppIcon family="ionicons" name={toast.icon ?? 'checkmark'} size={18} color={tone} />
         </View>
         <View style={styles.copy}>
-          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+          {/* Plain Text: FitText measures after mount, which resized the toast mid-animation. */}
+          <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>
             {toast.title}
           </Text>
           {toast.subtitle ? (
-            <Text style={[styles.subtitle, { color: colors.textMuted }]} numberOfLines={1}>
+            <Text style={[styles.subtitle, { color: colors.textMuted }]} numberOfLines={2}>
               {toast.subtitle}
             </Text>
           ) : null}
@@ -132,6 +136,6 @@ const styles = StyleSheet.create({
   },
   iconDisc: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   copy: { flexShrink: 1, minWidth: 0 },
-  title: { ...typographyKit.metaSemibold, fontSize: 14 },
-  subtitle: { ...typographyKit.metaMedium, fontSize: 12, marginTop: 1 },
+  title: { ...typographyKit.metaSemibold, fontSize: 14, lineHeight: 18 },
+  subtitle: { ...typographyKit.metaMedium, fontSize: 12, lineHeight: 16, marginTop: 1 },
 });

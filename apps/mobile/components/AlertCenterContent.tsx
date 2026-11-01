@@ -1,21 +1,17 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { HomeAlertGlyph } from '@/components/alerts/HomeAlertGlyph';
-import { ProtoGlassCard } from '@/components/proto/ProtoGlassCard';
-import { ProtoSectionHeader } from '@/components/proto/ProtoSectionHeader';
-import { spacing, typographyKit } from '@/constants/theme';
+import { ListCard, PressScale, SectionLabel, withAlpha } from '@/components/kit';
+import { jakartaMediumText, jakartaSemiboldText, spacing, typographyKit } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 import {
   ALERT_SECTION_LABELS,
   formatAlertClockTime,
   groupAlertCenterItems,
   type AlertCenterItem,
+  type AlertCenterSeverity,
 } from '@/lib/alerts';
-import {
-  alertHomePrimaryTitle,
-  homeAlertPreviewAccent,
-  homeAlertPreviewSurface,
-} from '@/lib/alertPresentation';
+import { alertHomePrimaryTitle, homeAlertPreviewAccent } from '@/lib/alertPresentation';
 import { tapHaptic } from '@/lib/haptics';
 
 type Props = {
@@ -23,102 +19,111 @@ type Props = {
   onOpenAlert: (item: AlertCenterItem) => void;
 };
 
-function AlertCenterCard({
-  item,
-  onPress,
-}: {
-  item: AlertCenterItem;
-  onPress: () => void;
-}) {
+const WARN_TONE = '#E0B354';
+
+function severityTone(
+  severity: AlertCenterSeverity,
+  colors: { danger: string; accentGreen: string; textMuted: string },
+): string {
+  if (severity === 'danger') return colors.danger;
+  if (severity === 'warning') return WARN_TONE;
+  if (severity === 'success') return colors.accentGreen;
+  return colors.textMuted;
+}
+
+function toHex(color: string): string {
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : '#8E8E9A';
+}
+
+function AlertRow({ item, isLast, onPress }: { item: AlertCenterItem; isLast: boolean; onPress: () => void }) {
   const { colors, isLight } = useAppTheme();
   const accent = homeAlertPreviewAccent(item, colors, isLight);
-  const surface = homeAlertPreviewSurface(colors, isLight);
+  const tone = severityTone(item.severity, colors);
   const title = alertHomePrimaryTitle(item);
-  const clock = formatAlertClockTime(item.timestamp);
+  const rawClock = formatAlertClockTime(item.timestamp);
+  // Date-only alerts are stamped at midnight — the time adds nothing.
+  const clock = rawClock && rawClock !== '00:00' ? rawClock : null;
 
   return (
-    <Pressable
+    <PressScale
       onPress={onPress}
+      scaleTo={0.985}
       accessibilityRole="button"
       accessibilityLabel={`Ouvrir l'alerte ${title}`}
       accessibilityState={{ selected: !item.read }}
-      style={({ pressed }) => [pressed && styles.pressed]}
     >
-      <ProtoGlassCard style={[styles.alertCard, surface]} padding={0}>
-        <View style={styles.alertInner}>
-          <View style={[styles.alertIcon, { backgroundColor: accent.iconBg }]}>
-            <HomeAlertGlyph icon={accent.icon} color={accent.iconColor} size={16} />
-          </View>
-
-          <View style={styles.alertCopy}>
-            <View style={styles.alertTitleRow}>
-              <Text style={[styles.alertTitle, { color: colors.text }]} numberOfLines={2}>
-                {title}
-              </Text>
-              <View style={styles.titleTrailing}>
-                {clock ? (
-                  <Text style={[styles.alertTime, { color: colors.textMuted }]} numberOfLines={1}>
-                    {clock}
-                  </Text>
-                ) : null}
-                {!item.read ? (
-                  <View
-                    style={[styles.unreadDot, { backgroundColor: colors.accentGreen }]}
-                    accessibilityLabel="Non lu"
-                  />
-                ) : null}
-              </View>
-            </View>
-            <Text style={[styles.alertBody, { color: colors.textSecondary }]} numberOfLines={3}>
-              {item.message}
-            </Text>
-          </View>
+      <View
+        style={[
+          styles.row,
+          !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.containerBorder },
+        ]}
+      >
+        <View style={[styles.icon, { backgroundColor: withAlpha(toHex(tone), 0.12) }]}>
+          <HomeAlertGlyph icon={accent.icon} color={tone} size={17} />
         </View>
-      </ProtoGlassCard>
-    </Pressable>
+        <View style={styles.copy}>
+          <View style={styles.titleRow}>
+            <Text
+              style={[styles.title, item.read ? jakartaMediumText : jakartaSemiboldText, { color: colors.text }]}
+              numberOfLines={2}
+            >
+              {title}
+            </Text>
+            <View style={styles.trailing}>
+              {clock ? <Text style={[styles.time, { color: colors.textMuted }]}>{clock}</Text> : null}
+              {!item.read ? (
+                <View style={[styles.unread, { backgroundColor: colors.accentGreen }]} accessibilityLabel="Non lu" />
+              ) : null}
+            </View>
+          </View>
+          <Text style={[styles.body, jakartaMediumText, { color: colors.textMuted }]} numberOfLines={2}>
+            {item.message}
+          </Text>
+        </View>
+        <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
+      </View>
+    </PressScale>
   );
 }
 
 export function AlertCenterContent({ items, onOpenAlert }: Props) {
-  const { colors, isLight } = useAppTheme();
+  const { colors } = useAppTheme();
   const groups = groupAlertCenterItems(items);
 
   if (items.length === 0) {
     return (
-      <ProtoGlassCard style={homeAlertPreviewSurface(colors, isLight)} padding={14}>
+      <ListCard padding={20}>
         <View style={styles.empty}>
-          <AppIcon
-            family="ionicons"
-            name="notifications-off-outline"
-            size={28}
-            color={colors.textMuted}
-          />
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>Aucun message</Text>
-          <Text style={[styles.emptyMessage, { color: colors.textMuted }]}>
-            Les rappels utiles apparaîtront ici — toujours avec des pistes concrètes.
+          <View style={[styles.emptyIcon, { backgroundColor: withAlpha('#22C55E', 0.12) }]}>
+            <AppIcon family="ionicons" name="checkmark-done" size={22} color={colors.accentGreen} />
+          </View>
+          <Text style={[styles.emptyTitle, jakartaSemiboldText, { color: colors.text }]}>Aucune alerte</Text>
+          <Text style={[styles.emptyMessage, jakartaMediumText, { color: colors.textMuted }]}>
+            On te prévient dès qu’un paiement, un solde ou un budget mérite ton attention.
           </Text>
         </View>
-      </ProtoGlassCard>
+      </ListCard>
     );
   }
 
   return (
     <View style={styles.list}>
       {groups.map((group) => (
-        <View key={group.section} style={styles.section}>
-          <ProtoSectionHeader title={ALERT_SECTION_LABELS[group.section]} />
-          <View style={styles.sectionCards}>
-            {group.items.map((item) => (
-              <AlertCenterCard
+        <View key={group.section}>
+          <SectionLabel title={ALERT_SECTION_LABELS[group.section]} />
+          <ListCard>
+            {group.items.map((item, index) => (
+              <AlertRow
                 key={item.id}
                 item={item}
+                isLast={index === group.items.length - 1}
                 onPress={() => {
                   tapHaptic();
                   onOpenAlert(item);
                 }}
               />
             ))}
-          </View>
+          </ListCard>
         </View>
       ))}
     </View>
@@ -126,90 +131,18 @@ export function AlertCenterContent({ items, onOpenAlert }: Props) {
 }
 
 const styles = StyleSheet.create({
-  list: {
-    gap: spacing.xl,
-  },
-  section: {
-    gap: 0,
-  },
-  sectionCards: {
-    gap: spacing.sm,
-  },
-  alertCard: {
-    borderRadius: 16,
-  },
-  alertInner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  alertIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 1,
-    flexShrink: 0,
-  },
-  alertCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  alertTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  titleTrailing: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexShrink: 0,
-    marginTop: 2,
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    flexShrink: 0,
-  },
-  alertTitle: {
-    ...typographyKit.rowTitle,
-    fontSize: 14,
-    lineHeight: 18,
-    letterSpacing: -0.15,
-    flex: 1,
-    minWidth: 0,
-  },
-  alertTime: {
-    ...typographyKit.micro,
-    fontSize: 11,
-    lineHeight: 14,
-  },
-  alertBody: {
-    ...typographyKit.micro,
-    fontSize: 11,
-    lineHeight: 14,
-  },
-  empty: {
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-  },
-  emptyTitle: {
-    ...typographyKit.metaSemibold,
-    fontSize: 14,
-  },
-  emptyMessage: {
-    ...typographyKit.metaMedium,
-    fontSize: 13,
-    lineHeight: 18,
-    textAlign: 'center',
-  },
-  pressed: { opacity: 0.85 },
+  list: { gap: spacing.lg },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  icon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  copy: { flexShrink: 1, flexGrow: 1, minWidth: 0, gap: 3 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  title: { fontSize: 14, lineHeight: 18, letterSpacing: -0.15, flexShrink: 1, flexGrow: 1 },
+  trailing: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0, marginTop: 2 },
+  time: { ...typographyKit.micro, fontSize: 11 },
+  unread: { width: 8, height: 8, borderRadius: 4 },
+  body: { fontSize: 12, lineHeight: 16 },
+  empty: { alignItems: 'center', gap: spacing.sm },
+  emptyIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  emptyTitle: { fontSize: 15 },
+  emptyMessage: { fontSize: 13, lineHeight: 18, textAlign: 'center' },
 });

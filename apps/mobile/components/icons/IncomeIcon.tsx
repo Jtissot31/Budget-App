@@ -9,8 +9,8 @@ type Props = {
 
 /**
  * Income / Salaire glyph for Historique list rows (`ProtoTransactionRow` / `UserPickedIconWell`).
- * Ionicons `$` (`logo-usd`) — tinted via `color` (typically accent green).
+ * Ionicons `trending-up`, the counterpart of the expense fallback's `trending-down`.
  */
 export function IncomeIcon({ size, color }: Props) {
-  return <AppIcon family="ionicons" name="logo-usd" size={size} color={color} />;
+  return <AppIcon family="ionicons" name="trending-up" size={size} color={color} />;
 }

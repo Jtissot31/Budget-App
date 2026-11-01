@@ -30,10 +30,10 @@ import {
   SettingsPickerSheet,
   type SettingsPickerOption,
 } from '@/components/SettingsPickerSheet';
-import { SegmentedTabs } from '@/components/SegmentedTabs';
+import { FixedScreenHeader } from '@/components/FixedScreenHeader';
+import { PressScale } from '@/components/kit';
 import { ThemedConfirmModal } from '@/components/ThemedConfirmModal';
 import { TransactionAvatar } from '@/components/TransactionAvatar';
-import { SCREEN_TOP_GUTTER } from '@/constants/ghostUi';
 import {
   FLOATING_NAV_CONTENT_PADDING,
   jakartaMediumText,
@@ -81,14 +81,9 @@ import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { useAppTheme } from '@/lib/themeContext';
 import { UNIFORM_ACTION_BUTTON_MIN_HEIGHT } from '@/lib/uniformGroupStyles';
 import type { Transaction } from '@/types';
+import { FitText } from '@/components/kit/FitText';
 
 type TabId = DocumentKind;
-
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'receipt', label: 'Reçus' },
-  { id: 'contract', label: 'Contrats' },
-  { id: 'paystub', label: 'Talons de paie' },
-];
 
 const EMPTY_ICON_WELL = 44;
 
@@ -465,12 +460,12 @@ export default function DocumentsLibraryScreen() {
             <View style={styles.rowInner}>
               <TransactionAvatar transaction={item.latestTransaction} size={44} />
               <View style={styles.rowCopy}>
-                <Text style={[styles.rowTitle, { color: colors.text }]} numberOfLines={1}>
+                <FitText style={[styles.rowTitle, { color: colors.text }]}>
                   {item.merchantLabel}
-                </Text>
-                <Text style={[styles.rowMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                </FitText>
+                <FitText style={[styles.rowMeta, { color: colors.textMuted }]}>
                   {countLabel} · {formatDate(item.latestDate)}
-                </Text>
+                </FitText>
               </View>
               <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
             </View>
@@ -526,13 +521,13 @@ export default function DocumentsLibraryScreen() {
                 )}
               </View>
               <View style={styles.rowCopy}>
-                <Text style={[styles.rowTitle, { color: colors.text }]} numberOfLines={1}>
+                <FitText style={[styles.rowTitle, { color: colors.text }]}>
                   {item.title}
-                </Text>
-                <Text style={[styles.rowMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                </FitText>
+                <FitText style={[styles.rowMeta, { color: colors.textMuted }]}>
                   {formatDate(item.date)}
                   {item.note ? ` · ${item.note}` : ''}
-                </Text>
+                </FitText>
               </View>
               <AppIcon family="ionicons" name="chevron-forward" size={16} color={colors.textMuted} />
             </View>
@@ -546,47 +541,50 @@ export default function DocumentsLibraryScreen() {
   return (
     <PageTransition>
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <View
-          style={[
-            styles.header,
-            {
-              paddingTop: insets.top + SCREEN_TOP_GUTTER,
-              paddingHorizontal: contentGutter,
-            },
-          ]}
-        >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retour"
-            hitSlop={12}
-            onPress={() => {
-              tapHaptic();
-              router.back();
-            }}
-            style={({ pressed }) => [styles.backHit, pressed && styles.pressed]}
-          >
-            <AppIcon family="ionicons" name="arrow-back" size={24} color={colors.text} />
-          </Pressable>
-          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-            Documents
-          </Text>
-        </View>
+        <FixedScreenHeader title="Documents" onBack={() => router.back()} />
 
-        <View style={[styles.tabsWrap, { paddingHorizontal: contentGutter }]}>
-          <SegmentedTabs
-            tabs={TABS}
-            active={tab}
-            onChange={(id) => {
-              tapHaptic();
-              setTab(id);
-              setAdding(false);
-              setDraftTitle('');
-              setDraftUri(null);
-            }}
-            size="section"
-            variant="section"
-            showDivider={false}
-          />
+        <View style={[styles.overview, { paddingHorizontal: contentGutter }]}>
+          {(
+            [
+              { id: 'receipt', icon: 'receipt-outline', label: 'Reçus', count: receiptTransactions.length },
+              { id: 'contract', icon: 'document-text-outline', label: 'Contrats', count: contracts.length },
+              { id: 'paystub', icon: 'cash-outline', label: 'Talons de paie', count: paystubs.length },
+            ] as const
+          ).map((tile) => {
+            const active = tab === tile.id;
+            return (
+              <View key={tile.id} style={styles.overviewCell}>
+              <PressScale
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`${tile.label}, ${tile.count}`}
+                scaleTo={0.95}
+                onPress={() => {
+                  tapHaptic();
+                  setTab(tile.id);
+                  setAdding(false);
+                  setDraftTitle('');
+                  setDraftUri(null);
+                }}
+                style={[
+                  styles.overviewTile,
+                  {
+                    backgroundColor: colors.containerBackground,
+                    borderColor: active ? colors.text : colors.containerBorder,
+                  },
+                ]}
+              >
+                <View style={[styles.overviewIcon, { backgroundColor: colors.surfaceElevated }]}>
+                  <AppIcon family="ionicons" name={tile.icon} size={17} color={colors.text} />
+                </View>
+                <Text style={[styles.overviewCount, { color: colors.text }]}>{tile.count}</Text>
+                <FitText style={[styles.overviewLabel, { color: colors.textMuted }]}>
+                  {tile.label}
+                </FitText>
+              </PressScale>
+              </View>
+            );
+          })}
         </View>
 
         <View style={[styles.toolbar, { paddingHorizontal: contentGutter }]}>
@@ -631,9 +629,9 @@ export default function DocumentsLibraryScreen() {
                   autoFocus
                 />
                 {draftUri ? (
-                  <Text style={[styles.addUriHint, { color: colors.textMuted }]} numberOfLines={1}>
+                  <FitText style={[styles.addUriHint, { color: colors.textMuted }]}>
                     Fichier joint
-                  </Text>
+                  </FitText>
                 ) : null}
               </View>
               <Pressable
@@ -800,6 +798,17 @@ export default function DocumentsLibraryScreen() {
 }
 
 const styles = StyleSheet.create({
+  overview: { flexDirection: 'row', gap: 10, marginBottom: spacing.md },
+  overviewCell: { flex: 1 },
+  overviewTile: {
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 12,
+    gap: 2,
+  },
+  overviewIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  overviewCount: { ...typographyKit.rowTitle, fontSize: 20, lineHeight: 24, letterSpacing: -0.4 },
+  overviewLabel: { ...typographyKit.metaSemibold, fontSize: 11 },
   screen: { flex: 1 },
   header: {
     flexDirection: 'row',

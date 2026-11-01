@@ -252,6 +252,8 @@ export function SegmentedTabs<T extends string>({
               key={tab.id}
               accessibilityRole="button"
               accessibilityState={{ selected }}
+              // Pills are 32–36pt tall; extend the touch area vertically to the 44pt minimum.
+              hitSlop={{ top: Math.max(0, (44 - sc.tabMinHeight) / 2), bottom: Math.max(0, (44 - sc.tabMinHeight) / 2) }}
               onPress={() => onChange(tab.id)}
               style={[
                 styles.tab,

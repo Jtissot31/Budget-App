@@ -33,6 +33,7 @@ import { MdiIconPicker } from '@/components/MdiIconPicker';
 import { NumericAmountInput } from '@/components/NumericAmountInput';
 import { PremiumSwitch } from '@/components/PremiumSwitch';
 import { PrimarySaveButton } from '@/components/PrimarySaveButton';
+import { ChipSelectField } from '@/components/ChipSelectField';
 import { SettingsSelectField } from '@/components/SettingsSelectField';
 import type { SettingsPickerOption } from '@/components/SettingsPickerSheet';
 import { ThemeSegmentedControl } from '@/components/ThemeSegmentedControl';
@@ -348,7 +349,7 @@ function PaymentFormModal({
   const sheetHeight = useFormSheetHeight(0.92);
   const keyboardInset = useFormSheetKeyboardInset();
   const sectionLabelStyle = useMemo(
-    () => [FORM_SECTION_LABEL_STYLE, { color: themeColors.text }],
+    () => [FORM_SECTION_LABEL_STYLE, { color: themeColors.textMuted }],
     [themeColors.text],
   );
   const [showLogoPicker, setShowLogoPicker] = useState(false);
@@ -493,8 +494,8 @@ function PaymentFormModal({
               >
 
             <View style={styles.section}>
-              <DashboardSectionLabel>{nameFieldLabel(addVariant)}</DashboardSectionLabel>
-              <View style={styles.identityRow}>
+              <DashboardSectionLabel style={sectionLabelStyle}>{nameFieldLabel(addVariant)}</DashboardSectionLabel>
+              <View style={[styles.inputShell, themed.controlStrong]}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Changer le logo ou l'icône"
@@ -502,40 +503,28 @@ function PaymentFormModal({
                     tapHaptic();
                     setShowLogoPicker((shown) => !shown);
                   }}
-                  style={({ pressed }) => [styles.iconAffordance, pressed && styles.pressed]}
+                  hitSlop={8}
+                  style={({ pressed }) => pressed && styles.pressed}
                 >
                   {previewLogoUrl ? (
-                    <LogoIconFrame uri={previewLogoUrl} size={40} />
+                    <LogoIconFrame uri={previewLogoUrl} size={28} />
                   ) : form.name.trim() || form.logoMode === 'icon' ? (
                     <View style={styles.iconSlot}>
-                      <UserPickedIconBadge icon={previewIcon} size={40} iconSize={22} wellGlyphWhite />
+                      <UserPickedIconBadge icon={previewIcon} size={28} iconSize={18} wellGlyphWhite />
                     </View>
                   ) : (
                     <View style={styles.iconGhostSlot} accessibilityElementsHidden>
                       <AppIcon
                         family="ionicons"
                         name={identityGhostIcon(addVariant)}
-                        size={28}
+                        size={20}
                         color={themeColors.textMuted}
                       />
                     </View>
                   )}
-                  <AppIcon
-                    family="ionicons"
-                    name="create-outline"
-                    size={16}
-                    color={themeColors.textMuted}
-                  />
                 </Pressable>
                 <TextInput
-                  style={[
-                    styles.nameInput,
-                    {
-                      color: themeColors.text,
-                      borderBottomColor: themeColors.border,
-                      borderBottomWidth: StyleSheet.hairlineWidth,
-                    },
-                  ]}
+                  style={[styles.inputWithSuffix, { color: themeColors.text }]}
                   placeholder={nameFieldPlaceholder(addVariant)}
                   placeholderTextColor={themeColors.textMuted}
                   value={form.name}
@@ -669,6 +658,7 @@ function PaymentFormModal({
                 active={form.frequency}
                 size="sm"
                 variant="section"
+                showDivider={false}
                 onChange={(frequency) => {
                   tapHaptic();
                   onChange((current) => (current ? { ...current, frequency } : current));
@@ -702,17 +692,19 @@ function PaymentFormModal({
               </View>
             ) : null}
 
-            <View style={[styles.activeRow, themed.control]}>
-              <Text style={[sectionLabelStyle, styles.activeRowLabel]}>Actif</Text>
-              <PremiumSwitch
-                accessibilityLabel={form.active ? 'Paiement actif' : 'Paiement inactif'}
-                value={form.active}
-                onValueChange={(active) => {
-                  tapHaptic();
-                  onChange((current) => (current ? { ...current, active } : current));
-                }}
-              />
-            </View>
+            {!form.isNew ? (
+              <View style={[styles.activeRow, themed.control]}>
+                <Text style={[sectionLabelStyle, styles.activeRowLabel]}>Actif</Text>
+                <PremiumSwitch
+                  accessibilityLabel={form.active ? 'Paiement actif' : 'Paiement inactif'}
+                  value={form.active}
+                  onValueChange={(active) => {
+                    tapHaptic();
+                    onChange((current) => (current ? { ...current, active } : current));
+                  }}
+                />
+              </View>
+            ) : null}
 
             <DatePickerField
               label={nextDateFieldLabel(addVariant)}
@@ -723,7 +715,7 @@ function PaymentFormModal({
               onChangeDate={(nextDate) => onChange((current) => (current ? { ...current, nextDate } : current))}
             />
 
-            {isBill || isSubscription ? (
+            {!form.isNew && (isBill || isSubscription) ? (
               <DatePickerField
                 label="Date de fin (optionnelle)"
                 value={form.endDate}
@@ -736,7 +728,7 @@ function PaymentFormModal({
             ) : null}
 
             <View style={styles.section}>
-              <SettingsSelectField
+              <ChipSelectField
                 label={isIncome ? 'Compte de dépôt' : 'Méthode de paiement'}
                 options={accountPickerOptions}
                 selectedId={form.accountId}
@@ -769,6 +761,7 @@ function PaymentFormModal({
             {!isIncome ? (
               <View style={styles.section}>
                 <BudgetCategoryPicker
+                  variant="chips"
                   categories={visibleCategories}
                   searchText={form.name}
                   selectedId={form.categoryId}
@@ -1359,42 +1352,20 @@ const styles = StyleSheet.create({
     ...typographyKit.metaMedium,
   },
   section: { gap: spacing.sm },
-  identityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 48,
-  },
-  iconAffordance: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    flexShrink: 0,
-  },
   iconSlot: {
-    width: 40,
-    height: 40,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
     backgroundColor: 'transparent',
   },
   iconGhostSlot: {
-    width: 40,
-    height: 40,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
     opacity: 0.42,
-  },
-  nameInput: {
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: 0,
-    fontSize: typography.body,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    ...jakartaSemiboldText,
   },
   input: {
     minHeight: 50,

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AnimatedFill } from '@/components/kit/motion';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -129,12 +130,12 @@ export default function PlansListScreen() {
 
                 <View style={styles.progressRow}>
                   <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
-                    <View
+                    <AnimatedFill
+                      progress={plan.progress / 100}
                       style={[
                         styles.progressFill,
                         {
                           backgroundColor: progressColor,
-                          width: `${Math.min(100, Math.max(0, plan.progress))}%`,
                         },
                       ]}
                     />

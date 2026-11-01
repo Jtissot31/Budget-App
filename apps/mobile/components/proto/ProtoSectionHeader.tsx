@@ -1,11 +1,14 @@
 /**
- * Shared Budget Proto section chrome — eyebrow + trailing action(s).
+ * Shared section header — sentence-case title + quiet text action.
  */
 import type { ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { typographyKit } from '@/constants/theme';
-import { PillButton } from '@/components/kit/PillButton';
+import { AppIcon } from '@/components/icons/AppIcon';
+import { jakartaSemiboldText } from '@/constants/theme';
+import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
+import { FitText } from '@/components/kit/FitText';
 
 type Props = {
   title: string;
@@ -40,9 +43,9 @@ export function ProtoSectionHeader({
         pointerEvents="none" keeps the flex title from stealing header taps.
       */}
       <View style={styles.titleWrap} pointerEvents="none">
-        <Text style={[styles.title, { color: colors.textMuted }]} numberOfLines={1}>
+        <FitText style={[styles.title, { color: colors.text }]}>
           {title}
-        </Text>
+        </FitText>
       </View>
       {trailing ? (
         <View
@@ -54,18 +57,42 @@ export function ProtoSectionHeader({
           {trailing}
         </View>
       ) : actionLabel && onAction ? (
-        <PillButton
-          label={actionLabel}
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel={actionAccessibilityLabel ?? actionLabel}
-          icon={/^(ajouter|nouveau|créer)/i.test(actionLabel) ? 'add' : 'chevron-forward'}
-          onPress={onAction}
-        />
+          hitSlop={10}
+          onPress={() => {
+            tapHaptic();
+            onAction();
+          }}
+          style={styles.actionPressable}
+        >
+          {({ pressed }) => (
+            // Layout on an inner View: Android does not reliably apply Pressable style functions.
+            <View style={[styles.action, pressed && { opacity: 0.6 }]}>
+              {/^(ajouter|nouveau|créer)/i.test(actionLabel) ? (
+                <AppIcon family="ionicons" name="add" size={16} color={colors.textMuted} />
+              ) : null}
+              <Text
+                style={[styles.actionText, { color: colors.textMuted }]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.3}
+              >
+                {actionLabel}
+              </Text>
+              {/^(ajouter|nouveau|créer)/i.test(actionLabel) ? null : (
+                <AppIcon family="ionicons" name="chevron-forward" size={15} color={colors.textMuted} />
+              )}
+            </View>
+          )}
+        </Pressable>
       ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  actionPressable: { flexShrink: 0 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -88,9 +115,10 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   title: {
-    ...typographyKit.eyebrow,
-    fontSize: 11,
-    letterSpacing: 0.8,
+    ...jakartaSemiboldText,
+    fontSize: 17,
+    lineHeight: 22,
+    letterSpacing: -0.2,
   },
   trailing: {
     flexGrow: 0,
@@ -110,6 +138,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     ...typographyKit.metaSemibold,
-    fontSize: 11,
+    fontSize: 14,
+    lineHeight: 18,
   },
 });

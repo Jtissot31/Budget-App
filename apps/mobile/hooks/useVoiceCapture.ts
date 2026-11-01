@@ -75,12 +75,18 @@ const RECORDING_OPTIONS: RecordingOptions = {
 /** Cadence de lecture du niveau micro — onde fluide et détection de silence fine. */
 const METERING_INTERVAL_MS = 150;
 
-/** Au-dessus : on considère que ça parle (0..1 normalisé, ~-39 dBFS). */
-const SPEECH_LEVEL = 0.35;
+/**
+ * Détection de parole adaptative : on mesure le bruit ambiant (plancher) puis on compare.
+ * Parole = nettement au-dessus du plancher ; silence = revenu près du plancher.
+ * Fonctionne en pièce calme comme bruyante, contrairement à un seuil fixe.
+ */
+const SPEECH_MARGIN = 0.14; // ≈ +8 dB au-dessus du bruit ambiant
+const SPEECH_MIN_LEVEL = 0.22; // jamais « parole » sous ~-47 dBFS
+const SILENCE_MARGIN = 0.07; // ≈ +4 dB : retour au calme
 /** Silence continu après avoir parlé → coupure automatique. */
-const SILENCE_HOLD_MS = 1_500;
+const SILENCE_HOLD_MS = 1_200;
 /** Laisse le temps au micro de monter avant d'évaluer le silence. */
-const START_GRACE_MS = 800;
+const START_GRACE_MS = 600;
 /** Personne n'a parlé du tout : on coupe et on affiche « je n'ai rien entendu ». */
 const NO_SPEECH_TIMEOUT_MS = 7_000;
 
@@ -102,6 +108,10 @@ export type VoiceCapture = {
    * alors seule après un silence. Sinon, seul le bouton stop (ou le cap 30s) coupe.
    */
   silenceAutoStop: boolean;
+  /** 0..1 pendant un silence après la parole — la capture s'arrête à 1 (compte à rebours UI). */
+  silenceProgress: number;
+  /** True dès qu'une parole a été détectée dans la capture en cours. */
+  speechDetected: boolean;
   /** Coupe le micro et lance la transcription. */
   stop: () => void;
   /** Relance une capture complète (permission incluse). */
@@ -132,6 +142,10 @@ export function useVoiceCapture(active: boolean): VoiceCapture {
   const [meteringAvailable, setMeteringAvailable] = useState(false);
   const speechSeenRef = useRef(false);
   const lastLoudAtRef = useRef(0);
+  /** Bruit ambiant estimé (0..1) — descend vite, remonte très lentement. */
+  const noiseFloorRef = useRef(1);
+  const [silenceProgress, setSilenceProgress] = useState(0);
+  const [speechDetected, setSpeechDetected] = useState(false);
 
   const fail = useCallback((kind: VoiceCaptureErrorKind) => {
     setErrorKind(kind);
@@ -262,8 +276,19 @@ export function useVoiceCapture(active: boolean): VoiceCapture {
       setMeteringAvailable(true);
     }
 
-    if (normalizeMetering(recorderState.metering) >= SPEECH_LEVEL) {
+    const level = normalizeMetering(recorderState.metering);
+    const floor = noiseFloorRef.current;
+    // Plancher : suit immédiatement les creux, ne monte que très lentement (la voix ne le pollue pas).
+    noiseFloorRef.current = level < floor ? level : floor + (level - floor) * 0.01;
+
+    const speechThreshold = Math.max(SPEECH_MIN_LEVEL, noiseFloorRef.current + SPEECH_MARGIN);
+    const silenceThreshold = noiseFloorRef.current + SILENCE_MARGIN;
+    if (level >= speechThreshold) {
+      if (!speechSeenRef.current) setSpeechDetected(true);
       speechSeenRef.current = true;
+      lastLoudAtRef.current = Date.now();
+    } else if (speechSeenRef.current && level > silenceThreshold) {
+      // Entre les deux (fin de mot, souffle) : on ne compte pas encore comme silence.
       lastLoudAtRef.current = Date.now();
     }
   }, [recorderState.metering, status]);
@@ -273,6 +298,9 @@ export function useVoiceCapture(active: boolean): VoiceCapture {
     if (status !== 'listening') {
       speechSeenRef.current = false;
       lastLoudAtRef.current = 0;
+      noiseFloorRef.current = 1;
+      setSilenceProgress(0);
+      setSpeechDetected(false);
       return;
     }
     if (!meteringAvailable) return;
@@ -287,7 +315,10 @@ export function useVoiceCapture(active: boolean): VoiceCapture {
         return;
       }
 
-      if (Date.now() - lastLoudAtRef.current >= SILENCE_HOLD_MS) stop();
+      const quietFor = Date.now() - lastLoudAtRef.current;
+      // Petit délai avant d'afficher le compte à rebours : une pause entre deux mots ne clignote pas.
+      setSilenceProgress(quietFor < 300 ? 0 : Math.min(1, (quietFor - 300) / (SILENCE_HOLD_MS - 300)));
+      if (quietFor >= SILENCE_HOLD_MS) stop();
     }, METERING_INTERVAL_MS);
 
     return () => clearInterval(interval);
@@ -304,6 +335,8 @@ export function useVoiceCapture(active: boolean): VoiceCapture {
     level: status === 'listening' ? normalizeMetering(recorderState.metering) : 0,
     durationMillis: recorderState.durationMillis ?? 0,
     silenceAutoStop: meteringAvailable,
+    silenceProgress: status === 'listening' ? silenceProgress : 0,
+    speechDetected,
     stop,
     retry,
     editTranscript,

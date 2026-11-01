@@ -107,7 +107,6 @@ export default function AgendaTab() {
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <ProtoAgendaScreen
         onOpenPaymentDetail={setPaymentDetail}
-        onAddRecurringPayment={openNewRecurringPayment}
       />
 
       <PaymentDetailSheet

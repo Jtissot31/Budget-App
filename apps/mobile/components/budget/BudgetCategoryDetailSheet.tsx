@@ -34,6 +34,7 @@ import {
   detailSingleLineRowStyle,
   jakartaExtraBoldText,
   jakartaMediumText,
+  jakartaSemiboldText,
   radius,
   spacing,
   typography,
@@ -77,7 +78,9 @@ import {
   nativeTextColumnFlex,
 } from '@/lib/textLayout';
 
+import { BUDGET_OVER } from '@/lib/budgetTone';
 import { useAppTheme } from '@/lib/themeContext';
+import { FitText } from '@/components/kit/FitText';
 
 
 type Props = {
@@ -224,8 +227,6 @@ export function BudgetCategoryDetailSheet({
   const barTrackColor = category
     ? categoryBudgetBarTrackColor(category.spent, localLimit)
     : undefined;
-  const showStatusTag = usage ? shouldShowCategoryStatusTag(usage) : false;
-  const statusText = budgetStatus?.label ?? '';
   const handleSaveName = useCallback(
     async (newName: string) => {
       if (!category) return;
@@ -381,36 +382,37 @@ export function BudgetCategoryDetailSheet({
             amount={`${over ? '−' : ''}${formatDisplayMoneyAbsolute(Math.abs(left))}`}
             amountValue={left}
             formatAmount={(value) => `${value < 0 ? '−' : ''}${formatDisplayMoneyAbsolute(Math.abs(value))}`}
-            amountColor={over ? colors.danger : colors.text}
-            badge={showStatusTag && statusText ? { label: statusText, color: over ? colors.danger : colors.textMuted } : undefined}
+            amountColor={colors.text}
             aside={
-              <RingGauge progress={ratio} color={over ? colors.danger : colors.text} size={72} stroke={7}>
+              <RingGauge progress={ratio} color={over ? BUDGET_OVER : colors.accentGreen} size={84} stroke={7}>
                 <Text style={[styles.ringPct, { color: colors.text }]}>{Math.round(ratio * 100)}%</Text>
               </RingGauge>
             }
             stats={[
               { label: 'Dépensé', value: formatDisplayMoneyAbsolute(category.spent) },
-              isCurrentMonth && !over && daysLeft > 0
-                ? { label: 'Par jour', value: formatDisplayMoneyAbsolute(left / daysLeft) }
-                : { label: 'Jours', value: isCurrentMonth ? String(daysLeft) : '—' },
+              ...(isCurrentMonth && !over && daysLeft > 0
+                ? [{ label: 'Par jour', value: formatDisplayMoneyAbsolute(left / daysLeft) }]
+                : []),
             ]}
-          >
-            <View style={styles.limitInline}>
-              <Text style={[styles.limitLabel, { color: colors.textMuted }]} numberOfLines={1}>Limite mensuelle</Text>
-              <EditableField
-                editHandleRef={limitEditRef}
-                type="money"
-                value={String(localLimit)}
-                onSave={handleSaveLimit}
-                accessibilityLabel="Modifier la limite mensuelle"
-                textStyle={[styles.rowValue, detailRowValueMoney]}
-                containerStyle={styles.limitValueField}
-                align="right"
-              />
-            </View>
-          </SummaryCard>
+          />
         );
       })()}
+
+      <ListCard>
+        <View style={styles.limitInline}>
+          <FitText style={[styles.limitLabel, { color: colors.text }]}>Limite mensuelle</FitText>
+          <EditableField
+            editHandleRef={limitEditRef}
+            type="money"
+            value={String(localLimit)}
+            onSave={handleSaveLimit}
+            accessibilityLabel="Modifier la limite mensuelle"
+            textStyle={[styles.rowValue, detailRowValueMoney]}
+            containerStyle={styles.limitValueField}
+            align="right"
+          />
+        </View>
+      </ListCard>
 
       {insight ? <TransactionInsightCard insight={insight} /> : null}
 
@@ -451,10 +453,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-    height: 44,
+    height: 56,
+    paddingHorizontal: 16,
     overflow: 'hidden',
   },
-  limitLabel: { ...jakartaMediumText, fontSize: 14, flexShrink: 1 },
+  limitLabel: { ...jakartaSemiboldText, fontSize: 15, lineHeight: 20, flexShrink: 1 },
   sheet: {
     borderTopLeftRadius: DETAIL_SHEET_TOP_RADIUS,
     borderTopRightRadius: DETAIL_SHEET_TOP_RADIUS,

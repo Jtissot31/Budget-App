@@ -1,4 +1,5 @@
 import { StyleSheet, View } from 'react-native';
+import { AnimatedFill } from '@/components/kit/motion';
 import { colors as defaultColors, PROGRESS_BAR_TRACK_HEIGHT, radius } from '@/constants/theme';
 import { useAppTheme } from '@/lib/themeContext';
 
@@ -28,11 +29,11 @@ export function ProgressBar({
         { height, borderRadius: trackRadius, backgroundColor: trackColor ?? colors.border },
       ]}
     >
-      <View
+      <AnimatedFill
+        progress={clamped}
         style={[
           styles.fill,
           {
-            width: `${clamped * 100}%`,
             backgroundColor: fillColor,
             opacity: fillOpacity,
             borderRadius: trackRadius,

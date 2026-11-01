@@ -204,21 +204,28 @@ export function monoShade(index: number, count: number, isLight: boolean): strin
 }
 
 /**
- * Muted accents for category identity — soft enough for the dark theme, distinct
- * enough to tell categories apart. Never used for good/bad meaning (that's green/red).
+ * Vivid accents for category identity — readable on both themes and distinct enough
+ * to tell categories apart. Avoids pure green/red, which carry good/bad meaning.
  */
 export const SUBTLE_ACCENTS = [
-  '#7FB3D5', // bleu acier
-  '#8FC9A8', // sauge
-  '#D9B77E', // sable
-  '#B8A1D9', // lavande
-  '#D49A9A', // vieux rose
-  '#7EC4C1', // eau
-  '#C9A27E', // caramel
-  '#9AA8D9', // pervenche
-  '#A9C47E', // olive
-  '#C79AC0', // mauve
+  '#3B82F6', // bleu
+  '#A855F7', // violet
+  '#F59E0B', // ambre
+  '#EC4899', // rose
+  '#14B8A6', // sarcelle
+  '#F97316', // orange
+  '#6366F1', // indigo
+  '#06B6D4', // cyan
+  '#84CC16', // lime
+  '#D946EF', // fuchsia
 ];
+
+/** Stable accent for an id (same category → same colour everywhere). */
+export function accentForKey(key: string): string {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return SUBTLE_ACCENTS[Math.abs(hash) % SUBTLE_ACCENTS.length]!;
+}
 
 /** `#RRGGBB` → rgba at `alpha` (falls back to the input for other formats). */
 export function withAlpha(hex: string, alpha: number): string {

@@ -102,6 +102,10 @@ function getIncomeInsight(
   };
 }
 
+/** Matched on `normalizeSearch` text (lowercase, no accents, words split by spaces). */
+const GAS_MERCHANT = /\b(gas|gaz|essence|shell|esso|petro|ultramar|irving|pioneer|sonic)\b/;
+const IMPULSE_CATEGORY = /magasin|shopping|vetement|mode|electronique/;
+
 function getExpenseInsight(
   tx: Pick<Transaction, 'label' | 'amount' | 'categoryName'>,
   items: ItemizedNote[] = [],
@@ -148,7 +152,7 @@ function getExpenseInsight(
     };
   }
 
-  if (category.includes('transport') || category.includes('essence') || merchant.includes('shell') || merchant.includes('esso')) {
+  if (category.includes('transport') || category.includes('essence') || GAS_MERCHANT.test(merchant)) {
     return {
       title: 'Conseil IA',
       tip: 'Regroupe tes déplacements et vérifie les **apps de rabais essence** — quelques cents au litre s’accumulent vite sur un mois.',
@@ -162,7 +166,8 @@ function getExpenseInsight(
     };
   }
 
-  if (amount >= 100) {
+  // Only for shopping: a large amount alone says nothing about impulse (gas, rent, repairs…).
+  if (amount >= 100 && IMPULSE_CATEGORY.test(category)) {
     return {
       title: 'Conseil IA',
       tip: `Pour une dépense de **${formatMoney(amount)} $**, attends **24 h** avant un achat similaire — ça aide à distinguer l’essentiel de l’impulsif.`,

@@ -1,7 +1,7 @@
 // Budget tab — résumé du mois + une liste groupée de catégories (style historique).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { BudgetCategoryDetailSheet } from '@/components/budget/BudgetCategoryDetailSheet';
@@ -18,6 +18,8 @@ import {
   SectionLabel,
   SummaryCard,
   PillButton,
+  PressScale,
+  Reveal,
 } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
 import {
@@ -32,6 +34,7 @@ import {
   spacing,
   subtleDeleteButtonStyle,
   typographyKit,
+  jakartaSemiboldText,
 } from '@/constants/theme';
 import { useRefreshOnFocus, useScrollToTopOnFocus } from '@/hooks/useRefreshOnFocus';
 import {
@@ -58,6 +61,8 @@ import { isDemoSeedEnabled } from '@/lib/demoSeedGate';
 import { dataEvents } from '@/lib/events';
 import { formatDisplayMoneyAbsolute } from '@/lib/formatDisplayMoney';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
+import { BUDGET_NEAR, BUDGET_OVER } from '@/lib/budgetTone';
+import { BUDGET_SCREEN_CACHE_KEY as BUDGET_CACHE_KEY, readScreenCache, writeScreenCache } from '@/lib/screenCache';
 import { useAppTheme } from '@/lib/themeContext';
 
 function currentMonthStart(): Date {
@@ -79,11 +84,16 @@ function signedMoney(value: number): string {
 
 export default function BudgetScreen() {
   const router = useRouter();
+  /** Deep link: `/budgets?category=<id>` opens that category's detail. */
+  const { category: categoryParam } = useLocalSearchParams<{ category?: string }>();
   const insets = useSafeAreaInsets();
   const { colors, isLight } = useAppTheme();
   const scrollRef = useRef<ScrollView>(null);
 
-  const [categories, setCategories] = useState<BudgetCategoryUiModel[]>([]);
+  const [cached] = useState(() => readScreenCache<BudgetCategoryUiModel[]>(BUDGET_CACHE_KEY));
+  const [categories, setCategories] = useState<BudgetCategoryUiModel[]>(cached ?? []);
+  /** False until the first month finishes loading — avoids flashing the empty state. */
+  const [hasLoaded, setHasLoaded] = useState(cached != null);
   const [detailCategoryId, setDetailCategoryId] = useState<string | null>(null);
   const [managingCategories, setManagingCategories] = useState(false);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
@@ -119,8 +129,13 @@ export default function BudgetScreen() {
     const budgets = await getCategoriesForMonth(month);
     if (requestId !== loadRequestIdRef.current) return;
 
+    const uiCategories = mapBudgetCategoriesToUi(budgets);
+    if (month.getTime() === currentMonthStart().getTime()) {
+      writeScreenCache(BUDGET_CACHE_KEY, uiCategories);
+    }
     setDisplayMonth(month);
-    setCategories(mapBudgetCategoriesToUi(budgets));
+    setCategories(uiCategories);
+    setHasLoaded(true);
   }, []);
 
   const navigateToMonth = useCallback(
@@ -157,6 +172,12 @@ export default function BudgetScreen() {
 
   const totals = useMemo(() => computeBudgetTotals(categories), [categories]);
   const listCategories = useMemo(() => sortBudgetCategoriesByPriority(categories), [categories]);
+
+  useEffect(() => {
+    if (!categoryParam || !categories.some((c) => c.id === categoryParam)) return;
+    setDetailCategoryId(categoryParam);
+    router.setParams({ category: undefined });
+  }, [categories, categoryParam, router]);
   const showAddButton = canAddBudgetCategory(categories.length);
 
   const toggleManagingCategories = useCallback(() => {
@@ -229,7 +250,7 @@ export default function BudgetScreen() {
   /** Summary ring: green up to 102 %, orange 103–110 %, red beyond. */
   const usedPctRounded = Math.round(usedRatio * 100);
   const summaryRingColor =
-    usedPctRounded <= 102 ? colors.accentGreen : usedPctRounded <= 110 ? '#F59E0B' : colors.danger;
+    usedPctRounded <= 102 ? colors.accentGreen : usedPctRounded <= 110 ? BUDGET_NEAR : BUDGET_OVER;
 
   const daysLeft = useMemo(() => {
     if (!viewingCurrent) return 0;
@@ -237,13 +258,6 @@ export default function BudgetScreen() {
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     return lastDay - now.getDate() + 1;
   }, [viewingCurrent]);
-
-  /** Share of the current month already elapsed (0..1). */
-  const monthProgress = useMemo(() => {
-    const now = new Date();
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    return now.getDate() / lastDay;
-  }, []);
 
   const overCount = listCategories.filter((c) => c.usage.isOverBudget).length;
 
@@ -287,22 +301,22 @@ export default function BudgetScreen() {
             }
           />
 
-          {listCategories.length > 0 ? (
+          {!hasLoaded ? null : listCategories.length > 0 ? (
             <>
-              <View style={styles.section}>
+              <Reveal index={0} style={styles.section}>
                 <SummaryCard
                   label={remaining < 0 ? 'Dépassement' : 'Il te reste'}
                   amount={signedMoney(remaining)}
                   amountValue={remaining}
                   formatAmount={signedMoney}
-                  amountColor={remaining < 0 ? colors.danger : colors.text}
+                  amountColor={colors.text}
                   badge={
                     overCount > 0
-                      ? { label: overCount === 1 ? '1 catégorie dépassée' : overCount + ' catégories dépassées', color: colors.danger }
+                      ? { label: overCount === 1 ? '1 catégorie à revoir' : overCount + ' catégories à revoir', color: colors.textSecondary }
                       : { label: 'Tout est sous contrôle', color: colors.accentGreen }
                   }
                   aside={
-                    <RingGauge progress={usedRatio} color={summaryRingColor} size={76} stroke={8}>
+                    <RingGauge progress={usedRatio} color={summaryRingColor} size={92} stroke={8}>
                       <Text style={[styles.ringValue, { color: colors.text }]}>{usedPct}%</Text>
                       <Text style={[styles.ringCaption, { color: colors.textMuted }]}>utilisé</Text>
                     </RingGauge>
@@ -314,63 +328,48 @@ export default function BudgetScreen() {
                       ? { label: 'Par jour', value: formatDisplayMoneyAbsolute(remaining / daysLeft) }
                       : { label: 'Catégories', value: String(listCategories.length) },
                   ]}
-               >
-                  {/* Pace: how much of the budget is used vs how far we are into the month. */}
-                  <View style={styles.paceBlock}>
-                    <View style={[styles.paceTrack, { backgroundColor: colors.borderSubtle }]}>
-                      <View
-                        style={[
-                          styles.paceFill,
-                          {
-                            width: `${Math.min(1, usedRatio) * 100}%`,
-                            backgroundColor: usedRatio > 1 ? colors.danger : usedRatio > monthProgress + 0.1 ? colors.warning : colors.accentGreen,
-                          },
-                        ]}
-                      />
-                      {viewingCurrent ? (
-                        <View style={[styles.paceMarker, { left: `${monthProgress * 100}%`, backgroundColor: colors.text }]} />
-                      ) : null}
-                    </View>
-                    {viewingCurrent ? (
-                      <View style={styles.paceLegend}>
-                        <Text style={[styles.paceText, { color: colors.textMuted }]}>
-                          Utilisé {Math.round(usedRatio * 100)} %
-                        </Text>
-                        <Text style={[styles.paceText, { color: colors.textMuted }]}>
-                          Mois écoulé {Math.round(monthProgress * 100)} %
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </SummaryCard>
-              </View>
+               />
 
-              <View style={styles.section}>
+              </Reveal>
+
+              <Reveal index={1} style={styles.section}>
                 <SectionLabel
                   title="Catégories"
                   trailing={
-                    <View style={styles.sectionActions}>
-                      {!managingCategories && showAddButton ? (
-                        <TextAction label="Ajouter" onPress={openBlankCreate} />
-                      ) : null}
-                      <TextAction
-                        label={managingCategories ? 'Terminé' : 'Modifier'}
-                        onPress={toggleManagingCategories}
-                      />
-                    </View>
+                    <TextAction
+                      label={managingCategories ? 'Terminé' : 'Modifier'}
+                      onPress={toggleManagingCategories}
+                    />
                   }
                 />
                 <View style={styles.tileGrid}>
-                  {listCategories.map((category) => (
-                    <View key={category.id} style={styles.tileCell}>
+                  {listCategories.map((category, index) => (
+                    <Reveal key={category.id} index={3 + index} style={styles.tileCell}>
                       <BudgetCategoryTile
                         category={category}
                         selecting={managingCategories}
                         selected={selectedCategoryIds.includes(category.id)}
                         onPress={onCategoryRowPress}
                       />
-                    </View>
+                    </Reveal>
                   ))}
+                  {!managingCategories && showAddButton ? (
+                    <View style={styles.tileCell}>
+                      <PressScale
+                        accessibilityRole="button"
+                        accessibilityLabel="Créer une catégorie"
+                        onPress={openBlankCreate}
+                        scaleTo={0.96}
+                        containerStyle={styles.newTileHit}
+                        style={[styles.newTile, { borderColor: colors.containerBorder }]}
+                      >
+                        <View style={[styles.newTileIcon, { backgroundColor: colors.surfaceElevated }]}>
+                          <AppIcon family="ionicons" name="add" size={22} color={colors.text} />
+                        </View>
+                        <Text style={[styles.newTileTitle, { color: colors.text }]}>Nouvelle catégorie</Text>
+                      </PressScale>
+                    </View>
+                  ) : null}
                 </View>
 
                 {managingCategories ? (
@@ -382,23 +381,24 @@ export default function BudgetScreen() {
                       setConfirmDeleteSelectedVisible(true);
                     }}
                     style={({ pressed }) => [
-                      subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' }),
                       styles.deleteButton,
                       pressed && styles.pressed,
                       (deletingSelected || selectedCategoryIds.length === 0) && styles.disabled,
                     ]}
                   >
-                    <AppIcon family="ionicons" name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
-                    <Text style={destructiveTextActionStyle(isLight)}>
-                      {deletingSelected
-                        ? 'Suppression…'
-                        : selectedCategoryIds.length === 0
-                          ? 'Sélectionne des catégories'
-                          : `Supprimer ${selectedCategoryIds.length} catégorie${selectedCategoryIds.length > 1 ? 's' : ''}`}
-                    </Text>
+                    <View style={subtleDeleteButtonStyle(isLight, { alignSelf: 'stretch' })}>
+                      <AppIcon family="ionicons" name="trash-outline" size={16} color={destructiveIconColor(isLight)} />
+                      <Text style={destructiveTextActionStyle(isLight)}>
+                        {deletingSelected
+                          ? 'Suppression…'
+                          : selectedCategoryIds.length === 0
+                            ? 'Sélectionne des catégories'
+                            : `Supprimer ${selectedCategoryIds.length} catégorie${selectedCategoryIds.length > 1 ? 's' : ''}`}
+                      </Text>
+                    </View>
                   </Pressable>
                 ) : null}
-              </View>
+              </Reveal>
             </>
           ) : (
             <View style={styles.section}>
@@ -461,14 +461,23 @@ function TextAction({ label, onPress }: { label: string; onPress: () => void }) 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   section: { marginBottom: SECTION_GAP + spacing.sm },
-  paceBlock: { gap: 8 },
-  paceTrack: { height: 10, borderRadius: 5, overflow: 'visible', position: 'relative' },
-  paceFill: { height: '100%', borderRadius: 5 },
-  paceMarker: { position: 'absolute', top: -4, width: 2, height: 18, borderRadius: 1, marginLeft: -1 },
-  paceLegend: { flexDirection: 'row', justifyContent: 'space-between' },
-  paceText: { ...typographyKit.metaMedium, fontSize: 11.5 },
   tileGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
   tileCell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10 },
+  newTileHit: { flexGrow: 1 },
+  // Same dashed tile as « Nouvel objectif » in Copilote.
+  newTile: {
+    flexGrow: 1,
+    minHeight: 136,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    padding: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  newTileIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  newTileTitle: { ...jakartaSemiboldText, fontSize: 14, lineHeight: 18, textAlign: 'center' },
   sectionActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   textAction: { fontSize: 11 },
   ringValue: { ...typographyKit.metaSemibold, fontSize: 15 },

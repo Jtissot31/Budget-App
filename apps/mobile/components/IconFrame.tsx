@@ -54,6 +54,8 @@ type RemoteLogoImageProps = {
    */
   insetRatio?: number;
   recyclingKey?: string;
+  /** Paints every opaque pixel in one colour — only for logos with a transparent background. */
+  tintColor?: string;
   onError?: () => void;
   onLoad?: () => void;
 };
@@ -67,6 +69,7 @@ export function RemoteLogoImage({
   fullSize = false,
   insetRatio,
   recyclingKey,
+  tintColor,
   onError,
   onLoad,
 }: RemoteLogoImageProps) {
@@ -83,6 +86,7 @@ export function RemoteLogoImage({
       style={imageStyle}
       contentFit={contentFit}
       contentPosition="center"
+      tintColor={tintColor}
       placeholderContentFit="contain"
       transition={size <= 46 ? 0 : 150}
       cachePolicy="memory-disk"

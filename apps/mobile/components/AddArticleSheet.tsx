@@ -27,6 +27,7 @@ import {
   containerSurfaceStyle,
   detailSectionLabelStyle,
   detailSubSectionHeaderStyle,
+  jakartaSemiboldText,
   moneyAmountTypography,
   radius,
   spacing,
@@ -578,22 +579,21 @@ export function AddArticleSheet({
         accessibilityLabel="Ajouter l'article"
         disabled={!canSave}
         onPress={handleSave}
-        style={({ pressed }) => [
-          styles.inlineAddButton,
-          { backgroundColor: colors.primary },
-          !canSave && styles.inlineAddButtonDisabled,
-          pressed && canSave && styles.pressed,
-        ]}
+        style={({ pressed }) => [styles.inlineAddHit, pressed && canSave && styles.pressed]}
       >
-        <Text
-          style={[
-            typographyKit.caption,
-            styles.inlineAddButtonLabel,
-            { color: canSave ? '#000000' : colors.textMuted },
-          ]}
-        >
-          Ajouter
-        </Text>
+        {/* Fill and centring on a plain View: Android drops them from a Pressable style function. */}
+        <View style={[styles.inlineAddButton, { backgroundColor: canSave ? colors.text : colors.surfaceElevated }]}>
+          <Text
+            style={[
+              typographyKit.caption,
+              styles.inlineAddButtonLabel,
+              jakartaSemiboldText,
+              { color: canSave ? colors.background : colors.textMuted },
+            ]}
+          >
+            Ajouter
+          </Text>
+        </View>
       </Pressable>
     </View>
   );
@@ -661,12 +661,12 @@ export function AddArticleSheet({
         onPress={handlePrimaryAction}
         style={({ pressed }) => [
           styles.articleSaveButton,
-          { backgroundColor: colors.primary },
+          { backgroundColor: colors.text },
           primaryDisabled && styles.articleSaveButtonDisabled,
           pressed && !primaryDisabled && styles.pressed,
         ]}
       >
-        <Text style={styles.articleSaveButtonText}>{primaryLabel}</Text>
+        <Text style={[styles.articleSaveButtonText, jakartaSemiboldText, { color: colors.background }]}>{primaryLabel}</Text>
       </Pressable>
     </View>
   );
@@ -841,16 +841,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.xs,
   },
+  inlineAddHit: {
+    flexGrow: 1,
+    flexBasis: 0,
+  },
   inlineAddButton: {
-    flex: 1,
     minHeight: 44,
-    borderRadius: radius.lg,
+    borderRadius: 22,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-  },
-  inlineAddButtonDisabled: {
-    opacity: 0.35,
-    backgroundColor: 'transparent',
   },
   inlineAddButtonLabel: {
     letterSpacing: 0.1,
@@ -929,7 +928,7 @@ const styles = StyleSheet.create({
   articleSaveButton: {
     flex: 1.35,
     minHeight: 48,
-    borderRadius: radius.lg,
+    borderRadius: 24,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },

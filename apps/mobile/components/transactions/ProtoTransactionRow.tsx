@@ -27,12 +27,8 @@ const ICON_WELL = 40;
 /** Same inset as `remoteLogoImageStyle`, laid out in flow so native matches web. */
 const LOGO_SIDE = userPickedIconLogoSize(ICON_WELL);
 const LOGO_INSET = userPickedIconLogoInset(ICON_WELL);
-/**
- * Glyph size inside the pale well.
- * Income `$` uses a larger box than expense fallbacks so it reads clearly in the 40px well.
- */
+/** Glyph size for rows without a logo. */
 const ICON_GLYPH_FALLBACK = 24;
-const ICON_GLYPH_INCOME = 30;
 
 type Props = {
   transaction: Transaction;
@@ -40,6 +36,8 @@ type Props = {
   savingsGoals: readonly { id: string; name: string }[];
   isLast: boolean;
   onPressId: (transactionId: string) => void;
+  /** Date under the amount, when the list has no day headers. Also draws the row separator. */
+  dateLabel?: string;
 };
 
 export const ProtoTransactionRow = memo(function ProtoTransactionRow({
@@ -48,6 +46,7 @@ export const ProtoTransactionRow = memo(function ProtoTransactionRow({
   savingsGoals,
   isLast,
   onPressId,
+  dateLabel,
 }: Props) {
   const { colors } = useAppTheme();
   const isIncome = transaction.type === 'income';
@@ -102,7 +101,6 @@ export const ProtoTransactionRow = memo(function ProtoTransactionRow({
   const showMerchantLogo = showLocalLogo || showRemoteLogo;
 
   const amountColor = isIncome ? colors.accentGreen : isTransfer ? colors.textMuted : colors.text;
-  const iconColor = isIncome ? colors.accentGreen : colors.textMuted;
   const abs = Math.abs(transaction.amount);
   const signed =
     isIncome
@@ -127,12 +125,22 @@ export const ProtoTransactionRow = memo(function ProtoTransactionRow({
     >
       {/* Layout lives on a plain View. Pressable on Android does not reliably
           apply flexDirection, which stacked the logo above the amount. */}
-      <View style={styles.row}>
+      <View
+        style={[
+          styles.row,
+          // On this inner View: Android drops borders set in a Pressable style function.
+          dateLabel && !isLast && {
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            borderBottomColor: colors.containerBorder,
+          },
+        ]}
+      >
       <View
         collapsable={false}
         style={[
           styles.iconWell,
-          !showMerchantLogo && { backgroundColor: colors.surfaceElevated },
+          // Income sits frameless like the logos; its green stays on the amount.
+          !showMerchantLogo && !isIncome && { backgroundColor: colors.surfaceElevated },
           showMerchantLogo && styles.iconWellLogo,
         ]}
       >
@@ -163,9 +171,9 @@ export const ProtoTransactionRow = memo(function ProtoTransactionRow({
             />
           </View>
         ) : isIncome ? (
-          <IncomeIcon size={ICON_GLYPH_INCOME} color={iconColor} />
+          <IncomeIcon size={ICON_GLYPH_FALLBACK} color={colors.textMuted} />
         ) : (
-          <AppIcon family="ionicons" name="trending-down" size={ICON_GLYPH_FALLBACK} color={iconColor} />
+          <AppIcon family="ionicons" name="trending-down" size={ICON_GLYPH_FALLBACK} color={colors.textMuted} />
         )}
       </View>
       <View style={styles.copy} collapsable={false}>
@@ -186,16 +194,23 @@ export const ProtoTransactionRow = memo(function ProtoTransactionRow({
           </Text>
         ) : null}
       </View>
-      <Text
-        style={[
-          styles.amount,
-          transactionRowAmountTypography({ fontSize: 15, lineHeight: 20 }),
-          { color: amountColor, letterSpacing: -0.3 },
-        ]}
-        numberOfLines={1}
-      >
-        {signed}
-      </Text>
+      <View style={styles.amountCol}>
+        <Text
+          style={[
+            styles.amount,
+            transactionRowAmountTypography({ fontSize: 15, lineHeight: 20 }),
+            { color: amountColor, letterSpacing: -0.3 },
+          ]}
+          numberOfLines={1}
+        >
+          {signed}
+        </Text>
+        {dateLabel ? (
+          <Text style={[styles.date, jakartaMediumText, { color: colors.textMuted }]} numberOfLines={1}>
+            {dateLabel}
+          </Text>
+        ) : null}
+      </View>
       </View>
     </Pressable>
   );
@@ -269,9 +284,19 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     ...(Platform.OS === 'web' ? null : { flexShrink: 1, marginTop: 2 }),
   },
+  amountCol: {
+    flexGrow: 0,
+    flexShrink: 0,
+    alignItems: 'flex-end',
+  },
   amount: {
     flexGrow: 0,
     flexShrink: 0,
+  },
+  date: {
+    fontSize: 12.5,
+    lineHeight: 16,
+    marginTop: 2,
   },
   pressed: { opacity: 0.78 },
 });

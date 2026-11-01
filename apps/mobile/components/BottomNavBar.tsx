@@ -1,16 +1,26 @@
 import { GlassFab } from '@/components/GlassFab';
 import { VoiceCommandIcon } from '@/components/icons/VoiceCommandIcon';
+import { AddTransactionFab } from '@/components/tabbar/AddTransactionFab';
+import { FabAutoHide } from '@/components/tabbar/FabAutoHide';
+import { SpeedDialFab, type SpeedDialAction } from '@/components/tabbar/SpeedDialFab';
+import type { RecurringPaymentAddVariant } from '@/components/RecurringPaymentsForm';
 import { useShouldHideTabFabs } from '@/components/tabbar/floatingTabBarShared';
-import { SHOW_TRANSACTIONS_TAB_FABS, transactionsFabGlyphColor } from '@/constants/fabStyles';
-import { jakartaBoldText } from '@/constants/theme';
+import {
+  SHOW_TRANSACTIONS_TAB_FABS,
+  TRANSACTIONS_FAB_SIZE,
+  TRANSACTIONS_FAB_STACK_GAP,
+  transactionsFabGlyphColor,
+} from '@/constants/fabStyles';
 import { uiEvents } from '@/lib/events';
+import { resetFabScroll } from '@/lib/fabScrollVisibility';
 import { tapHaptic } from '@/lib/haptics';
 import { useAppTheme } from '@/lib/themeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { usePathname } from 'expo-router';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type TabItem = {
@@ -25,7 +35,7 @@ const TABS: TabItem[] = [
   { key: 'Activity', label: 'ACTIVITÉ', icon: 'receipt-outline', activeIcon: 'receipt' },
   { key: 'Budget', label: 'BUDGET', icon: 'pie-chart-outline', activeIcon: 'pie-chart' },
   { key: 'Agenda', label: 'AGENDA', icon: 'calendar-outline', activeIcon: 'calendar' },
-  { key: 'Balance', label: 'WALLET', icon: 'wallet-outline', activeIcon: 'wallet' },
+  { key: 'Balance', label: 'COMPTES', icon: 'wallet-outline', activeIcon: 'wallet' },
 ];
 
 /** Expo-router screen names for the five existing tab destinations. */
@@ -52,18 +62,23 @@ interface BottomNavBarProps {
 
 export function BottomNavBar({ currentTab, onTabPress }: BottomNavBarProps) {
   const insets = useSafeAreaInsets();
+  const { isLight } = useAppTheme();
+  const activeColor = isLight ? '#0A0A0F' : '#FFFFFF';
+  const inactiveColor = isLight ? '#8E8E9A' : '#71717A';
   const solidFill = Platform.OS !== 'ios';
 
   return (
     <View
       style={[
         styles.container,
-        solidFill && styles.barBackground,
-        { paddingBottom: Math.max(insets.bottom, 12) },
+        solidFill && { backgroundColor: isLight ? '#FFFFFF' : '#09090B' },
+        { borderTopColor: isLight ? 'rgba(0, 0, 0, 0.08)' : '#27272A' },
+        // Breathing room above Android's system nav bar (insets alone put the labels right on it).
+        { paddingBottom: Math.max(insets.bottom, 4) + 10 },
       ]}
     >
       {Platform.OS === 'ios' ? (
-        <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+        <BlurView intensity={80} tint={isLight ? 'light' : 'dark'} style={StyleSheet.absoluteFill} />
       ) : null}
 
       <View style={styles.navRow}>
@@ -81,12 +96,9 @@ export function BottomNavBar({ currentTab, onTabPress }: BottomNavBarProps) {
             >
               <Ionicons
                 name={isActive ? tab.activeIcon : tab.icon}
-                size={21}
-                color={isActive ? '#FFFFFF' : '#71717A'}
+                size={28}
+                color={isActive ? activeColor : inactiveColor}
               />
-              <Text style={[styles.tabLabel, isActive ? styles.activeLabel : styles.inactiveLabel]}>
-                {tab.label}
-              </Text>
             </TouchableOpacity>
           );
         })}
@@ -101,14 +113,25 @@ export function BottomNavBar({ currentTab, onTabPress }: BottomNavBarProps) {
  * iOS blurs the content behind the same row.
  * Voice dictation stays a separate control, only on Activity, drawn above the row.
  */
-export function AppBottomTabBar({ state, navigation }: BottomTabBarProps) {
+export function AppBottomTabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
   const pathname = usePathname();
   const { colors } = useAppTheme();
   const hideTabFabs = useShouldHideTabFabs(pathname);
+  /** Tab bar height = distance from the screen bottom to the FABs' baseline. */
+  const [hostHeight, setHostHeight] = useState(0);
+  const [agendaManaging, setAgendaManaging] = useState(false);
   const activeRouteName = state.routes[state.index]?.name ?? '';
   const currentTab = ROUTE_TO_TAB_KEY[activeRouteName] ?? '';
   const showVoice =
     SHOW_TRANSACTIONS_TAB_FABS && activeRouteName === 'transactions' && !hideTabFabs;
+
+  const showAgendaAdd = activeRouteName === 'goals' && !hideTabFabs && !agendaManaging;
+
+  useEffect(() => {
+    resetFabScroll();
+  }, [activeRouteName]);
+
+  useEffect(() => uiEvents.subscribeAgendaManageFabState((state) => setAgendaManaging(state.managing)), []);
 
   const onTabPress = (tabKey: string) => {
     const routeName = TAB_KEY_TO_ROUTE[tabKey];
@@ -116,7 +139,8 @@ export function AppBottomTabBar({ state, navigation }: BottomTabBarProps) {
     const route = state.routes.find((item) => item.name === routeName);
     if (!route) return;
 
-    const event = navigation.emit({
+    // SDK 58 tab bars get `emitter` + `navigateToTab` instead of `navigation`.
+    const event = emitter.emit({
       type: 'tabPress',
       target: route.key,
       canPreventDefault: true,
@@ -124,11 +148,7 @@ export function AppBottomTabBar({ state, navigation }: BottomTabBarProps) {
     if (event.defaultPrevented) return;
     if (state.routes[state.index]?.key === route.key) return;
 
-    if (route.name === 'transactions') {
-      navigation.navigate('transactions');
-      return;
-    }
-    navigation.navigate(route.name, route.params);
+    navigateToTab(route.key);
   };
 
   const onVoicePress = () => {
@@ -137,20 +157,53 @@ export function AppBottomTabBar({ state, navigation }: BottomTabBarProps) {
   };
 
   return (
-    <View pointerEvents="box-none" collapsable={false} style={styles.host}>
+    <View
+      pointerEvents="box-none"
+      collapsable={false}
+      style={styles.host}
+      onLayout={(event) => setHostHeight(event.nativeEvent.layout.height)}
+    >
       {showVoice ? (
-        <GlassFab
-          onPress={onVoicePress}
-          accessibilityLabel="Commande vocale"
-          style={styles.voiceFab}
-        >
-          <VoiceCommandIcon size={22} color={transactionsFabGlyphColor(colors)} />
-        </GlassFab>
+        <FabAutoHide>
+          <AddTransactionFab
+            style={styles.addFab}
+            bottomOffset={hostHeight + FAB_RIGHT_GAP_BOTTOM + TRANSACTIONS_FAB_SIZE + TRANSACTIONS_FAB_STACK_GAP}
+            rightOffset={FAB_RIGHT}
+          />
+          <GlassFab
+            onPress={onVoicePress}
+            accessibilityLabel="Commande vocale"
+            style={styles.voiceFab}
+          >
+            <VoiceCommandIcon size={22} color={transactionsFabGlyphColor(colors)} />
+          </GlassFab>
+        </FabAutoHide>
+      ) : null}
+      {showAgendaAdd ? (
+        <FabAutoHide>
+          <SpeedDialFab
+            actions={AGENDA_ADD_ACTIONS}
+            accessibilityLabel="Ajouter un paiement récurrent"
+            onChoose={uiEvents.requestNewRecurringPayment}
+            style={styles.voiceFab}
+            bottomOffset={hostHeight + FAB_RIGHT_GAP_BOTTOM}
+            rightOffset={FAB_RIGHT}
+          />
+        </FabAutoHide>
       ) : null}
       <BottomNavBar currentTab={currentTab} onTabPress={onTabPress} />
     </View>
   );
 }
+
+const AGENDA_ADD_ACTIONS: SpeedDialAction<RecurringPaymentAddVariant>[] = [
+  { key: 'income', label: 'Revenu récurrent', icon: 'trending-up' },
+  { key: 'bill', label: 'Facture récurrente', icon: 'document-text-outline' },
+  { key: 'subscription', label: 'Abonnement', icon: 'repeat' },
+];
+
+const FAB_RIGHT = 20;
+const FAB_RIGHT_GAP_BOTTOM = 12;
 
 const styles = StyleSheet.create({
   host: {
@@ -160,12 +213,8 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
     borderTopWidth: 1,
-    borderTopColor: '#27272A',
     paddingTop: 10,
     overflow: 'hidden',
-  },
-  barBackground: {
-    backgroundColor: '#09090B',
   },
   navRow: {
     flexDirection: 'row',
@@ -180,25 +229,22 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
     paddingVertical: 2,
+    minHeight: 52,
   },
-  tabLabel: {
-    ...jakartaBoldText,
-    fontSize: 9,
-    letterSpacing: -0.2,
-  },
-  activeLabel: {
-    color: '#FFFFFF',
-  },
-  inactiveLabel: {
-    color: '#71717A',
+  // « + » sits one FAB + gap above the voice button.
+  addFab: {
+    position: 'absolute',
+    right: FAB_RIGHT,
+    bottom: '100%',
+    marginBottom: FAB_RIGHT_GAP_BOTTOM + TRANSACTIONS_FAB_SIZE + TRANSACTIONS_FAB_STACK_GAP,
+    zIndex: 2,
   },
   voiceFab: {
     position: 'absolute',
-    right: 20,
+    right: FAB_RIGHT,
     bottom: '100%',
-    marginBottom: 12,
+    marginBottom: FAB_RIGHT_GAP_BOTTOM,
     zIndex: 2,
   },
 });

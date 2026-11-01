@@ -1,4 +1,7 @@
-import * as SQLite from 'expo-sqlite';
+// Types only: the runtime module is required lazily in openNativeSqlite() so a build
+// without the ExpoSQLite native module (some Expo Go releases) does not crash at import.
+import type * as SQLite from 'expo-sqlite';
+import { requireOptionalNativeModule } from 'expo';
 import { LogBox, Platform } from 'react-native';
 import {
   accumulateAccountMoneyFlows,
@@ -33,7 +36,15 @@ import type {
  * Web strategy: never call expo-sqlite `openDatabaseAsync` (WASM/OPFS hangs in previews).
  * Use a JS in-memory DB that stores rows so demo seed + Accueil show mock data.
  */
-const WEB_USES_STUB_ONLY = Platform.OS === 'web';
+/**
+ * Native app without the ExpoSQLite module (Expo Go SDK 58 on Android ships without it):
+ * use the same in-memory JS DB as web. Data then lasts only until the app reloads.
+ */
+const NATIVE_SQLITE_MISSING = Platform.OS !== 'web' && !requireOptionalNativeModule('ExpoSQLite');
+if (NATIVE_SQLITE_MISSING) {
+  console.warn('[db] ExpoSQLite native module missing — using in-memory DB (data is not saved between reloads)');
+}
+const WEB_USES_STUB_ONLY = Platform.OS === 'web' || NATIVE_SQLITE_MISSING;
 
 const WEB_LOGBOX_IGNORE_KEY = '__budgetTrackerSqliteLogBoxIgnoreInstalled__';
 if (WEB_USES_STUB_ONLY && __DEV__) {
@@ -58,8 +69,9 @@ const DB_SINGLETON_KEY = '__budgetTrackerSqlite__';
  * Web keeps the open DB on globalThis across Fast Refresh — without a version bump,
  * new SELECTs/INSERTs can hit missing columns until a full reload.
  * v3: wealth_assets.certificate_uri / certificate_file_name (authenticity certificate).
+ * v4: account_envelope_moves (envelope movement history).
  */
-const SCHEMA_MIGRATION_VERSION = 3;
+const SCHEMA_MIGRATION_VERSION = 4;
 
 interface DbSingletonState {
   promise: Promise<SQLite.SQLiteDatabase> | null;
@@ -328,7 +340,8 @@ async function openDatabaseResilient(): Promise<SQLite.SQLiteDatabase> {
  * Native-only open with a hard timeout. Web never calls this (stub-only path).
  */
 async function openNativeSqlite(databaseName: string): Promise<SQLite.SQLiteDatabase> {
-  const openPromise = SQLite.openDatabaseAsync(databaseName);
+  const { openDatabaseAsync } = require('expo-sqlite') as typeof SQLite;
+  const openPromise = openDatabaseAsync(databaseName);
   void openPromise.catch(() => {});
 
   const timeoutMs = DB_OPEN_TIMEOUT_MS;
@@ -524,6 +537,32 @@ async function applyIncrementalMigrations(db: SQLite.SQLiteDatabase): Promise<vo
   await ensureWealthAssetColumns(db);
   await ensureMerchantOverrideColumns(db);
   await ensureContactsTable(db);
+  await ensureAccountEnvelopesTable(db);
+}
+
+/** Envelopes split an account's balance into named portions (Factures, Loisirs…). */
+async function ensureAccountEnvelopesTable(db: SQLite.SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS account_envelopes (
+      id TEXT PRIMARY KEY NOT NULL,
+      account_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      icon TEXT,
+      amount REAL NOT NULL DEFAULT 0,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_account_envelopes_account ON account_envelopes(account_id);
+    CREATE TABLE IF NOT EXISTS account_envelope_moves (
+      id TEXT PRIMARY KEY NOT NULL,
+      account_id TEXT NOT NULL,
+      from_envelope_id TEXT,
+      to_envelope_id TEXT,
+      amount REAL NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_account_envelope_moves_account ON account_envelope_moves(account_id);
+  `);
 }
 
 function isLikelyMissingColumnError(error: unknown): boolean {
@@ -599,6 +638,15 @@ async function ensureSavingsGoalColumns(db: SQLite.SQLiteDatabase): Promise<void
     await db.execAsync(
       "ALTER TABLE savings_goals ADD COLUMN contribution_frequency TEXT NOT NULL DEFAULT 'weekly'",
     );
+  }
+  if (!columns.some((column) => column.name === 'linked_account_id')) {
+    await db.execAsync('ALTER TABLE savings_goals ADD COLUMN linked_account_id TEXT');
+  }
+  if (!columns.some((column) => column.name === 'linked_envelope_id')) {
+    await db.execAsync('ALTER TABLE savings_goals ADD COLUMN linked_envelope_id TEXT');
+  }
+  if (!columns.some((column) => column.name === 'tier_kind')) {
+    await db.execAsync('ALTER TABLE savings_goals ADD COLUMN tier_kind TEXT');
   }
 }
 
@@ -935,6 +983,12 @@ export async function deleteSimulatedAccount(id: string): Promise<void> {
 
   const db = await getDb();
   await db.runAsync('DELETE FROM simulated_accounts WHERE id = ?', [trimmed]);
+  await db.runAsync(
+    'UPDATE savings_goals SET linked_account_id = NULL, linked_envelope_id = NULL WHERE linked_account_id = ?',
+    [trimmed],
+  );
+  await db.runAsync('DELETE FROM account_envelopes WHERE account_id = ?', [trimmed]);
+  await db.runAsync('DELETE FROM account_envelope_moves WHERE account_id = ?', [trimmed]);
   dataEvents.emit();
 }
 
@@ -965,6 +1019,13 @@ export async function adjustSavingsGoalCurrentAmount(
   await db.runAsync(
     'UPDATE savings_goals SET current_amount = MAX(0, current_amount + ?) WHERE id = ?',
     [delta, trimmedId],
+  );
+  // Linked goal → keep its envelope equal to the new saved amount.
+  await db.runAsync(
+    `UPDATE account_envelopes
+       SET amount = (SELECT current_amount FROM savings_goals WHERE id = ?)
+       WHERE id = (SELECT linked_envelope_id FROM savings_goals WHERE id = ?)`,
+    [trimmedId, trimmedId],
   );
   if (options?.emit !== false) {
     dataEvents.emit();
@@ -1397,7 +1458,10 @@ export async function getSavingsGoals(): Promise<SavingsGoal[]> {
        due_date AS dueDate,
        color,
        icon,
-       created_at AS createdAt
+       created_at AS createdAt,
+       linked_account_id AS linkedAccountId,
+       linked_envelope_id AS linkedEnvelopeId,
+       tier_kind AS tierKind
      FROM savings_goals
      ORDER BY created_at DESC`,
   );
@@ -1405,10 +1469,22 @@ export async function getSavingsGoals(): Promise<SavingsGoal[]> {
 
 export async function upsertSavingsGoal(goal: SavingsGoal): Promise<void> {
   const db = await getDb();
+  // The goal form knows nothing about links: an edit must not wipe them (INSERT OR REPLACE would).
+  const existing = await db.getFirstAsync<{
+    linked_account_id: string | null;
+    linked_envelope_id: string | null;
+    tier_kind: string | null;
+  }>('SELECT linked_account_id, linked_envelope_id, tier_kind FROM savings_goals WHERE id = ?', [goal.id]);
+  const linkedAccountId =
+    goal.linkedAccountId !== undefined ? goal.linkedAccountId : (existing?.linked_account_id ?? null);
+  const linkedEnvelopeId =
+    goal.linkedEnvelopeId !== undefined ? goal.linkedEnvelopeId : (existing?.linked_envelope_id ?? null);
+  const tierKind = goal.tierKind !== undefined ? goal.tierKind : (existing?.tier_kind ?? null);
   await db.runAsync(
     `INSERT OR REPLACE INTO savings_goals (
-       id, name, target_amount, current_amount, initial_saved_amount, weekly_contribution, contribution_frequency, due_date, color, icon, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       id, name, target_amount, current_amount, initial_saved_amount, weekly_contribution, contribution_frequency, due_date, color, icon, created_at,
+       linked_account_id, linked_envelope_id, tier_kind
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       goal.id,
       goal.name,
@@ -1421,8 +1497,15 @@ export async function upsertSavingsGoal(goal: SavingsGoal): Promise<void> {
       goal.color,
       goal.icon,
       goal.createdAt,
+      linkedAccountId,
+      linkedEnvelopeId,
+      tierKind,
     ],
   );
+  // The envelope mirrors the goal: editing the saved amount moves the envelope with it.
+  if (linkedEnvelopeId) {
+    await db.runAsync('UPDATE account_envelopes SET amount = ? WHERE id = ?', [goal.currentAmount, linkedEnvelopeId]);
+  }
   dataEvents.emit();
 }
 
@@ -1431,6 +1514,11 @@ export async function deleteSavingsGoal(id: string): Promise<void> {
   if (!trimmed) return;
 
   const db = await getDb();
+  // The envelope was created for this goal: remove it too (its money returns to « Non attribué »).
+  await db.runAsync(
+    'DELETE FROM account_envelopes WHERE id = (SELECT linked_envelope_id FROM savings_goals WHERE id = ?)',
+    [trimmed],
+  );
   await db.runAsync('UPDATE transactions SET savings_goal_id = NULL WHERE savings_goal_id = ?', [trimmed]);
   await db.runAsync(
     'UPDATE simulated_accounts SET linked_savings_goal_id = NULL WHERE linked_savings_goal_id = ?',

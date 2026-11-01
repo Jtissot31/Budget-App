@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { AnimatedFill } from '@/components/kit/motion';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
@@ -19,6 +20,7 @@ import {
 } from '@/components/FixedScreenHeader';
 import { GlassContainer } from '@/components/GlassContainer';
 import { OverflowMenuButton } from '@/components/OverflowMenuButton';
+import { SummaryCard } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
 import {
   CHART_FULL_BLEED_RIGHT_INSET,
@@ -69,6 +71,7 @@ import {
 } from '@/lib/wealthAssetPresentation';
 import type { Loan, Transaction, WealthAsset } from '@/types';
 import { Image } from 'expo-image';
+import { FitText } from '@/components/kit/FitText';
 
 /** Real-estate / wealth asset chart — longer horizons only. */
 const WEALTH_ASSET_CHART_PERIODS: NetWorthChartPeriod[] = [
@@ -311,24 +314,24 @@ export default function WealthAssetDetailScreen() {
           <>
             <View style={[progressBar.track, styles.equityTrack, { backgroundColor: trackColor }]}>
               {equityBarWidth > 0 ? (
-                <View
+                <AnimatedFill
+                  progress={Math.max(equityBarWidth, 3) / 100}
                   style={[
                     progressBar.fill,
                     styles.equitySegment,
                     {
-                      width: `${Math.max(equityBarWidth, 3)}%`,
                       backgroundColor: colors.primary,
                     },
                   ]}
                 />
               ) : null}
               {mortgageBarWidth > 0 ? (
-                <View
+                <AnimatedFill
+                  progress={mortgageBarWidth / 100}
                   style={[
                     progressBar.fill,
                     styles.equitySegment,
                     {
-                      width: `${mortgageBarWidth}%`,
                       backgroundColor: isLight ? 'rgba(17,17,17,0.18)' : 'rgba(255,255,255,0.18)',
                     },
                   ]}
@@ -339,15 +342,14 @@ export default function WealthAssetDetailScreen() {
             <View style={styles.equityLegend}>
               <View style={styles.equityLegendRow}>
                 <View style={[styles.equitySwatch, { backgroundColor: colors.primary }]} />
-                <Text style={[styles.equityLegendLabel, { color: colors.textMuted }]} numberOfLines={1}>
+                <FitText style={[styles.equityLegendLabel, { color: colors.textMuted }]}>
                   Ta part
-                </Text>
-                <Text
+                </FitText>
+                <FitText
                   style={[styles.equityLegendValue, moneyAmountTypography({ tier: 'row' }), { color: colors.text }]}
-                  numberOfLines={1}
                 >
                   {formatDisplayMoneyAbsolute(realEstateEquity.netEquity)}
-                </Text>
+                </FitText>
               </View>
               <View style={styles.equityLegendRow}>
                 <View
@@ -358,53 +360,50 @@ export default function WealthAssetDetailScreen() {
                     },
                   ]}
                 />
-                <Text style={[styles.equityLegendLabel, { color: colors.textMuted }]} numberOfLines={1}>
+                <FitText style={[styles.equityLegendLabel, { color: colors.textMuted }]}>
                   Hypothèque
-                </Text>
-                <Text
+                </FitText>
+                <FitText
                   style={[styles.equityLegendValue, moneyAmountTypography({ tier: 'row' }), { color: colors.text }]}
-                  numberOfLines={1}
                 >
                   {formatDisplayMoneyAbsolute(realEstateEquity.mortgageBalance)}
-                </Text>
+                </FitText>
               </View>
             </View>
 
             <View style={[styles.equityTotalRow, { borderTopColor: colors.containerBorder }]}>
-              <Text style={[styles.equityTotalLabel, { color: colors.textMuted }]} numberOfLines={1}>
+              <FitText style={[styles.equityTotalLabel, { color: colors.textMuted }]}>
                 Valeur marchande
-              </Text>
-              <Text
+              </FitText>
+              <FitText
                 style={[styles.equityTotalValue, moneyAmountTypography({ tier: 'row' }), { color: colors.text }]}
-                numberOfLines={1}
               >
                 {formatDisplayMoneyAbsolute(realEstateEquity.propertyValue)}
-              </Text>
+              </FitText>
             </View>
           </>
         ) : (
           <>
             <View style={[progressBar.track, { backgroundColor: trackColor }]}>
-              <View
+              <AnimatedFill
+                progress={Math.max(Math.min(progressPct, 100), 3) / 100}
                 style={[
                   progressBar.fill,
                   {
-                    width: `${Math.max(Math.min(progressPct, 100), 3)}%`,
                     backgroundColor: isGainLoss ? colors.danger : colors.primary,
                   },
                 ]}
               />
             </View>
             <View style={styles.progressFooter}>
-              <Text style={[styles.progressFootnote, { color: colors.textMuted }]} numberOfLines={1}>
+              <FitText style={[styles.progressFootnote, { color: colors.textMuted }]}>
                 {`${gain >= 0 ? 'Plus-value' : 'Perte'} · ${formatDisplayMoneyAbsolute(Math.abs(gain))}`}
-              </Text>
-              <Text
+              </FitText>
+              <FitText
                 style={[styles.progressFootnote, styles.progressFootnoteRight, { color: colors.textMuted }]}
-                numberOfLines={1}
               >
                 {`Achat · ${formatDisplayMoneyAbsolute(progressTotalAmount)}`}
-              </Text>
+              </FitText>
             </View>
           </>
         )}
@@ -461,6 +460,35 @@ export default function WealthAssetDetailScreen() {
         >
           {asset ? (
             <>
+              {asset.currentValue > 0 ? (
+                <SummaryCard
+                  style={styles.summary}
+                  label={isRealEstate ? 'Valeur marchande' : 'Valeur actuelle'}
+                  amount={formatDisplayMoneyAbsolute(asset.currentValue)}
+                  amountValue={asset.currentValue}
+                  formatAmount={formatDisplayMoneyAbsolute}
+                  badge={
+                    asset.purchaseCost > 0
+                      ? {
+                          label: `${gainPct >= 0 ? '+' : '−'}${Math.abs(gainPct).toLocaleString('fr-CA', { maximumFractionDigits: 1 })} % depuis l’achat`,
+                          color: gainTone,
+                        }
+                      : undefined
+                  }
+                  stats={
+                    isRealEstate && realEstateEquity
+                      ? [
+                          { label: 'Ta part', value: formatDisplayMoneyAbsolute(realEstateEquity.netEquity), color: colors.accentGreen },
+                          { label: 'Hypothèque', value: formatDisplayMoneyAbsolute(realEstateEquity.mortgageBalance) },
+                          { label: 'Plus-value', value: `${gain >= 0 ? '+' : '−'}${formatDisplayMoneyAbsolute(Math.abs(gain))}`, color: gainTone },
+                        ]
+                      : [
+                          { label: 'Achat', value: asset.purchaseCost > 0 ? formatDisplayMoneyAbsolute(asset.purchaseCost) : '—' },
+                          { label: 'Plus-value', value: `${gain >= 0 ? '+' : '−'}${formatDisplayMoneyAbsolute(Math.abs(gain))}`, color: gainTone },
+                        ]
+                  }
+                />
+              ) : null}
               {chartPoints.length >= 2 ? (
                 <View style={styles.chartBleed}>
                   <PortfolioChartCard
@@ -482,7 +510,7 @@ export default function WealthAssetDetailScreen() {
               ) : null}
 
               <Pressable onPress={dismissChartCursor} accessibilityRole="none">
-                {progressCard ?? valueHeroCard}
+                {progressCard ?? (asset.currentValue > 0 ? null : valueHeroCard)}
               </Pressable>
 
               <Pressable onPress={dismissChartCursor} accessibilityRole="none">
@@ -504,18 +532,17 @@ export default function WealthAssetDetailScreen() {
                     <View style={styles.linkedCopy}>
                       <Text style={[styles.sectionTitle, { color: colors.text }]}>Hypothèque liée</Text>
                       <View style={styles.linkedMetaRow}>
-                        <Text style={[styles.sectionMeta, { color: colors.textMuted }]} numberOfLines={1}>
+                        <FitText style={[styles.sectionMeta, { color: colors.textMuted }]}>
                           {formatLoanDisplayTitle(linkedLoan)} · Solde{' '}
-                        </Text>
-                        <Text
+                        </FitText>
+                        <FitText
                           style={[
                             moneyAmountTypography({ tier: 'row', fontSize: typography.micro }),
                             { color: colors.textMuted },
                           ]}
-                          numberOfLines={1}
                         >
                           {formatDisplayMoneyAbsolute(linkedLoan.balanceRemaining)}
-                        </Text>
+                        </FitText>
                       </View>
                     </View>
                     <AppIcon family="ionicons" name="chevron-forward" size={18} color={colors.textMuted} />
@@ -575,6 +602,7 @@ export default function WealthAssetDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  summary: { marginBottom: spacing.md },
   screen: { flex: 1, backgroundColor: 'transparent' },
   content: {
     paddingHorizontal: spacing.lg,

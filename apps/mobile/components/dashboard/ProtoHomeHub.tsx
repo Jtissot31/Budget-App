@@ -3,8 +3,9 @@
  *
  * 1. Patrimoine net (+ revenus / dépenses / épargne du mois)
  * 2. Budget du mois (une ligne, barre de progression)
- * 3. À venir — prochaines factures
- * 4. Objectifs d'épargne
+ * 3. Prochain paiement (vedette + carrousel)
+ * 4. Où va ton argent — top catégories du mois
+ * 5. Objectifs d'épargne
  *
  * Les comptes vivent dans Portefeuille (pas de doublon ici).
  */
@@ -12,10 +13,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { calendarBoxParts } from '@/components/DashboardDateBadge';
 import {
   AreaSparkline,
-  DateWell,
   EmptyRow,
   GoalTile,
   HeaderIconButton,
@@ -28,7 +27,8 @@ import {
   SectionLabel,
   SummaryCard,
 } from '@/components/kit';
-import { TodayCard } from '@/components/dashboard/TodayCard';
+import { GoalWideCard, GoalsOverview, NextPayments, SpendingSnapshot } from '@/components/dashboard/HomeUpcoming';
+import { CopilotWidget } from '@/components/copilot/CopilotCard';
 import { PageTransition } from '@/components/PageTransition';
 import {
   createNewGoalForm,
@@ -38,6 +38,7 @@ import {
 } from '@/components/SavingsGoalsForm';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
 import { FLOATING_NAV_CONTENT_PADDING, PAGE_PADDING_HORIZONTAL, spacing, typographyKit } from '@/constants/theme';
+import { useAlertCenter, useAlertCenterSources } from '@/hooks/useAlertCenter';
 import { useRefreshOnFocus } from '@/hooks/useRefreshOnFocus';
 import { getCategoriesForMonth, initializeCategories } from '@/lib/budgetCategories';
 import { mapBudgetCategoriesToUi, type BudgetCategoryUiModel } from '@/lib/budgetCategoryModel';
@@ -63,6 +64,7 @@ import { buildGoalProgressions } from '@/lib/savingsGamification';
 import { syncWithServer } from '@/lib/sync';
 import { useAppTheme } from '@/lib/themeContext';
 import { getUserDisplayName } from '@/lib/userDisplay';
+import { BUDGET_SCREEN_CACHE_KEY, readScreenCache, refreshScreenCache, writeScreenCache } from '@/lib/screenCache';
 import type {
   AgendaBill,
   CategoryBudget,
@@ -75,7 +77,8 @@ import type {
 
 const TREND_DAY_COUNT = 30;
 const UPCOMING_WINDOW_DAYS = 45;
-const UPCOMING_MAX_ROWS = 4;
+/** Home shows only the next few payments — the full list lives in Agenda. */
+const UPCOMING_SHOWN = 4;
 
 function timeOfDayGreeting(now: Date): string {
   const hour = now.getHours();
@@ -108,24 +111,6 @@ function formatSignedPct(pct: number): string {
   return `${sign}${body} %`;
 }
 
-/** Due today, tomorrow or the day after — worth highlighting. */
-function dueSoon(dateKey: string, now = new Date()): boolean {
-  const due = new Date(`${dateKey}T12:00:00`);
-  const today = new Date(now);
-  today.setHours(12, 0, 0, 0);
-  return Math.round((due.getTime() - today.getTime()) / 86_400_000) <= 2;
-}
-
-function relativeDueLabel(dateKey: string, now: Date): string {
-  const due = new Date(`${dateKey}T12:00:00`);
-  const today = new Date(now);
-  today.setHours(12, 0, 0, 0);
-  const days = Math.round((due.getTime() - today.getTime()) / 86_400_000);
-  if (days <= 0) return "Aujourd'hui";
-  if (days === 1) return 'Demain';
-  return `Dans ${days} jours`;
-}
-
 /** One upcoming money-out occurrence per recurring payment, soonest first. */
 function upcomingPaymentRows(
   payments: readonly RecurringPayment[],
@@ -150,50 +135,91 @@ function upcomingPaymentRows(
   return rows;
 }
 
+type HomeSnapshot = {
+  displayName: string;
+  accounts: SimulatedAccount[];
+  goals: SavingsGoal[];
+  dashboard: DashboardSummary | null;
+  categoryBudgets: CategoryBudget[];
+  recurringPayments: RecurringPayment[];
+  trendTransactions: Transaction[];
+  budgetCategories: BudgetCategoryUiModel[];
+};
+
+const HOME_CACHE_KEY = 'home';
+
+async function fetchHomeSnapshot(): Promise<HomeSnapshot> {
+  await ensureDbReady();
+  await initializeCategories();
+  const [name, accounts, goals, dashboard, categoryBudgets, recurringPayments, trendTransactions, monthCats] =
+    await Promise.all([
+      getUserDisplayName(),
+      getSimulatedAccounts(),
+      getSavingsGoals(),
+      getDashboard(),
+      getCategoryBudgets(),
+      getRecurringPayments(),
+      getTransactionsSince(trendSinceIso(TREND_DAY_COUNT)),
+      // Same source as the Budget tab so both screens show identical numbers.
+      getCategoriesForMonth(startOfMonth(new Date())),
+    ]);
+  const budgetCategories = mapBudgetCategoriesToUi(monthCats);
+  // Seeds the Budget tab so its first open paints immediately, like Accueil.
+  writeScreenCache(BUDGET_SCREEN_CACHE_KEY, budgetCategories);
+  return {
+    displayName: name,
+    accounts,
+    goals,
+    dashboard,
+    categoryBudgets,
+    recurringPayments,
+    trendTransactions,
+    budgetCategories,
+  };
+}
+
+/** Boot preload — Accueil then opens with real data instead of an empty first frame. */
+export function preloadHomeData(): Promise<unknown> {
+  return refreshScreenCache(HOME_CACHE_KEY, fetchHomeSnapshot);
+}
+
 export function ProtoHomeHub() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isLight } = useAppTheme();
   const greeting = timeOfDayGreeting(new Date());
+  // Start from the last snapshot (preloaded at boot) so the first frame is already right.
+  const [cached] = useState(() => readScreenCache<HomeSnapshot>(HOME_CACHE_KEY));
 
-  const [displayName, setDisplayName] = useState('');
-  const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
-  const [goals, setGoals] = useState<SavingsGoal[]>([]);
-  const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
-  const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudget[]>([]);
-  const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
-  const [trendTransactions, setTrendTransactions] = useState<Transaction[]>([]);
+  const [displayName, setDisplayName] = useState(cached?.displayName ?? '');
+  const [accounts, setAccounts] = useState<SimulatedAccount[]>(cached?.accounts ?? []);
+  const [goals, setGoals] = useState<SavingsGoal[]>(cached?.goals ?? []);
+  const [dashboard, setDashboard] = useState<DashboardSummary | null>(cached?.dashboard ?? null);
+  const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudget[]>(cached?.categoryBudgets ?? []);
+  const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>(cached?.recurringPayments ?? []);
+  const [trendTransactions, setTrendTransactions] = useState<Transaction[]>(cached?.trendTransactions ?? []);
   const [refreshing, setRefreshing] = useState(false);
+  /** False until real data exists — the wins card waits so it never flashes an empty state. */
+  const [hasLoaded, setHasLoaded] = useState(cached != null);
 
   const [goalForm, setGoalForm] = useState<GoalForm | null>(null);
   const [savingGoal, setSavingGoal] = useState(false);
   const [goalFormFeedback, setGoalFormFeedback] = useState<FormFeedback | null>(null);
 
-  const [budgetCategories, setBudgetCategories] = useState<BudgetCategoryUiModel[]>([]);
+  const [budgetCategories, setBudgetCategories] = useState<BudgetCategoryUiModel[]>(cached?.budgetCategories ?? []);
 
   const load = useCallback(async () => {
-    await ensureDbReady();
-    await initializeCategories();
-    const [name, nextAccounts, nextGoals, nextDashboard, nextBudgets, nextPayments, trendTx, monthCats] =
-      await Promise.all([
-        getUserDisplayName(),
-        getSimulatedAccounts(),
-        getSavingsGoals(),
-        getDashboard(),
-        getCategoryBudgets(),
-        getRecurringPayments(),
-        getTransactionsSince(trendSinceIso(TREND_DAY_COUNT)),
-        // Same source as the Budget tab so both screens show identical numbers.
-        getCategoriesForMonth(startOfMonth(new Date())),
-      ]);
-    setDisplayName(name);
-    setAccounts(nextAccounts);
-    setGoals(nextGoals);
-    setDashboard(nextDashboard);
-    setCategoryBudgets(nextBudgets);
-    setBudgetCategories(mapBudgetCategoriesToUi(monthCats));
-    setRecurringPayments(nextPayments);
-    setTrendTransactions(trendTx);
+    const snapshot = await refreshScreenCache(HOME_CACHE_KEY, fetchHomeSnapshot);
+    writeScreenCache(HOME_CACHE_KEY, snapshot);
+    setDisplayName(snapshot.displayName);
+    setAccounts(snapshot.accounts);
+    setGoals(snapshot.goals);
+    setDashboard(snapshot.dashboard);
+    setCategoryBudgets(snapshot.categoryBudgets);
+    setBudgetCategories(snapshot.budgetCategories);
+    setRecurringPayments(snapshot.recurringPayments);
+    setTrendTransactions(snapshot.trendTransactions);
+    setHasLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -264,14 +290,63 @@ export function ProtoHomeHub() {
     [goals],
   );
 
+  /** The two goals closest to the finish line — the full list lives in Wallet. */
+  const homeGoals = useMemo(
+    () =>
+      [...goalProgressions]
+        .sort((a, b) => b.currentAmount / (b.targetAmount || 1) - a.currentAmount / (a.targetAmount || 1))
+        .slice(0, 2),
+    [goalProgressions],
+  );
+
   const upcoming = useMemo(
-    () => upcomingPaymentRows(recurringPayments, new Date()),
+    () => upcomingPaymentRows(recurringPayments, new Date()).slice(0, UPCOMING_SHOWN),
     [recurringPayments],
   );
-  const upcomingTotal = useMemo(
-    () => upcoming.reduce((sum, row) => sum + row.bill.amount, 0),
-    [upcoming],
-  );
+
+  /** Missing amount per upcoming row, if the paying account can't cover it (earlier bills on the same account count first). */
+  const shortfalls = useMemo(() => {
+    const accountIdByPayment = new Map(recurringPayments.map((p) => [p.id, p.accountId]));
+    const accountById = new Map(accounts.map((a) => [a.id, a]));
+    const spentByAccount = new Map<string, number>();
+    const result = new Map<string, number>();
+    for (const row of upcoming) {
+      const accountId = row.bill.sourceId ? accountIdByPayment.get(row.bill.sourceId) : undefined;
+      const account = accountId ? accountById.get(accountId) : undefined;
+      if (!account) continue;
+      let available: number;
+      if (account.kind === 'credit') {
+        if (!(typeof account.creditLimit === 'number' && account.creditLimit > 0)) continue;
+        available = account.creditLimit + account.balance;
+      } else {
+        available = account.balance;
+      }
+      const alreadyDue = spentByAccount.get(account.id) ?? 0;
+      const needed = alreadyDue + row.bill.amount;
+      spentByAccount.set(account.id, needed);
+      if (needed > available) {
+        result.set(`${row.bill.sourceId}:${row.dateKey}`, Math.min(row.bill.amount, needed - Math.max(0, available)));
+      }
+    }
+    return result;
+  }, [accounts, recurringPayments, upcoming]);
+  const goalTotals = useMemo(() => {
+    const all = buildGoalProgressions(goals);
+    return {
+      saved: all.reduce((sum, goal) => sum + Math.min(goal.currentAmount, goal.targetAmount), 0),
+      target: all.reduce((sum, goal) => sum + goal.targetAmount, 0),
+      count: all.length,
+      reached: all.filter((goal) => goal.completed).length,
+    };
+  }, [goals]);
+
+  const alertSources = useAlertCenterSources();
+  const { unreadCount: unreadAlerts } = useAlertCenter({
+    recurringPayments: alertSources.recurringPayments,
+    simulatedAccounts: alertSources.simulatedAccounts,
+    incomeTransactions: alertSources.incomeTransactions,
+    enabled: alertSources.ready,
+  });
 
   const name = firstName(displayName);
 
@@ -311,16 +386,17 @@ export function ProtoHomeHub() {
     }
   }, [closeGoalForm, goalForm, isLight, load]);
 
-  const trendColor = (netWorthPct ?? 0) >= 0 ? colors.accentGreen : colors.danger;
+  // Accueil is encouraging, not alarming: dips are shown in neutral grey, never red.
+  const trendColor = (netWorthPct ?? 0) >= 0 ? colors.accentGreen : colors.textMuted;
   const budgetRatio = budget.limit > 0 ? budget.spent / budget.limit : 0;
-  // Same thresholds as the Budget tab ring: green ≤ 102 %, orange ≤ 110 %, red beyond.
   const budgetPct = Math.round(budgetRatio * 100);
-  const budgetColor = budgetPct <= 102 ? colors.accentGreen : budgetPct <= 110 ? '#F59E0B' : colors.danger;
+  const budgetColor = budgetPct <= 102 ? colors.accentGreen : '#F59E0B';
 
+  // Says « utilisé » so the ring's percentage can't be read as « remaining » — kept short for phones.
   const budgetSubtitle =
     budget.over > 0
-      ? `${budget.over} catégorie${budget.over > 1 ? 's' : ''} en dépassement`
-      : `${formatDisplayMoneyAbsolute(budget.spent)} sur ${formatDisplayMoneyAbsolute(budget.limit)}`;
+      ? `${budgetPct} % utilisé · ${budget.over} à revoir`
+      : `${formatDisplayMoneyAbsolute(budget.spent)} sur ${formatDisplayMoneyAbsolute(budget.limit)} utilisés`;
 
   return (
     <PageTransition>
@@ -342,11 +418,23 @@ export function ProtoHomeHub() {
             subtitle={name ? `${greeting}, ${name}` : greeting}
             trailing={
               <>
-                <HeaderIconButton
-                  icon="notifications-outline"
-                  accessibilityLabel="Ouvrir les messages"
-                  onPress={() => go('/alert-center')}
-                />
+                <View>
+                  <HeaderIconButton
+                    icon="notifications-outline"
+                    accessibilityLabel={
+                      unreadAlerts > 0 ? `Ouvrir les messages, ${unreadAlerts} non lus` : 'Ouvrir les messages'
+                    }
+                    onPress={() => go('/alert-center')}
+                  />
+                  {unreadAlerts > 0 ? (
+                    <View
+                      pointerEvents="none"
+                      style={[styles.bellBadge, { backgroundColor: colors.text, borderColor: colors.background }]}
+                    >
+                      <Text style={[styles.bellBadgeText, { color: colors.background }]}>{unreadAlerts > 9 ? '9+' : unreadAlerts}</Text>
+                    </View>
+                  ) : null}
+                </View>
                 <HeaderIconButton
                   icon="settings-outline"
                   accessibilityLabel="Ouvrir les réglages"
@@ -356,134 +444,167 @@ export function ProtoHomeHub() {
             }
           />
 
-          <Reveal index={0} style={styles.section}>
-            <SummaryCard
-              label="Patrimoine net"
-              amount={signedMoney(totalNetWorth)}
-              amountValue={totalNetWorth}
-              formatAmount={signedMoney}
-              badge={
-                netWorthPct != null
-                  ? { label: `${formatSignedPct(netWorthPct)} · 30 j`, color: trendColor }
-                  : undefined
-              }
-              stats={[
-                {
-                  label: 'Revenus',
-                  value: `+${formatDisplayMoneyAbsolute(monthlyIncome)}`,
-                  color: colors.accentGreen,
-                },
-                {
-                  label: 'Dépenses',
-                  value: `−${formatDisplayMoneyAbsolute(monthlyExpenses)}`,
-                },
-                {
-                  label: 'Épargne',
-                  value:
-                    savingsRate == null
-                      ? '—'
-                      : `${savingsRate < 0 ? '−' : ''}${formatNumberDisplay(Math.abs(savingsRate))} %`,
-                  color:
-                    savingsRate == null
-                      ? colors.textMuted
-                      : savingsRate >= 0
-                        ? colors.accentGreen
-                        : colors.danger,
-                },
-              ]}
-              onPress={() => router.navigate('/accounts')}
-              accessibilityLabel="Patrimoine net, ouvrir le portefeuille"
-            >
-              {netWorthSeries.length > 1 ? (
-                <AreaSparkline data={netWorthSeries} color={trendColor} height={52} />
-              ) : null}
-            </SummaryCard>
-          </Reveal>
+          {/* Cold start: nothing but the title until real data is ready, then every section
+              appears at once — no empty values, no late pop-in. Later visits use the cache. */}
+          {hasLoaded ? (
+            <>
+            <Reveal index={0} style={styles.section}>
+              {/* Same card + title type as the Copilote widget below it. */}
+              <SummaryCard
+                labelVariant="title"
+                centerStats
+                label="Patrimoine net"
+                amount={signedMoney(totalNetWorth)}
+                amountValue={totalNetWorth}
+                formatAmount={signedMoney}
+                badge={
+                  netWorthPct != null
+                    ? { label: `${formatSignedPct(netWorthPct)} · 30 j`, color: trendColor }
+                    : undefined
+                }
+                stats={[
+                  {
+                    label: 'Revenus',
+                    value: `${monthlyIncome > 0 ? '+' : ''}${formatDisplayMoneyAbsolute(monthlyIncome)}`,
+                    color: monthlyIncome > 0 ? colors.accentGreen : undefined,
+                  },
+                  {
+                    label: 'Dépenses',
+                    value: `${monthlyExpenses > 0 ? '−' : ''}${formatDisplayMoneyAbsolute(monthlyExpenses)}`,
+                  },
+                  {
+                    label: 'Épargne',
+                    value:
+                      savingsRate == null
+                        ? '—'
+                        : `${savingsRate < 0 ? '−' : ''}${formatNumberDisplay(Math.abs(savingsRate))} %`,
+                    color:
+                      savingsRate == null
+                        ? colors.textMuted
+                        : savingsRate >= 0
+                          ? colors.accentGreen
+                          : colors.danger,
+                  },
+                ]}
+                onPress={() => router.navigate('/accounts')}
+                accessibilityLabel="Patrimoine net, ouvrir le portefeuille"
+              >
+                {netWorthSeries.length > 1 ? (
+                  <AreaSparkline data={netWorthSeries} color={trendColor} height={52} />
+                ) : null}
+              </SummaryCard>
+            </Reveal>
 
-          <Reveal index={1} style={styles.section}>
-            <TodayCard />
-          </Reveal>
+            <Reveal index={1} style={styles.section}>
+              <CopilotWidget gentle />
+            </Reveal>
 
-          <Reveal index={2} style={styles.section}>
-            <SectionLabel title="Budget du mois" actionLabel="Détails" onAction={() => router.navigate('/budgets')} />
-            <ListCard>
-              {budget.limit > 0 ? (
-                <ListRow
-                  leading={
-                    <RingGauge progress={budgetRatio} color={budgetColor} size={40} stroke={5}>
-                      <Text style={[styles.ringText, { color: colors.text }]}>
-                        {Math.min(999, Math.round(budgetRatio * 100))}
-                      </Text>
-                    </RingGauge>
-                  }
-                  title={budget.remaining < 0 ? 'Budget dépassé' : `${signedMoney(budget.remaining)} restants`}
-                  subtitle={budgetSubtitle}
-                  isLast
-                  chevron
-                  onPress={() => router.navigate('/budgets')}
-                />
-              ) : (
-                <EmptyRow
-                  label="Aucun budget défini"
-                  actionLabel="Créer"
-                  onAction={() => router.navigate('/budgets')}
-                />
-              )}
-            </ListCard>
-          </Reveal>
-
-          <Reveal index={3} style={styles.section}>
-            <SectionLabel
-              title={upcoming.length > 0 ? `À venir · ${formatDisplayMoneyAbsolute(upcomingTotal)}` : 'À venir'}
-              actionLabel="Agenda"
-              onAction={() => router.navigate('/goals')}
-            />
-            <ListCard>
-              {upcoming.length === 0 ? (
-                <EmptyRow label="Rien à payer d’ici 45 jours" />
-              ) : (
-                upcoming.slice(0, UPCOMING_MAX_ROWS).map(({ dateKey, bill }, index, rows) => {
-                  const { month, day } = calendarBoxParts(dateKey);
-                  return (
-                    <ListRow
-                      key={`${bill.sourceId ?? bill.name}:${dateKey}`}
-                      leading={<DateWell month={month} day={day} />}
-                      title={bill.name}
-                      subtitle={relativeDueLabel(dateKey, new Date())}
-                      subtitleColor={dueSoon(dateKey) ? '#F59E0B' : undefined}
-                      valueColor={dueSoon(dateKey) ? '#F59E0B' : undefined}
-                      value={`−${formatDisplayMoneyAbsolute(bill.amount)}`}
-                      isLast={index === rows.length - 1}
-                      onPress={() => router.navigate('/goals')}
-                    />
-                  );
-                })
-              )}
-            </ListCard>
-          </Reveal>
-
-          <Reveal index={4} style={styles.section}>
-            <SectionLabel title="Objectifs" actionLabel="Nouveau" onAction={openNewGoalForm} />
-            {goalProgressions.length === 0 ? (
+            <Reveal index={2} style={styles.section}>
+              <SectionLabel title="Budget du mois" actionLabel="Détails" onAction={() => router.navigate('/budgets')} />
               <ListCard>
-                <EmptyRow label="Aucun objectif en cours" actionLabel="Créer" onAction={openNewGoalForm} />
+                {budget.limit > 0 ? (
+                  <ListRow
+                    leading={
+                      <RingGauge progress={budgetRatio} color={budgetColor} size={48} stroke={4}>
+                        <Text style={[styles.ringText, { color: colors.text }]}>
+                          {`${Math.min(999, Math.round(budgetRatio * 100))}%`}
+                        </Text>
+                      </RingGauge>
+                    }
+                    title={
+                      budget.remaining < 0
+                        ? `${formatDisplayMoneyAbsolute(-budget.remaining)} au-delà du plan`
+                        : `${signedMoney(budget.remaining)} restants`
+                    }
+                    subtitle={budgetSubtitle}
+                    isLast
+                    chevron
+                    onPress={() => router.navigate('/budgets')}
+                  />
+                ) : (
+                  <EmptyRow
+                    label="Aucun budget défini"
+                    actionLabel="Créer"
+                    onAction={() => router.navigate('/budgets')}
+                  />
+                )}
               </ListCard>
-            ) : (
-              <View style={styles.goalGrid}>
-                {goalProgressions.map((goal) => (
-                  <View key={goal.goalId} style={styles.goalCell}>
-                    <GoalTile
-                      name={goal.name}
-                      icon={<UserPickedIconWell icon={goal.icon} size={32} />}
-                      saved={goal.currentAmount}
-                      target={goal.targetAmount}
-                      onPress={() => go({ pathname: '/goal-detail', params: { goalId: goal.goalId } })}
-                    />
-                  </View>
-                ))}
-              </View>
-            )}
-          </Reveal>
+            </Reveal>
+
+            <Reveal index={3} style={styles.section}>
+              <SectionLabel title="Prochain paiement" actionLabel="Agenda" onAction={() => router.navigate('/goals')} />
+              {upcoming.length === 0 ? (
+                <ListCard>
+                  <EmptyRow label="Rien à payer d’ici 45 jours" />
+                </ListCard>
+              ) : (
+                <NextPayments
+                  rows={upcoming}
+                  shortfallFor={(row) => shortfalls.get(`${row.bill.sourceId}:${row.dateKey}`) ?? 0}
+                  onOpen={(row) =>
+                    row?.bill.sourceId
+                      ? router.push({ pathname: '/payment-detail', params: { id: row.bill.sourceId, date: row.dateKey } })
+                      : router.navigate('/goals')
+                  }
+                />
+              )}
+            </Reveal>
+
+            {budget.spent > 0 ? (
+              <Reveal index={4} style={styles.section}>
+                <SectionLabel
+                  title="Où va ton argent"
+                  actionLabel="Analyse"
+                  onAction={() => go('/transactions-insights')}
+                />
+                <SpendingSnapshot
+                  categories={budgetCategories}
+                  onOpenCategory={(id) => router.push({ pathname: '/budget-category', params: { id } })}
+                />
+              </Reveal>
+            ) : null}
+
+            <Reveal index={5} style={styles.section}>
+              <SectionLabel
+                title="Objectifs"
+                actionLabel={goalProgressions.length > 0 ? 'Tout voir' : 'Nouveau'}
+                onAction={goalProgressions.length > 0 ? () => router.navigate('/accounts') : openNewGoalForm}
+              />
+              {goalTotals.count > 1 ? (
+                <View style={styles.goalSummary}>
+                  <GoalsOverview {...goalTotals} />
+                </View>
+              ) : null}
+              {goalProgressions.length === 0 ? (
+                <ListCard>
+                  <EmptyRow label="Aucun objectif en cours" actionLabel="Créer" onAction={openNewGoalForm} />
+                </ListCard>
+              ) : homeGoals.length === 1 && homeGoals[0] ? (
+                <GoalWideCard
+                  name={homeGoals[0].name}
+                  icon={<UserPickedIconWell icon={homeGoals[0].icon} size={32} />}
+                  saved={homeGoals[0].currentAmount}
+                  target={homeGoals[0].targetAmount}
+                  onPress={() => go({ pathname: '/goal-detail', params: { goalId: homeGoals[0]!.goalId } })}
+                />
+              ) : (
+                <View style={styles.goalGrid}>
+                  {homeGoals.map((goal) => (
+                    <View key={goal.goalId} style={styles.goalCell}>
+                      <GoalTile
+                        name={goal.name}
+                        icon={<UserPickedIconWell icon={goal.icon} size={32} />}
+                        saved={goal.currentAmount}
+                        target={goal.targetAmount}
+                        onPress={() => go({ pathname: '/goal-detail', params: { goalId: goal.goalId } })}
+                      />
+                    </View>
+                  ))}
+                </View>
+              )}
+            </Reveal>
+            </>
+          ) : null}
         </ScrollView>
 
         <SavingsGoalFormModal
@@ -508,5 +629,19 @@ const styles = StyleSheet.create({
   section: { marginBottom: SECTION_GAP + spacing.sm },
   goalGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
   goalCell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10 },
+  goalSummary: { marginBottom: 10 },
+  bellBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    borderWidth: 2,
+    paddingHorizontal: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellBadgeText: { color: '#FFFFFF', fontSize: 9.5, fontWeight: '700', lineHeight: 12 },
   ringText: { ...typographyKit.metaSemibold, fontSize: 11 },
 });

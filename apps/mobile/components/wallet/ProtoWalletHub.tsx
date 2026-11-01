@@ -13,6 +13,7 @@ import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal';
 import { AppIcon } from '@/components/icons/AppIcon';
 import {
   HeaderIconButton,
+  EmptyRow,
   GoalTile,
   IconWell,
   ListCard,
@@ -23,16 +24,16 @@ import {
   AreaSparkline,
   SummaryCard,
   PillButton,
+  Reveal,
 } from '@/components/kit';
 import { PageTransition } from '@/components/PageTransition';
 import {
-  ACCOUNT_KIND_OPTIONS,
   createNewAccountForm,
   saveSimulatedAccountForm,
   SimulatedAccountFormModal,
   type AccountForm,
 } from '@/components/SimulatedAccountForm';
-import { SettingsPickerSheet, type SettingsPickerOption } from '@/components/SettingsPickerSheet';
+import { AddAccountSheet } from '@/components/wallet/AddAccountSheet';
 import {
   createNewGoalForm,
   SavingsGoalFormModal,
@@ -40,6 +41,7 @@ import {
   type GoalForm,
 } from '@/components/SavingsGoalsForm';
 import { UserPickedIconWell } from '@/components/UserPickedIconWell';
+import { GoalWideCard, LoanWideCard } from '@/components/dashboard/HomeUpcoming';
 import { InstitutionMark } from '@/components/wallet/AccountCardPrototypes';
 import {
   destructiveIconColor,
@@ -47,6 +49,7 @@ import {
   FLOATING_NAV_CONTENT_PADDING,
   PAGE_PADDING_HORIZONTAL,
   spacing,
+  jakartaSemiboldText,
   subtleDeleteButtonStyle,
   typographyKit,
 } from '@/constants/theme';
@@ -74,6 +77,7 @@ import { buildNetWorthDailySeries } from '@/lib/buildNetWorthTrendSeries';
 import { formatNumberDisplay } from '@/lib/formatNumber';
 import { resolveSavingsGoalDisplayIcon } from '@/lib/getAutomaticGoalIcon';
 import { successHaptic, tapHaptic } from '@/lib/haptics';
+import { LoanFormSheet } from '@/components/loans/LoanFormSheet';
 import { resolveLoanIcon } from '@/lib/loanIcons';
 import { formatLoanObligationName, formatWalletLoanGoalRow } from '@/lib/loanPresentation';
 import { useAppTheme } from '@/lib/themeContext';
@@ -87,10 +91,6 @@ import type {
   SimulatedAccount,
   Transaction,
 } from '@/types';
-
-const ACCOUNT_TYPE_PICKER_OPTIONS: SettingsPickerOption<AccountKind>[] = ACCOUNT_KIND_OPTIONS.map(
-  ({ id, label, description, icon }) => ({ id, label, description, icon }),
-);
 
 const ACCOUNT_DRAG_ACTIVATION_MS = 220;
 const MASK = '••••';
@@ -134,6 +134,7 @@ export function ProtoWalletHub() {
   const [accounts, setAccounts] = useState<SimulatedAccount[]>([]);
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [loanFormOpen, setLoanFormOpen] = useState(false);
   const [trendTx, setTrendTx] = useState<Transaction[]>([]);
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudget[]>([]);
@@ -218,6 +219,12 @@ export function ProtoWalletHub() {
     },
     [accounts.length],
   );
+
+  /** Plaid bank-sync flow (preview data until the backend exists). */
+  const handleConnectBank = useCallback(() => {
+    // Let the sheet Modal dismiss before presenting the flow.
+    setTimeout(() => router.push('/connect-bank'), 280);
+  }, [router]);
 
   const closeAccountForm = useCallback(() => {
     setAccountForm(null);
@@ -351,20 +358,12 @@ export function ProtoWalletHub() {
   const listedAccounts = useMemo(() => accounts.filter((a) => !a.hidden), [accounts]);
   const liquidAccounts = useMemo(() => listedAccounts.filter((a) => isLiquid(a.kind)), [listedAccounts]);
   const creditAccounts = useMemo(() => listedAccounts.filter((a) => !isLiquid(a.kind)), [listedAccounts]);
+  const orderedAccounts = useMemo(() => [...liquidAccounts, ...creditAccounts], [liquidAccounts, creditAccounts]);
 
   const liquidCash = liquidAccounts.reduce((sum, a) => sum + a.balance, 0);
   const creditTotal = creditAccounts.reduce((sum, a) => sum + a.balance, 0);
   const netWorth = liquidCash + creditTotal;
-  const availableNow = liquidAccounts
-    .filter((a) => a.kind === 'checking' || a.kind === 'cash')
-    .reduce((sum, a) => sum + a.balance, 0);
-  const savingsTotal = liquidAccounts.filter((a) => a.kind === 'savings').reduce((sum, a) => sum + a.balance, 0);
   const creditUsed = creditAccounts.reduce((sum, a) => sum + Math.max(0, -a.balance), 0);
-  const creditLimitTotal = creditAccounts.reduce(
-    (sum, a) => sum + (typeof a.creditLimit === 'number' && a.creditLimit > 0 ? a.creditLimit : 0),
-    0,
-  );
-  const creditUtilization = creditLimitTotal > 0 ? creditUsed / creditLimitTotal : 0;
   const netWorthSeries = useMemo(
     () =>
       listedAccounts.length === 0
@@ -390,14 +389,16 @@ export function ProtoWalletHub() {
   const renderAccountRow = (account: SimulatedAccount, isLast: boolean, interactive = true) => {
     const selected = selectedAccountIds.includes(account.id);
     const title = accountBalanceDisplayName(account) || 'Compte';
-    return (
+    const meta = accountMeta(account);
+    const row = (
       <ListRow
         key={account.id}
         leading={managingAccounts ? <SelectWell selected={selected} /> : <View style={styles.logoSlot}><InstitutionMark account={account} size={36} tile /></View>}
         title={title}
-        subtitle={accountMeta(account)}
+        subtitle={meta}
         value={money(account.balance)}
         valueColor={account.balance < 0 && !hideBalances ? colors.danger : colors.text}
+        compactValue
         trailing={
           managingAccounts && listedAccounts.length > 1 ? (
             <View style={styles.dragHandle}>
@@ -414,6 +415,7 @@ export function ProtoWalletHub() {
         }
       />
     );
+    return row;
   };
 
   const renderSortableAccount = useCallback<SortableGridRenderItem<SimulatedAccount>>(
@@ -430,7 +432,7 @@ export function ProtoWalletHub() {
     <ListRow
       leading={<IconWell icon="add" color={colors.text} />}
       title="Ajouter un compte"
-      subtitle="Chèque, épargne, carte de crédit…"
+      subtitle="Connecter ma banque ou ajouter à la main"
       isLast
       onPress={openAddAccount}
     />
@@ -453,7 +455,7 @@ export function ProtoWalletHub() {
         >
           <PageHeader
             topInset={insets.top}
-            title="Wallet"
+            title="Comptes"
             trailing={
               <HeaderIconButton
                 icon={hideBalances ? 'eye-off-outline' : 'eye-outline'}
@@ -467,7 +469,7 @@ export function ProtoWalletHub() {
             }
           />
 
-          <View style={styles.section}>
+          <Reveal index={0} style={styles.section}>
             <SummaryCard
               label="Valeur nette"
               amount={hideBalances ? '••••••' : signedMoney(netWorth)}
@@ -478,59 +480,41 @@ export function ProtoWalletHub() {
                 netWorthPct != null && !hideBalances
                   ? {
                       label: `${netWorthPct >= 0 ? '+' : '−'}${Math.abs(netWorthPct).toFixed(1).replace('.', ',')} % · 30 j`,
-                      color: netWorthPct >= 0 ? colors.accentGreen : colors.danger,
+                      color: netWorthPct >= 0 ? colors.accentGreen : colors.textMuted,
                     }
                   : undefined
               }
-              stats={[
-                { label: 'Disponible', value: money(availableNow) },
-                { label: 'Épargne', value: money(savingsTotal) },
-                creditLimitTotal > 0
-                  ? {
-                      label: 'Crédit utilisé',
-                      value: `${Math.round(creditUtilization * 100)} %`,
-                      color: creditUtilization >= 0.7 ? colors.danger : undefined,
-                    }
-                  : { label: 'Crédit', value: money(creditTotal) },
-              ]}
+              bare
             >
+              {/* Hierarchy: one big number, its trend, then a single quiet line — details live in the lists below. */}
               {!hideBalances && netWorthSeries.length > 1 ? (
                 <AreaSparkline
                   data={netWorthSeries}
-                  color={(netWorthPct ?? 0) >= 0 ? colors.accentGreen : colors.danger}
+                  color={(netWorthPct ?? 0) >= 0 ? colors.accentGreen : colors.textMuted}
                   height={48}
                 />
               ) : null}
               {!hideBalances && (liquidCash > 0 || creditUsed > 0) ? (
-                <View style={styles.balanceBlock}>
-                  <View style={styles.balanceLabels}>
-                    <Text style={[styles.balanceLabel, { color: colors.textMuted }]}>
-                      Liquidités <Text style={{ color: colors.text }}>{formatCompactCurrency(liquidCash)}</Text>
-                    </Text>
-                    <Text style={[styles.balanceLabel, { color: colors.textMuted }]}>
-                      Dettes de carte <Text style={{ color: colors.danger }}>{formatCompactCurrency(creditUsed)}</Text>
-                    </Text>
-                  </View>
-                  <View style={styles.balanceBar}>
-                    <View style={{ flex: Math.max(liquidCash, 0.0001), backgroundColor: colors.text, borderRadius: 4 }} />
-                    {creditUsed > 0 ? (
-                      <View style={{ flex: creditUsed, backgroundColor: colors.danger, borderRadius: 4, marginLeft: 3 }} />
-                    ) : null}
-                  </View>
-                </View>
+                <Text style={[styles.balanceLabel, styles.balanceLine, { color: colors.textMuted }]}>
+                  {`Actifs ${formatCompactCurrency(liquidCash)}`}
+                  {creditUsed > 0 ? `  ·  Dettes ${formatCompactCurrency(creditUsed)}` : ''}
+                </Text>
               ) : null}
             </SummaryCard>
-          </View>
+          </Reveal>
 
-          <View style={styles.section}>
+          <Reveal index={1} style={styles.section}>
             <SectionLabel
               title="Comptes"
               trailing={
                 listedAccounts.length > 0 ? (
-                  <TextAction
-                    label={managingAccounts ? 'Terminé' : 'Modifier'}
-                    onPress={toggleManagingAccounts}
-                  />
+                  <View style={styles.headerActions}>
+                    {!managingAccounts ? <TextAction label="Ajouter" onPress={openAddAccount} /> : null}
+                    <TextAction
+                      label={managingAccounts ? 'Terminé' : 'Modifier'}
+                      onPress={toggleManagingAccounts}
+                    />
+                  </View>
                 ) : undefined
               }
             />
@@ -571,54 +555,55 @@ export function ProtoWalletHub() {
               </>
             ) : (
               <>
-                {liquidAccounts.length > 0 ? (
+                {/* One list: liquid accounts first, credit cards last (the row already says « Crédit ··9104 »). */}
+                {orderedAccounts.length > 0 ? (
                   <ListCard style={styles.cardGap}>
-                    {liquidAccounts.map((account, index) =>
-                      renderAccountRow(account, index === liquidAccounts.length - 1),
+                    {orderedAccounts.map((account, index) =>
+                      renderAccountRow(account, index === orderedAccounts.length - 1),
                     )}
                   </ListCard>
                 ) : null}
-                {creditAccounts.length > 0 ? (
-                  <>
-                    <Text style={[styles.subLabel, { color: colors.textMuted }]}>Crédit</Text>
-                    <ListCard style={styles.cardGap}>
-                      {creditAccounts.map((account, index) =>
-                        renderAccountRow(account, index === creditAccounts.length - 1),
-                      )}
-                    </ListCard>
-                  </>
-                ) : null}
-                <ListCard>{addAccountRow}</ListCard>
+                {/* Empty state only — with accounts, « Ajouter » lives in the section header. */}
+                {listedAccounts.length === 0 ? <ListCard>{addAccountRow}</ListCard> : null}
               </>
             )}
-          </View>
+          </Reveal>
 
-          {loans.length > 0 ? (
-            <View style={styles.section}>
-              <SectionLabel title="Prêts" />
-              <ListCard>
-                {loans.map((loan, index) => {
-                  const row = formatWalletLoanGoalRow(loan, hideBalances);
-                  return (
-                    <ListRow
-                      key={loan.id}
-                      leading={<UserPickedIconWell icon={resolveLoanIcon(loan)} size={40} />}
-                      title={formatLoanObligationName(loan)}
-                      subtitle={row.remainingLabel}
-                      value={`${formatNumberDisplay(Math.round(row.pct * 100))} %`}
-                      valueSub="remboursé"
-                      valueColor={row.done ? colors.accentGreen : colors.text}
-                      progress={row.pct}
-                      isLast={index === loans.length - 1}
-                      onPress={() => router.push({ pathname: '/loan-detail', params: { loanId: loan.id } })}
-                    />
-                  );
-                })}
-              </ListCard>
-            </View>
-          ) : null}
+          <Reveal index={2} style={styles.section}>
+              <SectionLabel title="Prêts" trailing={<TextAction label="Ajouter" onPress={() => setLoanFormOpen(true)} />} />
+              {loans.length === 0 ? (
+                <ListCard>
+                  <EmptyRow label="Aucun prêt pour l’instant" />
+                </ListCard>
+              ) : loans.length === 1 && loans[0] ? (
+                // One loan → full-width landscape card instead of a list row.
+                <LoanWideCard
+                  name={formatLoanObligationName(loans[0])}
+                  icon={<UserPickedIconWell icon={resolveLoanIcon(loans[0])} size={34} iconSize={17} noBackground wellGlyphWhite />}
+                  principal={loans[0].principal}
+                  remaining={loans[0].balanceRemaining}
+                  hidden={hideBalances}
+                  onPress={() => router.push({ pathname: '/loan-detail', params: { loanId: loans[0]!.id } })}
+                />
+              ) : (
+                <View style={styles.loanGrid}>
+                  {loans.map((loan) => (
+                    <View key={loan.id} style={styles.loanCell}>
+                      <LoanWideCard
+                        name={formatLoanObligationName(loan)}
+                        icon={<UserPickedIconWell icon={resolveLoanIcon(loan)} size={34} iconSize={17} noBackground wellGlyphWhite />}
+                        principal={loan.principal}
+                        remaining={loan.balanceRemaining}
+                        hidden={hideBalances}
+                        onPress={() => router.push({ pathname: '/loan-detail', params: { loanId: loan.id } })}
+                      />
+                    </View>
+                  ))}
+                </View>
+              )}
+            </Reveal>
 
-          <View style={styles.section}>
+          <Reveal index={4} style={styles.section}>
             <SectionLabel
               title="Objectifs"
               trailing={
@@ -640,13 +625,23 @@ export function ProtoWalletHub() {
                   onPress={openNewGoalForm}
                 />
               </ListCard>
+            ) : goals.length === 1 && goals[0] && !managingGoals ? (
+              // One goal → full-width landscape card instead of a half-empty grid.
+              <GoalWideCard
+                name={goals[0].name}
+                icon={<UserPickedIconWell icon={resolveSavingsGoalDisplayIcon(goals[0])} size={34} iconSize={17} noBackground wellGlyphWhite />}
+                saved={goals[0].currentAmount ?? 0}
+                target={goals[0].targetAmount ?? 0}
+                hidden={hideBalances}
+                onPress={() => router.push({ pathname: '/goal-detail', params: { goalId: goals[0]!.id } })}
+              />
             ) : (
               <View style={styles.goalGrid}>
                 {goals.map((goal) => (
                   <View key={goal.id} style={styles.goalCell}>
                     <GoalTile
                       name={goal.name}
-                      icon={<UserPickedIconWell icon={resolveSavingsGoalDisplayIcon(goal)} size={32} />}
+                      icon={<UserPickedIconWell icon={resolveSavingsGoalDisplayIcon(goal)} size={34} iconSize={17} noBackground wellGlyphWhite />}
                       saved={goal.currentAmount ?? 0}
                       target={goal.targetAmount ?? 0}
                       hidden={hideBalances}
@@ -671,21 +666,8 @@ export function ProtoWalletHub() {
                 onPress={() => setConfirmDeleteGoalsVisible(true)}
               />
             ) : null}
-          </View>
+          </Reveal>
 
-          <View style={styles.section}>
-            <SectionLabel title="Patrimoine" />
-            <ListCard>
-              <ListRow
-                leading={<IconWell icon="home-outline" />}
-                title="Placements et biens"
-                subtitle="Actions, immobilier, véhicules"
-                chevron
-                isLast
-                onPress={() => router.push('/patrimoine')}
-              />
-            </ListCard>
-          </View>
         </ScrollView>
 
         <ConfirmDeleteModal
@@ -714,14 +696,14 @@ export function ProtoWalletHub() {
           onCancel={() => setConfirmDeleteGoalsVisible(false)}
         />
 
-        <SettingsPickerSheet
+        <AddAccountSheet
           visible={accountTypePickerVisible}
-          title="Type de compte"
-          options={ACCOUNT_TYPE_PICKER_OPTIONS}
-          selectedId={'' as AccountKind}
           onClose={() => setAccountTypePickerVisible(false)}
-          onSelect={handleSelectAccountType}
+          onSelectKind={handleSelectAccountType}
+          onConnectBank={handleConnectBank}
         />
+
+        <LoanFormSheet visible={loanFormOpen} accounts={accounts} onClose={() => setLoanFormOpen(false)} />
 
         <SimulatedAccountFormModal
           form={accountForm}
@@ -799,22 +781,24 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   section: { marginBottom: SECTION_GAP + spacing.sm },
   sectionActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  /** 44×44 target centred on the 28pt chevron (row padding is 14, so 14 − 8 = 6 from the edge). */
   cardGap: { marginBottom: spacing.md },
   subLabel: {
-    ...typographyKit.eyebrow,
-    fontSize: 11,
-    letterSpacing: 0.8,
+    ...typographyKit.metaMedium,
+    fontSize: 13.5,
+    lineHeight: 18,
     marginBottom: 8,
     paddingHorizontal: 2,
   },
   hint: { ...typographyKit.metaMedium, fontSize: 11, marginTop: spacing.sm, paddingHorizontal: 2 },
   goalGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
   goalCell: { width: '50%', paddingHorizontal: 5, paddingBottom: 10 },
+  loanGrid: { flexDirection: 'column', gap: spacing.md },
+  loanCell: { width: '100%' },
   logoSlot: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  balanceBlock: { gap: 8 },
-  balanceLabels: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   balanceLabel: { ...typographyKit.metaMedium, fontSize: 12 },
-  balanceBar: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden' },
+  balanceLine: { fontSize: 13, marginTop: 4 },
   dragHandle: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   manageValue: { ...typographyKit.metaSemibold, fontSize: 13 },
   deleteButton: { marginTop: spacing.md },

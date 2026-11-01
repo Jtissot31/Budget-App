@@ -20,6 +20,8 @@ export type FormatDisplayMoneyParts = {
 export type FormatDisplayMoneyOptions = {
   /** Absolute amounts at or above this use K compact (default {@link COMPACT_K_THRESHOLD}). */
   compactKThreshold?: number;
+  /** Max decimals on the K coefficient (default 1 → `125,5K`; 2 → `11,25K`). Trailing zeros dropped. */
+  compactKDecimals?: 1 | 2;
 };
 
 function roundToNearestTenth(n: number): number {
@@ -49,8 +51,12 @@ function formatCompactCoefficient(value: number, whole: boolean): string {
   });
 }
 
-function formatCompactKAmount(abs: number): string {
+function formatCompactKAmount(abs: number, decimals: 1 | 2 = 1): string {
   const k = abs / 1000;
+  if (decimals === 2) {
+    const rounded = Math.round(k * 100) / 100;
+    return `${formatNumberDisplay(rounded, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}K`;
+  }
   const isWholeK = Math.abs(k - Math.round(k)) < 1e-6;
   return `${formatCompactCoefficient(isWholeK ? Math.round(k) : k, isWholeK)}K`;
 }
@@ -83,7 +89,7 @@ export function formatDisplayMoney(
   }
 
   if (abs < COMPACT_M_THRESHOLD) {
-    return { main: formatCompactKAmount(abs), appendSeparatedDollar: true };
+    return { main: formatCompactKAmount(abs, options?.compactKDecimals), appendSeparatedDollar: true };
   }
 
   return { main: formatCompactMAmount(abs), appendSeparatedDollar: true };

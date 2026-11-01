@@ -7,7 +7,6 @@ import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FixedScreenHeader } from '@/components/FixedScreenHeader';
-import { HomeSpendInvestCards } from '@/components/dashboard/HomeSpendInvestCards';
 import { PageTransition } from '@/components/PageTransition';
 import { PatrimoineHoldingsSections } from '@/components/PatrimoineHoldingsSections';
 import {
@@ -148,7 +147,6 @@ export function ProtoPatrimoineHub() {
           }
           showsVerticalScrollIndicator={false}
         >
-          <HomeSpendInvestCards interactive={false} />
 
           <PatrimoineHoldingsSections
             wealthAssets={patrimoineAssets}

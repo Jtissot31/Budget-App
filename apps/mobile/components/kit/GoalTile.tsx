@@ -50,7 +50,7 @@ export function GoalTile({ name, icon, saved, target, hidden = false, selecting 
       ]}
     >
       <View style={styles.top}>
-        <RingGauge progress={progress} color={colors.accentGreen} size={54} stroke={5}>
+        <RingGauge progress={progress} color={colors.accentGreen} size={54} stroke={4}>
           <View style={[styles.iconWell, { backgroundColor: colors.surfaceElevated }]}>{icon}</View>
         </RingGauge>
         {selecting ? (
@@ -61,7 +61,7 @@ export function GoalTile({ name, icon, saved, target, hidden = false, selecting 
             color={selected ? colors.text : colors.textMuted}
           />
         ) : (
-          <Text style={[styles.pct, jakartaSemiboldText, { color: colors.accentGreen }]}>{pct} %</Text>
+          <Text style={[styles.pct, jakartaSemiboldText, { color: colors.accentGreen }]}>{`${pct} %`}</Text>
         )}
       </View>
       <FitText style={[styles.name, jakartaSemiboldText, { color: colors.text }]} fontSize={14} lineHeight={18} minScale={0.75}>
@@ -75,15 +75,14 @@ export function GoalTile({ name, icon, saved, target, hidden = false, selecting 
       >
         {hidden ? '••••' : formatDisplayMoneyAbsolute(saved)}
       </FitText>
-      <Text style={[styles.meta, jakartaMediumText, { color: colors.textMuted }]} numberOfLines={1}>
+      <FitText style={[styles.meta, jakartaMediumText, { color: colors.textMuted }]}>
         {hidden ? 'sur ••••' : `sur ${formatDisplayMoneyAbsolute(target)}`}
-      </Text>
-      <Text
+      </FitText>
+      <FitText
         style={[styles.left, jakartaMediumText, { color: done ? colors.accentGreen : colors.textSecondary }]}
-        numberOfLines={1}
       >
         {done ? 'Objectif atteint 🎉' : hidden ? '' : `Encore ${formatDisplayMoneyAbsolute(left)}`}
-      </Text>
+      </FitText>
     </PressScale>
   );
 }

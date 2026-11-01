@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { StyleProp, TextStyle } from 'react-native';
 
+import { ChipSelectField } from '@/components/ChipSelectField';
 import { SettingsSelectField } from '@/components/SettingsSelectField';
 import type { SettingsPickerOption } from '@/components/SettingsPickerSheet';
 import { BUDGET_CATEGORY_PICKER_EMPTY_HINT } from '@/lib/budgetCategories';
@@ -16,6 +17,8 @@ type Props = {
   label?: string;
   /** Quieter nested labels (e.g. inside ARTICLES) vs major section eyebrows. */
   labelStyle?: StyleProp<TextStyle>;
+  /** `chips` = inline scrolling chips (add-transaction form); `sheet` = field + bottom-sheet list. */
+  variant?: 'sheet' | 'chips';
 };
 
 export function BudgetCategoryPicker({
@@ -26,10 +29,15 @@ export function BudgetCategoryPicker({
   transferReason,
   label = 'Catégorie',
   labelStyle,
+  variant = 'sheet',
 }: Props) {
   const { suggested } = useMemo(
-    () => partitionBudgetCategories(categories, searchText, selectedId, { transferReason }),
-    [categories, searchText, selectedId, transferReason],
+    // Chips: tapping one must not reorder the row, so only the typed text picks the suggestion.
+    () =>
+      partitionBudgetCategories(categories, searchText, variant === 'chips' ? null : selectedId, {
+        transferReason,
+      }),
+    [categories, searchText, selectedId, transferReason, variant],
   );
 
   const options = useMemo<SettingsPickerOption<string>[]>(() => {
@@ -52,8 +60,9 @@ export function BudgetCategoryPicker({
     ];
   }, [categories, suggested]);
 
+  const Field = variant === 'chips' ? ChipSelectField : SettingsSelectField;
   return (
-    <SettingsSelectField
+    <Field
       label={label}
       labelStyle={labelStyle}
       options={options}

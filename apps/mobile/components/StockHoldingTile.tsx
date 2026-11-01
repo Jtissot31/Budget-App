@@ -19,6 +19,7 @@ import {
 import { formatCompactCurrency } from '@/lib/formatCompactGainDollars';
 import { getStockLogoAsset } from '@/lib/stockLogo';
 import { useAppTheme } from '@/lib/themeContext';
+import { FitText } from '@/components/kit/FitText';
 
 type Props = {
   holding: MockStockHolding;
@@ -87,29 +88,26 @@ export const StockHoldingTile = memo(function StockHoldingTile({ holding, onPres
     <PlanFinanceContainer style={styles.card}>
       <View style={styles.headerArea}>
         <View style={styles.changeRow}>
-          <Text style={[styles.change, typographyKit.micro, { color: changeColor }]} numberOfLines={1}>
+          <FitText style={[styles.change, typographyKit.micro, { color: changeColor }]}>
             {formatStockDayChangePercent(holding.dayChangePercent)}
-          </Text>
+          </FitText>
         </View>
         <View style={styles.identityRow}>
           <StockHoldingLogo ticker={holding.ticker} />
           <View style={styles.identityTextCol}>
-            <Text style={[typographyKit.listPrimary, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail">
+            <FitText style={[typographyKit.listPrimary, { color: colors.text }]}>
               {tickerLabel}
-            </Text>
+            </FitText>
           </View>
         </View>
       </View>
 
       <View style={styles.cardValueRow}>
-        <Text
+        <FitText
           style={[moneyAmountTypography({ tier: 'stat' }), styles.value, { color: colors.text }]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.6}
         >
           {formatCompactCurrency(totalValue)}
-        </Text>
+        </FitText>
       </View>
     </PlanFinanceContainer>
   );

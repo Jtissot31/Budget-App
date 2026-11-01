@@ -182,7 +182,7 @@ export function GeminiApiKeySheet({
                 onPress={() => void handleSave()}
                 style={({ pressed }) => [
                   styles.primaryButton,
-                  { backgroundColor: colors.primary },
+                  { backgroundColor: colors.text },
                   (!draft.trim() || saving) && styles.disabled,
                   pressed && draft.trim() && !saving && styles.pressed,
                 ]}
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 44,
-    borderRadius: radius.md,
+    borderRadius: 22,
     paddingHorizontal: spacing.lg,
   },
   primaryLabel: {

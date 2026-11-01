@@ -185,7 +185,7 @@ export function TodayCard() {
               }}
               size={22}
             />
-            <Text style={[styles.chipText, { color: colors.text }]} numberOfLines={1}>
+            <Text style={[styles.chipText, { color: colors.text }]}>
               {merchant.label}
             </Text>
           </PressScale>

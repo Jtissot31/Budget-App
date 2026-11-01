@@ -11,6 +11,7 @@ import { formatMonthName, formatMonthYear } from '@/lib/budgetMonth';
 import { tapHaptic } from '@/lib/haptics';
 import { resolveLucideIcon } from '@/lib/lucideIconCatalog';
 import { useAppTheme } from '@/lib/themeContext';
+import { FitText } from '@/components/kit/FitText';
 
 const ChevronLeft = resolveLucideIcon(ChevronLeftMod)!;
 const ChevronRight = resolveLucideIcon(ChevronRightMod)!;
@@ -183,7 +184,7 @@ export function MonthSelector({
           </Text>
         ) : (
           <>
-            <Text
+            <FitText
               style={[
                 styles.month,
                 isCompact && styles.monthCompact,
@@ -191,22 +192,20 @@ export function MonthSelector({
                 jakartaSemiboldText,
                 { color: colors.text },
               ]}
-              numberOfLines={1}
             >
               {resolvedPrimary}
-            </Text>
+            </FitText>
             {showSecondary ? (
-              <Text
+              <FitText
                 style={[
                   styles.year,
                   isChip && styles.yearChip,
                   jakartaMediumText,
                   { color: colors.textMuted },
                 ]}
-                numberOfLines={1}
               >
                 {resolvedSecondary}
-              </Text>
+              </FitText>
             ) : null}
           </>
         )}

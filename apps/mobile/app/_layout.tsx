@@ -7,10 +7,11 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { loadAsync as loadFontAsync } from 'expo-font';
 import { useEffect, useState } from 'react';
-import { InteractionManager, Platform, View } from 'react-native';
+import { Platform, View } from 'react-native';
+import { runAfterInteractions } from '@/lib/runAfterInteractions';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PortalHost } from '@rn-primitives/portal';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DMMono_400Regular, DMMono_500Medium } from '@expo-google-fonts/dm-mono';
 import { Inter_600SemiBold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
 import {
@@ -31,13 +32,21 @@ import { configureSystemTypographyDefaults, configureTypographyDefaults } from '
 import { fontFamilies } from '@/constants/theme';
 import { cn } from '@/lib/utils';
 import { ToastHost } from '@/components/kit/Toast';
+import { preloadCopilotData } from '@/components/copilot/CopilotCard';
+import { preloadHomeData } from '@/components/dashboard/ProtoHomeHub';
 
 export const unstable_settings = {
   initialRouteName: '(tabs)',
 };
 
-/** Safety cap only — Stack renders immediately; fonts/DB run in the background. */
-const BOOTSTRAP_MAX_MS = 0;
+/**
+ * Splash stays up until Plus Jakarta is loaded (DB still runs in the background). Rendering
+ * earlier laid text out with the system font, then the wider bold font swapped in and got
+ * clipped (« Agend », « Demai »). Over a dev tunnel the fonts can take well over 3 s, and text
+ * measured before they arrive stays cropped, so the cap is long. A load failure doesn't wait for
+ * it (`fontError`); it only guards against a load that hangs.
+ */
+const FONT_WAIT_MAX_MS = 20_000;
 
 configureTypographyDefaults();
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -67,9 +76,21 @@ function ThemedRootShell() {
   );
 }
 
+/** Content scrolled to the top must not run through the status bar's clock and icons. */
+function StatusBarScrim() {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <View
+      pointerEvents="none"
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, backgroundColor: colors.background }}
+    />
+  );
+}
+
 function RootLayoutContent() {
   const { colors, statusBarStyle } = useAppTheme();
-  const [ready, setReady] = useState(true);
+  const [fontWaitExpired, setFontWaitExpired] = useState(false);
   // Critical path fonts only — DM Mono is receipt/articles-only (deferred).
   const [fontsLoaded, fontError] = useAppFonts({
     PlusJakartaSans_400Regular,
@@ -83,17 +104,17 @@ function RootLayoutContent() {
 
   useEffect(() => {
     preloadVectorIconFonts();
-    console.log('[Boot] layout mount — Stack visible immediately');
-    SplashScreen.hideAsync().catch(() => {});
     void (async () => {
       try {
         await ensureDbReady();
         console.log('[Boot] database ready');
+        // Warm Accueil + Copilote so they open with real content (no empty first frame).
+        void Promise.all([preloadHomeData(), preloadCopilotData()]).catch(() => undefined);
       } catch (error) {
         console.warn('[Boot] database init failed', error);
       }
     })();
-    const idle = InteractionManager.runAfterInteractions(() => {
+    const idle = runAfterInteractions(() => {
       void loadFontAsync({
         DMMono_400Regular,
         DMMono_500Medium,
@@ -102,9 +123,9 @@ function RootLayoutContent() {
       });
     });
     const timer = setTimeout(() => {
-      console.log('[Boot] bootstrap safety tick');
-      setReady(true);
-    }, Platform.OS === 'web' ? 1_200 : BOOTSTRAP_MAX_MS || 3_000);
+      console.log('[Boot] font wait expired — rendering with fallback');
+      setFontWaitExpired(true);
+    }, Platform.OS === 'web' ? 1_200 : FONT_WAIT_MAX_MS);
     return () => {
       idle.cancel();
       clearTimeout(timer);
@@ -120,6 +141,12 @@ function RootLayoutContent() {
       configureSystemTypographyDefaults();
     }
   }, [fontsLoaded, fontError]);
+
+  const ready = fontsLoaded || fontError != null || fontWaitExpired;
+
+  useEffect(() => {
+    if (ready) SplashScreen.hideAsync().catch(() => {});
+  }, [ready]);
 
   if (!ready) {
     return (
@@ -152,7 +179,10 @@ function RootLayoutContent() {
               // iOS interactive pop (full-width). Android uses SwipeBackHost.
               gestureEnabled: true,
               fullScreenGestureEnabled: true,
-              contentStyle: { backgroundColor: 'transparent' },
+              // Opaque from the first frame: a transparent scene let the screen below
+              // (often the last tab, e.g. Wallet) flash through while a detail page opened.
+              // Sheets/modals keep their own transparent contentStyle.
+              contentStyle: { backgroundColor: colors.background },
             }}
           >
             <Stack.Screen
@@ -186,6 +216,7 @@ function RootLayoutContent() {
               }}
             />
             <Stack.Screen name="account-detail" options={{ headerShown: false }} />
+            <Stack.Screen name="envelope-detail" options={{ headerShown: false }} />
             <Stack.Screen name="merchant-detail" options={{ headerShown: false }} />
             <Stack.Screen name="contact-detail" options={{ headerShown: false }} />
             <Stack.Screen name="merchant-receipts" options={{ headerShown: false }} />
@@ -200,6 +231,7 @@ function RootLayoutContent() {
             <Stack.Screen name="savings-goals" options={{ headerShown: false }} />
             <Stack.Screen name="transactions-insights" options={{ headerShown: false }} />
             <Stack.Screen name="subscriptions-insights" options={{ headerShown: false }} />
+            <Stack.Screen name="copilot" options={{ headerShown: false }} />
             <Stack.Screen name="documents-library" options={{ headerShown: false }} />
             <Stack.Screen name="paycheck-allocation" options={{ headerShown: false }} />
             <Stack.Screen name="lucide-icons" options={{ headerShown: false }} />
@@ -208,11 +240,33 @@ function RootLayoutContent() {
             <Stack.Screen name="patrimoine" options={{ headerShown: false }} />
             <Stack.Screen name="plans" options={{ headerShown: false }} />
             <Stack.Screen name="scan" options={{ headerShown: false, presentation: 'modal' }} />
+            <Stack.Screen name="connect-bank" options={{ headerShown: false, presentation: 'modal', gestureEnabled: false }} />
+            <Stack.Screen
+              name="budget-category"
+              options={{
+                headerShown: false,
+                presentation: 'transparentModal',
+                // The sheet animates itself — no scene transition, nothing flashes behind it.
+                animation: 'none',
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
+            <Stack.Screen
+              name="payment-detail"
+              options={{
+                headerShown: false,
+                presentation: 'transparentModal',
+                // The sheet animates itself — no scene transition, nothing flashes behind it.
+                animation: 'none',
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
             <Stack.Screen name="alert-center" options={{ headerShown: false }} />
             <Stack.Screen name="alert-detail" options={{ headerShown: false }} />
             <Stack.Screen name="alert-types" options={{ headerShown: false }} />
           </Stack>
           </SwipeBackHost>
+          <StatusBarScrim />
           <ToastHost />
         </View>
       </View>

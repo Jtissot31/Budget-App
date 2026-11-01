@@ -7,3 +7,9 @@ obj/
 *.suo
 .idea/
 .DS_Store
+
+# Local debug dumps / scratch scripts at the repo root
+/_*.tsx
+/_*.txt
+/fc_*.txt
+/tmp-*

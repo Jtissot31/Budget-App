@@ -125,7 +125,8 @@ export function SwipeBackHost({ children }: Props) {
         })
         .onFinalize((_, success) => {
           'worklet';
-          if (!success && !isNavigating.value) {
+          // Every vertical scroll fails this gesture: don't animate the screen's parent for nothing.
+          if (!success && !isNavigating.value && translateX.value !== 0) {
             translateX.value = withTiming(0, {
               duration: SWIPE_BACK_SETTLE_MS,
               easing: Easing.out(Easing.cubic),
