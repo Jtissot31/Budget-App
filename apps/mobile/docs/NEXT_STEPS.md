@@ -28,7 +28,7 @@
 - **Envelope transfers:** `EnvelopeTransferSheet` follows the Virement form (big amount, numpad, chips) and names the account instead of « Non attribué ».
 - **Loan cards:** headline is what is left to pay, in full (not « 208,8K »), then « à payer sur X ».
 - **New category form:** name (with icon) and monthly limit only. Quick amounts, pace preview and the periodic limit were removed at the owner's request; `upsertCategoryBudget` still accepts a weekly limit.
-- **Activité summary:** `SpendIncomeRatioCard` (expenses / income this month) replaces `SpendAndSaveCard`, which is now unused.
+- **Activité summary:** `SpendIncomeRatioCard` (income vs expenses this month as a two-colour bar, opens the analysis) replaces `SpendAndSaveCard`, which is now unused.
 - **Expense form:** `ChipSelectField` chips no longer jump to the front (reorder spring + scroll fought each other). Toast has no FitText/spring and waits for the sheet to close. « + Ajouter » on the articles card kept its fill off Android because of a Pressable style function, now on an inner View. The 24 h impulse tip is limited to shopping categories.
 - **Fake charts removed:** goal and loan charts used to draw a made-up ramp without real data (`buildDemoGoalContributionRamp`, deleted). Goal Évolution now only shows with real versements. Budget hero lost its pace bar; Patrimoine row is out of Comptes (route `/patrimoine` remains); tabs have a status bar scrim.
 - **Budget colours:** `lib/budgetTone.ts` is now one vivid amber; the À surveiller section is gone and category tiles show only ring, %, name and what is left (the owner found the screen too wordy).
