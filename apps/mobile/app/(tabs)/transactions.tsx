@@ -21,7 +21,7 @@ import {
   ProtoSearchField,
   ProtoToolbarIconButton,
 } from '@/components/proto/ProtoSearchToolbar';
-import { SpendAndSaveCard } from '@/components/dashboard/SpendAndSaveCard';
+import { SpendIncomeRatioCard } from '@/components/transactions/SpendIncomeRatioCard';
 import { ProtoTransactionRow } from '@/components/transactions/ProtoTransactionRow';
 import {
   TransactionsTypeFilter,
@@ -202,7 +202,11 @@ export default function TransactionsScreen() {
           <TransactionsTypeFilter value={historyTypeFilter} onChange={setHistoryTypeFilter} />
         </View>
         <View style={{ paddingHorizontal: contentGutter, marginBottom: spacing.md }}>
-          <SpendAndSaveCard />
+          <SpendIncomeRatioCard
+            transactions={items}
+            monthKey={getLocalDayKey(new Date().toISOString()).slice(0, 7)}
+            dayKeyOf={getLocalDayKey}
+          />
         </View>
       </>
     ),
@@ -211,6 +215,7 @@ export default function TransactionsScreen() {
       contentGutter,
       historyTypeFilter,
       insets.top,
+      items,
       router,
       searchQuery,
     ],
